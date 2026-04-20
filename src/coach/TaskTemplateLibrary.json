@@ -1,0 +1,1503 @@
+[
+  {
+    "id": "task-hlth-track-sleep",
+    "isCustom": false,
+    "isSystem": false,
+    "name": "Track Sleep",
+    "description": "Capture when you slept, how you woke up, and how the night felt.",
+    "icon": "category-health",
+    "taskType": "CIRCUIT",
+    "secondaryTag": "health",
+    "inputFields": {
+      "exercises": [
+        "Log begin time",
+        "Log wake time",
+        "Mood log",
+        "Dream entry",
+        "Sleep rating"
+      ],
+      "rounds": 1,
+      "restBetweenRounds": null,
+      "steps": [
+        {
+          "key": "sleep-begin",
+          "label": "Log begin time",
+          "inputType": "TEXT"
+        },
+        {
+          "key": "wake-time",
+          "label": "Log wake time",
+          "inputType": "TEXT"
+        },
+        {
+          "key": "mood-log",
+          "label": "Mood log",
+          "inputType": "CHOICE",
+          "options": [
+            "great",
+            "good",
+            "okay",
+            "poor"
+          ]
+        },
+        {
+          "key": "dream-entry",
+          "label": "Dream entry",
+          "inputType": "TEXT",
+          "optional": true
+        },
+        {
+          "key": "sleep-rating",
+          "label": "Sleep rating",
+          "inputType": "RATING",
+          "scale": 5
+        }
+      ]
+    },
+    "xpAward": {
+      "health": 5,
+      "strength": 0,
+      "agility": 0,
+      "defense": 0,
+      "charisma": 0,
+      "wisdom": 0
+    },
+    "cooldown": 720,
+    "media": null,
+    "items": []
+  },
+  {
+    "id": "task-hlth-sleep-rating",
+    "isCustom": false,
+    "isSystem": false,
+    "name": "Sleep Rating",
+    "description": "Rate how rested you feel right now.",
+    "icon": "category-health",
+    "taskType": "RATING",
+    "secondaryTag": "health",
+    "inputFields": {
+      "scale": 5,
+      "label": "How rested do you feel?"
+    },
+    "xpAward": {
+      "health": 5,
+      "strength": 0,
+      "agility": 0,
+      "defense": 0,
+      "charisma": 0,
+      "wisdom": 0
+    },
+    "cooldown": null,
+    "media": null,
+    "items": []
+  },
+  {
+    "id": "task-hlth-drink-water",
+    "isCustom": false,
+    "isSystem": false,
+    "name": "Drink Water",
+    "description": "Drink a glass of water and keep your hydration momentum going.",
+    "icon": "category-health",
+    "taskType": "CHECK",
+    "secondaryTag": "health",
+    "inputFields": {
+      "label": "Drink a glass of water"
+    },
+    "xpAward": {
+      "health": 5,
+      "strength": 0,
+      "agility": 0,
+      "defense": 0,
+      "charisma": 0,
+      "wisdom": 0
+    },
+    "cooldown": 30,
+    "media": null,
+    "items": []
+  },
+  {
+    "id": "task-hlth-brush-teeth",
+    "isCustom": false,
+    "isSystem": false,
+    "name": "Brush Teeth",
+    "description": "Run a full two-minute brushing timer.",
+    "icon": "category-health",
+    "taskType": "TIMER",
+    "secondaryTag": "health",
+    "inputFields": {
+      "countdownFrom": 120
+    },
+    "xpAward": {
+      "health": 5,
+      "strength": 0,
+      "agility": 0,
+      "defense": 0,
+      "charisma": 0,
+      "wisdom": 0
+    },
+    "cooldown": null,
+    "media": null,
+    "items": []
+  },
+  {
+    "id": "task-hlth-take-shower",
+    "isCustom": false,
+    "isSystem": false,
+    "name": "Take Shower",
+    "description": "Take a shower and reset your body for the day.",
+    "icon": "category-health",
+    "taskType": "TIMER",
+    "secondaryTag": "health",
+    "inputFields": {
+      "countdownFrom": 600
+    },
+    "xpAward": {
+      "health": 5,
+      "strength": 0,
+      "agility": 0,
+      "defense": 0,
+      "charisma": 0,
+      "wisdom": 0
+    },
+    "cooldown": null,
+    "media": null,
+    "items": []
+  },
+  {
+    "id": "task-hlth-log-meal",
+    "isCustom": false,
+    "isSystem": false,
+    "name": "Log Meal",
+    "description": "Record what you ate and anything worth noting about it.",
+    "icon": "category-nutrition",
+    "taskType": "LOG",
+    "secondaryTag": "nutrition",
+    "inputFields": {
+      "prompt": "What did you eat? Any notes?"
+    },
+    "xpAward": {
+      "health": 5,
+      "strength": 0,
+      "agility": 0,
+      "defense": 0,
+      "charisma": 0,
+      "wisdom": 0
+    },
+    "cooldown": null,
+    "media": null,
+    "items": []
+  },
+  {
+    "id": "task-hlth-breathing-exercise",
+    "isCustom": false,
+    "isSystem": false,
+    "name": "Breathing Exercise",
+    "description": "Move through a simple box-breathing cycle to settle your system.",
+    "icon": "category-mindfulness",
+    "taskType": "CIRCUIT",
+    "secondaryTag": "mindfulness",
+    "inputFields": {
+      "exercises": [
+        "Inhale 4 counts",
+        "Hold 4 counts",
+        "Exhale 4 counts",
+        "Hold 4 counts"
+      ],
+      "rounds": 4,
+      "restBetweenRounds": null
+    },
+    "xpAward": {
+      "health": 5,
+      "strength": 0,
+      "agility": 0,
+      "defense": 0,
+      "charisma": 0,
+      "wisdom": 0
+    },
+    "cooldown": null,
+    "media": null,
+    "items": []
+  },
+  {
+    "id": "task-hlth-body-scan",
+    "isCustom": false,
+    "isSystem": false,
+    "name": "Body Scan",
+    "description": "Check in with your breathing, tension, and overall body state.",
+    "icon": "category-mindfulness",
+    "taskType": "CIRCUIT",
+    "secondaryTag": "mindfulness",
+    "inputFields": {
+      "exercises": [
+        "Breathing exercise",
+        "Notice tension areas",
+        "Rate overall body state"
+      ],
+      "rounds": 1,
+      "restBetweenRounds": null,
+      "steps": [
+        {
+          "key": "breathing",
+          "label": "Breathing exercise",
+          "inputType": "CHECK"
+        },
+        {
+          "key": "tension",
+          "label": "Notice tension areas",
+          "inputType": "TEXT"
+        },
+        {
+          "key": "body-state",
+          "label": "Rate overall body state",
+          "inputType": "RATING",
+          "scale": 5
+        }
+      ]
+    },
+    "xpAward": {
+      "health": 5,
+      "strength": 0,
+      "agility": 0,
+      "defense": 0,
+      "charisma": 0,
+      "wisdom": 0
+    },
+    "cooldown": null,
+    "media": null,
+    "items": []
+  },
+  {
+    "id": "task-str-push-ups",
+    "isCustom": false,
+    "isSystem": false,
+    "name": "Push Ups",
+    "description": "Knock out a classic push-up set.",
+    "icon": "category-fitness",
+    "taskType": "SETS_REPS",
+    "secondaryTag": "fitness",
+    "inputFields": {
+      "sets": 3,
+      "reps": 10,
+      "weight": null,
+      "weightUnit": null,
+      "restAfter": null,
+      "dropSet": false
+    },
+    "xpAward": {
+      "health": 0,
+      "strength": 5,
+      "agility": 0,
+      "defense": 0,
+      "charisma": 0,
+      "wisdom": 0
+    },
+    "cooldown": null,
+    "media": null,
+    "items": []
+  },
+  {
+    "id": "task-str-pull-ups",
+    "isCustom": false,
+    "isSystem": false,
+    "name": "Pull Ups",
+    "description": "Track a pull-up session by sets and reps.",
+    "icon": "category-fitness",
+    "taskType": "SETS_REPS",
+    "secondaryTag": "fitness",
+    "inputFields": {
+      "sets": 3,
+      "reps": 5,
+      "weight": null,
+      "weightUnit": null,
+      "restAfter": null,
+      "dropSet": false
+    },
+    "xpAward": {
+      "health": 0,
+      "strength": 5,
+      "agility": 0,
+      "defense": 0,
+      "charisma": 0,
+      "wisdom": 0
+    },
+    "cooldown": null,
+    "media": null,
+    "items": []
+  },
+  {
+    "id": "task-str-squats",
+    "isCustom": false,
+    "isSystem": false,
+    "name": "Squats",
+    "description": "Log a squat session and build lower-body power.",
+    "icon": "category-fitness",
+    "taskType": "SETS_REPS",
+    "secondaryTag": "fitness",
+    "inputFields": {
+      "sets": 3,
+      "reps": 15,
+      "weight": null,
+      "weightUnit": null,
+      "restAfter": null,
+      "dropSet": false
+    },
+    "xpAward": {
+      "health": 0,
+      "strength": 5,
+      "agility": 0,
+      "defense": 0,
+      "charisma": 0,
+      "wisdom": 0
+    },
+    "cooldown": null,
+    "media": null,
+    "items": []
+  },
+  {
+    "id": "task-str-lunges",
+    "isCustom": false,
+    "isSystem": false,
+    "name": "Lunges",
+    "description": "Complete a lunge session for balance and strength.",
+    "icon": "category-fitness",
+    "taskType": "SETS_REPS",
+    "secondaryTag": "fitness",
+    "inputFields": {
+      "sets": 3,
+      "reps": 10,
+      "weight": null,
+      "weightUnit": null,
+      "restAfter": null,
+      "dropSet": false
+    },
+    "xpAward": {
+      "health": 0,
+      "strength": 5,
+      "agility": 0,
+      "defense": 0,
+      "charisma": 0,
+      "wisdom": 0
+    },
+    "cooldown": null,
+    "media": null,
+    "items": []
+  },
+  {
+    "id": "task-str-dips",
+    "isCustom": false,
+    "isSystem": false,
+    "name": "Dips",
+    "description": "Track a dip workout with clean sets and reps.",
+    "icon": "category-fitness",
+    "taskType": "SETS_REPS",
+    "secondaryTag": "fitness",
+    "inputFields": {
+      "sets": 3,
+      "reps": 10,
+      "weight": null,
+      "weightUnit": null,
+      "restAfter": null,
+      "dropSet": false
+    },
+    "xpAward": {
+      "health": 0,
+      "strength": 5,
+      "agility": 0,
+      "defense": 0,
+      "charisma": 0,
+      "wisdom": 0
+    },
+    "cooldown": null,
+    "media": null,
+    "items": []
+  },
+  {
+    "id": "task-str-rows",
+    "isCustom": false,
+    "isSystem": false,
+    "name": "Rows",
+    "description": "Log a row session to build your pull strength.",
+    "icon": "category-fitness",
+    "taskType": "SETS_REPS",
+    "secondaryTag": "fitness",
+    "inputFields": {
+      "sets": 3,
+      "reps": 10,
+      "weight": null,
+      "weightUnit": null,
+      "restAfter": null,
+      "dropSet": false
+    },
+    "xpAward": {
+      "health": 0,
+      "strength": 5,
+      "agility": 0,
+      "defense": 0,
+      "charisma": 0,
+      "wisdom": 0
+    },
+    "cooldown": null,
+    "media": null,
+    "items": []
+  },
+  {
+    "id": "task-str-burpees",
+    "isCustom": false,
+    "isSystem": false,
+    "name": "Burpees",
+    "description": "Push through a short, intense burpee set.",
+    "icon": "category-fitness",
+    "taskType": "SETS_REPS",
+    "secondaryTag": "fitness",
+    "inputFields": {
+      "sets": 3,
+      "reps": 8,
+      "weight": null,
+      "weightUnit": null,
+      "restAfter": null,
+      "dropSet": false
+    },
+    "xpAward": {
+      "health": 0,
+      "strength": 5,
+      "agility": 0,
+      "defense": 0,
+      "charisma": 0,
+      "wisdom": 0
+    },
+    "cooldown": null,
+    "media": null,
+    "items": []
+  },
+  {
+    "id": "task-str-plank",
+    "isCustom": false,
+    "isSystem": false,
+    "name": "Plank",
+    "description": "Hold a one-minute plank.",
+    "icon": "category-fitness",
+    "taskType": "TIMER",
+    "secondaryTag": "fitness",
+    "inputFields": {
+      "countdownFrom": 60
+    },
+    "xpAward": {
+      "health": 0,
+      "strength": 5,
+      "agility": 0,
+      "defense": 0,
+      "charisma": 0,
+      "wisdom": 0
+    },
+    "cooldown": null,
+    "media": null,
+    "items": []
+  },
+  {
+    "id": "task-str-full-body-circuit",
+    "isCustom": false,
+    "isSystem": false,
+    "name": "Full Body Circuit",
+    "description": "Cycle through a full-body workout with built-in rest between rounds.",
+    "icon": "category-fitness",
+    "taskType": "CIRCUIT",
+    "secondaryTag": "fitness",
+    "inputFields": {
+      "exercises": [
+        "Push Ups",
+        "Squats",
+        "Lunges",
+        "Plank",
+        "Burpees"
+      ],
+      "rounds": 3,
+      "restBetweenRounds": 60
+    },
+    "xpAward": {
+      "health": 0,
+      "strength": 5,
+      "agility": 0,
+      "defense": 0,
+      "charisma": 0,
+      "wisdom": 0
+    },
+    "cooldown": null,
+    "media": null,
+    "items": []
+  },
+  {
+    "id": "task-str-cook-meal",
+    "isCustom": false,
+    "isSystem": false,
+    "name": "Cook Meal",
+    "description": "Prep, cook, and clean up a full meal.",
+    "icon": "category-nutrition",
+    "taskType": "CIRCUIT",
+    "secondaryTag": "nutrition",
+    "inputFields": {
+      "exercises": [
+        "Prep ingredients",
+        "Cook",
+        "Clean up"
+      ],
+      "rounds": 1,
+      "restBetweenRounds": null
+    },
+    "xpAward": {
+      "health": 0,
+      "strength": 5,
+      "agility": 0,
+      "defense": 0,
+      "charisma": 0,
+      "wisdom": 0
+    },
+    "cooldown": null,
+    "media": null,
+    "items": []
+  },
+  {
+    "id": "task-str-go-for-walk",
+    "isCustom": false,
+    "isSystem": false,
+    "name": "Go For Walk",
+    "description": "Record your walking route as you move.",
+    "icon": "category-fitness",
+    "taskType": "LOCATION_TRAIL",
+    "secondaryTag": "fitness",
+    "inputFields": {
+      "label": "Walk route",
+      "captureInterval": 30
+    },
+    "xpAward": {
+      "health": 0,
+      "strength": 5,
+      "agility": 0,
+      "defense": 0,
+      "charisma": 0,
+      "wisdom": 0
+    },
+    "cooldown": null,
+    "media": null,
+    "items": []
+  },
+  {
+    "id": "task-agi-put-dishes-away",
+    "isCustom": false,
+    "isSystem": false,
+    "name": "Put Dishes Away",
+    "description": "Clear the drying rack or dishwasher and reset the kitchen.",
+    "icon": "category-home",
+    "taskType": "CHECK",
+    "secondaryTag": "home",
+    "inputFields": {
+      "label": "Put dishes away"
+    },
+    "xpAward": {
+      "health": 0,
+      "strength": 0,
+      "agility": 5,
+      "defense": 0,
+      "charisma": 0,
+      "wisdom": 0
+    },
+    "cooldown": null,
+    "media": null,
+    "items": []
+  },
+  {
+    "id": "task-agi-fold-laundry",
+    "isCustom": false,
+    "isSystem": false,
+    "name": "Fold Laundry",
+    "description": "Fold a load of laundry and put it in order.",
+    "icon": "category-home",
+    "taskType": "CHECK",
+    "secondaryTag": "home",
+    "inputFields": {
+      "label": "Fold laundry"
+    },
+    "xpAward": {
+      "health": 0,
+      "strength": 0,
+      "agility": 5,
+      "defense": 0,
+      "charisma": 0,
+      "wisdom": 0
+    },
+    "cooldown": null,
+    "media": null,
+    "items": []
+  },
+  {
+    "id": "task-agi-hip-circles",
+    "isCustom": false,
+    "isSystem": false,
+    "name": "Hip Circles",
+    "description": "Loosen your hips with a quick mobility timer.",
+    "icon": "category-fitness",
+    "taskType": "TIMER",
+    "secondaryTag": "fitness",
+    "inputFields": {
+      "countdownFrom": 30
+    },
+    "xpAward": {
+      "health": 0,
+      "strength": 0,
+      "agility": 5,
+      "defense": 0,
+      "charisma": 0,
+      "wisdom": 0
+    },
+    "cooldown": null,
+    "media": null,
+    "items": []
+  },
+  {
+    "id": "task-agi-leg-swings",
+    "isCustom": false,
+    "isSystem": false,
+    "name": "Leg Swings",
+    "description": "Warm up your legs and hips with controlled swings.",
+    "icon": "category-fitness",
+    "taskType": "TIMER",
+    "secondaryTag": "fitness",
+    "inputFields": {
+      "countdownFrom": 30
+    },
+    "xpAward": {
+      "health": 0,
+      "strength": 0,
+      "agility": 5,
+      "defense": 0,
+      "charisma": 0,
+      "wisdom": 0
+    },
+    "cooldown": null,
+    "media": null,
+    "items": []
+  },
+  {
+    "id": "task-agi-arm-circles",
+    "isCustom": false,
+    "isSystem": false,
+    "name": "Arm Circles",
+    "description": "Wake up your shoulders with a short arm-circle timer.",
+    "icon": "category-fitness",
+    "taskType": "TIMER",
+    "secondaryTag": "fitness",
+    "inputFields": {
+      "countdownFrom": 30
+    },
+    "xpAward": {
+      "health": 0,
+      "strength": 0,
+      "agility": 5,
+      "defense": 0,
+      "charisma": 0,
+      "wisdom": 0
+    },
+    "cooldown": null,
+    "media": null,
+    "items": []
+  },
+  {
+    "id": "task-agi-high-knees",
+    "isCustom": false,
+    "isSystem": false,
+    "name": "High Knees",
+    "description": "Get your heart rate up with a fast high-knees burst.",
+    "icon": "category-fitness",
+    "taskType": "TIMER",
+    "secondaryTag": "fitness",
+    "inputFields": {
+      "countdownFrom": 30
+    },
+    "xpAward": {
+      "health": 0,
+      "strength": 0,
+      "agility": 5,
+      "defense": 0,
+      "charisma": 0,
+      "wisdom": 0
+    },
+    "cooldown": null,
+    "media": null,
+    "items": []
+  },
+  {
+    "id": "task-agi-jumping-jacks",
+    "isCustom": false,
+    "isSystem": false,
+    "name": "Jumping Jacks",
+    "description": "Complete a quick jumping-jack burst.",
+    "icon": "category-fitness",
+    "taskType": "SETS_REPS",
+    "secondaryTag": "fitness",
+    "inputFields": {
+      "sets": 1,
+      "reps": 20,
+      "weight": null,
+      "weightUnit": null,
+      "restAfter": null,
+      "dropSet": false
+    },
+    "xpAward": {
+      "health": 0,
+      "strength": 0,
+      "agility": 5,
+      "defense": 0,
+      "charisma": 0,
+      "wisdom": 0
+    },
+    "cooldown": null,
+    "media": null,
+    "items": []
+  },
+  {
+    "id": "task-agi-butt-kicks",
+    "isCustom": false,
+    "isSystem": false,
+    "name": "Butt Kicks",
+    "description": "Do a short butt-kicks timer to wake up your legs.",
+    "icon": "category-fitness",
+    "taskType": "TIMER",
+    "secondaryTag": "fitness",
+    "inputFields": {
+      "countdownFrom": 30
+    },
+    "xpAward": {
+      "health": 0,
+      "strength": 0,
+      "agility": 5,
+      "defense": 0,
+      "charisma": 0,
+      "wisdom": 0
+    },
+    "cooldown": null,
+    "media": null,
+    "items": []
+  },
+  {
+    "id": "task-agi-movement-session",
+    "isCustom": false,
+    "isSystem": false,
+    "name": "Movement Session",
+    "description": "String together a light movement circuit to get loose and mobile.",
+    "icon": "category-fitness",
+    "taskType": "CIRCUIT",
+    "secondaryTag": "fitness",
+    "inputFields": {
+      "exercises": [
+        "Hip Circles",
+        "Leg Swings",
+        "Arm Circles",
+        "High Knees",
+        "Butt Kicks"
+      ],
+      "rounds": 2,
+      "restBetweenRounds": null
+    },
+    "xpAward": {
+      "health": 0,
+      "strength": 0,
+      "agility": 5,
+      "defense": 0,
+      "charisma": 0,
+      "wisdom": 0
+    },
+    "cooldown": null,
+    "media": null,
+    "items": []
+  },
+  {
+    "id": "task-agi-clear-inbox",
+    "isCustom": false,
+    "isSystem": false,
+    "name": "Clear Inbox",
+    "description": "Process your inbox and next-action system until it is back under control.",
+    "icon": "category-admin",
+    "taskType": "CHECKLIST",
+    "secondaryTag": "admin",
+    "inputFields": {
+      "items": [
+        {
+          "key": "email",
+          "label": "Process email inbox"
+        },
+        {
+          "key": "gtd",
+          "label": "Triage GTD list"
+        },
+        {
+          "key": "actions",
+          "label": "Capture next actions"
+        }
+      ]
+    },
+    "xpAward": {
+      "health": 0,
+      "strength": 0,
+      "agility": 5,
+      "defense": 0,
+      "charisma": 0,
+      "wisdom": 0
+    },
+    "cooldown": null,
+    "media": null,
+    "items": []
+  },
+  {
+    "id": "task-agi-store-run",
+    "isCustom": false,
+    "isSystem": false,
+    "name": "Store Run",
+    "description": "Check the list, shop, and put everything away.",
+    "icon": "category-home",
+    "taskType": "CHECKLIST",
+    "secondaryTag": "home",
+    "inputFields": {
+      "items": [
+        {
+          "key": "list",
+          "label": "Check shopping list"
+        },
+        {
+          "key": "shop",
+          "label": "Complete shopping"
+        },
+        {
+          "key": "put-away",
+          "label": "Put items away"
+        }
+      ]
+    },
+    "xpAward": {
+      "health": 0,
+      "strength": 0,
+      "agility": 5,
+      "defense": 0,
+      "charisma": 0,
+      "wisdom": 0
+    },
+    "cooldown": null,
+    "media": null,
+    "items": []
+  },
+  {
+    "id": "task-def-do-dishes",
+    "isCustom": false,
+    "isSystem": false,
+    "name": "Do Dishes",
+    "description": "Run a focused dishwashing timer.",
+    "icon": "category-home",
+    "taskType": "TIMER",
+    "secondaryTag": "home",
+    "inputFields": {
+      "countdownFrom": 600
+    },
+    "xpAward": {
+      "health": 0,
+      "strength": 0,
+      "agility": 0,
+      "defense": 5,
+      "charisma": 0,
+      "wisdom": 0
+    },
+    "cooldown": null,
+    "media": null,
+    "items": []
+  },
+  {
+    "id": "task-def-do-laundry",
+    "isCustom": false,
+    "isSystem": false,
+    "name": "Do Laundry",
+    "description": "Track a laundry block from start to finish.",
+    "icon": "category-home",
+    "taskType": "DURATION",
+    "secondaryTag": "home",
+    "inputFields": {
+      "targetDuration": 3600,
+      "unit": "seconds"
+    },
+    "xpAward": {
+      "health": 0,
+      "strength": 0,
+      "agility": 0,
+      "defense": 5,
+      "charisma": 0,
+      "wisdom": 0
+    },
+    "cooldown": null,
+    "media": null,
+    "items": []
+  },
+  {
+    "id": "task-def-hamstring-stretch",
+    "isCustom": false,
+    "isSystem": false,
+    "name": "Hamstring Stretch",
+    "description": "Hold a hamstring stretch for thirty seconds.",
+    "icon": "category-fitness",
+    "taskType": "TIMER",
+    "secondaryTag": "fitness",
+    "inputFields": {
+      "countdownFrom": 30
+    },
+    "xpAward": {
+      "health": 0,
+      "strength": 0,
+      "agility": 0,
+      "defense": 5,
+      "charisma": 0,
+      "wisdom": 0
+    },
+    "cooldown": null,
+    "media": null,
+    "items": []
+  },
+  {
+    "id": "task-def-hip-flexor-stretch",
+    "isCustom": false,
+    "isSystem": false,
+    "name": "Hip Flexor Stretch",
+    "description": "Open up your hips with a short stretch hold.",
+    "icon": "category-fitness",
+    "taskType": "TIMER",
+    "secondaryTag": "fitness",
+    "inputFields": {
+      "countdownFrom": 30
+    },
+    "xpAward": {
+      "health": 0,
+      "strength": 0,
+      "agility": 0,
+      "defense": 5,
+      "charisma": 0,
+      "wisdom": 0
+    },
+    "cooldown": null,
+    "media": null,
+    "items": []
+  },
+  {
+    "id": "task-def-quad-stretch",
+    "isCustom": false,
+    "isSystem": false,
+    "name": "Quad Stretch",
+    "description": "Take a brief quad stretch to cool down your legs.",
+    "icon": "category-fitness",
+    "taskType": "TIMER",
+    "secondaryTag": "fitness",
+    "inputFields": {
+      "countdownFrom": 30
+    },
+    "xpAward": {
+      "health": 0,
+      "strength": 0,
+      "agility": 0,
+      "defense": 5,
+      "charisma": 0,
+      "wisdom": 0
+    },
+    "cooldown": null,
+    "media": null,
+    "items": []
+  },
+  {
+    "id": "task-def-childs-pose",
+    "isCustom": false,
+    "isSystem": false,
+    "name": "Childs Pose",
+    "description": "Reset with a short child's pose hold.",
+    "icon": "category-mindfulness",
+    "taskType": "TIMER",
+    "secondaryTag": "mindfulness",
+    "inputFields": {
+      "countdownFrom": 30
+    },
+    "xpAward": {
+      "health": 0,
+      "strength": 0,
+      "agility": 0,
+      "defense": 5,
+      "charisma": 0,
+      "wisdom": 0
+    },
+    "cooldown": null,
+    "media": null,
+    "items": []
+  },
+  {
+    "id": "task-def-shoulder-stretch",
+    "isCustom": false,
+    "isSystem": false,
+    "name": "Shoulder Stretch",
+    "description": "Release shoulder tension with a short stretch.",
+    "icon": "category-fitness",
+    "taskType": "TIMER",
+    "secondaryTag": "fitness",
+    "inputFields": {
+      "countdownFrom": 30
+    },
+    "xpAward": {
+      "health": 0,
+      "strength": 0,
+      "agility": 0,
+      "defense": 5,
+      "charisma": 0,
+      "wisdom": 0
+    },
+    "cooldown": null,
+    "media": null,
+    "items": []
+  },
+  {
+    "id": "task-def-calf-stretch",
+    "isCustom": false,
+    "isSystem": false,
+    "name": "Calf Stretch",
+    "description": "Hold a calf stretch to finish your recovery block.",
+    "icon": "category-fitness",
+    "taskType": "TIMER",
+    "secondaryTag": "fitness",
+    "inputFields": {
+      "countdownFrom": 30
+    },
+    "xpAward": {
+      "health": 0,
+      "strength": 0,
+      "agility": 0,
+      "defense": 5,
+      "charisma": 0,
+      "wisdom": 0
+    },
+    "cooldown": null,
+    "media": null,
+    "items": []
+  },
+  {
+    "id": "task-def-stretch-session",
+    "isCustom": false,
+    "isSystem": false,
+    "name": "Stretch Session",
+    "description": "Run through a full stretch reset in one session.",
+    "icon": "category-fitness",
+    "taskType": "CIRCUIT",
+    "secondaryTag": "fitness",
+    "inputFields": {
+      "exercises": [
+        "Hamstring Stretch",
+        "Hip Flexor Stretch",
+        "Quad Stretch",
+        "Child's Pose",
+        "Shoulder Stretch",
+        "Calf Stretch"
+      ],
+      "rounds": 1,
+      "restBetweenRounds": null
+    },
+    "xpAward": {
+      "health": 0,
+      "strength": 0,
+      "agility": 0,
+      "defense": 5,
+      "charisma": 0,
+      "wisdom": 0
+    },
+    "cooldown": null,
+    "media": null,
+    "items": []
+  },
+  {
+    "id": "task-def-warm-up-session",
+    "isCustom": false,
+    "isSystem": false,
+    "name": "Warm Up Session",
+    "description": "Prime your body before training with a short warm-up circuit.",
+    "icon": "category-fitness",
+    "taskType": "CIRCUIT",
+    "secondaryTag": "fitness",
+    "inputFields": {
+      "exercises": [
+        "Arm Circles",
+        "Hip Circles",
+        "Leg Swings",
+        "High Knees",
+        "Jumping Jacks"
+      ],
+      "rounds": 1,
+      "restBetweenRounds": null
+    },
+    "xpAward": {
+      "health": 0,
+      "strength": 0,
+      "agility": 0,
+      "defense": 5,
+      "charisma": 0,
+      "wisdom": 0
+    },
+    "cooldown": null,
+    "media": null,
+    "items": []
+  },
+  {
+    "id": "task-def-cooldown-session",
+    "isCustom": false,
+    "isSystem": false,
+    "name": "Cooldown Session",
+    "description": "Bring your body down gradually after a workout.",
+    "icon": "category-fitness",
+    "taskType": "CIRCUIT",
+    "secondaryTag": "fitness",
+    "inputFields": {
+      "exercises": [
+        "Hamstring Stretch",
+        "Quad Stretch",
+        "Hip Flexor Stretch",
+        "Calf Stretch",
+        "Child's Pose"
+      ],
+      "rounds": 1,
+      "restBetweenRounds": null
+    },
+    "xpAward": {
+      "health": 0,
+      "strength": 0,
+      "agility": 0,
+      "defense": 5,
+      "charisma": 0,
+      "wisdom": 0
+    },
+    "cooldown": null,
+    "media": null,
+    "items": []
+  },
+  {
+    "id": "task-chr-give-gratitude",
+    "isCustom": false,
+    "isSystem": false,
+    "name": "Give Gratitude",
+    "description": "Name what you are grateful for today.",
+    "icon": "category-mindfulness",
+    "taskType": "TEXT",
+    "secondaryTag": "mindfulness",
+    "inputFields": {
+      "prompt": "What are you grateful for today?",
+      "maxLength": null
+    },
+    "xpAward": {
+      "health": 0,
+      "strength": 0,
+      "agility": 0,
+      "defense": 0,
+      "charisma": 5,
+      "wisdom": 0
+    },
+    "cooldown": null,
+    "media": null,
+    "items": []
+  },
+  {
+    "id": "task-chr-self-compliment",
+    "isCustom": false,
+    "isSystem": false,
+    "name": "Self Compliment",
+    "description": "Call out something you did well today.",
+    "icon": "category-mindfulness",
+    "taskType": "TEXT",
+    "secondaryTag": "mindfulness",
+    "inputFields": {
+      "prompt": "What did you do well today?",
+      "maxLength": null
+    },
+    "xpAward": {
+      "health": 0,
+      "strength": 0,
+      "agility": 0,
+      "defense": 0,
+      "charisma": 5,
+      "wisdom": 0
+    },
+    "cooldown": null,
+    "media": null,
+    "items": []
+  },
+  {
+    "id": "task-chr-act-of-kindness",
+    "isCustom": false,
+    "isSystem": false,
+    "name": "Act Of Kindness",
+    "description": "Reflect on a kind thing you did for someone else.",
+    "icon": "category-social",
+    "taskType": "TEXT",
+    "secondaryTag": "social",
+    "inputFields": {
+      "prompt": "What act of kindness did you perform?",
+      "maxLength": null
+    },
+    "xpAward": {
+      "health": 0,
+      "strength": 0,
+      "agility": 0,
+      "defense": 0,
+      "charisma": 5,
+      "wisdom": 0
+    },
+    "cooldown": null,
+    "media": null,
+    "items": []
+  },
+  {
+    "id": "task-chr-reach-out",
+    "isCustom": false,
+    "isSystem": false,
+    "name": "Reach Out",
+    "description": "Record who you contacted and how you connected.",
+    "icon": "category-social",
+    "taskType": "LOG",
+    "secondaryTag": "social",
+    "inputFields": {
+      "prompt": "Who did you reach out to and how?"
+    },
+    "xpAward": {
+      "health": 0,
+      "strength": 0,
+      "agility": 0,
+      "defense": 0,
+      "charisma": 5,
+      "wisdom": 0
+    },
+    "cooldown": null,
+    "media": null,
+    "items": []
+  },
+  {
+    "id": "task-chr-location-check-in",
+    "isCustom": false,
+    "isSystem": false,
+    "name": "Location Check In",
+    "description": "Check in at a place and capture your accuracy.",
+    "icon": "category-social",
+    "taskType": "LOCATION_POINT",
+    "secondaryTag": "social",
+    "inputFields": {
+      "label": "Check in here",
+      "captureAccuracy": true
+    },
+    "xpAward": {
+      "health": 0,
+      "strength": 0,
+      "agility": 0,
+      "defense": 0,
+      "charisma": 5,
+      "wisdom": 0
+    },
+    "cooldown": null,
+    "media": null,
+    "items": []
+  },
+  {
+    "id": "task-chr-roadtrip",
+    "isCustom": false,
+    "isSystem": false,
+    "name": "Roadtrip",
+    "description": "Record the route of a shared trip or outing.",
+    "icon": "category-social",
+    "taskType": "LOCATION_TRAIL",
+    "secondaryTag": "social",
+    "inputFields": {
+      "label": "Record trip route",
+      "captureInterval": 60
+    },
+    "xpAward": {
+      "health": 0,
+      "strength": 0,
+      "agility": 0,
+      "defense": 0,
+      "charisma": 5,
+      "wisdom": 0
+    },
+    "cooldown": null,
+    "media": null,
+    "items": []
+  },
+  {
+    "id": "task-wis-mood-entry",
+    "isCustom": false,
+    "isSystem": false,
+    "name": "Mood Entry",
+    "description": "Choose the mood that best matches where you are right now.",
+    "icon": "category-mindfulness",
+    "taskType": "CHOICE",
+    "secondaryTag": "mindfulness",
+    "inputFields": {
+      "options": [
+        "Great",
+        "Good",
+        "Okay",
+        "Low",
+        "Rough"
+      ],
+      "multiSelect": false
+    },
+    "xpAward": {
+      "health": 0,
+      "strength": 0,
+      "agility": 0,
+      "defense": 0,
+      "charisma": 0,
+      "wisdom": 5
+    },
+    "cooldown": null,
+    "media": null,
+    "items": []
+  },
+  {
+    "id": "task-wis-journal-entry",
+    "isCustom": false,
+    "isSystem": false,
+    "name": "Journal Entry",
+    "description": "Write down what is on your mind today.",
+    "icon": "category-mindfulness",
+    "taskType": "TEXT",
+    "secondaryTag": "mindfulness",
+    "inputFields": {
+      "prompt": "What's on your mind today?",
+      "maxLength": null
+    },
+    "xpAward": {
+      "health": 0,
+      "strength": 0,
+      "agility": 0,
+      "defense": 0,
+      "charisma": 0,
+      "wisdom": 5
+    },
+    "cooldown": null,
+    "media": null,
+    "items": []
+  },
+  {
+    "id": "task-wis-study-session",
+    "isCustom": false,
+    "isSystem": false,
+    "name": "Study Session",
+    "description": "Focus on learning for a solid thirty-minute block.",
+    "icon": "category-learning",
+    "taskType": "DURATION",
+    "secondaryTag": "learning",
+    "inputFields": {
+      "targetDuration": 1800,
+      "unit": "seconds"
+    },
+    "xpAward": {
+      "health": 0,
+      "strength": 0,
+      "agility": 0,
+      "defense": 0,
+      "charisma": 0,
+      "wisdom": 5
+    },
+    "cooldown": null,
+    "media": null,
+    "items": []
+  },
+  {
+    "id": "task-wis-dream-entry",
+    "isCustom": false,
+    "isSystem": false,
+    "name": "Dream Entry",
+    "description": "Write down a dream before it fades.",
+    "icon": "category-mindfulness",
+    "taskType": "TEXT",
+    "secondaryTag": "mindfulness",
+    "inputFields": {
+      "prompt": "Describe your dream...",
+      "maxLength": null
+    },
+    "xpAward": {
+      "health": 0,
+      "strength": 0,
+      "agility": 0,
+      "defense": 0,
+      "charisma": 0,
+      "wisdom": 5
+    },
+    "cooldown": null,
+    "media": null,
+    "items": []
+  },
+  {
+    "id": "task-wis-meditation-timer",
+    "isCustom": false,
+    "isSystem": false,
+    "name": "Meditation Timer",
+    "description": "Sit for a guided ten-minute meditation block.",
+    "icon": "category-mindfulness",
+    "taskType": "TIMER",
+    "secondaryTag": "mindfulness",
+    "inputFields": {
+      "countdownFrom": 600
+    },
+    "xpAward": {
+      "health": 0,
+      "strength": 0,
+      "agility": 0,
+      "defense": 0,
+      "charisma": 0,
+      "wisdom": 5
+    },
+    "cooldown": null,
+    "media": null,
+    "items": []
+  },
+  {
+    "id": "task-sys-lucky-roll",
+    "isCustom": false,
+    "isSystem": true,
+    "name": "Lucky Roll",
+    "description": "Roll for today's bonus. Availability is gated by rollover.",
+    "icon": "boost-roll",
+    "taskType": "ROLL",
+    "secondaryTag": null,
+    "inputFields": {
+      "sides": 6
+    },
+    "xpAward": {
+      "health": 0,
+      "strength": 0,
+      "agility": 0,
+      "defense": 0,
+      "charisma": 0,
+      "wisdom": 0
+    },
+    "cooldown": null,
+    "media": null,
+    "items": []
+  },
+  {
+    "id": "task-sys-daily-login",
+    "isCustom": false,
+    "isSystem": true,
+    "name": "Daily Login",
+    "description": "Mark that you logged in today. Availability is gated by rollover.",
+    "icon": "category-health",
+    "taskType": "CHECK",
+    "secondaryTag": "health",
+    "inputFields": {
+      "label": "Logged in today"
+    },
+    "xpAward": {
+      "health": 5,
+      "strength": 0,
+      "agility": 0,
+      "defense": 0,
+      "charisma": 0,
+      "wisdom": 0
+    },
+    "cooldown": null,
+    "media": null,
+    "items": []
+  }
+]

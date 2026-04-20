@@ -1,0 +1,404 @@
+{
+  "comments": [
+    {
+      "contextKey": "ambient.morning",
+      "variants": {
+        "muted": [
+          "Morning boost window active.",
+          "Early bird session open.",
+          "Boost window: morning."
+        ],
+        "friendly": [
+          "Ribbit! Morning boost is live — early tasks, bonus XP. Let's get it. 🐸",
+          "The early window is open. Your morning tasks earn more. Go.",
+          "Up early? The pond rewards it. Morning boost is on. 🐸"
+        ],
+        "militant": [
+          "0600. Move. Morning boost is live.",
+          "Early window open. Don't waste it.",
+          "Morning boost active. Capitalize. Now."
+        ]
+      }
+    },
+    {
+      "contextKey": "ambient.evening",
+      "variants": {
+        "muted": [
+          "Evening boost window active.",
+          "Night owl session open.",
+          "Boost window: evening."
+        ],
+        "friendly": [
+          "Night owl bonus is live. Still time to get those tasks in. 🐸",
+          "Late session open — the pond doesn't sleep. Bonus XP for evening tasks.",
+          "Evening mode. The boost window is yours. Ribbit! 🐸"
+        ],
+        "militant": [
+          "Night owl window open. No wasted time.",
+          "Late session boost active. Push through.",
+          "2100. Boost window live. Work."
+        ]
+      }
+    },
+    {
+      "contextKey": "ambient.general.activeQuest",
+      "variants": {
+        "muted": [
+          "Active quest in progress.",
+          "Quest running. Check your progress.",
+          "Quest underway. Tasks contribute to goal."
+        ],
+        "friendly": [
+          "Your quest is calling. Every task you finish moves that bar closer to 100. 🐸",
+          "Quest mode active — the frog is watching your progress. Keep stacking tasks.",
+          "Ribbit! Live quest. Cross those tasks off and watch the needle move. 🐸"
+        ],
+        "militant": [
+          "Quest is live. Every completed task counts. Don't let it stall.",
+          "Active quest. Close tasks. Move the needle.",
+          "Quest in flight. No idle time. Execute."
+        ]
+      }
+    },
+    {
+      "contextKey": "ambient.general.recentActivity",
+      "variants": {
+        "muted": [
+          "Recent activity logged.",
+          "Tasks completed this session.",
+          "Session active."
+        ],
+        "friendly": [
+          "You've been putting in the work — it shows. Keep it up. 🐸",
+          "Active session. The pond is taking notes. Don't slow down now.",
+          "Tasks done, stats rising. This is how it's done. 🐸"
+        ],
+        "militant": [
+          "Good output this session. Don't stop here.",
+          "Work logged. Maintain the pace.",
+          "Recent tasks recorded. Keep going."
+        ]
+      }
+    },
+    {
+      "contextKey": "ambient.general.streak",
+      "variants": {
+        "muted": [
+          "Streak active.",
+          "Streak in progress.",
+          "Active streak noted."
+        ],
+        "friendly": [
+          "Streak active — every day you show up matters. Protect it. 🐸",
+          "Consistent. That's the word. Your streak is proof. Keep going.",
+          "Day after day, the frog notices. Your streak is still going. 🐸"
+        ],
+        "militant": [
+          "Streak is live. Protect it. Today counts.",
+          "You've built something here. Don't break it.",
+          "Streak active. Show up. Do the work."
+        ]
+      }
+    },
+    {
+      "contextKey": "ambient.general.fallback",
+      "variants": {
+        "muted": [
+          "Session open.",
+          "Ready.",
+          "System active."
+        ],
+        "friendly": [
+          "Every day is a fresh start! What are you working on?",
+          "Here when you need me — let's check in and get moving!",
+          "Another chance to make progress. Ribbet!"
+        ],
+        "militant": [
+          "Session open. What are you waiting for?",
+          "Get to work.",
+          "New day. Same mission. Move."
+        ]
+      }
+    },
+    {
+      "contextKey": "quest.progress",
+      "variants": {
+        "muted": [
+          "Quest progress: {{questPercent}}%. +{{xpGained}} XP.",
+          "+{{xpGained}} XP. Quest at {{questPercent}}%.",
+          "Progress logged. Quest: {{questPercent}}%. XP: +{{xpGained}}."
+        ],
+        "friendly": [
+          "Quest {{questPercent}}% done! +{{xpGained}} XP! You're getting there!",
+          "Progress! Quest at {{questPercent}}% — keep stacking those completions!",
+          "+{{xpGained}} XP and a step closer! Quest locked in at {{questPercent}}%!"
+        ],
+        "militant": [
+          "{{questPercent}}% done. +{{xpGained}} XP. Continue.",
+          "Quest: {{questPercent}}%. +{{xpGained}} XP. Don't stop.",
+          "Progress logged: {{questPercent}}%. No room for complacency."
+        ]
+      }
+    },
+    {
+      "contextKey": "quest.completed",
+      "variants": {
+        "muted": [
+          "Quest complete. Check-in task available.",
+          "Quest closed. Review in QuickActions.",
+          "Quest finished. Check-in task ready."
+        ],
+        "friendly": [
+          "QUEST COMPLETE! You crushed it! Check-in task is ready for you!",
+          "100%! The quest is done! Head to QuickActions for your check-in!",
+          "MISSION ACCOMPLISHED! Quest complete — check-in task is waiting!"
+        ],
+        "militant": [
+          "Quest complete. Close it out. Check-in task: do it now.",
+          "COMPLETE. Quest done. Check-in task live — finish the cycle.",
+          "Quest closed. Check-in task up. No delays."
+        ]
+      }
+    },
+    {
+      "contextKey": "quest.exigency",
+      "variants": {
+        "muted": [
+          "Quest deadline passed. Exigency options available.",
+          "Finish line missed. Select an option to continue.",
+          "Quest overdue. Review exigency options."
+        ],
+        "friendly": [
+          "Hey, the deadline passed — but that's okay! You can extend or adjust the timeline.",
+          "Missed the finish line, but quests don't die easy! Let's pick up and keep going.",
+          "The finish date came and went — use the exigency options to get back on track!"
+        ],
+        "militant": [
+          "Deadline passed. Pick an option and keep the quest alive.",
+          "Finish line slipped. Reassess and relaunch — quitting isn't on the menu.",
+          "Missed the date. Not the end. Select an exigency and move forward."
+        ]
+      }
+    },
+    {
+      "contextKey": "quest.toggled",
+      "variants": {
+        "muted": [
+          "Quest activity updated.",
+          "Quest state changed.",
+          "Quest toggled."
+        ],
+        "friendly": [
+          "Got it! Quest state updated.",
+          "Changes noted — your quest is updated!",
+          "Understood! Toggled and saved."
+        ],
+        "militant": [
+          "Toggled. State recorded. Move on.",
+          "Adjustment made. Continue.",
+          "State change logged."
+        ]
+      }
+    },
+    {
+      "contextKey": "event.completed",
+      "variants": {
+        "muted": [],
+        "friendly": [],
+        "militant": []
+      }
+    },
+    {
+      "contextKey": "level.up",
+      "variants": {
+        "muted": [
+          "Level {{level}} reached.",
+          "Level up: {{level}}.",
+          "New level: {{level}}."
+        ],
+        "friendly": [
+          "Level {{level}}! Ribbit — you leveled up! The pond is cheering. 🐸",
+          "LEVEL {{level}} unlocked. Every task, every day. This one is earned.",
+          "Level {{level}}. Look how far you've come. Keep going. 🐸"
+        ],
+        "militant": [
+          "Level {{level}}. You earned it. Maintain the standard.",
+          "LEVEL {{level}}. Threshold crossed. Set your next target.",
+          "New level: {{level}}. Baseline raised. Move on."
+        ]
+      }
+    },
+    {
+      "contextKey": "streak.started",
+      "variants": {
+        "muted": [
+          "Streak started.",
+          "New streak active.",
+          "Streak: day one."
+        ],
+        "friendly": [
+          "Your streak starts NOW! Day one of something great!",
+          "Streak is alive! Let's see how far we can take this!",
+          "Day one! Streaks are built one day at a time — starting today!"
+        ],
+        "militant": [
+          "Streak: day one. Start strong.",
+          "Streak launched. Show up tomorrow.",
+          "Day one. No excuses from here."
+        ]
+      }
+    },
+    {
+      "contextKey": "streak.milestone",
+      "variants": {
+        "muted": [
+          "Streak milestone: {{streakCount}} days.",
+          "{{streakCount}}-day streak reached.",
+          "Streak: {{streakCount}} days logged."
+        ],
+        "friendly": [
+          "{{streakCount}} days! Your streak is legendary!",
+          "{{streakCount}}-day streak! You're consistent — that's rarer than you think!",
+          "{{streakCount}} days straight! That's serious dedication!"
+        ],
+        "militant": [
+          "{{streakCount}} days. Milestone logged. Don't break now.",
+          "{{streakCount}}-day streak. Good. Continue.",
+          "{{streakCount}} days. You built this. Protect it."
+        ]
+      }
+    },
+    {
+      "contextKey": "streak.broken",
+      "variants": {
+        "muted": [
+          "Streak ended. Today is day one.",
+          "Streak reset. Fresh start.",
+          "Streak count cleared. New run begins."
+        ],
+        "friendly": [
+          "The streak broke — that's okay. The frog has seen it before. Today is day one again. 🐸",
+          "Streaks bend before they break — and then they restart. You've done it before. Do it again.",
+          "Yesterday's streak is done. Today's is just getting started. Ribbit. 🐸"
+        ],
+        "militant": [
+          "Streak lost. Acknowledge it. Start the new one today.",
+          "Reset. The new streak begins now.",
+          "Missed. Noted. Move on. Day one starts here."
+        ]
+      }
+    },
+    {
+      "contextKey": "badge.awarded",
+      "variants": {
+        "muted": [
+          "Badge awarded: {{itemName}}. Check BadgeBoard.",
+          "Achievement unlocked: {{itemName}}.",
+          "Badge earned: {{itemName}}."
+        ],
+        "friendly": [
+          "BADGE EARNED: {{itemName}}! Check your BadgeBoard — it's waiting for you!",
+          "Achievement unlocked — {{itemName}} badge is yours! Time to place it on your board!",
+          "{{itemName}} badge awarded! Head to BadgeBoard and show it off!"
+        ],
+        "militant": [
+          "Badge: {{itemName}}. You earned it. Claim it.",
+          "Achievement logged: {{itemName}} badge. Check your board.",
+          "{{itemName}} — acquired. BadgeBoard updated."
+        ]
+      }
+    },
+    {
+      "contextKey": "gear.awarded",
+      "variants": {
+        "muted": [
+          "Gear awarded: {{itemName}}. Check Equipment.",
+          "New gear: {{itemName}}.",
+          "Equipment updated: {{itemName}}."
+        ],
+        "friendly": [
+          "NEW GEAR DROPPED: {{itemName}}! Check your Equipment and equip it!",
+          "Gear reward! {{itemName}} has been added to your inventory!",
+          "{{itemName}} is yours! Head to Equipment and suit up!"
+        ],
+        "militant": [
+          "Gear acquired: {{itemName}}. Equip it. Use it.",
+          "New gear: {{itemName}}. Inventory updated. Equip and move on.",
+          "{{itemName}} — earned. Gear it up."
+        ]
+      }
+    },
+    {
+      "contextKey": "talent.tier.unlocked",
+      "variants": {
+        "muted": [
+          "Talent tier unlocked.",
+          "New ability available.",
+          "Talent tree advanced."
+        ],
+        "friendly": [
+          "Talent tier unlocked! You've grown into something new. Check your abilities. 🐸",
+          "New tier, new tools. The frog is impressed — go see what you've unlocked. 🐸",
+          "Ability unlocked! This is what leveling up looks like. Put it to use."
+        ],
+        "militant": [
+          "Talent tier unlocked. New capability active. Deploy it.",
+          "Enhancement acquired. You're stronger now. Act like it.",
+          "Tier advanced. New tools in hand. Use them."
+        ]
+      }
+    },
+    {
+      "contextKey": "onboarding.q1",
+      "variants": {
+        "muted": ["Welcome Event is active. Complete the task inside."],
+        "friendly": ["Ribbit! Tap the Welcome Event — your first quest awaits! 🐸"],
+        "militant": ["Open the Welcome Event. Complete the task. Move."]
+      }
+    },
+    {
+      "contextKey": "onboarding.q2",
+      "variants": {
+        "muted": ["Add a routine and explore the time views."],
+        "friendly": ["Time to splash around! Add a routine and check out Week and Month views 🐸"],
+        "militant": ["Add a routine. Switch to Week view. Switch to Month view. Go."]
+      }
+    },
+    {
+      "contextKey": "onboarding.q3",
+      "variants": {
+        "muted": ["Explore the app rooms and complete the GTD task."],
+        "friendly": ["The pond is big — explore it! Check your tasks, schedule, and resources 🐸"],
+        "militant": ["Open Tasks. Open Schedule. Open Resources. Complete the GTD item."]
+      }
+    },
+    {
+      "contextKey": "onboarding.q4",
+      "variants": {
+        "muted": ["Set your display name and claim your identity."],
+        "friendly": ["Who are you, adventurer? Set your name and claim your first badge! 🐸"],
+        "militant": ["Set your name. Place your badge. Equip your gear. Open Adventures."]
+      }
+    },
+    {
+      "contextKey": "login.return",
+      "variants": {
+        "muted": [
+          "Session resumed. Activity review available.",
+          "Welcome back. State restored.",
+          "Back online. Checking activity."
+        ],
+        "friendly": [
+          "Welcome back! Let's catch up on what you've been up to!",
+          "Good to see you again! Checking in on your recent activity...",
+          "You're back! Let's see what happened while you were away!"
+        ],
+        "militant": [
+          "Back. Check your activity log. Move.",
+          "Session open. Review missed activity. Get moving.",
+          "You're here. Good. Catch up. Move forward."
+        ]
+      }
+    }
+  ]
+}
