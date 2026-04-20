@@ -34,6 +34,7 @@ interface ScheduleActions {
 
   setActiveEvent: (event: Event | QuickActionsEvent) => void;
   archiveEvent: (eventId: string) => void;
+  deleteEvent: (eventId: string) => void;
 
   setTask: (task: Task) => void;
   removeTask: (taskId: string) => void;
@@ -128,6 +129,15 @@ export const useScheduleStore = create<ScheduleState & ScheduleActions>()(
             activeEvents,
             historyEvents: { ...state.historyEvents, [eventId]: event },
           };
+        }),
+
+      deleteEvent: (eventId) =>
+        set((state) => {
+          const activeEvents = { ...state.activeEvents };
+          const historyEvents = { ...state.historyEvents };
+          delete activeEvents[eventId];
+          delete historyEvents[eventId];
+          return { activeEvents, historyEvents };
         }),
 
       setTask: (task) => {

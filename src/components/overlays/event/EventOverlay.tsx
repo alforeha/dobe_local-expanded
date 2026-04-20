@@ -16,7 +16,7 @@ export function EventOverlay({ eventId, onClose }: EventOverlayProps) {
   const activeEvents = useScheduleStore((s) => s.activeEvents);
   const historyEvents = useScheduleStore((s) => s.historyEvents);
   const tasks = useScheduleStore((s) => s.tasks);
-  const archiveEvent = useScheduleStore((s) => s.archiveEvent);
+  const deleteEvent = useScheduleStore((s) => s.deleteEvent);
 
   const event = (activeEvents[eventId] ?? historyEvents[eventId]) as Event | undefined;
 
@@ -116,7 +116,7 @@ export function EventOverlay({ eventId, onClose }: EventOverlayProps) {
           taskCount={totalCount}
           completedCount={completedCount}
           onDeleteEvent={() => {
-            archiveEvent(eventId);
+            deleteEvent(eventId);
             storageDelete(storageKey.plannedEvent(eventId));
             onClose();
           }}
