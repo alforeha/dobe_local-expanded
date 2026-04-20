@@ -15,6 +15,9 @@ import type { Event } from '../types/event';
 import type { Task } from '../types/task';
 import type { TaskTemplate, TaskSecondaryTag } from '../types/taskTemplate';
 import { useScheduleStore } from '../stores/useScheduleStore';
+import { isOneOffEvent } from '../utils/isOneOffEvent';
+import { storageDelete } from '../storage';
+import { storageKey } from '../storage/storageKeys';
 import { useProgressionStore } from '../stores/useProgressionStore';
 import { encodeQuestRef } from './markerEngine';
 import { addDays, localISODate } from '../utils/dateUtils';
@@ -198,6 +201,12 @@ export function materialisePlannedEvent(
 
   // Persist updated PlannedEvent (cursor advanced)
   scheduleStore.setPlannedEvent(updatedPlannedEvent);
+
+  // D137: Remove one-off plannedEvents after materialisation
+  if (isOneOffEvent(pe)) {
+    scheduleStore.removePlannedEvent(pe.id);
+    storageDelete(storageKey.plannedEvent(pe.id));
+  }
 
   return { event, tasks, updatedPlannedEvent };
 }
