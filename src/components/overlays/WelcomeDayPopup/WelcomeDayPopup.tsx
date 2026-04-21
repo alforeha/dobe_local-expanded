@@ -1,5 +1,9 @@
 import { CoachSection } from './CoachSection';
+import { DayPieChart } from './DayPieChart';
 import { IconDisplay } from '../../shared/IconDisplay';
+import { RolloverIncompleteEvents } from './RolloverIncompleteEvents';
+import { TodayEventRow } from './TodayEventRow';
+import { TodayQuestRow } from './TodayQuestRow';
 import './WelcomeDayPopup.css';
 
 interface WelcomeDayPopupProps {
@@ -21,7 +25,15 @@ export function WelcomeDayPopup({ onClose }: WelcomeDayPopupProps) {
       <CoachSection />
 
       <div className="welcome-day-popup__content">
-        <p>Content coming in LE-05b</p>
+        <RolloverIncompleteEvents />
+
+        <section className="welcome-day-summary" aria-label="Today summary">
+          <DayPieChart />
+          <div className="welcome-day-summary__rows" aria-label="Today rows">
+            <TodayEventRow />
+            <TodayQuestRow />
+          </div>
+        </section>
       </div>
     </section>
   );
