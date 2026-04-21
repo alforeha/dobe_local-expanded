@@ -21,25 +21,14 @@ export function EventOverlay({ eventId, onClose }: EventOverlayProps) {
   const event = (activeEvents[eventId] ?? historyEvents[eventId]) as Event | undefined;
 
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(
-    event?.tasks?.[0] ?? null
+    event?.tasks?.[0] ?? null,
   );
   const [playMode, setPlayMode] = useState(false);
   const [hideCompleted, setHideCompleted] = useState(false);
 
   const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Track whether the event was already complete when the overlay opened.
-  // Auto-close only fires on a transition TO complete, not on open.
   const alreadyCompleteOnMount = useRef(event?.completionState === 'complete');
 
-  // Auto-select next task when selected task is removed from the event
-  useEffect(() => {
-    if (!event || !selectedTaskId) return;
-    if (event.tasks.includes(selectedTaskId)) return;
-    // Selected task was removed — pick the first remaining task, or null
-    setSelectedTaskId(event.tasks[0] ?? null);
-  }, [event?.tasks, selectedTaskId]);
-
-  // FIX 1 — auto-close 1200ms after event completes (transition only)
   useEffect(() => {
     if (event?.completionState === 'complete' && !alreadyCompleteOnMount.current) {
       closeTimerRef.current = setTimeout(() => {
@@ -53,10 +42,13 @@ export function EventOverlay({ eventId, onClose }: EventOverlayProps) {
     };
   }, [event?.completionState, onClose]);
 
+  const effectiveSelectedTaskId = event && selectedTaskId && event.tasks.includes(selectedTaskId)
+    ? selectedTaskId
+    : event?.tasks[0] ?? null;
+
   const handleTaskComplete = useCallback(() => {
     if (!event) return;
-    const currentIndex = event.tasks.indexOf(selectedTaskId ?? '');
-    // First try after current position, then wrap around from the start
+    const currentIndex = event.tasks.indexOf(effectiveSelectedTaskId ?? '');
     const after = event.tasks.slice(currentIndex + 1);
     const before = event.tasks.slice(0, currentIndex);
     const nextPending = [...after, ...before].find(
@@ -65,7 +57,7 @@ export function EventOverlay({ eventId, onClose }: EventOverlayProps) {
     if (nextPending) {
       setSelectedTaskId(nextPending);
     }
-  }, [event, selectedTaskId, tasks]);
+  }, [effectiveSelectedTaskId, event, tasks]);
 
   if (!event) {
     return (
@@ -78,7 +70,7 @@ export function EventOverlay({ eventId, onClose }: EventOverlayProps) {
     );
   }
 
-  const color = '#9333ea'; // default — PlannedEvent.color resolved via ref in full build
+  const color = '#9333ea';
 
   const totalCount = event.tasks.length;
   const completedCount = event.tasks.filter(
@@ -95,19 +87,16 @@ export function EventOverlay({ eventId, onClose }: EventOverlayProps) {
     >
       <EventOverlayHeader event={event} onClose={onClose} />
 
-      {/* TOP SECTION — active task input, ~2/3 */}
       <div className="flex-1 min-h-0 overflow-hidden p-3">
         <TaskBlock
-          taskId={selectedTaskId}
+          taskId={effectiveSelectedTaskId}
           eventId={eventId}
           onTaskComplete={handleTaskComplete}
           className="h-full"
         />
       </div>
 
-      {/* BOTTOM SECTION — task list, ~1/3 */}
       <div className="flex h-1/3 min-h-0 flex-col shrink-0 border-t border-gray-200 dark:border-gray-700">
-        {/* Action bar */}
         <ActionBar
           event={event}
           eventId={eventId}
@@ -122,7 +111,6 @@ export function EventOverlay({ eventId, onClose }: EventOverlayProps) {
           }}
         />
 
-        {/* Task list header */}
         <div className="flex shrink-0 items-center justify-between border-b border-gray-200 dark:border-gray-700 px-3 py-1.5 text-xs">
           <span className="font-medium text-gray-600 dark:text-gray-400">
             {completedCount}/{totalCount} tasks
@@ -140,10 +128,9 @@ export function EventOverlay({ eventId, onClose }: EventOverlayProps) {
           </button>
         </div>
 
-        {/* Scrollable task list */}
         <TaskList
           taskIds={visibleTaskIds}
-          selectedTaskId={selectedTaskId}
+          selectedTaskId={effectiveSelectedTaskId}
           onSelect={setSelectedTaskId}
         />
       </div>

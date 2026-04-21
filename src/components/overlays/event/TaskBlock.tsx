@@ -42,8 +42,11 @@ function getSubmitLabel(taskType: TaskType): string {
 
 export function TaskBlock({ taskId, eventId, onTaskComplete, className }: TaskBlockProps) {
   const [nowMs, setNowMs] = useState(() => getOffsetNow().getTime());
-  const [currentResult, setCurrentResult] = useState<Partial<InputFields>>({});
-  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [resultState, setResultState] = useState<{ taskId: string | null; result: Partial<InputFields> }>({
+    taskId: null,
+    result: {},
+  });
+  const [confirmDeleteTaskId, setConfirmDeleteTaskId] = useState<string | null>(null);
 
   const tasks = useScheduleStore((s) => s.tasks);
   const taskTemplates = useScheduleStore((s) => s.taskTemplates);
@@ -75,12 +78,8 @@ export function TaskBlock({ taskId, eventId, onTaskComplete, className }: TaskBl
     : task;
 
   const isComplete = task?.completionState === 'complete' && !canRepeatAfterCooldown;
-
-  // Reset state when selected task changes
-  useEffect(() => {
-    setCurrentResult({});
-    setConfirmDelete(false);
-  }, [taskId]);
+  const currentResult = resultState.taskId === taskId ? resultState.result : {};
+  const confirmDelete = confirmDeleteTaskId === taskId;
 
   useEffect(() => {
     if (!isCoolingDown) return undefined;
@@ -105,11 +104,11 @@ export function TaskBlock({ taskId, eventId, onTaskComplete, className }: TaskBl
 
   const handleUndo = () => {
     uncompleteTask(taskId, eventId);
-    setCurrentResult({});
+    setResultState({ taskId, result: {} });
   };
 
   const handleDelete = () => {
-    if (!confirmDelete) { setConfirmDelete(true); return; }
+    if (!confirmDelete) { setConfirmDeleteTaskId(taskId); return; }
     removeTaskFromEvent(taskId, eventId);
   };
 
@@ -160,7 +159,7 @@ export function TaskBlock({ taskId, eventId, onTaskComplete, className }: TaskBl
             task={displayTask ?? null}
             onComplete={handleComplete}
             hideSubmit={true}
-            onResultChange={setCurrentResult}
+            onResultChange={(result) => setResultState({ taskId, result })}
           />
         )}
       </div>

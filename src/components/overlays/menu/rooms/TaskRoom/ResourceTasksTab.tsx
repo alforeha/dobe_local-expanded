@@ -254,18 +254,6 @@ export function ResourceTasksTab({ onGoToResource }: ResourceTasksTabProps) {
     setExpandedKey(null);
   }
 
-  // ── Empty state ──────────────────────────────────────────────────────────────
-
-  if (sections.length === 0) {
-    return (
-      <p className="text-center text-gray-400 text-sm py-10 px-6 leading-relaxed">
-        Add tasks to your resources to see them here — set up chores in Homes, maintenance in Vehicles, transaction tasks in Accounts, or item tasks in Inventory.
-      </p>
-    );
-  }
-
-  // ── Derived ──────────────────────────────────────────────────────────────────
-
   const presentTypes = useMemo<FilterType[]>(() => {
     const seen = new Set(sections.map((s) => s.filterType));
     return (['home', 'vehicle', 'account', 'inventory'] as FilterType[]).filter((t) => seen.has(t));
@@ -281,6 +269,18 @@ export function ResourceTasksTab({ onGoToResource }: ResourceTasksTabProps) {
   const visibleSections = activeFilter === 'all'
     ? sections
     : sections.filter((s) => s.filterType === activeFilter);
+
+  // ── Empty state ──────────────────────────────────────────────────────────────
+
+  if (sections.length === 0) {
+    return (
+      <p className="text-center text-gray-400 text-sm py-10 px-6 leading-relaxed">
+        Add tasks to your resources to see them here — set up chores in Homes, maintenance in Vehicles, transaction tasks in Accounts, or item tasks in Inventory.
+      </p>
+    );
+  }
+
+  // ── Derived ──────────────────────────────────────────────────────────────────
 
   // ── Render ───────────────────────────────────────────────────────────────────
 
