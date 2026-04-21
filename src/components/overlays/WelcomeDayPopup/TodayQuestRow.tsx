@@ -1,9 +1,8 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { useProgressionStore } from '../../../stores/useProgressionStore';
 import { useScheduleStore } from '../../../stores/useScheduleStore';
 import { taskTemplateLibrary } from '../../../coach';
 import { starterTaskTemplates } from '../../../coach/StarterQuestLibrary';
-import { IconDisplay } from '../../shared/IconDisplay';
 import type { Chain, Quest } from '../../../types';
 
 interface ActiveQuestRow {
@@ -36,7 +35,6 @@ function measurableProgress(quest: Quest): { current: number | null; target: num
 export function TodayQuestRow() {
   const acts = useProgressionStore((s) => s.acts);
   const taskTemplates = useScheduleStore((s) => s.taskTemplates);
-  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const rows = useMemo<ActiveQuestRow[]>(() => {
     return Object.values(acts).flatMap((act) => {
@@ -75,15 +73,9 @@ export function TodayQuestRow() {
           <div className="welcome-empty-row">No active quests</div>
         ) : (
           rows.map((row) => {
-            const expanded = expandedId === row.id;
             return (
-              <article key={row.id} className="welcome-row">
-                <button
-                  type="button"
-                  className="welcome-row__summary"
-                  aria-expanded={expanded}
-                  onClick={() => setExpandedId(expanded ? null : row.id)}
-                >
+              <article key={row.id} className="welcome-row welcome-row--quest">
+                <div className="welcome-row__summary welcome-row__summary--static">
                   <span>
                     <strong>{row.quest.name}</strong>
                     <small>{row.chain.name}</small>
@@ -92,24 +84,21 @@ export function TodayQuestRow() {
                     {row.current !== null && row.target !== null && (
                       <span>{row.current}/{row.target}</span>
                     )}
-                    <IconDisplay iconKey={expanded ? 'collapse' : 'expand'} />
                   </span>
-                </button>
+                </div>
 
-                {expanded && (
-                  <div className="welcome-row__detail">
-                    {row.quest.description && <p>{row.quest.description}</p>}
-                    {row.templateNames.length > 0 ? (
-                      <ul>
-                        {row.templateNames.map((name) => (
-                          <li key={name}>{name}</li>
-                        ))}
-                      </ul>
-                    ) : (
-                      <p>Any non-system task completion can move this quest.</p>
-                    )}
-                  </div>
-                )}
+                <div className="welcome-row__detail">
+                  {row.quest.description && <p>{row.quest.description}</p>}
+                  {row.templateNames.length > 0 ? (
+                    <ul>
+                      {row.templateNames.map((name) => (
+                        <li key={name}>{name}</li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p>Any non-system task completion can move this quest.</p>
+                  )}
+                </div>
               </article>
             );
           })

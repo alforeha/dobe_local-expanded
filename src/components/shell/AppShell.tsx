@@ -426,9 +426,18 @@ export function AppShell() {
         </SlideUpOverlay>
       )}
       {overlay === 'welcomeDay' && (
-        <SlideUpOverlay closing={overlayClosing} onBackdropClick={requestClose}>
-          <WelcomeDayPopup onClose={requestClose} />
-        </SlideUpOverlay>
+        <div
+          className="fixed inset-0 z-[60] flex flex-col overflow-hidden"
+          style={{
+            opacity: overlayClosing ? 0 : 1,
+            transition: 'opacity 180ms ease-out',
+          }}
+          onClick={requestClose}
+        >
+          <div className="h-full min-h-0" onClick={(e) => e.stopPropagation()}>
+            <WelcomeDayPopup onClose={requestClose} />
+          </div>
+        </div>
       )}
 
       {editPlannedId && (

@@ -1,5 +1,5 @@
 .welcome-day-popup {
-  --welcome-border-style: 2px solid var(--border);
+  --welcome-border-style: 13px solid var(--border);
 
   position: relative;
   display: flex;
@@ -28,6 +28,19 @@
   background: color-mix(in srgb, var(--bg) 92%, transparent);
   color: var(--text-h);
   box-shadow: var(--shadow);
+}
+
+.welcome-day-popup__begin {
+  flex-shrink: 0;
+  min-height: 52px;
+  width: 100%;
+  border: 1px solid color-mix(in srgb, var(--accent) 70%, var(--border));
+  border-radius: 8px;
+  background: var(--accent);
+  color: white;
+  font-size: 18px;
+  font-weight: 800;
+  text-transform: uppercase;
 }
 
 .welcome-day-popup__content {
@@ -170,14 +183,8 @@
   position: relative;
   align-self: start;
   justify-self: center;
-  width: min(100%, 190px);
+  width: min(100%, 210px);
   aspect-ratio: 1;
-}
-
-.welcome-pie {
-  --pie-event-past: #22c55e;
-  --pie-event-future: #93c5fd;
-  --pie-event-current: #f59e0b;
 }
 
 .welcome-pie__svg {
@@ -187,26 +194,15 @@
 }
 
 .welcome-pie__track {
-  fill: none;
+  fill: color-mix(in srgb, var(--bg) 82%, var(--border));
   stroke: var(--border);
-  stroke-width: 26;
+  stroke-width: 2;
 }
 
 .welcome-pie__slice {
   mix-blend-mode: multiply;
-}
-
-.welcome-pie__slice--past {
-  fill: var(--pie-event-past);
-}
-
-.welcome-pie__slice--future {
-  fill: var(--pie-event-future);
-}
-
-.welcome-pie__slice--current {
-  fill: var(--pie-event-current);
-  opacity: 0.95 !important;
+  stroke: var(--bg);
+  stroke-width: 1;
 }
 
 .welcome-pie__time-line {
@@ -219,13 +215,38 @@
   fill: var(--text-h);
 }
 
+.welcome-pie__midnight-mark {
+  stroke: var(--text-h);
+  stroke-linecap: round;
+  stroke-width: 2;
+}
+
+.welcome-pie__midnight-label,
+.welcome-pie__time-label {
+  fill: var(--text-h);
+  font-size: 10px;
+  font-weight: 800;
+  paint-order: stroke;
+  stroke: var(--bg);
+  stroke-width: 3px;
+}
+
+.welcome-pie__time-label {
+  font-size: 11px;
+}
+
+.dark .welcome-pie__slice {
+  mix-blend-mode: screen;
+}
+
+.dark .welcome-pie__midnight-label,
+.dark .welcome-pie__time-label {
+  stroke: var(--bg);
+}
+
+/* legacy center styles intentionally left unused after LE-05b chart refinement */
 .welcome-pie__center {
-  position: absolute;
-  inset: 50% auto auto 50%;
-  display: grid;
-  min-width: 64px;
-  transform: translate(-50%, -50%);
-  place-items: center;
+  display: none;
   color: var(--text);
   line-height: 1;
 }
@@ -259,6 +280,10 @@
   overflow: hidden;
 }
 
+.welcome-row--event {
+  border-width: 2px;
+}
+
 .welcome-row__summary {
   display: flex;
   min-height: 48px;
@@ -271,6 +296,10 @@
   color: var(--text-h);
   padding: 9px 12px;
   text-align: left;
+}
+
+.welcome-row__summary--static {
+  cursor: default;
 }
 
 .welcome-row__summary > span:first-child {
@@ -311,22 +340,21 @@
 
 .welcome-coach {
   display: grid;
-  min-height: 280px;
-  grid-template-columns: minmax(150px, 0.8fr) minmax(0, 1.6fr);
-  gap: 18px;
-  padding-right: 48px;
+  min-height: 170px;
+  grid-template-columns: minmax(110px, 160px) minmax(0, 1fr);
+  gap: 14px;
 }
 
 .welcome-coach__model {
   display: flex;
-  min-height: 260px;
+  min-height: 150px;
   align-items: center;
   justify-content: center;
 }
 
 .welcome-coach__model img {
-  width: min(100%, 260px);
-  max-height: 300px;
+  width: min(100%, 150px);
+  max-height: 170px;
   object-fit: contain;
   filter: drop-shadow(0 14px 20px rgba(16, 185, 129, 0.18));
 }
@@ -515,19 +543,17 @@
   }
 
   .welcome-coach {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(82px, 105px) minmax(0, 1fr);
     gap: 10px;
-    overflow: auto;
     padding-right: 0;
   }
 
   .welcome-coach__model {
-    min-height: 140px;
-    padding-right: 48px;
+    min-height: 120px;
   }
 
   .welcome-coach__model img {
-    max-height: 150px;
+    max-height: 120px;
   }
 
   .welcome-streak__metrics {
@@ -544,6 +570,6 @@
   }
 
   .welcome-pie {
-    width: 168px;
+    width: 190px;
   }
 }

@@ -1,6 +1,5 @@
 import { CoachSection } from './CoachSection';
 import { DayPieChart } from './DayPieChart';
-import { IconDisplay } from '../../shared/IconDisplay';
 import { RolloverIncompleteEvents } from './RolloverIncompleteEvents';
 import { TodayEventRow } from './TodayEventRow';
 import { TodayQuestRow } from './TodayQuestRow';
@@ -13,15 +12,6 @@ interface WelcomeDayPopupProps {
 export function WelcomeDayPopup({ onClose }: WelcomeDayPopupProps) {
   return (
     <section className="welcome-day-popup" aria-label="Welcome Day">
-      <button
-        type="button"
-        className="welcome-day-popup__close"
-        aria-label="Close Welcome Day"
-        onClick={onClose}
-      >
-        <IconDisplay iconKey="close" />
-      </button>
-
       <CoachSection />
 
       <div className="welcome-day-popup__content">
@@ -35,6 +25,14 @@ export function WelcomeDayPopup({ onClose }: WelcomeDayPopupProps) {
           </div>
         </section>
       </div>
+
+      <button
+        type="button"
+        className="welcome-day-popup__begin"
+        onClick={onClose}
+      >
+        Begin today
+      </button>
     </section>
   );
 }

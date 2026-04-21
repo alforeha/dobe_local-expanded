@@ -1,14 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useScheduleStore } from '../../../stores/useScheduleStore';
-import { useUserStore } from '../../../stores/useUserStore';
 import type { Event } from '../../../types';
 import { getAppDate, getOffsetNow, formatHHMM } from '../../../utils/dateUtils';
 
 const SIZE = 180;
 const CENTER = SIZE / 2;
-const OUTER_RADIUS = 78;
-const INNER_RADIUS = 52;
+const RADIUS = 78;
 const DAY_MINUTES = 24 * 60;
+const FALLBACK_EVENT_COLOR = '#60a5fa';
 
 function timeToMinutes(time: string): number {
   const [hours, minutes] = time.split(':').map(Number);
@@ -29,16 +28,13 @@ function slicePath(startMinute: number, endMinute: number): string {
   const end = Math.max(start + 1, endMinute);
   const largeArc = end - start > DAY_MINUTES / 2 ? 1 : 0;
 
-  const outerStart = pointForMinute(start, OUTER_RADIUS);
-  const outerEnd = pointForMinute(end, OUTER_RADIUS);
-  const innerEnd = pointForMinute(end, INNER_RADIUS);
-  const innerStart = pointForMinute(start, INNER_RADIUS);
+  const outerStart = pointForMinute(start, RADIUS);
+  const outerEnd = pointForMinute(end, RADIUS);
 
   return [
-    `M ${outerStart.x} ${outerStart.y}`,
-    `A ${OUTER_RADIUS} ${OUTER_RADIUS} 0 ${largeArc} 1 ${outerEnd.x} ${outerEnd.y}`,
-    `L ${innerEnd.x} ${innerEnd.y}`,
-    `A ${INNER_RADIUS} ${INNER_RADIUS} 0 ${largeArc} 0 ${innerStart.x} ${innerStart.y}`,
+    `M ${CENTER} ${CENTER}`,
+    `L ${outerStart.x} ${outerStart.y}`,
+    `A ${RADIUS} ${RADIUS} 0 ${largeArc} 1 ${outerEnd.x} ${outerEnd.y}`,
     'Z',
   ].join(' ');
 }
@@ -55,10 +51,6 @@ function eventMinutesForDay(event: Event, today: string): { start: number; end: 
 
 export function DayPieChart() {
   const activeEvents = useScheduleStore((s) => s.activeEvents);
-  const streak = useUserStore((s) => {
-    const milestones = s.user?.progression.stats.milestones;
-    return Math.max(milestones?.streakCurrent ?? 0, milestones?.streakBoostSavedValue ?? 0);
-  });
   const [now, setNow] = useState(() => getOffsetNow());
   const today = getAppDate();
 
@@ -68,7 +60,9 @@ export function DayPieChart() {
   }, []);
 
   const currentMinute = timeToMinutes(formatHHMM(now));
-  const timeLineEnd = pointForMinute(currentMinute, OUTER_RADIUS);
+  const timeLineEnd = pointForMinute(currentMinute, RADIUS);
+  const labelPoint = pointForMinute(currentMinute, RADIUS + 7);
+  const currentTimeLabel = formatHHMM(now);
 
   const events = useMemo(
     () =>
@@ -82,23 +76,24 @@ export function DayPieChart() {
   return (
     <div className="welcome-pie" aria-label="Today clock chart">
       <svg className="welcome-pie__svg" viewBox={`0 0 ${SIZE} ${SIZE}`} role="img">
-        <circle className="welcome-pie__track" cx={CENTER} cy={CENTER} r={(OUTER_RADIUS + INNER_RADIUS) / 2} />
+        <circle className="welcome-pie__track" cx={CENTER} cy={CENTER} r={RADIUS} />
+        <line className="welcome-pie__midnight-mark" x1={CENTER} y1={CENTER - RADIUS} x2={CENTER} y2={CENTER - RADIUS + 8} />
+        <text className="welcome-pie__midnight-label" x={CENTER} y="12" textAnchor="middle">00:00</text>
         {events.map((event, index) => {
           const { start, end } = eventMinutesForDay(event, today);
           const isCurrent = currentMinute >= start && currentMinute < end;
           const isPast = end <= currentMinute;
-          const className = isCurrent
-            ? 'welcome-pie__slice welcome-pie__slice--current'
-            : isPast
-              ? 'welcome-pie__slice welcome-pie__slice--past'
-              : 'welcome-pie__slice welcome-pie__slice--future';
+          const opacity = isCurrent ? 0.96 : isPast ? 0.78 : 0.45;
 
           return (
             <path
               key={event.id}
-              className={className}
+              className="welcome-pie__slice"
               d={slicePath(start, end)}
-              style={{ opacity: Math.max(0.45, 0.82 - index * 0.04) }}
+              style={{
+                fill: event.color ?? FALLBACK_EVENT_COLOR,
+                opacity: Math.max(0.3, opacity - index * 0.03),
+              }}
             />
           );
         })}
@@ -110,11 +105,16 @@ export function DayPieChart() {
           y2={timeLineEnd.y}
         />
         <circle className="welcome-pie__pin" cx={CENTER} cy={CENTER} r="3" />
+        <text
+          className="welcome-pie__time-label"
+          x={Math.max(18, Math.min(SIZE - 18, labelPoint.x))}
+          y={Math.max(18, Math.min(SIZE - 18, labelPoint.y))}
+          textAnchor={labelPoint.x < CENTER - 6 ? 'end' : labelPoint.x > CENTER + 6 ? 'start' : 'middle'}
+          dominantBaseline="middle"
+        >
+          {currentTimeLabel}
+        </text>
       </svg>
-      <div className="welcome-pie__center" aria-label={`Streak ${streak} days`}>
-        <strong>{streak}</strong>
-        <span>streak</span>
-      </div>
     </div>
   );
 }

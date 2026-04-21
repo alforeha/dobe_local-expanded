@@ -47,7 +47,11 @@ export function TodayEventRow() {
               .filter((name): name is string => Boolean(name));
 
             return (
-              <article key={event.id} className="welcome-row">
+              <article
+                key={event.id}
+                className="welcome-row welcome-row--event"
+                style={{ borderColor: event.color ?? undefined }}
+              >
                 <button
                   type="button"
                   className="welcome-row__summary"
