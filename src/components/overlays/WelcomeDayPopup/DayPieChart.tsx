@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useScheduleStore } from '../../../stores/useScheduleStore';
 import type { Event } from '../../../types';
-import { getAppDate, getOffsetNow, formatHHMM } from '../../../utils/dateUtils';
+import { getOffsetNow, formatHHMM } from '../../../utils/dateUtils';
 
 const SIZE = 180;
 const CENTER = SIZE / 2;
@@ -49,10 +49,14 @@ function eventMinutesForDay(event: Event, today: string): { start: number; end: 
   return { start, end: Math.max(start + 1, end) };
 }
 
-export function DayPieChart() {
+interface DayPieChartProps {
+  appDate: string;
+}
+
+export function DayPieChart({ appDate }: DayPieChartProps) {
   const activeEvents = useScheduleStore((s) => s.activeEvents);
   const [now, setNow] = useState(() => getOffsetNow());
-  const today = getAppDate();
+  const today = appDate;
 
   useEffect(() => {
     const id = window.setInterval(() => setNow(getOffsetNow()), 60_000);

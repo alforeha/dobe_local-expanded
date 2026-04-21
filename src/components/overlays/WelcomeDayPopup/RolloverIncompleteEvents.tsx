@@ -1,25 +1,29 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useScheduleStore } from '../../../stores/useScheduleStore';
 import type { Event } from '../../../types';
-import { addDays, getAppDate, localISODate } from '../../../utils/dateUtils';
+import { addDays, localISODate } from '../../../utils/dateUtils';
 import { completeTask } from '../../../engine/eventExecution';
 import { resolveTaskDisplayName } from '../../../utils/resolveTaskDisplayName';
 import { starterTaskTemplates } from '../../../coach/StarterQuestLibrary';
 import { IconDisplay } from '../../shared/IconDisplay';
 
-function previousAppDate(): string {
-  return localISODate(addDays(new Date(`${getAppDate()}T00:00:00`), -1));
+function previousAppDate(appDate: string): string {
+  return localISODate(addDays(new Date(`${appDate}T00:00:00`), -1));
 }
 
 function isRolloverEvent(event: Event, date: string): boolean {
   return event.startDate <= date && event.endDate >= date;
 }
 
-export function RolloverIncompleteEvents() {
+interface RolloverIncompleteEventsProps {
+  appDate: string;
+}
+
+export function RolloverIncompleteEvents({ appDate }: RolloverIncompleteEventsProps) {
   const historyEvents = useScheduleStore((s) => s.historyEvents);
   const tasks = useScheduleStore((s) => s.tasks);
   const taskTemplates = useScheduleStore((s) => s.taskTemplates);
-  const previousDate = previousAppDate();
+  const previousDate = previousAppDate(appDate);
   const [exiting, setExiting] = useState(false);
   const [lastVisibleEvents, setLastVisibleEvents] = useState<Event[]>([]);
   const exitTimerRef = useRef<number | null>(null);

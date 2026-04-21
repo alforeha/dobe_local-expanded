@@ -145,6 +145,7 @@ export function AppShell() {
   const [overlayClosing, setOverlayClosing] = useState(false);
   const [todaySignals, setTodaySignals] = useState({ day: 0, week: 0, explorer: 0 });
   const [isBooted, setIsBooted] = useState(!showWelcome);
+  const [welcomeDayDate, setWelcomeDayDate] = useState<string | null>(null);
   const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const timeViewVisitRef = useRef({ week: false, explorer: false, completed: false });
   const welcomeDayTriggeringRef = useRef(false);
@@ -162,6 +163,7 @@ export function AppShell() {
       if (systemStore.lastWelcomeDayDate === date || welcomeDayTriggeringRef.current) return;
       welcomeDayTriggeringRef.current = true;
       systemStore.setLastWelcomeDayDate(date);
+      setWelcomeDayDate(date);
       setOverlay('welcomeDay');
       queueMicrotask(() => {
         welcomeDayTriggeringRef.current = false;
@@ -435,7 +437,7 @@ export function AppShell() {
           onClick={requestClose}
         >
           <div className="h-full min-h-0" onClick={(e) => e.stopPropagation()}>
-            <WelcomeDayPopup onClose={requestClose} />
+            <WelcomeDayPopup appDate={welcomeDayDate ?? getAppDate()} onClose={requestClose} />
           </div>
         </div>
       )}

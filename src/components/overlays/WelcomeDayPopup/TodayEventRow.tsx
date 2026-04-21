@@ -2,7 +2,6 @@ import { useMemo, useState } from 'react';
 import { useScheduleStore } from '../../../stores/useScheduleStore';
 import { useResourceStore } from '../../../stores/useResourceStore';
 import type { Event } from '../../../types';
-import { getAppDate } from '../../../utils/dateUtils';
 import { resolveTaskDisplayName } from '../../../utils/resolveTaskDisplayName';
 import { starterTaskTemplates } from '../../../coach/StarterQuestLibrary';
 import { IconDisplay } from '../../shared/IconDisplay';
@@ -15,13 +14,17 @@ function locationLabel(event: Event): string | null {
   return event.location?.placeName ?? (event.location ? 'Location set' : null);
 }
 
-export function TodayEventRow() {
+interface TodayEventRowProps {
+  appDate: string;
+}
+
+export function TodayEventRow({ appDate }: TodayEventRowProps) {
   const activeEvents = useScheduleStore((s) => s.activeEvents);
   const tasks = useScheduleStore((s) => s.tasks);
   const taskTemplates = useScheduleStore((s) => s.taskTemplates);
   const resources = useResourceStore((s) => s.resources);
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const today = getAppDate();
+  const today = appDate;
 
   const events = useMemo(
     () =>

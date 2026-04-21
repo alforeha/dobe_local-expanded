@@ -6,21 +6,22 @@ import { TodayQuestRow } from './TodayQuestRow';
 import './WelcomeDayPopup.css';
 
 interface WelcomeDayPopupProps {
+  appDate: string;
   onClose: () => void;
 }
 
-export function WelcomeDayPopup({ onClose }: WelcomeDayPopupProps) {
+export function WelcomeDayPopup({ appDate, onClose }: WelcomeDayPopupProps) {
   return (
     <section className="welcome-day-popup" aria-label="Welcome Day">
       <CoachSection />
 
       <div className="welcome-day-popup__content">
-        <RolloverIncompleteEvents />
+        <RolloverIncompleteEvents appDate={appDate} />
 
         <section className="welcome-day-summary" aria-label="Today summary">
-          <DayPieChart />
+          <DayPieChart appDate={appDate} />
           <div className="welcome-day-summary__rows" aria-label="Today rows">
-            <TodayEventRow />
+            <TodayEventRow appDate={appDate} />
             <TodayQuestRow />
           </div>
         </section>
