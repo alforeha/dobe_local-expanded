@@ -48,16 +48,28 @@ export type NotificationPreferencesStub = null;
 /** [MULTI-USER / APP-STORE] Storage provider, lastSynced, cloudRef */
 export type StoragePreferencesStub = null;
 
+// ── LOCATION ─────────────────────────────────────────────────────────────────
+
+export interface NamedLocation {
+  id: string;
+  label: string;
+  lat: number;
+  lng: number;
+  cityName: string;
+}
+
+export interface LocationPreferences {
+  locations: NamedLocation[];
+  activeLocationId: string | null;
+}
+
 // ── SETTINGS ROOT ─────────────────────────────────────────────────────────────
 
 export interface Settings {
   timePreferences: TimePreferences;
   coachPreferences: CoachPreferences;
   displayPreferences: DisplayPreferences;
-  locationPreferences?: {
-    lat: number;
-    lng: number;
-  };
+  locationPreferences?: LocationPreferences;
   /** [MULTI-USER] stub — null in LOCAL */
   socialPreferences: SocialPreferencesStub;
   /** [APP-STORE] stub — null in LOCAL */

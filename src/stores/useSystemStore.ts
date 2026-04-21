@@ -7,7 +7,8 @@
 
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { Settings } from '../types';
+import { v4 as uuidv4 } from 'uuid';
+import type { NamedLocation, Settings } from '../types';
 import type { ResourceType } from '../types/resource';
 
 // ── STATE ─────────────────────────────────────────────────────────────────────
@@ -51,7 +52,10 @@ interface SystemActions {
   setSessionStart: (timestamp: string) => void;
   setRolloverStep: (step: number | null) => void;
   setThemeMode: (mode: 'light' | 'dark') => void;
-  setLocationPreferences: (lat: number, lng: number) => void;
+  addNamedLocation: (location: NamedLocation) => void;
+  removeNamedLocation: (id: string) => void;
+  setActiveLocation: (id: string) => void;
+  updateNamedLocation: (id: string, patch: Partial<NamedLocation>) => void;
   setOnboardingComplete: (complete: boolean) => void;
   setDevMode: (val: boolean) => void;
   setAppDateTime: (date: string, time: string) => void;
@@ -115,13 +119,63 @@ export const useSystemStore = create<SystemState & SystemActions>()(
 
       setRolloverStep: (rolloverStep) => set({ rolloverStep }),
 
-      setLocationPreferences: (lat, lng) =>
-        set((state) => ({
-          settings: {
-            ...(state.settings ?? DEFAULT_SETTINGS),
-            locationPreferences: { lat, lng },
-          },
-        })),
+      addNamedLocation: (location) =>
+        set((state) => {
+          const current = state.settings ?? DEFAULT_SETTINGS;
+          const existing = current.locationPreferences ?? { locations: [], activeLocationId: null };
+          const locations = [...existing.locations, location];
+          const activeLocationId = existing.activeLocationId ?? location.id;
+          return {
+            settings: {
+              ...current,
+              locationPreferences: { locations, activeLocationId },
+            },
+          };
+        }),
+
+      removeNamedLocation: (id) =>
+        set((state) => {
+          const current = state.settings ?? DEFAULT_SETTINGS;
+          const existing = current.locationPreferences ?? { locations: [], activeLocationId: null };
+          const locations = existing.locations.filter((l) => l.id !== id);
+          const activeLocationId =
+            existing.activeLocationId === id
+              ? (locations[0]?.id ?? null)
+              : existing.activeLocationId;
+          return {
+            settings: {
+              ...current,
+              locationPreferences: { locations, activeLocationId },
+            },
+          };
+        }),
+
+      setActiveLocation: (id) =>
+        set((state) => {
+          const current = state.settings ?? DEFAULT_SETTINGS;
+          const existing = current.locationPreferences ?? { locations: [], activeLocationId: null };
+          return {
+            settings: {
+              ...current,
+              locationPreferences: { ...existing, activeLocationId: id },
+            },
+          };
+        }),
+
+      updateNamedLocation: (id, patch) =>
+        set((state) => {
+          const current = state.settings ?? DEFAULT_SETTINGS;
+          const existing = current.locationPreferences ?? { locations: [], activeLocationId: null };
+          const locations = existing.locations.map((l) =>
+            l.id === id ? { ...l, ...patch } : l,
+          );
+          return {
+            settings: {
+              ...current,
+              locationPreferences: { ...existing, locations },
+            },
+          };
+        }),
 
       setOnboardingComplete: (onboardingComplete) => set({ onboardingComplete }),
 
@@ -157,6 +211,25 @@ export const useSystemStore = create<SystemState & SystemActions>()(
 
       reset: () => set(initialState),
     }),
-    { name: 'cdb-system' },
+    {
+      name: 'cdb-system',
+      onRehydrateStorage: () => (state) => {
+        if (!state) return;
+        // ── Migration: convert old { lat, lng } locationPreferences to NamedLocation array ──
+        const lp = state.settings?.locationPreferences as
+          | { lat?: number; lng?: number; locations?: unknown }
+          | undefined;
+        if (lp && typeof lp.lat === 'number' && typeof lp.lng === 'number' && !lp.locations) {
+          const id = uuidv4();
+          state.setSettings({
+            ...(state.settings!),
+            locationPreferences: {
+              locations: [{ id, label: 'Auto', lat: lp.lat, lng: lp.lng, cityName: '' }],
+              activeLocationId: id,
+            },
+          });
+        }
+      },
+    },
   ),
 );

@@ -367,13 +367,16 @@ async function step9_coachReview(newDate: string): Promise<void> {
   const scheduleStore = useScheduleStore.getState();
   const userStore = useUserStore.getState();
   const locationPreferences = useSystemStore.getState().settings?.locationPreferences;
+  const activeLocation = locationPreferences?.locations.find(
+    (l) => l.id === locationPreferences.activeLocationId,
+  ) ?? locationPreferences?.locations[0];
 
   let weatherSnapshot: QuickActionsEvent['weatherSnapshot'] = null;
-  if (locationPreferences) {
+  if (activeLocation) {
     try {
       const weather = await fetchWeatherSummaryForDate(
-        locationPreferences.lat,
-        locationPreferences.lng,
+        activeLocation.lat,
+        activeLocation.lng,
         newDate,
       );
       weatherSnapshot = weather

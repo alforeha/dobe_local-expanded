@@ -1,20 +1,14 @@
 import { useMemo, useState } from 'react';
 import { IconDisplay } from '../../shared/IconDisplay';
 import { PopupShell } from '../../shared/popups/PopupShell';
+import { LocationManager } from '../../weather/LocationManager';
 import { format } from '../../../utils/dateUtils';
 import type { WeatherDay } from '../../../utils/weatherService';
-
-interface LocationPreferences {
-  lat: number;
-  lng: number;
-}
 
 interface DayWeatherPopupProps {
   currentDate: Date;
   weather: WeatherDay[];
-  locationPreferences: LocationPreferences | undefined;
   onClose: () => void;
-  onSaveLocation: (lat: number, lng: number) => void;
 }
 
 function formatShortDate(dateISO: string): string {
@@ -32,60 +26,12 @@ function formatTimeLabel(isoDateTime: string): string {
 export function DayWeatherPopup({
   currentDate,
   weather,
-  locationPreferences,
   onClose,
-  onSaveLocation,
 }: DayWeatherPopupProps) {
-  const [manualLat, setManualLat] = useState(locationPreferences ? String(locationPreferences.lat) : '');
-  const [manualLng, setManualLng] = useState(locationPreferences ? String(locationPreferences.lng) : '');
-  const [captureState, setCaptureState] = useState<'idle' | 'locating'>('idle');
-  const [geoError, setGeoError] = useState<string | null>(null);
+  const [locationManagerOpen, setLocationManagerOpen] = useState(false);
 
   const currentDateISO = format(currentDate, 'iso');
   const sortedWeather = useMemo(() => weather.slice().sort((a, b) => a.date.localeCompare(b.date)), [weather]);
-
-  const canSaveManual =
-    manualLat.trim() !== ''
-    && manualLng.trim() !== ''
-    && !Number.isNaN(Number.parseFloat(manualLat))
-    && !Number.isNaN(Number.parseFloat(manualLng));
-
-  function handleUseCurrentLocation() {
-    if (!navigator.geolocation) {
-      setGeoError('Geolocation is not supported by this browser.');
-      return;
-    }
-
-    setCaptureState('locating');
-    setGeoError(null);
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        const lat = position.coords.latitude;
-        const lng = position.coords.longitude;
-        setManualLat(String(lat));
-        setManualLng(String(lng));
-        setCaptureState('idle');
-        onSaveLocation(lat, lng);
-      },
-      (error) => {
-        setCaptureState('idle');
-        setGeoError(`Location unavailable: ${error.message}`);
-      },
-      {
-        enableHighAccuracy: false,
-        maximumAge: 60 * 60 * 1000,
-        timeout: 10000,
-      },
-    );
-  }
-
-  function handleSaveManual() {
-    const lat = Number.parseFloat(manualLat);
-    const lng = Number.parseFloat(manualLng);
-    if (Number.isNaN(lat) || Number.isNaN(lng)) return;
-    setGeoError(null);
-    onSaveLocation(lat, lng);
-  }
 
   function handleForecastWheel(event: React.WheelEvent<HTMLDivElement>) {
     const container = event.currentTarget;
@@ -94,64 +40,17 @@ export function DayWeatherPopup({
     event.preventDefault();
   }
 
+  if (locationManagerOpen) {
+    return (
+      <PopupShell title="Locations" onClose={onClose} size="large">
+        <LocationManager onClose={() => setLocationManagerOpen(false)} />
+      </PopupShell>
+    );
+  }
+
   return (
     <PopupShell title="Forecast" onClose={onClose} size="large">
       <div className="mx-auto flex h-full min-h-0 w-full max-w-5xl flex-col gap-4">
-        <div className="rounded-xl border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-900/40">
-          <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-            <div className="min-w-0">
-              <div className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Location</div>
-              <div className="mt-1 text-sm font-medium text-gray-800 dark:text-gray-100">
-                {locationPreferences
-                  ? `${locationPreferences.lat.toFixed(4)}, ${locationPreferences.lng.toFixed(4)}`
-                  : 'No saved location'}
-              </div>
-            </div>
-
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={handleUseCurrentLocation}
-                disabled={captureState === 'locating'}
-                className="rounded-lg bg-purple-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-purple-700 disabled:opacity-60"
-              >
-                {captureState === 'locating' ? 'Locating...' : 'Use Current Location'}
-              </button>
-            </div>
-          </div>
-
-          <div className="mt-3 flex flex-col gap-2 md:flex-row">
-            <input
-              type="number"
-              step="any"
-              value={manualLat}
-              onChange={(e) => setManualLat(e.target.value)}
-              placeholder="Latitude"
-              className="flex-1 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:border-purple-500 focus:outline-none dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
-            />
-            <input
-              type="number"
-              step="any"
-              value={manualLng}
-              onChange={(e) => setManualLng(e.target.value)}
-              placeholder="Longitude"
-              className="flex-1 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:border-purple-500 focus:outline-none dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
-            />
-            <button
-              type="button"
-              onClick={handleSaveManual}
-              disabled={!canSaveManual}
-              className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-100 disabled:opacity-40 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-800"
-            >
-              Save
-            </button>
-          </div>
-
-          {geoError && (
-            <div className="mt-2 text-xs text-amber-600 dark:text-amber-400">{geoError}</div>
-          )}
-        </div>
-
         <div className="min-h-0 flex-1">
           {sortedWeather.length > 0 ? (
             <div
@@ -208,6 +107,16 @@ export function DayWeatherPopup({
               Forecast will appear here once a location is available.
             </div>
           )}
+        </div>
+
+        <div className="flex shrink-0 justify-end border-t border-gray-200 pt-3 dark:border-gray-700">
+          <button
+            type="button"
+            onClick={() => setLocationManagerOpen(true)}
+            className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-100 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800"
+          >
+            Manage locations
+          </button>
         </div>
       </div>
     </PopupShell>
