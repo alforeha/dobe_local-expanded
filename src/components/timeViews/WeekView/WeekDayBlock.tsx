@@ -171,62 +171,76 @@ export function WeekDayBlock({ date, weather, onDaySelect }: WeekDayBlockProps) 
   Object.values(historyEvents).forEach((e) => projectEventForDay(e));
 
   if (isFuture) {
-    const coveredPlannedRefs = new Set<string>();
-    const collectCoveredPlannedRef = (raw: Event | unknown) => {
-      if (!raw || typeof raw !== 'object' || !('startDate' in raw) || !('endDate' in raw)) return;
-      const event = raw as Event;
-      if (!event.plannedEventRef) return;
-      if (event.startDate > dateIso || event.endDate < dateIso) return;
-      coveredPlannedRefs.add(event.plannedEventRef);
-    };
-
-    Object.values(activeEvents).forEach((e) => collectCoveredPlannedRef(e));
-    Object.values(historyEvents).forEach((e) => collectCoveredPlannedRef(e));
-
     Object.values(plannedEvents).forEach((pe) => {
-      if (coveredPlannedRefs.has(pe.id)) return;
+      const isOvernight = parseMinutes(pe.endTime) < parseMinutes(pe.startTime);
+      const previousDate = format(new Date(date.getFullYear(), date.getMonth(), date.getDate() - 1), 'iso');
+      const dueToday = isPlannedEventDue(pe, dateIso);
+      const dueYesterday = isPlannedEventDue(pe, previousDate);
+      const yesterdayIsDieDate = pe.dieDate === previousDate;
 
-      if (pe.dieDate && pe.seedDate <= dateIso && pe.dieDate >= dateIso) {
+      // Deduplication logic for overnight routines
+      let hasMaterializedMorning = false;
+      let hasMaterializedEvening = false;
+      if (isOvernight) {
+        // Check all active/history events for this planned id on this date
+        const allEvents = [...Object.values(activeEvents), ...Object.values(historyEvents)];
+        for (const evRaw of allEvents) {
+          const ev = evRaw as Event;
+          if (
+            ev && typeof ev === 'object' &&
+            'plannedEventRef' in ev &&
+            ev.plannedEventRef === pe.id &&
+            'startTime' in ev &&
+            'startDate' in ev && 'endDate' in ev &&
+            ev.startDate <= dateIso && ev.endDate >= dateIso
+          ) {
+            // Suppress planned morning block if a materialized event started previous day at planned.startTime and ends today at planned.endTime
+            if (
+              ev.startDate === previousDate &&
+              ev.endDate === dateIso &&
+              ev.startTime === pe.startTime &&
+              ev.endTime === pe.endTime
+            ) {
+              hasMaterializedMorning = true;
+            }
+            // Only count as materialized evening if this matches the planned startTime and starts today
+            if (ev.startTime === pe.startTime && ev.startDate === dateIso) {
+              hasMaterializedEvening = true;
+            }
+          }
+        }
+        // Project morning block if not covered
+        if (dueYesterday || yesterdayIsDieDate) {
+          if (!hasMaterializedMorning) {
+            dayEvents.push({
+              ...pe,
+              renderId: `${pe.id}:${dateIso}:carry`,
+              startTime: '00:00',
+              endTime: pe.endTime,
+              multiDayLabel: `started ${previousDate}`,
+            });
+          }
+        }
+        // Project evening block if not covered
+        if (dueToday) {
+          if (!hasMaterializedEvening) {
+            dayEvents.push({
+              ...pe,
+              renderId: `${pe.id}:${dateIso}:start`,
+              startTime: pe.startTime,
+              endTime: '23:59',
+              multiDayLabel: 'continues',
+            });
+          }
+        }
+      } else if (pe.dieDate && pe.seedDate <= dateIso && pe.dieDate >= dateIso) {
         const startsToday = pe.seedDate === dateIso;
         const endsToday = pe.dieDate === dateIso;
         dayEvents.push({
           ...pe,
-          startTime: pe.seedDate < dateIso ? '00:00' : pe.startTime,
-          endTime: pe.dieDate > dateIso ? '23:59' : pe.endTime,
-          multiDayLabel: startsToday ? 'continues' : endsToday ? `started ${pe.seedDate}` : 'all day',
-        });
-        return;
-      }
-
-      const previousDate = format(new Date(date.getFullYear(), date.getMonth(), date.getDate() - 1), 'iso');
-      const dueToday = isPlannedEventDue(pe, dateIso);
-      const dueYesterday = isPlannedEventDue(pe, previousDate);
-      const isOvernight = parseMinutes(pe.endTime) < parseMinutes(pe.startTime);
-
-      if (dueToday && isOvernight) {
-        dayEvents.push({
-          ...pe,
-          renderId: `${pe.id}:${dateIso}:start`,
           startTime: pe.startTime,
-          endTime: '23:59',
-          multiDayLabel: 'continues',
-        });
-      }
-
-      if (dueYesterday && isOvernight) {
-        dayEvents.push({
-          ...pe,
-          renderId: `${pe.id}:${dateIso}:carry`,
-          startTime: '00:00',
           endTime: pe.endTime,
-          multiDayLabel: `started ${previousDate}`,
-        });
-      }
-
-      if (dueToday && !isOvernight) {
-        dayEvents.push({
-          ...pe,
-          renderId: `${pe.id}:${dateIso}:single`,
+          multiDayLabel: startsToday ? 'continues' : endsToday ? `started ${pe.seedDate}` : undefined,
         });
       }
     });

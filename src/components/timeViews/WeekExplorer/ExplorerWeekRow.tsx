@@ -206,11 +206,58 @@ export function ExplorerWeekRow({ weekStart, weather, onSelect }: ExplorerWeekRo
       days.forEach((day, dayIndex) => {
         const dateISO = format(day, 'iso');
         if (dateISO < todayISO) return;
+        const isOvernight = parseMinutes(planned.endTime) < parseMinutes(planned.startTime);
         const coveredPlannedRefs = coveredPlannedRefsByDate.get(dateISO);
-        if (coveredPlannedRefs?.has(planned.id)) return;
-
-        const projectedBlocks = projectPlannedBlocksForDay(planned, day, dayIndex);
-        next.push(...projectedBlocks);
+        if (isOvernight) {
+          // Check for materialized morning and evening blocks separately
+          let hasMaterializedMorning = false;
+          let hasMaterializedEvening = false;
+          const previousDate = format(new Date(day.getFullYear(), day.getMonth(), day.getDate() - 1), 'iso');
+          if (coveredPlannedRefs && coveredPlannedRefs.has(planned.id)) {
+            // Check all active/history events for this planned id on this date
+            const allEvents = [...Object.values(activeEvents), ...Object.values(historyEvents)];
+            for (const evRaw of allEvents) {
+              const ev = evRaw as Event;
+              if (
+                ev && typeof ev === 'object' &&
+                'plannedEventRef' in ev &&
+                ev.plannedEventRef === planned.id &&
+                'startTime' in ev &&
+                'startDate' in ev && 'endDate' in ev &&
+                ev.startDate <= dateISO && ev.endDate >= dateISO
+              ) {
+                // Suppress planned morning block if a materialized event started previous day at planned.startTime and ends today at planned.endTime
+                if (
+                  ev.startDate === previousDate &&
+                  ev.endDate === dateISO &&
+                  ev.startTime === planned.startTime &&
+                  ev.endTime === planned.endTime
+                ) {
+                  hasMaterializedMorning = true;
+                }
+                // Only count as materialized evening if this matches the planned startTime and starts today
+                if (ev.startTime === planned.startTime && ev.startDate === dateISO) {
+                  hasMaterializedEvening = true;
+                }
+              }
+            }
+          }
+          // Project morning block if not covered, and avoid duplicate 'carry' block
+          const blocks = projectPlannedBlocksForDay(planned, day, dayIndex);
+          for (const block of blocks) {
+            if (block.startTime === '00:00') {
+              // Only show planned morning/carry block if no materialized overnight event exists for this morning
+              if (!hasMaterializedMorning) next.push(block);
+            } else {
+              // Only show planned evening block if no materialized evening event exists for this overnight
+              if (!hasMaterializedEvening) next.push(block);
+            }
+          }
+        } else {
+          if (coveredPlannedRefs?.has(planned.id)) return;
+          const projectedBlocks = projectPlannedBlocksForDay(planned, day, dayIndex);
+          next.push(...projectedBlocks);
+        }
       });
     }
 
@@ -289,15 +336,23 @@ function projectPlannedBlocksForDay(
   dayIndex: number,
 ): ColorBlock[] {
   const dateISO = format(day, 'iso');
+  const isOvernight = parseMinutes(planned.endTime) < parseMinutes(planned.startTime);
+  // True multi-day one-off event (not overnight)
+  const isTrueMultiDay =
+    planned.dieDate && planned.dieDate !== planned.seedDate &&
+    !isOvernight &&
+    planned.seedDate !== planned.dieDate &&
+    planned.seedDate <= dateISO && planned.dieDate >= dateISO;
 
-  if (planned.dieDate && planned.seedDate <= dateISO && planned.dieDate >= dateISO) {
+  if (isTrueMultiDay) {
     const startsToday = planned.seedDate === dateISO;
     const endsToday = planned.dieDate === dateISO;
     const startTime = planned.seedDate < dateISO ? '00:00' : planned.startTime;
-    const endTime = planned.dieDate > dateISO ? '23:59' : planned.endTime;
+    // Fix: check for null before comparing planned.dieDate > dateISO
+    const endTime = planned.dieDate && planned.dieDate > dateISO ? '23:59' : planned.endTime;
     const markerKey: ColorBlock['markerKey'] = startsToday
       ? 'night'
-      : endsToday
+      : (planned.dieDate && endsToday)
         ? 'morning'
         : 'rainbow';
 
@@ -311,15 +366,17 @@ function projectPlannedBlocksForDay(
     }];
   }
 
+  // Overnight routines and recurrences
   const previousDate = format(new Date(day.getFullYear(), day.getMonth(), day.getDate() - 1), 'iso');
   const dueToday = isPlannedEventDue(planned, dateISO);
   const dueYesterday = isPlannedEventDue(planned, previousDate);
-  const isOvernight = parseMinutes(planned.endTime) < parseMinutes(planned.startTime);
+  const yesterdayIsDieDate = planned.dieDate === previousDate;
   const projected: ColorBlock[] = [];
 
-  if (dueYesterday && isOvernight) {
+  // Always project the 'carry' (morning) block for any day where yesterday was due (for overnight routines)
+  if (isOvernight && (dueYesterday || yesterdayIsDieDate)) {
     projected.push({
-      id: `planned-${planned.id}:${dateISO}:carry`,
+      id: `planned-${planned.id}:${dateISO}:morning`,
       color: planned.color,
       day: dayIndex,
       startTime: '00:00',
@@ -328,20 +385,19 @@ function projectPlannedBlocksForDay(
     });
   }
 
+  // Always project the 'evening' block for days that are due (for overnight routines, start at planned.startTime)
   if (dueToday) {
     const startTime = planned.startTime;
     const endTime = isOvernight ? '23:59' : planned.endTime;
-    const markerKey: ColorBlock['markerKey'] = startTime === '00:00' && endTime === '23:59'
-      ? 'rainbow'
-      : null;
+    const markerKey: ColorBlock['markerKey'] = isOvernight ? 'night' : null;
 
     projected.push({
-      id: `planned-${planned.id}:${dateISO}:${isOvernight ? 'start' : 'single'}`,
+      id: `planned-${planned.id}:${dateISO}:${isOvernight ? 'evening' : 'single'}`,
       color: planned.color,
       day: dayIndex,
       startTime,
       endTime,
-      markerKey: isOvernight ? 'night' : markerKey,
+      markerKey,
     });
   }
 

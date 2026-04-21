@@ -155,10 +155,15 @@ export function materialisePlannedEvent(
   }
 
   const taskRefs = tasks.map((t) => t.id);
-  const resolvedEndDate = pe.dieDate
-    ?? (pe.isOvernight === true
+  // For one-off events, use dieDate as endDate if present. For routines, use overnight logic or forDate.
+  let resolvedEndDate: string;
+  if (isOneOffEvent(pe) && pe.dieDate) {
+    resolvedEndDate = pe.dieDate;
+  } else {
+    resolvedEndDate = pe.isOvernight === true
       ? localISODate(addDays(new Date(`${forDate}T00:00:00`), 1))
-      : forDate);
+      : forDate;
+  }
 
   // Build the materialised Event
   const event: Event = {

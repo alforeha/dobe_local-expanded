@@ -7,7 +7,7 @@ import { EventBlock } from './EventBlock';
 import { QACompletionIcon } from './QACompletionIcon';
 import { QACompletionPopup } from './QACompletionPopup';
 import { resolveTaskIcon, resolveTemplate, findQAEventForDate } from './qaUtils';
-import { format, hourLabel, isSameDay, addDays, getOffsetNow } from '../../../utils/dateUtils';
+import { format, hourLabel, isSameDay, getOffsetNow } from '../../../utils/dateUtils';
 import { isOneOffEvent } from '../../../utils/isOneOffEvent';
 import { isPlannedEventDue } from '../../../engine/rollover';
 import type { Event, PlannedEvent, QuickActionsCompletion } from '../../../types';
@@ -316,7 +316,7 @@ export function DayViewBody({ date, onEventOpen, onEditPlanned }: DayViewBodyPro
   );
 
   const dateIso = format(date, 'iso');
-  const yesterdayIso = format(addDays(date, -1), 'iso');
+  // const yesterdayIso = format(addDays(date, -1), 'iso');
   const today = useAppDate();
   const isPast = date < today;
   const isToday = isSameDay(date, today);
@@ -359,99 +359,142 @@ export function DayViewBody({ date, onEventOpen, onEditPlanned }: DayViewBodyPro
   const continuesOverride = new Map<string, string>();
   const labelOverride = new Map<string, string>();
 
-  if (isPast || isToday) {
-    const allEntries = [
-      ...Object.values(activeEvents),
-      ...Object.values(historyEvents),
-    ];
-    for (const e of allEntries) {
-      const ev = e as Event;
-      if (ev.eventType === 'quickActions') continue;
-      const startsToday = ev.startDate === dateIso;
-      const endsToday = ev.endDate === dateIso;
-      const isMultiDay = ev.startDate !== ev.endDate;
+  // --- Unified event projection and deduplication logic for all days ---
+  // Map: dateISO -> Set of covered plannedEventRefs (materialized events)
+  const coveredPlannedRefsByDate = new Map<string, Set<string>>();
+  const addCoveredPlannedRef = (dateISO: string, plannedEventRef: string | null) => {
+    if (!plannedEventRef) return;
+    const nextSet = coveredPlannedRefsByDate.get(dateISO) ?? new Set<string>();
+    nextSet.add(plannedEventRef);
+    coveredPlannedRefsByDate.set(dateISO, nextSet);
+  };
 
-      if (!isMultiDay) {
-        if (startsToday) dayEvents.push(ev);
-      } else if (startsToday) {
-        // Continues tomorrow: starts today, ends on a future date
-        dayEvents.push(ev);
-        continuesOverride.set(ev.id, '23:59');
-        labelOverride.set(ev.id, '↓ continues');
+  // Project materialized events (active/history)
+  const allMaterialized = [
+    ...Object.values(activeEvents),
+    ...Object.values(historyEvents),
+  ];
+  for (const e of allMaterialized) {
+    const ev = e as Event;
+    if (ev.eventType === 'quickActions') continue;
+    const dateISO = format(date, 'iso');
+    const startsToday = ev.startDate === dateISO;
+    const endsToday = ev.endDate === dateISO;
+    const isMultiDay = ev.startDate !== ev.endDate;
+    // const isOvernight = parseMinutesOfDay(ev.endTime) < parseMinutesOfDay(ev.startTime);
+
+    addCoveredPlannedRef(dateISO, ev.plannedEventRef ?? null);
+
+    if (!isMultiDay) {
+      if (startsToday) dayEvents.push(ev);
+    } else if (startsToday) {
+      dayEvents.push(ev);
+      continuesOverride.set(ev.id, '23:59');
+      labelOverride.set(ev.id, '↓ continues');
+    } else if (endsToday) {
+      dayEvents.push({ ...ev, startTime: '00:00' });
+      labelOverride.set(ev.id, `↑ started ${ev.startDate}`);
+    } else if (ev.startDate < dateISO && ev.endDate > dateISO) {
+      dayEvents.push({ ...ev, startTime: '00:00', endTime: '23:59' });
+      labelOverride.set(ev.id, '⬛ all day');
+    }
+  }
+
+  // Project planned events (future/planned recurrences)
+  const allPlanned = Object.values(plannedEvents);
+  for (const planned of allPlanned) {
+    const isOvernight = parseMinutesOfDay(planned.endTime) < parseMinutesOfDay(planned.startTime);
+    const dateISO = format(date, 'iso');
+    const previousDate = format(new Date(date.getFullYear(), date.getMonth(), date.getDate() - 1), 'iso');
+    const dueToday = isPlannedEventDue(planned, dateISO);
+    const dueYesterday = isPlannedEventDue(planned, previousDate);
+    const yesterdayIsDieDate = planned.dieDate === previousDate;
+    const coveredPlannedRefs = coveredPlannedRefsByDate.get(dateISO);
+
+    // True multi-day one-off event (not overnight)
+    const isTrueMultiDay =
+      planned.dieDate && planned.dieDate !== planned.seedDate &&
+      !isOvernight &&
+      planned.seedDate !== planned.dieDate &&
+      planned.seedDate <= dateISO && planned.dieDate >= dateISO;
+
+    if (isTrueMultiDay) {
+      const startsToday = planned.seedDate === dateISO;
+      const endsToday = planned.dieDate === dateISO;
+      const startTime = planned.seedDate < dateISO ? '00:00' : planned.startTime;
+      const endTime = planned.dieDate && planned.dieDate > dateISO ? '23:59' : planned.endTime;
+      if (startsToday) {
+        dayEvents.push({ ...planned, startTime, endTime });
+        continuesOverride.set(planned.id, '23:59');
+        labelOverride.set(planned.id, '↓ continues');
       } else if (endsToday) {
-        // Continued: started before today, ends today — show the carryover in the hour grid.
+        dayEvents.push({ ...planned, id: `${planned.id}--continued`, startTime: '00:00', endTime: planned.endTime });
+        labelOverride.set(`${planned.id}--continued`, `↑ started ${planned.seedDate}`);
+      } else {
+        dayEvents.push({ ...planned, id: `${planned.id}--spanning`, startTime: '00:00', endTime: '23:59' });
+        labelOverride.set(`${planned.id}--spanning`, '⬛ all day');
+      }
+      continue;
+    }
+
+    if (isOvernight) {
+      // Deduplicate morning and evening blocks separately
+      // Check for materialized morning and evening blocks
+      let hasMaterializedMorning = false;
+      let hasMaterializedEvening = false;
+      if (coveredPlannedRefs && coveredPlannedRefs.has(planned.id)) {
+        for (const evRaw of allMaterialized) {
+          const ev = evRaw as Event;
+          if (
+            ev && typeof ev === 'object' &&
+            'plannedEventRef' in ev &&
+            ev.plannedEventRef === planned.id &&
+            'startTime' in ev &&
+            'startDate' in ev && 'endDate' in ev &&
+            ev.startDate <= dateISO && ev.endDate >= dateISO
+          ) {
+            // Suppress planned morning block if a materialized event started previous day at planned.startTime and ends today at planned.endTime
+            if (
+              ev.startDate === previousDate &&
+              ev.endDate === dateISO &&
+              ev.startTime === planned.startTime &&
+              ev.endTime === planned.endTime
+            ) {
+              hasMaterializedMorning = true;
+            }
+            // Only count as materialized evening if this matches the planned startTime and starts today
+            if (ev.startTime === planned.startTime && ev.startDate === dateISO) {
+              hasMaterializedEvening = true;
+            }
+          }
+        }
+      }
+      // Project morning block if not covered, and avoid duplicate 'carry' block
+      if ((dueYesterday || yesterdayIsDieDate) && !hasMaterializedMorning) {
         dayEvents.push({
-          ...ev,
+          ...planned,
+          id: `planned-${planned.id}:${dateISO}:morning`,
           startTime: '00:00',
+          endTime: planned.endTime,
         });
-        labelOverride.set(ev.id, `↑ started ${ev.startDate}`);
-      } else if (ev.startDate < dateIso && ev.endDate > dateIso) {
-        // Spanning: full day in the hour grid.
+        labelOverride.set(`planned-${planned.id}:${dateISO}:morning`, '↑ started yesterday');
+      }
+      // Project evening block if not covered
+      if (dueToday && !hasMaterializedEvening) {
         dayEvents.push({
-          ...ev,
-          startTime: '00:00',
+          ...planned,
+          id: `planned-${planned.id}:${dateISO}:evening`,
+          startTime: planned.startTime,
           endTime: '23:59',
         });
-        labelOverride.set(ev.id, '⬛ all day');
+        labelOverride.set(`planned-${planned.id}:${dateISO}:evening`, '↓ continues');
+      }
+    } else {
+      // Non-overnight planned event: only show if not covered
+      if (dueToday && !(coveredPlannedRefs?.has(planned.id))) {
+        dayEvents.push(planned);
       }
     }
-  } else if (isFuture) {
-    // Future: project recurring PEs onto matching days
-    Object.values(plannedEvents).forEach((pe) => {
-      const isSpanningOneOff = Boolean(pe.dieDate && pe.dieDate !== pe.seedDate);
-      if (isSpanningOneOff && pe.seedDate <= dateIso && pe.dieDate! >= dateIso) {
-        const startsToday = pe.seedDate === dateIso;
-        const endsToday = pe.dieDate === dateIso;
-
-        if (startsToday) {
-          dayEvents.push(pe);
-          continuesOverride.set(pe.id, '23:59');
-          labelOverride.set(pe.id, '↓ continues');
-        } else if (endsToday) {
-          dayEvents.push({
-            ...pe,
-            id: `${pe.id}--continued`,
-            startTime: '00:00',
-          });
-          labelOverride.set(`${pe.id}--continued`, `↑ started ${pe.seedDate}`);
-        } else {
-          dayEvents.push({
-            ...pe,
-            id: `${pe.id}--spanning`,
-            startTime: '00:00',
-            endTime: '23:59',
-          });
-          labelOverride.set(`${pe.id}--spanning`, '⬛ all day');
-        }
-        return;
-      }
-
-      const dueToday = isPlannedEventDue(pe, dateIso);
-      const dueYesterday = isPlannedEventDue(pe, yesterdayIso);
-      const isOvernight =
-        parseMinutesOfDay(pe.endTime) < parseMinutesOfDay(pe.startTime);
-
-      if (dueToday) {
-        if (isOvernight) {
-          // Overnight PE: show from startTime to 23:59 with label
-          dayEvents.push(pe);
-          continuesOverride.set(pe.id, '23:59');
-          labelOverride.set(pe.id, '↓ continues');
-        } else {
-          dayEvents.push(pe);
-        }
-      }
-      // PE was due yesterday and crosses midnight — end portion shows today
-      if (dueYesterday && isOvernight) {
-        dayEvents.push({
-          ...pe,
-          id: `${pe.id}--overnight`,
-          startTime: '00:00',
-          endTime: pe.endTime,
-        });
-        labelOverride.set(`${pe.id}--overnight`, '↑ started yesterday');
-      }
-    });
   }
 
   // ── Display end-time resolver (passed to layout engine) ──────────────────
