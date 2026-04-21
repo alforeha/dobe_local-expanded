@@ -193,6 +193,8 @@ export interface LocationPointInputFields {
   lat?: number;
   lng?: number;
   accuracy?: number;
+  /** ISO timestamp, populated on pin drop completion */
+  timestamp?: string;
 }
 
 export interface Waypoint {

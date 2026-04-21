@@ -1,15 +1,12 @@
 import { useEffect } from 'react';
 import L from 'leaflet';
-import { useScheduleStore } from '../../../../../stores/useScheduleStore';
-import type { Event, QuickActionsEvent } from '../../../../../types';
+import type { Event } from '../../../../../types';
 
 interface EventPinMarkerProps {
   map: L.Map;
+  events: Event[];
+  show: boolean;
   onGoToDay: (dateIso: string) => void;
-}
-
-function isEventWithLocation(event: Event | QuickActionsEvent): event is Event {
-  return event.eventType !== 'quickActions' && event.location !== null;
 }
 
 function escapeHtml(value: string): string {
@@ -44,15 +41,13 @@ function createEventPinIcon() {
   });
 }
 
-export function EventPinMarker({ map, onGoToDay }: EventPinMarkerProps) {
-  const activeEvents = useScheduleStore((state) => state.activeEvents);
-  const historyEvents = useScheduleStore((state) => state.historyEvents);
-
+export function EventPinMarker({ map, events, show, onGoToDay }: EventPinMarkerProps) {
   useEffect(() => {
+    if (!show) return;
+
     const layer = L.layerGroup().addTo(map);
     const icon = createEventPinIcon();
     const cleanupFns: Array<() => void> = [];
-    const events = [...Object.values(activeEvents), ...Object.values(historyEvents)].filter(isEventWithLocation);
 
     for (const event of events) {
       const location = event.location;
@@ -82,7 +77,7 @@ export function EventPinMarker({ map, onGoToDay }: EventPinMarkerProps) {
       for (const cleanup of cleanupFns) cleanup();
       layer.remove();
     };
-  }, [activeEvents, historyEvents, map, onGoToDay]);
+  }, [events, map, onGoToDay, show]);
 
   return null;
 }

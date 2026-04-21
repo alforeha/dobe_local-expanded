@@ -36,6 +36,7 @@ export function LocationPointInput({ inputFields, task, onComplete }: LocationPo
           lat: pos.coords.latitude,
           lng: pos.coords.longitude,
           accuracy: captureAccuracy ? pos.coords.accuracy : undefined,
+          timestamp: new Date().toISOString(),
         });
       },
       (err) => {
@@ -50,7 +51,7 @@ export function LocationPointInput({ inputFields, task, onComplete }: LocationPo
     const lat = parseFloat(manualLat);
     const lng = parseFloat(manualLng);
     if (isNaN(lat) || isNaN(lng)) return;
-    onComplete({ label, captureAccuracy, lat, lng });
+    onComplete({ label, captureAccuracy, lat, lng, timestamp: new Date().toISOString() });
   };
 
   if (isComplete) {
