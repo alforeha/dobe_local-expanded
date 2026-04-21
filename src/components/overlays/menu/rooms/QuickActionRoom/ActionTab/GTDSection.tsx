@@ -164,7 +164,7 @@ export function GTDSection() {
   const systemEntries: GtdEntry[] = gtdList
     .map((id) => tasks[id])
     .filter((task): task is Task => Boolean(task) && task.completionState === 'pending')
-    .filter((task) => !autoTracked.has(task.templateRef))
+    .filter((task) => !task.templateRef || !autoTracked.has(task.templateRef))
     .map((task) => {
       const template = getTemplateByRef(taskTemplates, task.templateRef);
       const resource = task.resourceRef ? resources[task.resourceRef] ?? null : null;
@@ -175,7 +175,7 @@ export function GTDSection() {
         template,
         resource,
         isMilestone: task.questRef !== null,
-        title: template?.name ?? resource?.name ?? task.templateRef,
+        title: template?.name ?? resource?.name ?? task.title ?? task.templateRef ?? 'Unknown task',
         note: template?.description ?? null,
         dueDate: null,
       };

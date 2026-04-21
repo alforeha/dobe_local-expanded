@@ -26,8 +26,14 @@ export type TaskCompletionState = 'pending' | 'complete' | 'skipped';
 export interface Task {
   /** uuid */
   id: string;
-  /** Ref to originating TaskTemplate */
-  templateRef: string;
+  /** Ref to originating TaskTemplate. Unique one-off tasks store null. */
+  templateRef: string | null;
+  /** true for unique one-off tasks that do not resolve through a TaskTemplate. */
+  isUnique?: boolean;
+  /** Unique task display title. Template-backed tasks leave this null/absent. */
+  title?: string | null;
+  /** Unique task input type. Template-backed tasks resolve taskType from their TaskTemplate. */
+  taskType?: string | null;
   completionState: TaskCompletionState;
   completedAt: string | null; // ISO date
   /** Recorded values matching inputFields shape of TaskTemplate (D41) */

@@ -1222,13 +1222,14 @@ export function completeGTDItem(
 
   // XP award — +2 agility (QuickActions context) + +2 defense (resource context)
   const userId = withoutItem.system.id;
-  const template =
-    scheduleStore.taskTemplates[task.templateRef] ??
-    starterTaskTemplates.find((t) => t.id === task.templateRef) ??
-    null;
+  const template = task.templateRef
+    ? scheduleStore.taskTemplates[task.templateRef] ??
+      starterTaskTemplates.find((t) => t.id === task.templateRef) ??
+      null
+    : null;
   if (template) {
     const baseXP = Object.values(template.xpAward).reduce((s, v) => s + v, 0) + (template.xpBonus ?? 0);
-    const onboardingQuestTask = isOnboardingQuestTemplate(task.templateRef);
+    const onboardingQuestTask = task.templateRef ? isOnboardingQuestTemplate(task.templateRef) : false;
     awardXP(userId, onboardingQuestTask ? baseXP : baseXP + 2, {
       isWisdomTask: isWisdomTemplate(template),
       statGroup: getPrimaryStatGroup(template.xpAward),

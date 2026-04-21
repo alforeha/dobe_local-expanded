@@ -16,6 +16,8 @@ import type {
 import { makeDefaultActToggle, makeDefaultChainUnlockCondition } from '../../../../../types';
 import { taskTemplateLibrary } from '../../../../../coach';
 import { starterTaskTemplates } from '../../../../../coach/StarterQuestLibrary';
+import { resolveTaskDisplayName } from '../../../../../utils/resolveTaskDisplayName';
+import type { Task } from '../../../../../types/task';
 
 export type GoalPage =
   | { type: 'list' }
@@ -353,7 +355,23 @@ export function getQuestMeasurableSummary(
 ): string {
   const templates = getQuestTaskTemplates(quest, scheduleTemplates);
   if (templates.length > 0) {
-    const names = templates.map(({ ref, template }) => template?.name ?? ref).join(', ');
+    const names = templates.map(({ ref }) => {
+      const taskForDisplay: Task = {
+        id: `quest-display:${ref}`,
+        templateRef: ref,
+        completionState: 'pending',
+        completedAt: null,
+        resultFields: {},
+        attachmentRef: null,
+        resourceRef: null,
+        location: null,
+        sharedWith: null,
+        questRef: null,
+        actRef: null,
+        secondaryTag: null,
+      };
+      return resolveTaskDisplayName(taskForDisplay, scheduleTemplates, starterTaskTemplates);
+    }).join(', ');
     const targetValue = Math.max(1, quest.specific.targetValue || 1);
     return `Tracking: ${names} (${targetValue} completion${targetValue === 1 ? '' : 's'} needed)`;
   }

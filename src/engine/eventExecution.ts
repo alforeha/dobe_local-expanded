@@ -101,13 +101,14 @@ export function completeTask(
     return;
   }
 
-  const template =
-    scheduleStore.taskTemplates[task.templateRef] ??
-    starterTaskTemplates.find((t) => t.id === task.templateRef) ??
-    null;
+  const template = task.templateRef
+    ? scheduleStore.taskTemplates[task.templateRef] ??
+      starterTaskTemplates.find((t) => t.id === task.templateRef) ??
+      null
+    : null;
 
   if (template) {
-    const cooldown = getTaskCooldownState(template, task.templateRef, scheduleStore.tasks);
+    const cooldown = getTaskCooldownState(template, task.templateRef!, scheduleStore.tasks);
     if (cooldown.isCoolingDown) {
       console.warn(
         `[eventExecution] completeTask: Task "${taskId}" blocked by cooldown until ${new Date(cooldown.cooldownEndAt ?? 0).toISOString()}`,

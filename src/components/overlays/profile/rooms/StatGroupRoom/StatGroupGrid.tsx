@@ -124,6 +124,7 @@ function buildStatXpMap(
     const date = task.completedAt?.slice(0, 10) ?? fallbackDate ?? null;
     if (!date || !dateSet.has(date)) return;
 
+    if (!task.templateRef) return;
     const template = resolveTemplate(task.templateRef, taskTemplates);
     if (!template) return;
 

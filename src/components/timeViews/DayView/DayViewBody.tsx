@@ -678,7 +678,7 @@ export function DayViewBody({ date, onEventOpen, onEditPlanned }: DayViewBodyPro
           {Array.from(qaByHour.entries()).flatMap(([h, completions]) =>
             completions.map((c, idx) => {
               const task = tasks[c.taskRef];
-              const tmpl = task ? resolveTemplate(task.templateRef, taskTemplates) : null;
+              const tmpl = task?.templateRef ? resolveTemplate(task.templateRef, taskTemplates) : null;
               const iconKey = resolveTaskIcon(tmpl);
               return (
                 <QACompletionIcon

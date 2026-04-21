@@ -58,6 +58,8 @@ function taskMatchesDailyMarker(task: Task, marker: Marker): boolean {
     return task.templateRef === scope.ref;
   }
 
+  if (!task.templateRef) return false;
+
   if (scope.type === 'statGroup') {
     if (scope.ref === 'any') {
       const template = getTemplateForTaskRef(task.templateRef);
@@ -91,7 +93,7 @@ function findTodayCompletedTaskForMarker(marker: Marker): Task | null {
 function taskMatchesDailyMeasurable(task: Task, taskTemplateRefs: string[]): boolean {
   if (task.completionState !== 'complete') return false;
   if (!task.completedAt || localISODate(new Date(task.completedAt)) !== getAppDate()) return false;
-  return taskTemplateRefs.includes(task.templateRef);
+  return !!task.templateRef && taskTemplateRefs.includes(task.templateRef);
 }
 
 function findTodayCompletedTaskForMeasurable(taskTemplateRefs: string[]): Task | null {
@@ -579,11 +581,12 @@ export function completeMilestone(completedTask: Task): void {
 
   // Resolve TaskTemplate shape — stored inline in Milestone for immutability (D03).
   // System templates are not written to the store; fall back to the coach bundle.
-  const template =
-    scheduleStore.taskTemplates[completedTask.templateRef] ??
-    starterTaskTemplates.find((t) => t.id === completedTask.templateRef) ??
-    taskTemplateLibrary.find((t) => t.id === completedTask.templateRef) ??
-    null;
+  const template = completedTask.templateRef
+    ? scheduleStore.taskTemplates[completedTask.templateRef] ??
+      starterTaskTemplates.find((t) => t.id === completedTask.templateRef) ??
+      taskTemplateLibrary.find((t) => t.id === completedTask.templateRef) ??
+      null
+    : null;
   if (!template) {
     console.warn(
       `[markerEngine] completeMilestone: TaskTemplate "${completedTask.templateRef}" not found in store or coach bundle. Skipping Milestone.`,

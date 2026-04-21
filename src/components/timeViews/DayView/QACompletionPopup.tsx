@@ -32,7 +32,7 @@ export function QACompletionPopup({ completion, onClose }: QACompletionPopupProp
   })));
 
   const task = tasks[completion.taskRef];
-  const template = task ? resolveTemplate(task.templateRef, taskTemplates) : null;
+  const template = task?.templateRef ? resolveTemplate(task.templateRef, taskTemplates) : null;
   const taskName = template?.name ?? (task?.templateRef ?? '—');
   const isRoll = template?.taskType === 'ROLL';
 

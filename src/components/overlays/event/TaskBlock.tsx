@@ -6,6 +6,7 @@ import type { TaskType, InputFields } from '../../../types/taskTemplate';
 import { TaskTypeInputRenderer } from './TaskTypeInputRenderer';
 import { getOffsetNow } from '../../../utils/dateUtils';
 import { getTaskCooldownState } from '../../../utils/taskCooldown';
+import { resolveTaskDisplayName } from '../../../utils/resolveTaskDisplayName';
 
 interface TaskBlockProps {
   taskId: string | null;
@@ -48,17 +49,20 @@ export function TaskBlock({ taskId, eventId, onTaskComplete, className }: TaskBl
   const taskTemplates = useScheduleStore((s) => s.taskTemplates);
   const task = taskId ? tasks[taskId] : null;
   const template = task
-    ? (taskTemplates[task.templateRef] ??
-       starterTaskTemplates.find((t) => t.id === task.templateRef) ??
-       null)
+    ? (task.templateRef
+       ? taskTemplates[task.templateRef] ??
+         starterTaskTemplates.find((t) => t.id === task.templateRef) ??
+         null
+       : null)
     : null;
-  const taskType: TaskType = template?.taskType ?? 'CHECK';
+  const taskType: TaskType = (task?.isUnique && task.taskType ? task.taskType as TaskType : template?.taskType) ?? 'CHECK';
+  const taskDisplayName = task ? resolveTaskDisplayName(task, taskTemplates, starterTaskTemplates) : 'Unknown task';
   const secondaryTag = task?.secondaryTag ?? template?.secondaryTag ?? null;
 
   const { isCoolingDown, msRemaining, progress } = useMemo(
     () => (
       template && task
-        ? getTaskCooldownState(template, task.templateRef, tasks, nowMs)
+        ? getTaskCooldownState(template, task.templateRef ?? '', tasks, nowMs)
         : { lastCompletedAt: null, cooldownMs: 0, cooldownEndAt: null, msRemaining: 0, isCoolingDown: false, progress: 1 }
     ),
     [template, task, tasks, nowMs],
@@ -121,7 +125,7 @@ export function TaskBlock({ taskId, eventId, onTaskComplete, className }: TaskBl
       {/* TOP — name + tags */}
       <div className="shrink-0 flex items-start justify-between gap-2 px-3 pt-3 pb-2">
         <span className="text-sm font-semibold text-gray-800 dark:text-gray-100">
-          {template?.name ?? 'Unknown task'}
+          {taskDisplayName}
         </span>
         <div className="flex shrink-0 flex-wrap gap-1">
           {secondaryTag && (

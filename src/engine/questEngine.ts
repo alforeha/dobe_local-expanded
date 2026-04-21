@@ -63,6 +63,7 @@ function countCompletedTaskTemplateRefs(
   return Object.values(tasks).filter(
     (task) =>
       task.completionState === 'complete' &&
+      !!task.templateRef &&
       measurableSet.has(task.templateRef) &&
       (!options?.todayOnly || isTodayCompletion(task.completedAt)),
   ).length;
@@ -77,6 +78,7 @@ export function countCompletedNonSystemTasksToday(): number {
   return Object.values(tasks).filter((task) => {
     if (task.completionState !== 'complete') return false;
     if (!isTodayCompletion(task.completedAt)) return false;
+    if (!task.templateRef) return task.isUnique === true;
     const template = taskTemplates[task.templateRef] ?? coachBundleById.get(task.templateRef);
     return template?.isSystem !== true;
   }).length;
@@ -166,16 +168,18 @@ export function countTasksForScope(marker: Marker): number {
       if (t.completionState !== 'complete') return false;
       if (ref === 'any') {
         if (!isTodayCompletion(t.completedAt)) return false;
+        if (!t.templateRef) return t.isUnique === true;
         const template = taskTemplates[t.templateRef] ?? coachBundleById.get(t.templateRef);
         if (template?.isSystem) return false;
         return true;
       }
       if (isDailyMarker && !isTodayCompletion(t.completedAt)) return false;
+      if (!t.templateRef) return false;
       const template = taskTemplates[t.templateRef] ?? coachBundleById.get(t.templateRef);
       if (!template) return false;
       // XP award fields: the primary stat group is the one with the highest value
       const { xpAward } = template;
-      const maxStat = Object.entries(xpAward).reduce(
+      const maxStat = (Object.entries(xpAward) as Array<[string, number]>).reduce(
         (best, [k, v]) => (v > best.val ? { key: k, val: v } : best),
         { key: '', val: -1 },
       );
