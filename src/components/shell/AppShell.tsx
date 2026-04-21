@@ -245,7 +245,7 @@ export function AppShell() {
       attachments: [],
       location: null,
       note: null,
-      sharedWith: null,
+      sharedWith: [],
       coAttendees: null,
     };
     scheduleStore.setTask(welcomeTask);
@@ -318,7 +318,11 @@ export function AppShell() {
     }, 230);
   };
 
-  const navigateToDayView = (_date: string) => {
+  const navigateToDayView = (date: string) => {
+    const parsedDate = new Date(`${date}T00:00:00`);
+    if (!Number.isNaN(parsedDate.getTime())) {
+      setDayViewSeed(parsedDate);
+    }
     setActiveView('day');
   };
 
@@ -382,7 +386,14 @@ export function AppShell() {
       )}
       {overlay === 'menu' && (
         <SlideUpOverlay closing={overlayClosing} onBackdropClick={requestClose}>
-          <MenuOverlay onClose={requestClose} initialRoom={menuInitialRoom} />
+          <MenuOverlay
+            onClose={requestClose}
+            onGoToDay={(date) => {
+              navigateToDayView(date);
+              closeOverlay();
+            }}
+            initialRoom={menuInitialRoom}
+          />
         </SlideUpOverlay>
       )}
 

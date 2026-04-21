@@ -231,7 +231,7 @@ export async function seedTestDataset(): Promise<TestDatasetResult> {
       attachments: [],
       location: null,
       note: null,
-      sharedWith: null,
+      sharedWith: [],
       coAttendees: null,
     };
 

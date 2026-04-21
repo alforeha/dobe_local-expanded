@@ -177,7 +177,7 @@ function makeTestEvent(
     attachments: [],
     location: null,
     note: null,
-    sharedWith: null,
+    sharedWith: [],
     coAttendees: null,
   };
 }
@@ -957,7 +957,7 @@ async function main(): Promise<void> {
       attachments: [],
       location: null,
       note: null,
-      sharedWith: null,
+      sharedWith: [],
       coAttendees: null,
     };
     // Archive directly into historyEvents

@@ -244,7 +244,7 @@ async function main(): Promise<void> {
     attachments: [],
     location: null,
     note: null,
-    sharedWith: null,
+    sharedWith: [],
     coAttendees: null,
   };
   // Intentionally empty templates map so the templateRef lookup falls back to wisdom

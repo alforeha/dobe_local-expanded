@@ -183,7 +183,7 @@ export function materialisePlannedEvent(
     attachments: [],
     location: pe.location,
     note: null,
-    sharedWith: null,
+    sharedWith: [],
     coAttendees: null,
   };
 

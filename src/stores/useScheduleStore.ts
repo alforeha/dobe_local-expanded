@@ -89,6 +89,27 @@ function refreshBundledTaskTemplates(taskTemplates: Record<string, TaskTemplate>
   return next;
 }
 
+function normalizeEventSharedWith(event: Event | QuickActionsEvent): Event | QuickActionsEvent {
+  if (event.eventType === 'quickActions') return event;
+
+  return {
+    ...event,
+    sharedWith: Array.isArray(event.sharedWith) ? event.sharedWith : [],
+  };
+}
+
+function normalizeEventRecord<T extends Event | QuickActionsEvent>(
+  events: Record<string, T> | undefined,
+): Record<string, T> {
+  const next: Record<string, T> = {};
+
+  for (const [id, event] of Object.entries(events ?? {})) {
+    next[id] = normalizeEventSharedWith(event) as T;
+  }
+
+  return next;
+}
+
 // ── STORE ─────────────────────────────────────────────────────────────────────
 
 export const useScheduleStore = create<ScheduleState & ScheduleActions>()(
@@ -183,6 +204,14 @@ export const useScheduleStore = create<ScheduleState & ScheduleActions>()(
         return {
           ...currentState,
           ...persisted,
+          activeEvents: normalizeEventRecord(
+            (persisted.activeEvents as Record<string, Event | QuickActionsEvent> | undefined) ??
+              currentState.activeEvents,
+          ),
+          historyEvents: normalizeEventRecord(
+            (persisted.historyEvents as Record<string, Event | QuickActionsEvent> | undefined) ??
+              currentState.historyEvents,
+          ),
           taskTemplates: refreshBundledTaskTemplates(
             (persisted.taskTemplates as Record<string, TaskTemplate> | undefined) ?? currentState.taskTemplates,
           ),

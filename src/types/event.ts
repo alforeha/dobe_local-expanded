@@ -19,8 +19,8 @@ export type EventCompletionState = 'pending' | 'complete' | 'skipped';
 
 // ── STUBS ─────────────────────────────────────────────────────────────────────
 
-/** STUB: MULTI-USER — reserved for users the Event is shared with once the MULTI-USER chapter ships. */
-export type EventSharedWithStub = null;
+/** Contact Resource ids this Event is shared with. */
+export type EventSharedWith = string[];
 
 /** STUB: MULTI-USER — reserved for additional attendee records once the MULTI-USER chapter ships. */
 export type CoAttendeesStub = null;
@@ -54,8 +54,8 @@ export interface Event {
   /** STUB: LOCATION-SHARING — reserved for captured venue/location metadata once the LOCATION-SHARING chapter is enabled. */
   location: EventLocation | null;
   note: string | null;
-  /** STUB: MULTI-USER — stores people this Event is shared with once the MULTI-USER chapter is enabled. */
-  sharedWith: EventSharedWithStub;
+  /** Contact Resource ids this Event is shared with. */
+  sharedWith: EventSharedWith;
   /** STUB: MULTI-USER — stores attendee identities beyond the owner once the MULTI-USER chapter is enabled. */
   coAttendees: CoAttendeesStub;
 }

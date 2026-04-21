@@ -6,10 +6,11 @@ type MenuRoom = 'world' | 'goal' | 'task' | 'schedule' | 'resource' | 'quickacti
 
 interface MenuOverlayProps {
   onClose: () => void;
+  onGoToDay: (dateIso: string) => void;
   initialRoom?: MenuRoom;
 }
 
-export function MenuOverlay({ onClose, initialRoom = 'quickaction' }: MenuOverlayProps) {
+export function MenuOverlay({ onClose, onGoToDay, initialRoom = 'quickaction' }: MenuOverlayProps) {
   const [activeRoom, setActiveRoom] = useState<MenuRoom>(initialRoom);
   const [navCollapsed, setNavCollapsed] = useState(false);
 
@@ -20,7 +21,7 @@ export function MenuOverlay({ onClose, initialRoom = 'quickaction' }: MenuOverla
 
   return (
     <div className="flex h-full">
-      <MenuOverlayContent activeRoom={activeRoom} onNavigate={handleNavigate} />
+      <MenuOverlayContent activeRoom={activeRoom} onNavigate={handleNavigate} onGoToDay={onGoToDay} />
       <MenuOverlayNav
         activeRoom={activeRoom}
         onNavigate={handleNavigate}
