@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { useSystemStore } from '../../../stores/useSystemStore';
+import { useSystemStore } from '../../../../../stores/useSystemStore';
 
 interface WorldMapContainerProps {
   children?: (map: L.Map) => ReactNode;
@@ -30,10 +30,11 @@ export function WorldMapContainer({ children }: WorldMapContainerProps) {
 
     const leafletMap = L.map(containerRef.current, {
       zoomControl: false,
-      attributionControl: true,
+      attributionControl: false,
     }).setView(initialCenter, initialZoom);
 
     L.control.zoom({ position: 'bottomright' }).addTo(leafletMap);
+    L.control.attribution({ prefix: false, position: 'bottomleft' }).addTo(leafletMap);
 
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '&copy; OpenStreetMap contributors',

@@ -1,4 +1,4 @@
-import { WorldView } from '../../rooms/WorldView/WorldView';
+import { WorldView } from './rooms/WorldView/WorldView';
 import { GoalRoom } from './rooms/GoalRoom/GoalRoom';
 import { TaskRoom } from './rooms/TaskRoom/TaskRoom';
 import { ScheduleRoom } from './rooms/ScheduleRoom/ScheduleRoom';

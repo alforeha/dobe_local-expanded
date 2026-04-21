@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import L from 'leaflet';
-import { useScheduleStore } from '../../../stores/useScheduleStore';
-import type { Event, QuickActionsEvent } from '../../../types';
+import { useScheduleStore } from '../../../../../stores/useScheduleStore';
+import type { Event, QuickActionsEvent } from '../../../../../types';
 
 interface EventPinMarkerProps {
   map: L.Map;
