@@ -62,7 +62,7 @@ function makeUser(xp = 0): Record<string, unknown> {
     progression: {
       stats: {
         xp, level: 1, talentPoints: 0,
-        milestones: { streakCurrent: 0, streakBest: 0, questsCompleted: 0, tasksCompleted: 0 },
+        milestones: { streakCurrent: 0, streakBest: 0, longestHonestStreak: 0, questsCompleted: 0, tasksCompleted: 0, eventsCompleted: 0 },
         talents, talentTree,
       },
       avatar:     { equippedGear: {}, slotTaxonomyRef: '', publicVisibility: null, additionalAnimations: null },

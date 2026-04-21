@@ -39,6 +39,7 @@ interface UserActions {
   addRoutineRef: (id: string) => void;
   /** Remove a PlannedEvent (Routine) UUID ref from User.lists.routineRefs */
   removeRoutineRef: (id: string) => void;
+  spendGoldForStreakSave: (cost: number) => boolean;
   reset: () => void;
 }
 
@@ -56,7 +57,7 @@ export const useUserStore = create<UserState & UserActions>()(
       ...initialState,
 
       setUser: (user) => {
-        set({ user });
+        set({ user: normalizeUser(user) });
         // TODO: MVP06 — storageSet(STORAGE_KEY_USER, user)
       },
 
@@ -256,8 +257,58 @@ export const useUserStore = create<UserState & UserActions>()(
             : {},
         ),
 
+      spendGoldForStreakSave: (cost) => {
+        let saved = false;
+        set((state) => {
+          const user = state.user ? normalizeUser(state.user) : null;
+          if (!user || user.progression.gold < cost) return {};
+
+          const milestones = user.progression.stats.milestones;
+          const restoreValue = milestones.streakSavePreviousValue ?? 0;
+          if (restoreValue <= 0 || (milestones.streakSaveMissedDays ?? 0) <= 0) return {};
+
+          saved = true;
+          return {
+            user: {
+              ...user,
+              progression: {
+                ...user.progression,
+                gold: user.progression.gold - cost,
+                stats: {
+                  ...user.progression.stats,
+                  milestones: {
+                    ...milestones,
+                    streakBoostSavedValue: restoreValue,
+                    streakSaveMissedDays: 0,
+                    streakSavePreviousValue: 0,
+                  },
+                },
+              },
+            },
+          };
+        });
+        return saved;
+      },
+
       reset: () => set(initialState),
     }),
     { name: 'cdb-user' },
   ),
 );
+
+function normalizeUser(user: User): User {
+  const milestones = user.progression.stats.milestones;
+  return {
+    ...user,
+    progression: {
+      ...user.progression,
+      stats: {
+        ...user.progression.stats,
+        milestones: {
+          ...milestones,
+          longestHonestStreak: milestones.longestHonestStreak ?? milestones.streakBest ?? 0,
+        },
+      },
+    },
+  };
+}

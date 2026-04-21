@@ -65,7 +65,11 @@ export function getXPBoostSnapshot(
 ): XPBoostSnapshot {
   const earlyBirdActive = isEarlyBirdActive();
   const lateNightActive = isLateNightActive();
-  const streak = user?.progression.stats.milestones.streakCurrent ?? 0;
+  const milestones = user?.progression.stats.milestones;
+  const streak = Math.max(
+    milestones?.streakCurrent ?? 0,
+    milestones?.streakBoostSavedValue ?? 0,
+  );
   const streakMultiplier = streak > 0 ? streak * STREAK_DAILY_STEP : 0;
   const roll = getTodayRollBoost();
   const timeMultiplier =

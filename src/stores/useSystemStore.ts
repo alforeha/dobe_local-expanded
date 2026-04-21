@@ -16,6 +16,8 @@ interface SystemState {
   settings: Settings | null;
   /** ISO date of last midnight rollover — stored device-only in LOCAL */
   lastRollover: string | null;
+  /** ISO date YYYY-MM-DD when the Welcome Day popup was last shown. */
+  lastWelcomeDayDate: string | null;
   /** ISO date of current session start */
   sessionStart: string | null;
   /**
@@ -45,6 +47,7 @@ interface SystemState {
 interface SystemActions {
   setSettings: (settings: Settings) => void;
   setLastRollover: (timestamp: string) => void;
+  setLastWelcomeDayDate: (date: string) => void;
   setSessionStart: (timestamp: string) => void;
   setRolloverStep: (step: number | null) => void;
   setThemeMode: (mode: 'light' | 'dark') => void;
@@ -63,6 +66,7 @@ interface SystemActions {
 const initialState: SystemState = {
   settings: null,
   lastRollover: null,
+  lastWelcomeDayDate: null,
   sessionStart: null,
   rolloverStep: null,
   onboardingComplete: null,
@@ -104,6 +108,8 @@ export const useSystemStore = create<SystemState & SystemActions>()(
       },
 
       setLastRollover: (lastRollover) => set({ lastRollover }),
+
+      setLastWelcomeDayDate: (lastWelcomeDayDate) => set({ lastWelcomeDayDate }),
 
       setSessionStart: (sessionStart) => set({ sessionStart }),
 

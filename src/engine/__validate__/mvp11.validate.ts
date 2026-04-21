@@ -77,7 +77,7 @@ function makeDefaultUser(): Record<string, unknown> {
       stats: {
         xp: 0, level: 1, talentPoints: 0,
         milestones: {
-          streakCurrent: 0, streakBest: 0,
+          streakCurrent: 0, streakBest: 0, longestHonestStreak: 0,
           questsCompleted: 0, tasksCompleted: 0, eventsCompleted: 0,
         },
         talents: {
@@ -874,7 +874,7 @@ async function main(): Promise<void> {
       stats: {
         xp: 0, level: 1, talentPoints: 0,
         milestones: {
-          streakCurrent: 30, streakBest: 30,
+          streakCurrent: 30, streakBest: 30, longestHonestStreak: 30,
           questsCompleted: 5, tasksCompleted: 40, eventsCompleted: 20,
         },
         talents: {

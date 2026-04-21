@@ -4,7 +4,7 @@ import { useSystemStore } from '../../stores/useSystemStore';
 import { useScheduleStore } from '../../stores/useScheduleStore';
 import { useUserStore } from '../../stores/useUserStore';
 import { useResourceStore } from '../../stores/useResourceStore';
-import { localISODate, formatHHMM } from '../../utils/dateUtils';
+import { localISODate, formatHHMM, getAppDate } from '../../utils/dateUtils';
 import { checkAndRunRolloverOnBoot } from '../../engine/rollover';
 import { Header } from './Header';
 import { Body } from './Body';
@@ -15,6 +15,7 @@ import { EventOverlay } from '../overlays/event/EventOverlay';
 import { CoachOverlay } from '../overlays/coach/CoachOverlay';
 import { ProfileOverlay } from '../overlays/profile/ProfileOverlay';
 import { MenuOverlay } from '../overlays/menu/MenuOverlay';
+import { WelcomeDayPopup } from '../overlays/WelcomeDayPopup/WelcomeDayPopup';
 import { OneOffEventPopup } from '../overlays/menu/rooms/ScheduleRoom/OneOffEventPopup';
 import {
   seedStarterContent,
@@ -28,7 +29,7 @@ import { createDefaultTalentTrees, type User } from '../../types/user';
 import type { Event, InventoryResource, Task } from '../../types';
 import type { TimeView } from '../timeViews/TimeViewContainer';
 
-export type ActiveOverlay = 'event' | 'coach' | 'profile' | 'menu' | null;
+export type ActiveOverlay = 'event' | 'coach' | 'profile' | 'menu' | 'welcomeDay' | null;
 
 // ── DEFAULT USER FACTORY ──────────────────────────────────────────────────────
 
@@ -56,6 +57,7 @@ function makeDefaultUser(): User {
         milestones: {
           streakCurrent: 0,
           streakBest: 0,
+          longestHonestStreak: 0,
           questsCompleted: 0,
           tasksCompleted: 0,
           eventsCompleted: 0,
@@ -145,6 +147,7 @@ export function AppShell() {
   const [isBooted, setIsBooted] = useState(!showWelcome);
   const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const timeViewVisitRef = useRef({ week: false, explorer: false, completed: false });
+  const welcomeDayTriggeringRef = useRef(false);
 
   const mode = useSystemStore((s) => s.settings?.displayPreferences?.mode ?? 'dark');
   const plannedEvents = useScheduleStore((s) => s.plannedEvents);
@@ -154,11 +157,37 @@ export function AppShell() {
   // Order matters: setAppDateTime must run before checkAndRunRolloverOnBoot so
   // that getAppDate() in rollover.ts reads the correct local date, not null.
   useEffect(() => {
+    const showWelcomeDayForDate = (date: string) => {
+      const systemStore = useSystemStore.getState();
+      if (systemStore.lastWelcomeDayDate === date || welcomeDayTriggeringRef.current) return;
+      welcomeDayTriggeringRef.current = true;
+      systemStore.setLastWelcomeDayDate(date);
+      setOverlay('welcomeDay');
+      queueMicrotask(() => {
+        welcomeDayTriggeringRef.current = false;
+      });
+    };
+
+    const handleRolloverComplete = (event: globalThis.Event) => {
+      const detail = (event as CustomEvent<{ date?: string }>).detail;
+      showWelcomeDayForDate(detail?.date ?? getAppDate());
+    };
+
+    window.addEventListener('cdb:rollover-complete', handleRolloverComplete);
+
     const now = new Date();
     useSystemStore.getState().setAppDateTime(localISODate(now), formatHHMM(now));
-    checkAndRunRolloverOnBoot().catch((err) => {
-      console.error('[AppShell] rollover on boot failed:', err);
-    });
+    checkAndRunRolloverOnBoot()
+      .catch((err) => {
+        console.error('[AppShell] rollover on boot failed:', err);
+      })
+      .finally(() => {
+        showWelcomeDayForDate(getAppDate());
+      });
+
+    return () => {
+      window.removeEventListener('cdb:rollover-complete', handleRolloverComplete);
+    };
   }, []);
 
   // Apply theme on change
@@ -394,6 +423,11 @@ export function AppShell() {
             }}
             initialRoom={menuInitialRoom}
           />
+        </SlideUpOverlay>
+      )}
+      {overlay === 'welcomeDay' && (
+        <SlideUpOverlay closing={overlayClosing} onBackdropClick={requestClose}>
+          <WelcomeDayPopup onClose={requestClose} />
         </SlideUpOverlay>
       )}
 

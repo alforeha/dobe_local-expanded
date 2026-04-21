@@ -113,6 +113,7 @@ export async function seedTestDataset(): Promise<TestDatasetResult> {
         milestones: {
           streakCurrent: 28,
           streakBest: 30,
+          longestHonestStreak: 30,
           questsCompleted: 6,
           tasksCompleted: 60,
           eventsCompleted: 20,

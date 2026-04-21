@@ -26,6 +26,14 @@ export type Talents = Record<StatGroupKey, TalentGroupStats>;
 export interface UserMilestones {
   streakCurrent: number;  // login-based
   streakBest: number;
+  /** Best naturally earned streak. Gold saves must not increase this value. */
+  longestHonestStreak: number;
+  /** Number of missed days currently eligible for a gold streak save. */
+  streakSaveMissedDays?: number;
+  /** Saved streak boost value restored by gold without changing streakCurrent. */
+  streakBoostSavedValue?: number;
+  /** Previous streak value available to restore after a break. */
+  streakSavePreviousValue?: number;
   questsCompleted: number;
   tasksCompleted: number;
   eventsCompleted: number;

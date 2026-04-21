@@ -425,7 +425,24 @@ async function step9_coachReview(newDate: string): Promise<void> {
     if (!hasExistingQa) {
       const current = user.progression.stats.milestones.streakCurrent;
       const nextStreak = loggedInPreviousDay ? current + 1 : 0;
+      const currentSavedBoost = user.progression.stats.milestones.streakBoostSavedValue ?? 0;
+      const nextSavedBoost = loggedInPreviousDay && currentSavedBoost > 0
+        ? currentSavedBoost + 1
+        : currentSavedBoost;
       const bestStreak = Math.max(user.progression.stats.milestones.streakBest, nextStreak);
+      const longestHonestStreak = loggedInPreviousDay
+        ? Math.max(user.progression.stats.milestones.longestHonestStreak ?? 0, nextStreak)
+        : (user.progression.stats.milestones.longestHonestStreak ?? 0);
+      const previousSaveValue =
+        user.progression.stats.milestones.streakSavePreviousValue ??
+        currentSavedBoost ??
+        0;
+      const savePreviousValue = loggedInPreviousDay ? 0 : Math.max(current, previousSaveValue);
+      const saveMissedDays = loggedInPreviousDay
+        ? 0
+        : savePreviousValue > 0
+          ? (user.progression.stats.milestones.streakSaveMissedDays ?? 0) + 1
+          : 0;
       userStore.setUser({
         ...user,
         progression: {
@@ -436,6 +453,10 @@ async function step9_coachReview(newDate: string): Promise<void> {
               ...user.progression.stats.milestones,
               streakCurrent: nextStreak,
               streakBest: bestStreak,
+              longestHonestStreak,
+              streakBoostSavedValue: loggedInPreviousDay ? nextSavedBoost : currentSavedBoost,
+              streakSavePreviousValue: savePreviousValue,
+              streakSaveMissedDays: saveMissedDays,
             },
           },
         },
@@ -599,6 +620,9 @@ export async function executeRollover(
   // Mark rollover complete
   systemStore.setLastRollover(rolloverDate);
   systemStore.setRolloverStep(null);
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('cdb:rollover-complete', { detail: { date: rolloverDate } }));
+  }
 }
 
 // ── BOOT CHECK ────────────────────────────────────────────────────────────────
