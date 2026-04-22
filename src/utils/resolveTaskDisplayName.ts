@@ -1,5 +1,7 @@
 import type { Task } from '../types/task';
 import type { TaskTemplate } from '../types/taskTemplate';
+import { taskTemplateLibrary } from '../coach';
+import { resolveTaskTemplate } from './resolveTaskTemplate';
 
 export function resolveTaskDisplayName(
   task: Task,
@@ -10,11 +12,10 @@ export function resolveTaskDisplayName(
     return task.title ?? 'Unnamed task';
   }
 
-  const template = task.templateRef ? templates[task.templateRef] : null;
+  const template = task.templateRef
+    ? resolveTaskTemplate(task.templateRef, templates, starterTemplates, taskTemplateLibrary)
+    : undefined;
   if (template) return template.name;
-
-  const starterTemplate = starterTemplates.find((template) => template.id === task.templateRef);
-  if (starterTemplate) return starterTemplate.name;
 
   return 'Unknown task';
 }

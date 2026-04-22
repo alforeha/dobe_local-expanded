@@ -5,8 +5,7 @@
 //
 // Exports:
 //   starterQuestLibrary — { acts: Act[], taskTemplates: TaskTemplate[] }
-//   seedStarterContent() — writes Acts to progressionStore,
-//                          templates to scheduleStore.taskTemplates
+//   seedStarterContent() — writes Acts to progressionStore
 //
 // Seeding triggered by W30 first-run flow. Export is the handoff point.
 // ─────────────────────────────────────────
@@ -27,8 +26,6 @@ import type { QuestExigency } from '../types/quest/exigency';
 import type { TaskTemplate, XpAward, TaskSecondaryTag, RecurrenceRule } from '../types/taskTemplate';
 import { normalizeTaskTemplateIconKey } from '../constants/iconMap';
 import { useProgressionStore } from '../stores/useProgressionStore';
-import { useScheduleStore } from '../stores/useScheduleStore';
-import { taskTemplateLibrary } from '.';
 
 // ── STABLE ACT IDs ────────────────────────────────────────────────────────────
 // Fixed UUIDs so seeding is idempotent — re-seeding won't duplicate Acts.
@@ -1078,53 +1075,6 @@ export const starterTaskTemplateIds: string[] = [
 /**
  * Coach's day-one template push into scheduleStore.
  * Includes the system onboarding task refs plus curated general templates that now
- * live in TaskTemplateLibrary.json.
- */
-export const starterSeedTemplateIds: string[] = [
-  // Coach curated day-one picks
-  STARTER_TEMPLATE_IDS.drinkWater,
-  STARTER_TEMPLATE_IDS.meditation,
-  STARTER_TEMPLATE_IDS.logEntry,
-  STARTER_TEMPLATE_IDS.moodLog,
-  STARTER_TEMPLATE_IDS.walkRoute,
-  STARTER_TEMPLATE_IDS.chore,
-  STARTER_TEMPLATE_IDS.clearInbox,
-  STARTER_TEMPLATE_IDS.bodyLog,
-  STARTER_TEMPLATE_IDS.mealLog,
-  STARTER_TEMPLATE_IDS.studySession,
-];
-
-/**
- * Seed the coach's starter template set into scheduleStore.taskTemplates.
- * Merges taskTemplateLibrary (prebuilts) + starterTaskTemplates (quest-specific),
- * then writes only IDs in starterSeedTemplateIds.
- * Idempotent — setTaskTemplate is a simple upsert.
- */
-export function seedStarterTemplates(): void {
-  const scheduleStore = useScheduleStore.getState();
-  const idSet = new Set(starterSeedTemplateIds);
-
-  // Build lookup from both sources; library wins on duplicates
-  const allTemplates = new Map<string, TaskTemplate>();
-  for (const t of starterTaskTemplates) {
-    if (t.id) allTemplates.set(t.id, t);
-  }
-  for (const t of taskTemplateLibrary) {
-    if (t.id) allTemplates.set(t.id, t);
-  }
-
-  for (const [id, template] of allTemplates) {
-    if (idSet.has(id)) {
-      if (template.isSystem === true) continue; // system templates stay in coach bundle only
-      scheduleStore.setTaskTemplate(id, {
-        ...template,
-        isCustom: false,
-        isSystem: false,
-      });
-    }
-  }
-}
-
 // ── SEED FUNCTION ─────────────────────────────────────────────────────────────
 
 /**

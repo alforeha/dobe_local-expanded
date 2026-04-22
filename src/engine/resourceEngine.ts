@@ -28,8 +28,7 @@ import type {
 import { normalizeRecurrenceMode } from '../types/resource';
 import type { PlannedEvent } from '../types/plannedEvent';
 import type { Task } from '../types/task';
-import type { TaskTemplate } from '../types/taskTemplate';
-import type { InputFields, XpAward } from '../types/taskTemplate';
+import type { XpAward } from '../types/taskTemplate';
 import type { StatGroupKey, User } from '../types/user';
 import { getAppDate, getAppNowISO } from '../utils/dateUtils';
 import type { QuickActionsEvent } from '../types/event';
@@ -44,10 +43,12 @@ import { checkAchievements } from '../coach/checkAchievements';
 import { awardBadge } from '../coach/rewardPipeline';
 import { pushRibbet } from '../coach/ribbet';
 import { starterTaskTemplates, STARTER_ACT_IDS, STARTER_TEMPLATE_IDS } from '../coach/StarterQuestLibrary';
+import { taskTemplateLibrary } from '../coach';
 import { getItemTemplateByRef } from '../coach/ItemLibrary';
 import { isWisdomTemplate } from './xpBoosts';
 import { evaluateQuestSpecific, updateQuestProgress } from './questEngine';
 import { getUserInventoryItemTemplates, resolveInventoryItemTemplate } from '../utils/inventoryItems';
+import { resolveTaskTemplate } from '../utils/resolveTaskTemplate';
 
 const STAT_GROUP_KEYS: StatGroupKey[] = ['health', 'strength', 'agility', 'defense', 'charisma', 'wisdom'];
 
@@ -120,11 +121,12 @@ function isRecurringInventoryTask(task: { recurrenceMode?: 'recurring' | 'never'
 
 function resolveTaskTemplateName(taskTemplateRef: string): string {
   const scheduleStore = useScheduleStore.getState();
-  return (
-    scheduleStore.taskTemplates[taskTemplateRef]?.name ??
-    starterTaskTemplates.find((template) => template.id === taskTemplateRef)?.name ??
-    taskTemplateRef
-  );
+  return resolveTaskTemplate(
+    taskTemplateRef,
+    scheduleStore.taskTemplates,
+    starterTaskTemplates,
+    taskTemplateLibrary,
+  )?.name ?? taskTemplateRef;
 }
 
 function buildPendingTask(
@@ -209,107 +211,6 @@ function autoCompleteSystemTaskInternal(templateRef: string, skipOnboardingBackf
   if (!skipOnboardingBackfill) {
     syncOnboardingBackfill();
   }
-}
-
-const RESOURCE_TEMPLATE_LIBRARY: Partial<Record<Resource['type'], TaskTemplate>> = {
-  contact: {
-    id: 'task-res-contacts-birthday',
-    isCustom: false,
-    isSystem: true,
-    name: 'Wish Happy Birthday',
-    description: 'Wish someone a happy birthday.',
-    icon: 'check',
-    taskType: 'CHECK',
-    inputFields: { label: 'Wish happy birthday' },
-    xpAward: { health: 0, strength: 0, agility: 0, defense: 0, charisma: 5, wisdom: 0 },
-    cooldown: null,
-    media: null,
-    items: [],
-    secondaryTag: 'social',
-  },
-  home: {
-    id: 'task-res-homes-chore',
-    isCustom: false,
-    isSystem: true,
-    name: 'Complete Home Chore',
-    description: 'Complete a home chore.',
-    icon: 'check',
-    taskType: 'CHECK',
-    inputFields: { label: 'Complete home chore' },
-    xpAward: { health: 0, strength: 0, agility: 5, defense: 0, charisma: 0, wisdom: 0 },
-    cooldown: null,
-    media: null,
-    items: [],
-    secondaryTag: 'home',
-  },
-  vehicle: {
-    id: 'task-res-vehicles-maintenance',
-    isCustom: false,
-    isSystem: true,
-    name: 'Vehicle Maintenance',
-    description: 'Inspect, service, and log vehicle maintenance.',
-    icon: 'checklist',
-    taskType: 'CHECKLIST',
-    inputFields: {
-      items: [
-        { key: 'check', label: 'Inspect item' },
-        { key: 'service', label: 'Complete service' },
-        { key: 'log', label: 'Log in vehicle record' },
-      ],
-    },
-    xpAward: { health: 0, strength: 5, agility: 0, defense: 0, charisma: 0, wisdom: 0 },
-    cooldown: null,
-    media: null,
-    items: [],
-    secondaryTag: 'home',
-  },
-  account: {
-    id: 'task-res-accounts-transaction',
-    isCustom: false,
-    isSystem: true,
-    name: 'Account Transaction',
-    description: 'Log an account transaction.',
-    icon: 'log',
-    taskType: 'LOG',
-    inputFields: { prompt: 'Transaction details — amount, category, notes' },
-    xpAward: { health: 0, strength: 0, agility: 0, defense: 5, charisma: 0, wisdom: 0 },
-    cooldown: null,
-    media: null,
-    items: [],
-    secondaryTag: 'finance',
-  },
-  inventory: {
-    id: 'task-res-inventory-replenish',
-    isCustom: false,
-    isSystem: true,
-    name: 'Replenish Item',
-    description: 'Replenish an inventory item.',
-    icon: 'check',
-    taskType: 'CHECK',
-    inputFields: { label: 'Replenish item' },
-    xpAward: { health: 0, strength: 0, agility: 0, defense: 0, charisma: 0, wisdom: 5 },
-    cooldown: null,
-    media: null,
-    items: [],
-    secondaryTag: 'home',
-  },
-};
-
-function seedResourceTemplateForType(resourceType: Resource['type']): TaskTemplate | null {
-  const template = RESOURCE_TEMPLATE_LIBRARY[resourceType] ?? null;
-  if (!template?.id) return null;
-
-  const scheduleStore = useScheduleStore.getState();
-  const existing = scheduleStore.taskTemplates[template.id];
-  if (existing) return existing;
-
-  scheduleStore.setTaskTemplate(template.id, template);
-  return template;
-}
-
-export function seedResourceTemplateForResource(resource: Resource): void {
-  if (resource.type === 'doc') return;
-  seedResourceTemplateForType(resource.type);
 }
 
 function isOnboardingQuestTemplate(templateRef: string): boolean {
@@ -521,74 +422,6 @@ function clearPendingResourceTasks(templateRef: string, resourceRef: string): vo
   });
 }
 
-/**
- * Build a minimal inline TaskTemplate for resource-generated tasks.
- * Stored under a deterministic key in useScheduleStore.taskTemplates.
- */
-function ensureTemplate(
-  key: string,
-  name: string,
-  taskType: TaskTemplate['taskType'],
-  xpAward: Partial<TaskTemplate['xpAward']>,
-  inputFields?: InputFields,
-): TaskTemplate {
-  const scheduleStore = useScheduleStore.getState();
-  const existing = scheduleStore.taskTemplates[key];
-  if (existing) {
-    if (inputFields) {
-      const updated = {
-        ...existing,
-        name,
-        taskType,
-        inputFields,
-        xpAward: {
-          ...existing.xpAward,
-          defense: xpAward.defense ?? existing.xpAward.defense,
-          charisma: xpAward.charisma ?? existing.xpAward.charisma,
-          wisdom: xpAward.wisdom ?? existing.xpAward.wisdom,
-        },
-      };
-      scheduleStore.setTaskTemplate(key, updated);
-      return updated;
-    }
-    return existing;
-  }
-
-  const template: TaskTemplate = {
-    name,
-    description: '',
-    icon: 'resource-task',
-    isSystem: true,   // hide from Stat Tasks tab — resource templates are internal
-    taskType,
-    inputFields: inputFields ?? (
-      taskType === 'CHECK'
-        ? { label: name }
-        : taskType === 'COUNTER'
-          ? { target: 1, unit: 'unit', step: 1 }
-          : taskType === 'LOG'
-            ? { prompt: name }
-            : taskType === 'CHECKLIST'
-              ? { items: [] }
-              : { label: name }
-    ),
-    xpAward: {
-      health: 0,
-      strength: 0,
-      agility: 0,
-      defense: xpAward.defense ?? 5,
-      charisma: xpAward.charisma ?? 0,
-      wisdom: xpAward.wisdom ?? 0,
-    },
-    cooldown: null,
-    media: null,
-    items: [],
-    secondaryTag: null,
-  };
-
-  scheduleStore.setTaskTemplate(key, template);
-  return template;
-}
-
 // ── GENERATE SCHEDULED TASKS ──────────────────────────────────────────────────
 
 /**
@@ -629,7 +462,6 @@ export function generateScheduledTasks(_resource: Resource): PlannedEvent[] {
  * @returns Array of Task objects created
  */
 export function generateGTDItems(resource: Resource): Task[] {
-  seedResourceTemplateForResource(resource);
   const created: Task[] = [];
 
   switch (resource.type) {
@@ -688,7 +520,7 @@ function _genContactGTD(resource: ContactResource): Task[] {
   const days = daysUntilAnnual(resource.birthday);
   if (days === null || days > lead) return [];
 
-  const templateKey = seedResourceTemplateForType('contact')?.id ?? 'task-res-contacts-birthday';
+  const templateKey = 'task-res-contacts-birthday';
 
   const task: Task = {
     id: uuidv4(),
@@ -713,17 +545,6 @@ function _genAccountGTD(resource: AccountResource): Task[] {
   for (const task of resource.accountTasks ?? []) {
     if (task.kind === 'transaction-log') {
       const templateKey = `resource-task:${resource.id}:account-task:${task.id}:transaction-log`;
-      ensureTemplate(
-        templateKey,
-        `${resource.name} - Transaction Log`,
-        'LOG',
-        { defense: 5, wisdom: 2 },
-        {
-          prompt: 'Log the transaction details for this account.',
-          resourceRef: resource.id,
-          unit: '$',
-        },
-      );
       clearPendingResourceTasks(templateKey, resource.id);
       continue;
     }
@@ -744,14 +565,13 @@ function _genAccountGTD(resource: AccountResource): Task[] {
       continue;
     }
 
-    ensureTemplate(templateKey, `${resource.name} - ${task.name}`, 'CHECK', { defense: 5 });
     tasks.push(buildResourceReminderTask(resource.id, templateKey));
   }
 
   // Pending transactions
   const pendingOnes = (resource.pendingTransactions ?? []).filter((t) => t.status === 'pending');
   if (pendingOnes.length > 0) {
-    const templateKey = seedResourceTemplateForType('account')?.id ?? 'task-res-accounts-transaction';
+    const templateKey = 'task-res-accounts-transaction';
     for (const _ of pendingOnes) {
       void _;
       tasks.push({
@@ -780,7 +600,7 @@ function _genAccountGTD(resource: AccountResource): Task[] {
         ? `Payment due: ${resource.institution}`
         : `Payment due: ${resource.name}`;
       const templateKey = `resource-task:${resource.id}:payment-due`;
-      ensureTemplate(templateKey, label, 'CHECK', { defense: 8 });
+      void label;
       tasks.push(buildPendingTask(templateKey, resource.id));
     }
   }
@@ -796,7 +616,7 @@ function _genInventoryGTD(resource: InventoryResource): Task[] {
       item.quantity != null &&
       item.quantity <= item.threshold,
   );
-  const templateKey = seedResourceTemplateForType('inventory')?.id ?? 'task-res-inventory-replenish';
+  const templateKey = 'task-res-inventory-replenish';
   const tasks: Task[] = lowStock.map((item) => ({
     ...buildPendingTask(templateKey, resource.id, {
       itemName: findItemTemplate(item.itemTemplateRef)?.name ?? item.itemTemplateRef,
@@ -819,12 +639,7 @@ function _genInventoryGTD(resource: InventoryResource): Task[] {
 
       const taskTemplateRef = recurringTask.taskTemplateRef;
       const reminderTemplateKey = `resource-task:${resource.id}:inventory:${item.id}:${recurringTask.id}`;
-      ensureTemplate(
-        reminderTemplateKey,
-        `${itemTemplate.name} - ${resolveTaskTemplateName(taskTemplateRef)}`,
-        'CHECK',
-        { defense: 5, wisdom: 3 },
-      );
+      void taskTemplateRef;
       tasks.push(buildResourceReminderTask(resource.id, reminderTemplateKey));
     }
   }
@@ -913,7 +728,7 @@ function _buildLowStockTasks(
   containerName: string,
   roomName?: string,
 ): Task[] {
-  const templateKey = seedResourceTemplateForType('inventory')?.id ?? 'task-res-inventory-replenish';
+  const templateKey = 'task-res-inventory-replenish';
   return items
     .filter((item) => item.threshold != null && item.quantity != null && item.quantity <= item.threshold)
     .map((item) => {
@@ -945,7 +760,6 @@ function _genHomeGTD(resource: HomeResource): Task[] {
     if (next.days < 0 || next.days > reminderLeadDays) continue;
 
     const templateKey = `resource-task:${resource.id}:chore:${chore.id}`;
-    ensureTemplate(templateKey, `${resource.name} - ${chore.name}`, 'CHECK', { agility: 5 });
     tasks.push(buildResourceReminderTask(resource.id, templateKey));
   }
 
@@ -961,12 +775,6 @@ function _genVehicleGTD(resource: VehicleResource): Task[] {
     const d = daysUntilDate(resource.insuranceExpiry);
     if (insuranceLead !== -1 && d !== null && d >= 0 && d <= insuranceLead) {
       const templateKey = `resource-task:${resource.id}:insurance`;
-      ensureTemplate(
-        templateKey,
-        `${resource.name} — Insurance Renewal`,
-        'CHECK',
-        { defense: 10 },
-      );
       tasks.push({
         id: uuidv4(),
         templateRef: templateKey,
@@ -989,12 +797,6 @@ function _genVehicleGTD(resource: VehicleResource): Task[] {
     const d = daysUntilDate(resource.serviceNextDate);
     if (serviceLead !== -1 && d !== null && d >= 0 && d <= serviceLead) {
       const templateKey = `resource-task:${resource.id}:service`;
-      ensureTemplate(
-        templateKey,
-        `${resource.name} — Service Due`,
-        'CHECK',
-        { defense: 8 },
-      );
       tasks.push({
         ...buildResourceReminderTask(resource.id, templateKey),
       });
@@ -1004,19 +806,6 @@ function _genVehicleGTD(resource: VehicleResource): Task[] {
   for (const task of resource.maintenanceTasks ?? []) {
     if (task.kind === 'mileage-log') {
       const templateKey = `resource-task:${resource.id}:maintenance:${task.id}:mileage-log`;
-      ensureTemplate(
-        templateKey,
-        `${resource.name} - Mileage Log`,
-        'LOG',
-        { defense: 8, wisdom: 2 },
-        {
-          prompt: 'Log the latest odometer reading or add the miles from your last drive.',
-          logKind: 'vehicle-mileage',
-          currentValue: resource.mileage ?? 0,
-          resourceRef: resource.id,
-          unit: 'mi',
-        },
-      );
       clearPendingResourceTasks(templateKey, resource.id);
       continue;
     }
@@ -1037,7 +826,6 @@ function _genVehicleGTD(resource: VehicleResource): Task[] {
       continue;
     }
 
-    ensureTemplate(templateKey, `${resource.name} - ${task.name}`, 'CHECK', { defense: 8 });
     tasks.push(buildResourceReminderTask(resource.id, templateKey));
   }
 
@@ -1056,7 +844,6 @@ function _genDocGTD(resource: DocResource): Task[] {
   if (d === null || d < 0 || d > lead) return [];
 
   const templateKey = `resource-task:${resource.id}:expiry`;
-  ensureTemplate(templateKey, `${resource.name} — Expiry`, 'CHECK', { defense: 8 });
 
   return [{
     id: uuidv4(),
@@ -1151,7 +938,7 @@ export function dismissGTDItem(itemId: string, user: User): void {
 export function completeGTDItem(
   itemId: string,
   user: User,
-  resultFields: Partial<InputFields> = {},
+  resultFields: Task['resultFields'] = {},
 ): void {
   const scheduleStore = useScheduleStore.getState();
   const userStore = useUserStore.getState();

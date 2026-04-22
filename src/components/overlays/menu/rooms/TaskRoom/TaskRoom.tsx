@@ -27,10 +27,8 @@ export function TaskRoom({ onGoToResource }: TaskRoomProps) {
     autoCompleteSystemTask('task-sys-explore-task-room');
   }, []);
 
-  // Filter out system/onboarding tasks and resource-derived templates.
-  // Resource templates use the 'resource-task:' key prefix (written by ensureTemplate()
-  // in resourceEngine) — exclude them regardless of isSystem flag so that templates
-  // persisted before the isSystem flag was added are also hidden.
+  // Filter out system/onboarding tasks and legacy resource-derived template refs.
+  // Resource task refs use the 'resource-task:' prefix and should stay hidden.
   const filtered: [string, TaskTemplate, boolean][] =
     tab === 'stat'
       ? Object.entries(taskTemplates)

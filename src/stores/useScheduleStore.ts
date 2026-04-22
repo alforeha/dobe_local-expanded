@@ -8,7 +8,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { PlannedEvent, Event, QuickActionsEvent, Task, TaskTemplate } from '../types';
-import { taskTemplateLibrary } from '../coach';
 import { isTemplateQuestLocked } from '../utils/isTemplateQuestLocked';
 
 // ── STATE ─────────────────────────────────────────────────────────────────────
@@ -55,38 +54,49 @@ const initialState: ScheduleState = {
   taskTemplates: {},
 };
 
-const bundledTemplateById = new Map(
-  taskTemplateLibrary
-    .filter((template): template is TaskTemplate & { id: string } => Boolean(template.id))
-    .map((template) => [template.id, template]),
-);
+const UUID_V4_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-function refreshBundledTaskTemplates(taskTemplates: Record<string, TaskTemplate>): Record<string, TaskTemplate> {
+function stripLibraryTaskTemplates(taskTemplates: Record<string, TaskTemplate> | undefined): {
+  taskTemplates: Record<string, TaskTemplate>;
+  changed: boolean;
+} {
   const next: Record<string, TaskTemplate> = {};
+  let changed = false;
 
-  for (const [key, template] of Object.entries(taskTemplates)) {
-    const bundled = bundledTemplateById.get(key);
-    next[key] = bundled
-      ? {
-          ...template,
-          name: bundled.name,
-          description: bundled.description,
-          icon: bundled.icon,
-          taskType: bundled.taskType,
-          secondaryTag: bundled.secondaryTag,
-          inputFields: bundled.inputFields,
-          xpAward: bundled.xpAward,
-          cooldown: bundled.cooldown,
-          media: bundled.media,
-          items: bundled.items,
-          isCustom: bundled.isCustom,
-          isSystem: bundled.isSystem,
-          xpBonus: bundled.xpBonus,
-        }
-      : template;
+  for (const [key, template] of Object.entries(taskTemplates ?? {})) {
+    const isUuidKey = UUID_V4_PATTERN.test(key);
+    const isTrustedUserTemplate = isUuidKey && template.isCustom === true;
+
+    if (!isTrustedUserTemplate) {
+      changed = true;
+      continue;
+    }
+
+    next[key] = template;
   }
 
-  return next;
+  return { taskTemplates: next, changed };
+}
+
+function persistCleanedScheduleState(state: Partial<ScheduleState & ScheduleActions>): void {
+  if (typeof window === 'undefined' || !window.localStorage) return;
+
+  const raw = window.localStorage.getItem('cdb-schedule');
+  if (!raw) return;
+
+  try {
+    const parsed = JSON.parse(raw) as { state?: Record<string, unknown>; version?: number };
+    const next = {
+      ...parsed,
+      state: {
+        ...(parsed.state ?? {}),
+        ...state,
+      },
+    };
+    window.localStorage.setItem('cdb-schedule', JSON.stringify(next));
+  } catch (error) {
+    console.warn('[scheduleStore] failed to persist cleaned taskTemplates during hydration', error);
+  }
 }
 
 function normalizeEventSharedWith(event: Event | QuickActionsEvent): Event | QuickActionsEvent {
@@ -201,6 +211,17 @@ export const useScheduleStore = create<ScheduleState & ScheduleActions>()(
       name: 'cdb-schedule',
       merge: (persistedState, currentState) => {
         const persisted = (persistedState as Partial<ScheduleState & ScheduleActions>) ?? {};
+        const stripped = stripLibraryTaskTemplates(
+          (persisted.taskTemplates as Record<string, TaskTemplate> | undefined) ?? currentState.taskTemplates,
+        );
+
+        if (stripped.changed) {
+          persistCleanedScheduleState({
+            ...persisted,
+            taskTemplates: stripped.taskTemplates,
+          });
+        }
+
         return {
           ...currentState,
           ...persisted,
@@ -212,9 +233,7 @@ export const useScheduleStore = create<ScheduleState & ScheduleActions>()(
             (persisted.historyEvents as Record<string, Event | QuickActionsEvent> | undefined) ??
               currentState.historyEvents,
           ),
-          taskTemplates: refreshBundledTaskTemplates(
-            (persisted.taskTemplates as Record<string, TaskTemplate> | undefined) ?? currentState.taskTemplates,
-          ),
+          taskTemplates: stripped.taskTemplates,
         };
       },
     },
