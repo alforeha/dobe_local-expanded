@@ -3,12 +3,17 @@ export interface WeatherSummaryDay {
   icon: string;
   high: number;
   low: number;
+  /** Actual total precipitation in mm (recorded for past days, forecast for current/future) */
+  precipitation?: number;
 }
 
 export interface WeatherDay extends WeatherSummaryDay {
   uvIndex: number;
   windSpeed: number;
+  /** Forecast precipitation probability (%) */
   precipitationChance: number;
+  /** Total precipitation in mm */
+  precipitation: number;
   humidity: number;
   sunrise: string;
   sunset: string;
@@ -22,6 +27,7 @@ interface OpenMeteoDaily {
   uv_index_max: number[];
   wind_speed_10m_max: number[];
   precipitation_probability_max: number[];
+  precipitation_sum: number[];
   relative_humidity_2m_mean: number[];
   sunrise: string[];
   sunset: string[];
@@ -71,7 +77,15 @@ export async function fetchWeatherSummaryForDate(
   lng: number,
   dateISO: string,
 ): Promise<WeatherSummaryDay | null> {
-  const forecast = await fetchWeatherForecast(lat, lng, 1);
+  // Open-Meteo forecast starts from real today. Calculate how many days we need
+  // to reach dateISO — e.g. tomorrow's rollover requires days=2, not days=1.
+  const realToday = new Date();
+  realToday.setHours(0, 0, 0, 0);
+  const target = new Date(dateISO + 'T00:00:00');
+  const daysFromToday = Math.round((target.getTime() - realToday.getTime()) / 86_400_000);
+  const daysNeeded = Math.min(Math.max(1, daysFromToday + 1), 16);
+
+  const forecast = await fetchWeatherForecast(lat, lng, daysNeeded);
   const day = forecast.find((entry) => entry.date === dateISO) ?? null;
   if (!day) return null;
 
@@ -80,6 +94,7 @@ export async function fetchWeatherSummaryForDate(
     icon: day.icon,
     high: day.high,
     low: day.low,
+    precipitation: day.precipitation,
   };
 }
 
@@ -98,6 +113,7 @@ export async function fetchWeatherForecast(
       'uv_index_max',
       'wind_speed_10m_max',
       'precipitation_probability_max',
+      'precipitation_sum',
       'relative_humidity_2m_mean',
       'sunrise',
       'sunset',
@@ -125,6 +141,7 @@ export async function fetchWeatherForecast(
     uvIndex: Math.round((daily.uv_index_max[index] ?? 0) * 10) / 10,
     windSpeed: Math.round(daily.wind_speed_10m_max[index] ?? 0),
     precipitationChance: Math.round(daily.precipitation_probability_max[index] ?? 0),
+    precipitation: Math.round((daily.precipitation_sum[index] ?? 0) * 10) / 10,
     humidity: Math.round(daily.relative_humidity_2m_mean[index] ?? 0),
     sunrise: daily.sunrise[index] ?? '',
     sunset: daily.sunset[index] ?? '',

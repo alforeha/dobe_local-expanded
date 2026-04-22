@@ -4,7 +4,6 @@ import { useResourceStore } from '../../../stores/useResourceStore';
 import { useAppDate } from '../../../utils/useAppDate';
 import { format } from '../../../utils/dateUtils';
 import { getResourceIndicatorsForDate } from '../../../utils/resourceSchedule';
-import { LocationSwitcher } from '../../weather/LocationSwitcher';
 import type { WeatherSummaryDay } from '../../../utils/weatherService';
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -107,7 +106,6 @@ export function DayViewHeader({ date, weather, hasLocation, weatherLoading, onWe
               )}
             </button>
           )}
-          <LocationSwitcher />
         </div>
       </div>
 

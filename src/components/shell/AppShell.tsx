@@ -6,6 +6,7 @@ import { useUserStore } from '../../stores/useUserStore';
 import { useResourceStore } from '../../stores/useResourceStore';
 import { localISODate, formatHHMM, getAppDate } from '../../utils/dateUtils';
 import { checkAndRunRolloverOnBoot } from '../../engine/rollover';
+import { useWeatherSnapshotSync } from '../../hooks/useWeatherSnapshotSync';
 import { Header } from './Header';
 import { Body } from './Body';
 import { Footer } from './Footer';
@@ -128,6 +129,8 @@ function makeDefaultInventoryResource(): InventoryResource {
 // ── APP SHELL ─────────────────────────────────────────────────────────────────
 
 export function AppShell() {
+  useWeatherSnapshotSync();
+
   // Detect new user: user null in store AND 'cdb-user' absent from localStorage.
   const [showWelcome] = useState(() => {
     const storeUser = useUserStore.getState().user;

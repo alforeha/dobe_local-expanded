@@ -1,8 +1,46 @@
 import { useEffect, useRef } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { useSystemStore } from '../stores/useSystemStore';
+import { useScheduleStore } from '../stores/useScheduleStore';
 import { reverseGeocode } from '../utils/geocode';
-import type { NamedLocation } from '../types';
+import { fetchWeatherSummaryForDate } from '../utils/weatherService';
+import { getAppDate } from '../utils/dateUtils';
+import type { NamedLocation, QuickActionsEvent } from '../types';
+
+async function backfillTodayWeather(location: NamedLocation): Promise<void> {
+  const today = getAppDate();
+  const qaId = `qa-${today}`;
+  const scheduleStore = useScheduleStore.getState();
+  const qa = scheduleStore.activeEvents[qaId] ?? scheduleStore.historyEvents[qaId];
+  if (!qa || !('weatherSnapshot' in qa) || (qa as QuickActionsEvent).weatherSnapshot !== null) {
+    return;
+  }
+  try {
+    const weather = await fetchWeatherSummaryForDate(location.lat, location.lng, today);
+    if (weather) {
+      scheduleStore.setActiveEvent({
+        ...(qa as QuickActionsEvent),
+        weatherSnapshot: {
+          icon: weather.icon,
+          high: weather.high,
+          low: weather.low,
+          ...(weather.precipitation !== undefined ? { precipitation: weather.precipitation } : {}),
+        },
+        locationSnapshots: {
+          ...(qa as QuickActionsEvent).locationSnapshots,
+          [location.id]: {
+            icon: weather.icon,
+            high: weather.high,
+            low: weather.low,
+            ...(weather.precipitation !== undefined ? { precipitation: weather.precipitation } : {}),
+          },
+        },
+      });
+    }
+  } catch {
+    // Best-effort; leave snapshot as null if fetch fails.
+  }
+}
 
 export function useAutoLocationPreferences(): NamedLocation | undefined {
   const locationPreferences = useSystemStore((s) => s.settings?.locationPreferences);
@@ -28,6 +66,7 @@ export function useAutoLocationPreferences(): NamedLocation | undefined {
               cityName,
             };
             addNamedLocation(location);
+            void backfillTodayWeather(location);
           })
           .catch(() => {
             const location: NamedLocation = {
@@ -38,6 +77,7 @@ export function useAutoLocationPreferences(): NamedLocation | undefined {
               cityName: '',
             };
             addNamedLocation(location);
+            void backfillTodayWeather(location);
           });
       },
       () => {

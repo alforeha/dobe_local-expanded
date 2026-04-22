@@ -1,7 +1,9 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { IconDisplay } from '../../shared/IconDisplay';
 import { PopupShell } from '../../shared/popups/PopupShell';
 import { LocationManager } from '../../weather/LocationManager';
+import { useSystemStore } from '../../../stores/useSystemStore';
+import { fetchWeatherForecast } from '../../../utils/weatherService';
 import { format } from '../../../utils/dateUtils';
 import type { WeatherDay } from '../../../utils/weatherService';
 
@@ -30,8 +32,51 @@ export function DayWeatherPopup({
 }: DayWeatherPopupProps) {
   const [locationManagerOpen, setLocationManagerOpen] = useState(false);
 
+  const locationPreferences = useSystemStore((s) => s.settings?.locationPreferences);
+  const locations = locationPreferences?.locations ?? [];
+  const activeLocationId = locationPreferences?.activeLocationId ?? null;
+
+  // viewLocationId is local to this popup — switching it does NOT change activeLocationId
+  const [viewLocationId, setViewLocationId] = useState<string | null>(activeLocationId);
+  const viewLocation = locations.find((l) => l.id === viewLocationId) ?? locations.find((l) => l.id === activeLocationId) ?? locations[0];
+
+  // Fetch weather for the view location when it differs from the active location
+  const [altWeather, setAltWeather] = useState<WeatherDay[] | null>(null);
+  const [altLoading, setAltLoading] = useState(false);
+
+  useEffect(() => {
+    if (!viewLocation) return;
+    // If this is the active location, use the weather passed in from the parent
+    const activeLocation = locations.find((l) => l.id === activeLocationId);
+    if (viewLocation.id === activeLocationId || (activeLocation && viewLocation.lat === activeLocation.lat && viewLocation.lng === activeLocation.lng)) {
+      setAltWeather(null);
+      return;
+    }
+    let cancelled = false;
+    setAltLoading(true);
+    fetchWeatherForecast(viewLocation.lat, viewLocation.lng, 16)
+      .then((forecast) => {
+        if (!cancelled) {
+          setAltWeather(forecast);
+          setAltLoading(false);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setAltWeather([]);
+          setAltLoading(false);
+        }
+      });
+    return () => { cancelled = true; };
+  }, [viewLocation, activeLocationId, locations]);
+
+  const displayWeather = altWeather !== null ? altWeather : weather;
+
   const currentDateISO = format(currentDate, 'iso');
-  const sortedWeather = useMemo(() => weather.slice().sort((a, b) => a.date.localeCompare(b.date)), [weather]);
+  const sortedWeather = useMemo(
+    () => displayWeather.slice().sort((a, b) => a.date.localeCompare(b.date)),
+    [displayWeather],
+  );
 
   function handleForecastWheel(event: React.WheelEvent<HTMLDivElement>) {
     const container = event.currentTarget;
@@ -109,7 +154,29 @@ export function DayWeatherPopup({
           )}
         </div>
 
-        <div className="flex shrink-0 justify-end border-t border-gray-200 pt-3 dark:border-gray-700">
+        <div className="flex shrink-0 items-center justify-between border-t border-gray-200 pt-3 dark:border-gray-700">
+          {locations.length > 1 ? (
+            <select
+              value={viewLocationId ?? ''}
+              onChange={(e) => setViewLocationId(e.target.value)}
+              className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 transition-colors focus:border-purple-500 focus:outline-none dark:border-gray-600 dark:bg-gray-900 dark:text-gray-200"
+            >
+              {locations.map((loc) => (
+                <option key={loc.id} value={loc.id}>
+                  {loc.cityName || loc.label}
+                  {loc.id === activeLocationId ? ' ★' : ''}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <span className="text-sm text-gray-500 dark:text-gray-400">
+              {viewLocation ? (viewLocation.cityName || viewLocation.label) : ''}
+              {altLoading ? ' …' : ''}
+            </span>
+          )}
+          {altLoading && locations.length > 1 && (
+            <span className="text-xs text-gray-400 dark:text-gray-500">Loading…</span>
+          )}
           <button
             type="button"
             onClick={() => setLocationManagerOpen(true)}

@@ -14,6 +14,7 @@ function weatherSummaryForDate(
     icon: snapshot.icon,
     high: snapshot.high,
     low: snapshot.low,
+    ...(snapshot.precipitation !== undefined ? { precipitation: snapshot.precipitation } : {}),
   };
 }
 

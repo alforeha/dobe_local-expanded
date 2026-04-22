@@ -14,7 +14,7 @@
 // ─────────────────────────────────────────
 
 import type { PlannedEvent } from '../types/plannedEvent';
-import type { Event, QuickActionsEvent } from '../types/event';
+import type { Event, QuickActionsEvent, QuickActionsWeatherSnapshot } from '../types/event';
 import type { Marker } from '../types/act';
 import type { Task } from '../types/task';
 import { useSystemStore } from '../stores/useSystemStore';
@@ -367,38 +367,56 @@ async function step9_coachReview(newDate: string): Promise<void> {
   const scheduleStore = useScheduleStore.getState();
   const userStore = useUserStore.getState();
   const locationPreferences = useSystemStore.getState().settings?.locationPreferences;
-  const activeLocation = locationPreferences?.locations.find(
-    (l) => l.id === locationPreferences.activeLocationId,
-  ) ?? locationPreferences?.locations[0];
+  const locations = locationPreferences?.locations ?? [];
+  const activeLocationId = locationPreferences?.activeLocationId ?? null;
+  const activeLocation =
+    locations.find((l) => l.id === activeLocationId) ?? locations[0];
 
-  let weatherSnapshot: QuickActionsEvent['weatherSnapshot'] = null;
-  if (activeLocation) {
-    try {
-      const weather = await fetchWeatherSummaryForDate(
-        activeLocation.lat,
-        activeLocation.lng,
-        newDate,
-      );
-      weatherSnapshot = weather
-        ? { icon: weather.icon, high: weather.high, low: weather.low }
-        : null;
-    } catch {
-      weatherSnapshot = null;
-    }
-  }
+  // Fetch weather for every saved location in parallel
+  const locationSnapshotEntries = await Promise.all(
+    locations.map(async (loc) => {
+      try {
+        const weather = await fetchWeatherSummaryForDate(loc.lat, loc.lng, newDate);
+        if (!weather) return null;
+        const snapshot: QuickActionsWeatherSnapshot = {
+          icon: weather.icon,
+          high: weather.high,
+          low: weather.low,
+          ...(weather.precipitation !== undefined ? { precipitation: weather.precipitation } : {}),
+        };
+        return [loc.id, snapshot] as [string, QuickActionsWeatherSnapshot];
+      } catch {
+        return null;
+      }
+    }),
+  );
 
-  // Create the new day's QuickActionsEvent
+  const locationSnapshots: Record<string, QuickActionsWeatherSnapshot> = Object.fromEntries(
+    locationSnapshotEntries.filter(
+      (e): e is [string, QuickActionsWeatherSnapshot] => e !== null,
+    ),
+  );
+
+  // weatherSnapshot stays as the active location's entry for backward-compat consumers
+  const weatherSnapshot: QuickActionsEvent['weatherSnapshot'] =
+    activeLocation ? (locationSnapshots[activeLocation.id] ?? null) : null;
+
+  // Create (or update) the day's QuickActionsEvent.
+  // Preserve completions/xpAwarded if a QA already exists for this date
+  // so that re-running rollover (e.g. after adding a new location) doesn't wipe data.
   const qaId = `qa-${newDate}`;
-  const hasExistingQa =
-    scheduleStore.activeEvents[qaId] !== undefined ||
-    scheduleStore.historyEvents[qaId] !== undefined;
+  const existingQa = (
+    scheduleStore.activeEvents[qaId] ?? scheduleStore.historyEvents[qaId]
+  ) as QuickActionsEvent | undefined;
+  const hasExistingQa = existingQa !== undefined;
   const qa: QuickActionsEvent = {
     id: qaId,
     eventType: 'quickActions',
     date: newDate,
-    completions: [],
-    xpAwarded: 0,
+    completions: existingQa?.completions ?? [],
+    xpAwarded: existingQa?.xpAwarded ?? 0,
     weatherSnapshot,
+    locationSnapshots: Object.keys(locationSnapshots).length > 0 ? locationSnapshots : null,
     sharedCompletions: null,
   };
 

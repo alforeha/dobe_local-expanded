@@ -78,6 +78,8 @@ export interface QuickActionsWeatherSnapshot {
   icon: string;
   high: number;
   low: number;
+  /** Actual total precipitation in mm (recorded for past days, forecast for current/future) */
+  precipitation?: number;
 }
 
 export interface QuickActionsEvent {
@@ -90,8 +92,10 @@ export interface QuickActionsEvent {
   completions: QuickActionsCompletion[];
   /** Running daily total */
   xpAwarded: number;
-  /** Weather snapshot captured at rollover when forecast data is available. */
+  /** Weather snapshot captured at rollover when forecast data is available. Active location. */
   weatherSnapshot?: QuickActionsWeatherSnapshot | null;
+  /** Per-location weather snapshots captured at rollover, keyed by NamedLocation.id. */
+  locationSnapshots?: Record<string, QuickActionsWeatherSnapshot> | null;
   /** STUB: MULTI-USER — stores shared Quick Actions completions once the MULTI-USER chapter is enabled. */
   sharedCompletions: SharedCompletionsStub;
 }
