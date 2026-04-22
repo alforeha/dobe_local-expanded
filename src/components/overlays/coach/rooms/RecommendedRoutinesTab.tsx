@@ -1,13 +1,13 @@
 import { useMemo, useState } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { routineLibrary, type PrebuiltRoutine, type RoutineTag } from '../../../../coach/RoutineLibrary';
-import { taskTemplateLibrary } from '../../../../coach';
 import { resolveIcon } from '../../../../constants/iconMap';
 import { materialisePlannedEvent } from '../../../../engine/materialise';
 import { autoCompleteSystemTask } from '../../../../engine/resourceEngine';
 import { useScheduleStore } from '../../../../stores/useScheduleStore';
 import { useUserStore } from '../../../../stores/useUserStore';
 import { localISODate } from '../../../../utils/dateUtils';
+import { getLibraryTemplatePool } from '../../../../utils/resolveTaskTemplate';
 import { ColorPicker } from '../../../shared/ColorPicker';
 import { IconDisplay } from '../../../shared/IconDisplay';
 import { IconPicker } from '../../../shared/IconPicker';
@@ -52,25 +52,6 @@ function formatRecurrence(rule: RecurrenceRule): string {
     return rule.monthlyDay ? `Monthly on day ${rule.monthlyDay}` : 'Monthly';
   }
   return rule.customCondition ?? 'Custom';
-}
-
-function ensureCoachTemplates(taskPool: string[], taskTemplates: Record<string, TaskTemplate>, setTaskTemplate: (key: string, template: TaskTemplate) => void) {
-  const bundledTemplateById = new Map(
-    taskTemplateLibrary
-      .filter((template): template is TaskTemplate & { id: string } => !!template.id)
-      .map((template) => [template.id, template]),
-  );
-
-  for (const templateRef of taskPool) {
-    if (taskTemplates[templateRef]) continue;
-    const bundled = bundledTemplateById.get(templateRef);
-    if (!bundled || bundled.isSystem === true) continue;
-    setTaskTemplate(templateRef, {
-      ...bundled,
-      isCustom: false,
-      isSystem: false,
-    });
-  }
 }
 
 export function RecommendedRoutinesTab() {
@@ -201,9 +182,9 @@ function RoutineCard({ routine, expanded, onToggleExpand }: { routine: PrebuiltR
 
 function RoutineExpandedEditor({ routine }: { routine: PrebuiltRoutine }) {
   const setPlannedEvent = useScheduleStore((state) => state.setPlannedEvent);
-  const setTaskTemplate = useScheduleStore((state) => state.setTaskTemplate);
   const taskTemplates = useScheduleStore((state) => state.taskTemplates);
   const addRoutineRef = useUserStore((state) => state.addRoutineRef);
+  const libraryTemplates = useMemo(() => getLibraryTemplatePool(), []);
 
   const [iconKey, setIconKey] = useState(routine.icon);
   const [name, setName] = useState(routine.name);
@@ -216,7 +197,7 @@ function RoutineExpandedEditor({ routine }: { routine: PrebuiltRoutine }) {
 
   const routineTemplates = useMemo(() => {
     const bundledById = new Map(
-      taskTemplateLibrary
+      libraryTemplates
         .filter((template): template is TaskTemplate & { id: string } => !!template.id)
         .map((template) => [template.id, template]),
     );
@@ -224,15 +205,13 @@ function RoutineExpandedEditor({ routine }: { routine: PrebuiltRoutine }) {
     return routine.taskPool
       .map((templateId) => taskTemplates[templateId] ?? bundledById.get(templateId) ?? null)
       .filter((template): template is TaskTemplate => template !== null);
-  }, [routine.taskPool, taskTemplates]);
+  }, [libraryTemplates, routine.taskPool, taskTemplates]);
 
   function handleAddToSchedule() {
     if (!name.trim()) {
       setError('Name is required.');
       return;
     }
-
-    ensureCoachTemplates(routine.taskPool, taskTemplates, setTaskTemplate);
 
     const plannedEvent: PlannedEvent = {
       id: uuidv4(),
@@ -262,7 +241,13 @@ function RoutineExpandedEditor({ routine }: { routine: PrebuiltRoutine }) {
 
     if (seedDate <= todayISO() && isTodayARecurrenceDay(routine.recurrenceInterval)) {
       const currentTemplates = useScheduleStore.getState().taskTemplates;
-      materialisePlannedEvent(plannedEvent, todayISO(), currentTemplates);
+      const materialiseTemplates = Object.fromEntries([
+        ...libraryTemplates
+          .filter((template): template is TaskTemplate & { id: string } => !!template.id)
+          .map((template) => [template.id, template] as const),
+        ...Object.entries(currentTemplates),
+      ]);
+      materialisePlannedEvent(plannedEvent, todayISO(), materialiseTemplates);
     }
 
     setError('');

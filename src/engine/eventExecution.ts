@@ -28,6 +28,7 @@ import { pushRibbet } from '../coach/ribbet';
 import { appendFeedEntry, FEED_SOURCE } from './feedEngine';
 import { getAppNowISO } from '../utils/dateUtils';
 import { getTaskCooldownState } from '../utils/taskCooldown';
+import { getLibraryTemplatePool, resolveTaskTemplate } from '../utils/resolveTaskTemplate';
 import { isWisdomTemplate } from './xpBoosts';
 import { autoCompleteSystemTask } from './resourceEngine';
 
@@ -101,10 +102,10 @@ export function completeTask(
     return;
   }
 
+  const libraryTemplates = getLibraryTemplatePool();
+
   const template = task.templateRef
-    ? scheduleStore.taskTemplates[task.templateRef] ??
-      starterTaskTemplates.find((t) => t.id === task.templateRef) ??
-      null
+    ? resolveTaskTemplate(task.templateRef, scheduleStore.taskTemplates, starterTaskTemplates, libraryTemplates) ?? null
     : null;
 
   if (template) {
@@ -501,10 +502,10 @@ export function addTaskToEvent(templateRef: string, eventId: string): void {
   const event = scheduleStore.activeEvents[eventId] as Event | undefined;
   if (!event || !('tasks' in event)) return;
 
+  const libraryTemplates = getLibraryTemplatePool();
+
   const template =
-    scheduleStore.taskTemplates[templateRef] ??
-    starterTaskTemplates.find((t) => t.id === templateRef) ??
-    null;
+    resolveTaskTemplate(templateRef, scheduleStore.taskTemplates, starterTaskTemplates, libraryTemplates) ?? null;
   const secondaryTag = template?.secondaryTag ?? null;
 
   const newTask: Task = {

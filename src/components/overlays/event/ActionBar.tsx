@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'react';
 import { PopupShell } from '../../shared/popups/PopupShell';
 import { useScheduleStore } from '../../../stores/useScheduleStore';
-import { starterTaskTemplates } from '../../../coach/StarterQuestLibrary';
 import { addTaskToEvent } from '../../../engine/eventExecution';
+import { getLibraryTemplatePool } from '../../../utils/resolveTaskTemplate';
 import type { Event } from '../../../types';
 
 interface ActionBarProps {
@@ -27,21 +27,18 @@ export function ActionBar({ event: _event, eventId, playMode, onTogglePlay, task
   // All non-system templates sorted by name
   const allTemplates = useMemo(() => {
     const map: Record<string, { ref: string; name: string; taskType: string }> = {};
+    const libraryTemplates = getLibraryTemplatePool();
 
-    // Store templates (user-created + seeded, keyed by their store key)
-    for (const [key, tpl] of Object.entries(storeTemplates)) {
-      if (tpl.isSystem) continue;
-      // Skip resource-task synthetic keys — they are managed by resources
-      if (key.startsWith('resource-task:')) continue;
-      map[key] = { ref: key, name: tpl.name, taskType: tpl.taskType };
+    for (const tpl of libraryTemplates) {
+      if (tpl.isSystem || !tpl.id) continue;
+      map[tpl.id] = { ref: tpl.id, name: tpl.name, taskType: tpl.taskType };
     }
 
-    // Starter/coach library templates
-    for (const tpl of starterTaskTemplates) {
+    for (const [key, tpl] of Object.entries(storeTemplates)) {
       if (tpl.isSystem) continue;
-      if (!tpl.id) continue;
-      if (map[tpl.id]) continue; // store version takes precedence
-      map[tpl.id] = { ref: tpl.id, name: tpl.name, taskType: tpl.taskType };
+      if (key.startsWith('resource-task:')) continue;
+      const ref = tpl.id ?? key;
+      map[ref] = { ref, name: tpl.name, taskType: tpl.taskType };
     }
 
     return Object.values(map).sort((a, b) => a.name.localeCompare(b.name));

@@ -13,9 +13,9 @@ import { IconDisplay } from '../../../../shared/IconDisplay';
 import { TaskTemplateIcon } from '../../../../shared/TaskTemplateIcon';
 import { materialisePlannedEvent } from '../../../../../engine/materialise';
 import { autoCompleteSystemTask } from '../../../../../engine/resourceEngine';
-import { taskTemplateLibrary } from '../../../../../coach';
 import { storageDelete, storageKey } from '../../../../../storage';
 import { localISODate } from '../../../../../utils/dateUtils';
+import { getLibraryTemplatePool } from '../../../../../utils/resolveTaskTemplate';
 import type { PlannedEvent, ConflictMode } from '../../../../../types/plannedEvent';
 import type { RecurrenceFrequency, RecurrenceRule, TaskTemplate, TaskType, Weekday } from '../../../../../types/taskTemplate';
 import type { StatGroupKey } from '../../../../../types/user';
@@ -174,6 +174,11 @@ const PILL_CLS = (active: boolean) =>
 function ScheduleTaskPool({ templates, taskPool, setTaskPool, readOnly = false, note }: ScheduleTaskPoolProps) {
   const resources = useResourceStore((s) => s.resources);
   const user = useUserStore((s) => s.user);
+  const libraryTemplates = useMemo(() => getLibraryTemplatePool(), []);
+  const libraryTemplateById = useMemo(
+    () => new Map(libraryTemplates.filter((template): template is TaskTemplate & { id: string } => !!template.id).map((template) => [template.id, template])),
+    [libraryTemplates],
+  );
   const [poolView, setPoolView] = useState<PoolView>('stat');
   const [statFilter, setStatFilter] = useState<'all' | StatGroupKey>('all');
   const [orderMode, setOrderMode] = useState(false);
@@ -226,7 +231,7 @@ function ScheduleTaskPool({ templates, taskPool, setTaskPool, readOnly = false, 
                   const ct = tpl?.customTaskTemplates?.find((c) => c.name.trim() === recurringTask.taskTemplateRef);
                   if (ct) taskName = ct.name;
                 } else {
-                  const coachTask = taskTemplateLibrary.find((t) => t.id === recurringTask.taskTemplateRef);
+                  const coachTask = libraryTemplateById.get(recurringTask.taskTemplateRef);
                   if (coachTask) taskName = coachTask.name;
                   else {
                     const meta = getItemTaskTemplateMeta(recurringTask.taskTemplateRef);
@@ -258,7 +263,7 @@ function ScheduleTaskPool({ templates, taskPool, setTaskPool, readOnly = false, 
       }
     }
     return entries;
-  }, [templates, resources, user]);
+  }, [libraryTemplateById, templates, resources, user]);
 
   // Split templates into stat vs resource-derived (including synthesized entries)
   const { statTemplates, resourceTemplates } = useMemo(() => {
@@ -474,10 +479,10 @@ function ScheduleTaskPool({ templates, taskPool, setTaskPool, readOnly = false, 
 export function RoutinePopup({ editRoutine, prefill, onClose, isPrebuilt = false }: RoutinePopupProps) {
   const setPlannedEvent = useScheduleStore((s) => s.setPlannedEvent);
   const removePlannedEvent = useScheduleStore((s) => s.removePlannedEvent);
-  const setTaskTemplate = useScheduleStore((s) => s.setTaskTemplate);
   const taskTemplates = useScheduleStore((s) => s.taskTemplates);
   const addRoutineRef = useUserStore((s) => s.addRoutineRef);
   const removeRoutineRef = useUserStore((s) => s.removeRoutineRef);
+  const libraryTemplates = useMemo(() => getLibraryTemplatePool(), []);
 
   const isEditMode = editRoutine !== null;
 
@@ -495,7 +500,7 @@ export function RoutinePopup({ editRoutine, prefill, onClose, isPrebuilt = false
 
     if (isPrebuilt) {
       const selectedIds = new Set(prefill?.taskPool ?? []);
-      for (const template of taskTemplateLibrary) {
+      for (const template of libraryTemplates) {
         if (!template.id || template.isSystem === true) continue;
         if (!selectedIds.has(template.id)) continue;
         if (!map.has(template.id)) {
@@ -505,7 +510,7 @@ export function RoutinePopup({ editRoutine, prefill, onClose, isPrebuilt = false
     }
 
     return Array.from(map.entries()).map(([id, template]) => ({ id, template }));
-  }, [isPrebuilt, prefill?.taskPool, taskTemplates]);
+  }, [isPrebuilt, libraryTemplates, prefill?.taskPool, taskTemplates]);
 
   const [name, setName] = useState(isEditMode ? editRoutine.name : (prefill?.name ?? ''));
   const [iconKey, setIconKey] = useState(isEditMode ? editRoutine.icon : (prefill?.icon ?? 'routine'));
@@ -567,25 +572,6 @@ export function RoutinePopup({ editRoutine, prefill, onClose, isPrebuilt = false
     }
 
     const today = todayISO();
-    const bundledTemplateById = new Map(
-      taskTemplateLibrary
-        .filter((template): template is TaskTemplate & { id: string } => !!template.id)
-        .map((template) => [template.id, template]),
-    );
-
-    for (const templateRef of taskPool) {
-      const existing = useScheduleStore.getState().taskTemplates[templateRef];
-      if (existing) continue;
-
-      const bundled = bundledTemplateById.get(templateRef);
-      if (!bundled || bundled.isSystem === true) continue;
-
-      setTaskTemplate(templateRef, {
-        ...bundled,
-        isCustom: false,
-        isSystem: false,
-      });
-    }
 
     const recurrenceInterval: RecurrenceRule = {
       frequency,
@@ -642,7 +628,13 @@ export function RoutinePopup({ editRoutine, prefill, onClose, isPrebuilt = false
 
       if (seedDate <= today && isTodayARecurrenceDay(recurrenceInterval)) {
         const currentTemplates = useScheduleStore.getState().taskTemplates;
-        materialisePlannedEvent(newRoutine, today, currentTemplates);
+        const materialiseTemplates = Object.fromEntries([
+          ...libraryTemplates
+            .filter((template): template is TaskTemplate & { id: string } => !!template.id)
+            .map((template) => [template.id, template] as const),
+          ...Object.entries(currentTemplates),
+        ]);
+        materialisePlannedEvent(newRoutine, today, materialiseTemplates);
       }
     }
 

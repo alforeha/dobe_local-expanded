@@ -1,9 +1,9 @@
 import { useMemo, useState } from 'react';
-import { taskTemplateLibrary } from '../../../../coach';
-import { starterTaskTemplates } from '../../../../coach/StarterQuestLibrary';
 import { getTaskTypeIconKey, resolveIcon } from '../../../../constants/iconMap';
 import { useProgressionStore } from '../../../../stores/useProgressionStore';
 import { useScheduleStore } from '../../../../stores/useScheduleStore';
+import { useUserStore } from '../../../../stores/useUserStore';
+import { getLibraryTemplatePool } from '../../../../utils/resolveTaskTemplate';
 import type { InputFields, TaskSecondaryTag, TaskTemplate, TaskType, XpAward } from '../../../../types/taskTemplate';
 import type { StatGroupKey } from '../../../../types/user';
 import { IconDisplay } from '../../../shared/IconDisplay';
@@ -54,24 +54,6 @@ function getPrimaryStatKey(xpAward: XpAward): StatGroupKey {
   return best;
 }
 
-function getMergedTemplates(): TaskTemplate[] {
-  const map = new Map<string, TaskTemplate>();
-
-  for (const template of taskTemplateLibrary) {
-    if (template.isSystem) continue;
-    if (template.id) map.set(template.id, template);
-  }
-
-  for (const template of starterTaskTemplates) {
-    if (template.isSystem) continue;
-    if (template.id && !map.has(template.id)) {
-      map.set(template.id, template);
-    }
-  }
-
-  return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
-}
-
 function formatTaskType(taskType: TaskType): string {
   return taskType.replaceAll('_', ' ');
 }
@@ -115,7 +97,7 @@ function summariseInputFields(inputFields: InputFields): string[] {
 
 function buildUsageState(
   templateId: string | undefined,
-  taskTemplates: Record<string, TaskTemplate>,
+  favourites: Set<string>,
   usageByTemplateId: Record<string, string>,
   questUsageByTemplateId: Record<string, string>,
 ): TemplateUsage {
@@ -125,7 +107,7 @@ function buildUsageState(
 
   const usedByName = usageByTemplateId[templateId] ?? null;
   const questName = questUsageByTemplateId[templateId] ?? null;
-  const active = templateId in taskTemplates;
+  const active = favourites.has(templateId);
 
   if (questName) return { state: 'quest', usedByName, questName };
   if (usedByName) return { state: 'used', usedByName, questName: null };
@@ -134,10 +116,10 @@ function buildUsageState(
 }
 
 export function RecommendedTasksTab() {
-  const taskTemplates = useScheduleStore((state) => state.taskTemplates);
   const plannedEvents = useScheduleStore((state) => state.plannedEvents);
-  const setTaskTemplate = useScheduleStore((state) => state.setTaskTemplate);
-  const removeTaskTemplate = useScheduleStore((state) => state.removeTaskTemplate);
+  const favouritesList = useUserStore((state) => state.user?.lists.favouritesList ?? []);
+  const addFavourite = useUserStore((state) => state.addFavourite);
+  const removeFavourite = useUserStore((state) => state.removeFavourite);
   const acts = useProgressionStore((state) => state.acts);
 
   const [search, setSearch] = useState('');
@@ -146,7 +128,11 @@ export function RecommendedTasksTab() {
   const [showInactive, setShowInactive] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
-  const allTemplates = useMemo(() => getMergedTemplates(), []);
+  const allTemplates = useMemo(
+    () => getLibraryTemplatePool().filter((template) => template.isSystem !== true).sort((a, b) => a.name.localeCompare(b.name)),
+    [],
+  );
+  const favouriteSet = useMemo(() => new Set(favouritesList), [favouritesList]);
 
   const usageByTemplateId = useMemo(() => {
     const usage: Record<string, string> = {};
@@ -176,7 +162,7 @@ export function RecommendedTasksTab() {
 
   const visible = useMemo(() => {
     return allTemplates.filter((template) => {
-      const usage = buildUsageState(template.id, taskTemplates, usageByTemplateId, questUsageByTemplateId);
+      const usage = buildUsageState(template.id, favouriteSet, usageByTemplateId, questUsageByTemplateId);
       if (!showInactive && usage.state === 'inactive') return false;
       if (typeFilter !== 'ALL' && template.taskType !== typeFilter) return false;
       if (statFilter !== 'ALL' && getPrimaryStatKey(template.xpAward) !== statFilter) return false;
@@ -186,7 +172,7 @@ export function RecommendedTasksTab() {
       }
       return true;
     });
-  }, [allTemplates, questUsageByTemplateId, search, showInactive, statFilter, taskTemplates, typeFilter, usageByTemplateId]);
+  }, [allTemplates, favouriteSet, questUsageByTemplateId, search, showInactive, statFilter, typeFilter, usageByTemplateId]);
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
@@ -260,7 +246,7 @@ export function RecommendedTasksTab() {
           ) : null}
 
           {visible.map((template) => {
-            const usage = buildUsageState(template.id, taskTemplates, usageByTemplateId, questUsageByTemplateId);
+            const usage = buildUsageState(template.id, favouriteSet, usageByTemplateId, questUsageByTemplateId);
             return (
               <TaskTemplateCard
                 key={template.id ?? template.name}
@@ -270,11 +256,11 @@ export function RecommendedTasksTab() {
                 onToggleExpand={() => setExpandedId((current) => current === (template.id ?? template.name) ? null : (template.id ?? template.name))}
                 onAdd={() => {
                   if (!template.id) return;
-                  setTaskTemplate(template.id, template);
+                  addFavourite(template.id);
                 }}
                 onRemove={() => {
                   if (!template.id) return;
-                  removeTaskTemplate(template.id);
+                  removeFavourite(template.id);
                 }}
               />
             );
@@ -416,7 +402,7 @@ function TaskTemplateCard({ template, usage, expanded, onToggleExpand, onAdd, on
                 onClick={onAdd}
                 className="rounded-full bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-emerald-700"
               >
-                + Add to Templates
+                + Add to Favourites
               </button>
             ) : usage.state === 'active' ? (
               <button
@@ -424,7 +410,7 @@ function TaskTemplateCard({ template, usage, expanded, onToggleExpand, onAdd, on
                 onClick={onRemove}
                 className="rounded-full bg-red-100 px-4 py-2 text-sm font-medium text-red-700 transition-colors hover:bg-red-200 dark:bg-red-900/30 dark:text-red-300 dark:hover:bg-red-900/50"
               >
-                Remove
+                Remove Favourite
               </button>
             ) : (
               <p className="text-sm text-gray-500 dark:text-gray-400">
@@ -442,7 +428,7 @@ function TaskTemplateCard({ template, usage, expanded, onToggleExpand, onAdd, on
 function getStateBadge(state: TemplateState): { label: string; className: string } {
   switch (state) {
     case 'active':
-      return { label: 'Active', className: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' };
+      return { label: 'Favourite', className: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' };
     case 'used':
       return { label: 'Used', className: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300' };
     case 'quest':
