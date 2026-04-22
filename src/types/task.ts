@@ -83,6 +83,10 @@ export interface GTDItem {
   note: string | null;
   /** Optional TaskTemplate ref chosen in the Add GTD popup */
   templateRef?: string | null;
+  /** Manual task type selected in the Add GTD popup. */
+  taskType?: string;
+  /** Initial input fields for the manual task, matching its task type shape. */
+  parameters?: Record<string, unknown>;
   /** Optional ref to a Resource the user chose to link this item to */
   resourceRef: string | null;
   /** ISO date — null if no due date set */

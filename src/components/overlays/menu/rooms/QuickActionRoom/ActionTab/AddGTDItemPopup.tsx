@@ -1,8 +1,27 @@
 import { useState } from 'react';
 import { PopupShell } from '../../../../../shared/popups/PopupShell';
 import { useUserStore } from '../../../../../../stores/useUserStore';
-import { useScheduleStore } from '../../../../../../stores/useScheduleStore';
 import { addManualGTDItem } from '../../../../../../engine/listsEngine';
+
+const TASK_TYPE_OPTIONS = ['CHECK', 'COUNTER', 'DURATION', 'TIMER', 'RATING', 'TEXT'] as const;
+
+function getDefaultParameters(taskType: string): Record<string, unknown> {
+  switch (taskType) {
+    case 'COUNTER':
+      return { target: 1, unit: '', step: 1 };
+    case 'DURATION':
+      return { targetDuration: 300, unit: 'minutes' };
+    case 'TIMER':
+      return { countdownFrom: 60 };
+    case 'RATING':
+      return { scale: 5, label: '' };
+    case 'TEXT':
+      return { prompt: '', maxLength: null };
+    case 'CHECK':
+    default:
+      return {};
+  }
+}
 
 interface AddGTDItemPopupProps {
   onClose: () => void;
@@ -10,17 +29,137 @@ interface AddGTDItemPopupProps {
 
 export function AddGTDItemPopup({ onClose }: AddGTDItemPopupProps) {
   const user = useUserStore((s) => s.user);
-  const taskTemplates = useScheduleStore((s) => s.taskTemplates);
 
   const [title, setTitle] = useState('');
-  const [templateRef, setTemplateRef] = useState('');
+  const [taskType, setTaskType] = useState<string>('CHECK');
+  const [parameters, setParameters] = useState<Record<string, unknown>>(() => getDefaultParameters('CHECK'));
   const [note, setNote] = useState('');
   const [dueDate, setDueDate] = useState('');
   const [error, setError] = useState('');
 
-  const templateOptions = Object.entries(taskTemplates)
-    .filter(([, template]) => template.isSystem !== true)
-    .sort(([, a], [, b]) => a.name.localeCompare(b.name));
+  function setTaskParameter(key: string, value: unknown) {
+    setParameters((current) => ({ ...current, [key]: value }));
+  }
+
+  function handleTaskTypeChange(nextTaskType: string) {
+    setTaskType(nextTaskType);
+    setParameters(getDefaultParameters(nextTaskType));
+  }
+
+  function renderParameterInputs() {
+    switch (taskType) {
+      case 'COUNTER':
+        return (
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-300">
+                Target
+              </label>
+              <input
+                type="number"
+                min={1}
+                value={Number(parameters.target ?? 1)}
+                onChange={(e) => setTaskParameter('target', Math.max(1, Number(e.target.value) || 1))}
+                className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-300">
+                Unit
+              </label>
+              <input
+                type="text"
+                value={String(parameters.unit ?? '')}
+                onChange={(e) => setTaskParameter('unit', e.target.value)}
+                placeholder="times"
+                className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
+              />
+            </div>
+          </div>
+        );
+      case 'DURATION':
+        return (
+          <div>
+            <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-300">
+              Minutes
+            </label>
+            <input
+              type="number"
+              min={1}
+              value={Math.max(1, Math.round(Number(parameters.targetDuration ?? 300) / 60))}
+              onChange={(e) => setTaskParameter('targetDuration', Math.max(1, Number(e.target.value) || 1) * 60)}
+              className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
+            />
+          </div>
+        );
+      case 'TIMER':
+        return (
+          <div>
+            <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-300">
+              Seconds
+            </label>
+            <input
+              type="number"
+              min={1}
+              value={Number(parameters.countdownFrom ?? 60)}
+              onChange={(e) => setTaskParameter('countdownFrom', Math.max(1, Number(e.target.value) || 1))}
+              className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
+            />
+          </div>
+        );
+      case 'RATING':
+        return (
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-300">
+                Out of
+              </label>
+              <input
+                type="number"
+                min={2}
+                max={10}
+                value={Number(parameters.scale ?? 5)}
+                onChange={(e) => {
+                  const value = Number(e.target.value) || 5;
+                  setTaskParameter('scale', Math.min(10, Math.max(2, value)));
+                }}
+                className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-300">
+                Prompt
+              </label>
+              <input
+                type="text"
+                value={String(parameters.label ?? '')}
+                onChange={(e) => setTaskParameter('label', e.target.value)}
+                placeholder="How would you rate this?"
+                className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
+              />
+            </div>
+          </div>
+        );
+      case 'TEXT':
+        return (
+          <div>
+            <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-300">
+              Prompt
+            </label>
+            <input
+              type="text"
+              value={String(parameters.prompt ?? '')}
+              onChange={(e) => setTaskParameter('prompt', e.target.value)}
+              placeholder="Add a note."
+              className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
+            />
+          </div>
+        );
+      case 'CHECK':
+      default:
+        return null;
+    }
+  }
 
   function handleSave() {
     const trimmedTitle = title.trim();
@@ -34,7 +173,9 @@ export function AddGTDItemPopup({ onClose }: AddGTDItemPopupProps) {
       {
         title: trimmedTitle,
         note: note.trim() || null,
-        templateRef: templateRef || null,
+        templateRef: null,
+        taskType,
+        parameters,
         resourceRef: null,
         dueDate: dueDate || null,
       },
@@ -66,21 +207,27 @@ export function AddGTDItemPopup({ onClose }: AddGTDItemPopupProps) {
 
         <div>
           <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-300">
-            Template <span className="text-gray-400">(optional)</span>
+            Task type
           </label>
-          <select
-            value={templateRef}
-            onChange={(e) => setTemplateRef(e.target.value)}
-            className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
-          >
-            <option value="">Quick check (default)</option>
-            {templateOptions.map(([key, template]) => (
-              <option key={key} value={key}>
-                {template.name} ({template.taskType})
-              </option>
+          <div className="grid grid-cols-3 gap-2">
+            {TASK_TYPE_OPTIONS.map((option) => (
+              <button
+                key={option}
+                type="button"
+                onClick={() => handleTaskTypeChange(option)}
+                className={`rounded-xl border px-3 py-2 text-xs font-semibold transition-colors ${
+                  taskType === option
+                    ? 'border-blue-600 bg-blue-600 text-white'
+                    : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700'
+                }`}
+              >
+                {option}
+              </button>
             ))}
-          </select>
+          </div>
         </div>
+
+        {renderParameterInputs()}
 
         <div>
           <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-300">

@@ -29,9 +29,7 @@ import { checkAchievements } from '../coach/checkAchievements';
 import { awardBadge } from '../coach/rewardPipeline';
 import { pushRibbet } from '../coach/ribbet';
 import { autoCompleteSystemTask } from './resourceEngine';
-import { starterTaskTemplates } from '../coach/StarterQuestLibrary';
 import { isWisdomTemplate } from './xpBoosts';
-import { completeTask } from './eventExecution';
 import { syncDailyQuestProgressForTask } from './markerEngine';
 import { getCurrentAppNowMs, getTaskCooldownState } from '../utils/taskCooldown';
 
@@ -427,6 +425,8 @@ export function addManualGTDItem(
     title: string;
     note: string | null;
     templateRef?: string | null;
+    taskType?: string;
+    parameters?: Record<string, unknown>;
     resourceRef: string | null;
     dueDate: string | null;
   },
@@ -437,6 +437,8 @@ export function addManualGTDItem(
     title: fields.title,
     note: fields.note,
     templateRef: fields.templateRef ?? null,
+    taskType: fields.taskType ?? 'CHECK',
+    parameters: fields.parameters ?? {},
     resourceRef: fields.resourceRef,
     dueDate: fields.dueDate,
     isManual: true,
@@ -509,26 +511,27 @@ export function completeManualGTDItem(
     });
   }
 
-  const selectedTemplate =
-    item.templateRef
-      ? (scheduleStore.taskTemplates[item.templateRef] ??
-         starterTaskTemplates.find((template) => template.id === item.templateRef) ??
-         null)
-      : null;
+  const initialResultFields = {
+    ...(item.parameters ?? {}),
+    ...resultFields,
+  } as Partial<InputFields>;
 
   const task: Task = {
     id: uuidv4(),
-    templateRef: item.templateRef ?? `manual-gtd:${itemId}`,
-    completionState: selectedTemplate ? 'pending' : 'complete',
-    completedAt: selectedTemplate ? null : now,
-    resultFields,
+    templateRef: null,
+    isUnique: true,
+    title: item.title,
+    taskType: item.taskType ?? 'CHECK',
+    completionState: 'complete',
+    completedAt: now,
+    resultFields: initialResultFields,
     attachmentRef: null,
     resourceRef: item.resourceRef,
     location: null,
     sharedWith: null,
     questRef: null,
     actRef: null,
-    secondaryTag: selectedTemplate?.secondaryTag ?? null,
+    secondaryTag: null,
   };
 
   scheduleStore.setTask(task);
@@ -542,10 +545,6 @@ export function completeManualGTDItem(
     },
   };
   persistUser(updated);
-
-  if (selectedTemplate) {
-    completeTask(task.id, qaId, { resultFields, resourceRef: item.resourceRef });
-  }
 
   const completedTask = useScheduleStore.getState().tasks[task.id] ?? task;
   autoCompleteSystemTask('task-sys-complete-gtd');
@@ -563,11 +562,6 @@ export function completeManualGTDItem(
       };
       scheduleStore.setActiveEvent(updatedQa);
     }
-  }
-
-  if (selectedTemplate) {
-    pushRibbet('gtd.complete');
-    return;
   }
 
   // XP award — base + Quick Actions agility bonus for manual GTD completion
