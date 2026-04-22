@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { useSystemStore } from '../../../../../stores/useSystemStore';
+import { useAutoLocationPreferences } from '../../../../../hooks/useAutoLocationPreferences';
 
 interface WorldMapContainerProps {
   children?: (map: L.Map) => ReactNode;
@@ -15,16 +15,19 @@ export function WorldMapContainer({ children }: WorldMapContainerProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<L.Map | null>(null);
   const [map, setMap] = useState<L.Map | null>(null);
-  const locationPreferences = useSystemStore((state) => state.settings?.locationPreferences);
+  const activeLocation = useAutoLocationPreferences();
+  const activeLocationId = activeLocation?.id;
+  const activeLat = activeLocation?.lat;
+  const activeLng = activeLocation?.lng;
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
 
     const hasUserLocation =
-      typeof locationPreferences?.lat === 'number' &&
-      typeof locationPreferences?.lng === 'number';
+      typeof activeLat === 'number' &&
+      typeof activeLng === 'number';
     const initialCenter: L.LatLngExpression = hasUserLocation
-      ? [locationPreferences.lat, locationPreferences.lng]
+      ? [activeLat, activeLng]
       : WORLD_CENTER;
     const initialZoom = hasUserLocation ? LOCAL_ZOOM : WORLD_ZOOM;
 
@@ -53,7 +56,13 @@ export function WorldMapContainer({ children }: WorldMapContainerProps) {
       mapRef.current = null;
       setMap(null);
     };
-  }, [locationPreferences?.lat, locationPreferences?.lng]);
+  }, [activeLat, activeLng]);
+
+  useEffect(() => {
+    if (!mapRef.current || typeof activeLat !== 'number' || typeof activeLng !== 'number') return;
+
+    mapRef.current.setView([activeLat, activeLng], LOCAL_ZOOM);
+  }, [activeLocationId, activeLat, activeLng]);
 
   return (
     <div className="cdb-world-map-wrap">
