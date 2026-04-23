@@ -40,6 +40,7 @@ export interface EventAttachment {
   sizeBytes: number;
   createdAt: string;
   source: EventAttachmentSource;
+  location?: EventLocation | null;
 }
 
 // ── EVENT ROOT ────────────────────────────────────────────────────────────────

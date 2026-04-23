@@ -181,6 +181,16 @@ function normalizeEventAttachment(attachment: EventAttachment | string, index: n
       attachment.source === 'legacy'
         ? attachment.source
         : 'legacy',
+    location:
+      attachment.location &&
+      typeof attachment.location.latitude === 'number' &&
+      typeof attachment.location.longitude === 'number'
+        ? {
+            latitude: attachment.location.latitude,
+            longitude: attachment.location.longitude,
+            ...(attachment.location.placeName ? { placeName: attachment.location.placeName } : {}),
+          }
+        : null,
   };
 
   if (
@@ -191,7 +201,10 @@ function normalizeEventAttachment(attachment: EventAttachment | string, index: n
     attachment.mimeType === nextAttachment.mimeType &&
     attachment.sizeBytes === nextAttachment.sizeBytes &&
     attachment.createdAt === nextAttachment.createdAt &&
-    attachment.source === nextAttachment.source
+    attachment.source === nextAttachment.source &&
+    attachment.location?.latitude === nextAttachment.location?.latitude &&
+    attachment.location?.longitude === nextAttachment.location?.longitude &&
+    attachment.location?.placeName === nextAttachment.location?.placeName
   ) {
     return attachment;
   }
