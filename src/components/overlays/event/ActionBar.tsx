@@ -1,26 +1,44 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { PopupShell } from '../../shared/popups/PopupShell';
 import { useScheduleStore } from '../../../stores/useScheduleStore';
 import { addTaskToEvent } from '../../../engine/eventExecution';
 import { getLibraryTemplatePool } from '../../../utils/resolveTaskTemplate';
-import type { Event } from '../../../types';
+import './ActionBar.css';
 
 interface ActionBarProps {
-  event: Event;
   eventId: string;
-  playMode: boolean;
-  onTogglePlay: () => void;
-  taskCount: number;
-  completedCount: number;
+  activeSection: ActionBarSection;
+  onSectionChange: (section: ActionBarSection) => void;
+  onEnterEdit: () => void;
   onDeleteEvent?: () => void;
 }
 
-type PopupType = 'attachment' | 'link' | 'location' | 'addTask' | null;
+export type ActionBarSection = 'actions' | 'participants' | 'location' | 'attachments';
 
-export function ActionBar({ event: _event, eventId, playMode, onTogglePlay, taskCount, completedCount, onDeleteEvent }: ActionBarProps) {
+type PopupType = 'addTask' | 'addParticipant' | 'addLocation' | 'addAttachment' | null;
+
+const sectionOrder: ActionBarSection[] = ['actions', 'participants', 'location', 'attachments'];
+
+const sectionLabels: Record<ActionBarSection, string> = {
+  actions: 'Actions',
+  participants: 'Participants',
+  location: 'Location',
+  attachments: 'Attachments',
+};
+
+const addButtonLabels: Record<ActionBarSection, string> = {
+  actions: '+ Task',
+  participants: '+ Participant',
+  location: '+ Location',
+  attachments: '+ Attachment',
+};
+
+export function ActionBar({ eventId, activeSection, onSectionChange, onEnterEdit, onDeleteEvent }: ActionBarProps) {
   const [openPopup, setOpenPopup] = useState<PopupType>(null);
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [selectedTemplateRef, setSelectedTemplateRef] = useState('');
+  const dropdownRef = useRef<HTMLDivElement | null>(null);
 
   const storeTemplates = useScheduleStore((s) => s.taskTemplates);
 
@@ -49,6 +67,22 @@ export function ActionBar({ event: _event, eventId, playMode, onTogglePlay, task
     setOpenPopup('addTask');
   };
 
+  useEffect(() => {
+    if (!isDropdownOpen) {
+      setConfirmDelete(false);
+      return undefined;
+    }
+
+    const handlePointerDown = (event: MouseEvent) => {
+      if (!dropdownRef.current?.contains(event.target as Node)) {
+        setIsDropdownOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handlePointerDown);
+    return () => document.removeEventListener('mousedown', handlePointerDown);
+  }, [isDropdownOpen]);
+
   const handleAddTask = () => {
     if (!selectedTemplateRef) return;
     addTaskToEvent(selectedTemplateRef, eventId);
@@ -57,110 +91,126 @@ export function ActionBar({ event: _event, eventId, playMode, onTogglePlay, task
   };
 
   const handleDeleteClick = () => {
-    if (!confirmDelete) { setConfirmDelete(true); return; }
+    if (!confirmDelete) {
+      setConfirmDelete(true);
+      return;
+    }
+
     onDeleteEvent?.();
+    setIsDropdownOpen(false);
+  };
+
+  const handleSectionSelect = (section: ActionBarSection) => {
+    onSectionChange(section);
+    setIsDropdownOpen(false);
+  };
+
+  const handleAddClick = () => {
+    if (activeSection === 'actions') {
+      handleOpenAddTask();
+      return;
+    }
+
+    if (activeSection === 'participants') {
+      setOpenPopup('addParticipant');
+      return;
+    }
+
+    if (activeSection === 'location') {
+      setOpenPopup('addLocation');
+      return;
+    }
+
+    setOpenPopup('addAttachment');
+  };
+
+  const handleEnterEdit = () => {
+    onEnterEdit();
+    setIsDropdownOpen(false);
   };
 
   return (
     <>
-      <div className="flex shrink-0 items-center gap-2 border-b border-gray-200 dark:border-gray-700 px-3 py-2">
-        {/* Play button */}
+      <div className="relative flex shrink-0 items-center justify-between border-b border-gray-200 dark:border-gray-700 px-3 py-2">
         <button
           type="button"
-          aria-label={playMode ? 'Pause' : 'Play'}
-          onClick={onTogglePlay}
-          className={`rounded-full p-1.5 text-sm transition-colors ${playMode ? 'bg-purple-600 text-white' : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'}`}
+          aria-label={addButtonLabels[activeSection]}
+          onClick={handleAddClick}
+          className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
         >
-          {playMode ? '⏸' : '▶'}
+          {addButtonLabels[activeSection]}
         </button>
 
-        {/* Attachment */}
-        <button
-          type="button"
-          aria-label="Attachments"
-          onClick={() => setOpenPopup('attachment')}
-          className="rounded-full p-1.5 text-sm bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600"
-        >
-          📎
-        </button>
-
-        {/* Link */}
-        <button
-          type="button"
-          aria-label="Link resource"
-          onClick={() => setOpenPopup('link')}
-          className="rounded-full p-1.5 text-sm bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600"
-        >
-          🔗
-        </button>
-
-        {/* Shared — stub, inactive in LOCAL */}
-        <button
-          type="button"
-          aria-label="Share (unavailable in LOCAL)"
-          disabled
-          className="rounded-full p-1.5 text-sm bg-gray-50 dark:bg-gray-800 text-gray-300 cursor-not-allowed"
-        >
-          👥
-        </button>
-
-        {/* Location */}
-        <button
-          type="button"
-          aria-label="Location"
-          onClick={() => setOpenPopup('location')}
-          className="rounded-full p-1.5 text-sm bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600"
-        >
-          📍
-        </button>
-
-        {/* Add Task */}
-        <button
-          type="button"
-          aria-label="Add task"
-          onClick={handleOpenAddTask}
-          className="rounded-full p-1.5 text-sm bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600"
-        >
-          ➕
-        </button>
-
-        {/* Spacer */}
-        <div className="flex-1" />
-
-        {/* Task count */}
-        <span className="text-xs font-semibold text-gray-600 dark:text-gray-300">
-          {completedCount}/{taskCount}
-        </span>
-
-        {/* Delete event */}
-        {onDeleteEvent && (
+        <div ref={dropdownRef} className="action-bar-menu-wrap">
           <button
             type="button"
-            onClick={handleDeleteClick}
-            onBlur={() => setConfirmDelete(false)}
-            className={`rounded-lg border px-2.5 py-1 text-xs font-medium transition-colors ${
-              confirmDelete
-                ? 'border-red-500 bg-red-500 text-white'
-                : 'border-red-300 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20'
-            }`}
+            aria-haspopup="menu"
+            aria-expanded={isDropdownOpen}
+            onClick={() => setIsDropdownOpen((open) => !open)}
+            className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
           >
-            {confirmDelete ? 'Confirm?' : 'Delete'}
+            {sectionLabels[activeSection]}
+            <span className="text-xs text-gray-400 dark:text-gray-500">▾</span>
           </button>
-        )}
+
+          {isDropdownOpen && (
+            <div className="action-bar-dropdown" role="menu">
+              {sectionOrder.map((section) => (
+                <button
+                  key={section}
+                  type="button"
+                  role="menuitem"
+                  onClick={() => handleSectionSelect(section)}
+                  className={`action-bar-menu-item${activeSection === section ? ' is-active' : ''}`}
+                >
+                  <span>{sectionLabels[section]}</span>
+                </button>
+              ))}
+
+              <div className="action-bar-menu-divider" />
+
+              <button
+                type="button"
+                role="menuitem"
+                onClick={handleEnterEdit}
+                className="action-bar-menu-item"
+              >
+                <span>Edit</span>
+              </button>
+
+              {onDeleteEvent && (
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={handleDeleteClick}
+                  className="action-bar-menu-item is-danger"
+                >
+                  <span>{confirmDelete ? 'Confirm delete' : 'Delete'}</span>
+                </button>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* Popup shells */}
-      {openPopup === 'attachment' && (
-        <PopupShell title="Attachments" onClose={() => setOpenPopup(null)} />
-      )}
-      {openPopup === 'link' && (
-        <PopupShell title="Link Resource" onClose={() => setOpenPopup(null)} />
-      )}
-      {openPopup === 'location' && (
-        <PopupShell title="Location" onClose={() => setOpenPopup(null)} />
+      {openPopup === 'addParticipant' && (
+        <PopupShell title="Add Participant" onClose={() => setOpenPopup(null)}>
+          <p className="text-sm text-gray-500 dark:text-gray-400">Participants - coming in LE-09b</p>
+        </PopupShell>
       )}
 
-      {/* Add Task popup */}
+      {openPopup === 'addLocation' && (
+        <PopupShell title="Add Location" onClose={() => setOpenPopup(null)}>
+          <p className="text-sm text-gray-500 dark:text-gray-400">Location - coming in LE-09b</p>
+        </PopupShell>
+      )}
+
+      {openPopup === 'addAttachment' && (
+        <PopupShell title="Add Attachment" onClose={() => setOpenPopup(null)}>
+          <p className="text-sm text-gray-500 dark:text-gray-400">Attachments - coming in LE-09d</p>
+        </PopupShell>
+      )}
+
       {openPopup === 'addTask' && (
         <PopupShell title="Add Task" onClose={() => setOpenPopup(null)}>
           <div className="flex flex-col gap-4">

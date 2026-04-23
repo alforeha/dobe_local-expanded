@@ -5,6 +5,7 @@ import { EventOverlayHeader } from './EventOverlayHeader';
 import { TaskBlock } from './TaskBlock';
 import { TaskList } from './TaskList';
 import { ActionBar } from './ActionBar';
+import type { ActionBarSection } from './ActionBar';
 import type { Event } from '../../../types';
 
 interface EventOverlayProps {
@@ -23,7 +24,8 @@ export function EventOverlay({ eventId, onClose }: EventOverlayProps) {
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(
     event?.tasks?.[0] ?? null,
   );
-  const [playMode, setPlayMode] = useState(false);
+  const [activeSection, setActiveSection] = useState<ActionBarSection>('actions');
+  const [isEditMode, setIsEditMode] = useState(false);
   const [hideCompleted, setHideCompleted] = useState(false);
 
   const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -83,6 +85,7 @@ export function EventOverlay({ eventId, onClose }: EventOverlayProps) {
   return (
     <div
       className="flex flex-col h-full bg-white dark:bg-gray-900"
+      data-edit-mode={isEditMode ? 'true' : 'false'}
       style={{ borderTop: `4px solid ${color}` }}
     >
       <EventOverlayHeader event={event} onClose={onClose} />
@@ -98,12 +101,10 @@ export function EventOverlay({ eventId, onClose }: EventOverlayProps) {
 
       <div className="flex h-1/3 min-h-0 flex-col shrink-0 border-t border-gray-200 dark:border-gray-700">
         <ActionBar
-          event={event}
           eventId={eventId}
-          playMode={playMode}
-          onTogglePlay={() => setPlayMode((p) => !p)}
-          taskCount={totalCount}
-          completedCount={completedCount}
+          activeSection={activeSection}
+          onSectionChange={setActiveSection}
+          onEnterEdit={() => setIsEditMode(true)}
           onDeleteEvent={() => {
             deleteEvent(eventId);
             storageDelete(storageKey.plannedEvent(eventId));
@@ -111,28 +112,50 @@ export function EventOverlay({ eventId, onClose }: EventOverlayProps) {
           }}
         />
 
-        <div className="flex shrink-0 items-center justify-between border-b border-gray-200 dark:border-gray-700 px-3 py-1.5 text-xs">
-          <span className="font-medium text-gray-600 dark:text-gray-400">
-            {completedCount}/{totalCount} tasks
-          </span>
-          <button
-            type="button"
-            onClick={() => setHideCompleted((h) => !h)}
-            className={`rounded px-2 py-0.5 transition-colors ${
-              hideCompleted
-                ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300'
-                : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600'
-            }`}
-          >
-            {hideCompleted ? 'Show all' : 'Hide completed'}
-          </button>
-        </div>
+        {activeSection === 'actions' && (
+          <>
+            <div className="flex shrink-0 items-center justify-between border-b border-gray-200 dark:border-gray-700 px-3 py-1.5 text-xs">
+              <span className="font-medium text-gray-600 dark:text-gray-400">
+                {completedCount}/{totalCount} tasks
+              </span>
+              <button
+                type="button"
+                onClick={() => setHideCompleted((h) => !h)}
+                className={`rounded px-2 py-0.5 transition-colors ${
+                  hideCompleted
+                    ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300'
+                    : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600'
+                }`}
+              >
+                {hideCompleted ? 'Show all' : 'Hide completed'}
+              </button>
+            </div>
 
-        <TaskList
-          taskIds={visibleTaskIds}
-          selectedTaskId={effectiveSelectedTaskId}
-          onSelect={setSelectedTaskId}
-        />
+            <TaskList
+              taskIds={visibleTaskIds}
+              selectedTaskId={effectiveSelectedTaskId}
+              onSelect={setSelectedTaskId}
+            />
+          </>
+        )}
+
+        {activeSection === 'participants' && (
+          <div className="flex flex-1 items-center justify-center px-3 text-sm text-gray-500 dark:text-gray-400">
+            Participants - coming in LE-09b
+          </div>
+        )}
+
+        {activeSection === 'location' && (
+          <div className="flex flex-1 items-center justify-center px-3 text-sm text-gray-500 dark:text-gray-400">
+            Location - coming in LE-09b
+          </div>
+        )}
+
+        {activeSection === 'attachments' && (
+          <div className="flex flex-1 items-center justify-center px-3 text-sm text-gray-500 dark:text-gray-400">
+            Attachments - coming in LE-09d
+          </div>
+        )}
       </div>
     </div>
   );
