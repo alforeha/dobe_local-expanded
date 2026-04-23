@@ -12,7 +12,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import type { Task } from '../types/task';
 import type { Event } from '../types/event';
-import type { InputFields, XpAward } from '../types/taskTemplate';
+import type { InputFields, Waypoint, XpAward } from '../types/taskTemplate';
 import type { StatGroupKey } from '../types/user';
 import { useScheduleStore } from '../stores/useScheduleStore';
 import { useUserStore } from '../stores/useUserStore';
@@ -489,9 +489,7 @@ export function uncompleteTask(taskId: string, eventId: string): void {
  */
 export function removeTaskFromEvent(taskId: string, eventId: string): void {
   const scheduleStore = useScheduleStore.getState();
-  const event = scheduleStore.activeEvents[eventId] as Event | undefined;
-  if (!event || !('tasks' in event)) return;
-  scheduleStore.setActiveEvent({ ...event, tasks: (event as Event).tasks.filter((id) => id !== taskId) });
+  scheduleStore.removeTaskFromEvent(taskId, eventId);
 }
 
 /**
@@ -499,8 +497,8 @@ export function removeTaskFromEvent(taskId: string, eventId: string): void {
  */
 export function addTaskToEvent(templateRef: string, eventId: string): void {
   const scheduleStore = useScheduleStore.getState();
-  const event = scheduleStore.activeEvents[eventId] as Event | undefined;
-  if (!event || !('tasks' in event)) return;
+  const event = (scheduleStore.activeEvents[eventId] ?? scheduleStore.historyEvents[eventId]) as Event | undefined;
+  if (!event || event.eventType === 'quickActions') return;
 
   const libraryTemplates = getLibraryTemplatePool();
 
@@ -524,5 +522,85 @@ export function addTaskToEvent(templateRef: string, eventId: string): void {
   };
 
   scheduleStore.setTask(newTask);
-  scheduleStore.setActiveEvent({ ...(event as Event), tasks: [...(event as Event).tasks, newTask.id] });
+  scheduleStore.updateEvent(eventId, { tasks: [...event.tasks, newTask.id] });
+}
+
+export function addUniqueTaskToEvent(task: Omit<Task, 'id'>, eventId: string): void {
+  const scheduleStore = useScheduleStore.getState();
+  const event = (scheduleStore.activeEvents[eventId] ?? scheduleStore.historyEvents[eventId]) as Event | undefined;
+  if (!event || event.eventType === 'quickActions') return;
+
+  const newTask: Task = {
+    ...task,
+    id: uuidv4(),
+  };
+
+  scheduleStore.setTask(newTask);
+  scheduleStore.updateEvent(eventId, { tasks: [...event.tasks, newTask.id] });
+}
+
+function getTrailTask(taskId: string, eventId: string): { scheduleStore: ReturnType<typeof useScheduleStore.getState>; task: Task } | null {
+  const scheduleStore = useScheduleStore.getState();
+  const event = (scheduleStore.activeEvents[eventId] ?? scheduleStore.historyEvents[eventId]) as Event | undefined;
+  const task = scheduleStore.tasks[taskId];
+
+  if (!event || event.eventType === 'quickActions' || !task || !event.tasks.includes(taskId)) {
+    return null;
+  }
+
+  return { scheduleStore, task };
+}
+
+export function addWaypoint(taskId: string, eventId: string, waypoint: Waypoint): void {
+  const context = getTrailTask(taskId, eventId);
+  if (!context) return;
+
+  const waypoints = Array.isArray((context.task.resultFields as { waypoints?: Waypoint[] }).waypoints)
+    ? [...((context.task.resultFields as { waypoints?: Waypoint[] }).waypoints ?? [])]
+    : [];
+
+  context.scheduleStore.setTask({
+    ...context.task,
+    resultFields: {
+      ...context.task.resultFields,
+      waypoints: [...waypoints, waypoint],
+    },
+  });
+}
+
+export function updateWaypoint(taskId: string, eventId: string, index: number, waypoint: Waypoint): void {
+  const context = getTrailTask(taskId, eventId);
+  if (!context) return;
+
+  const waypoints = Array.isArray((context.task.resultFields as { waypoints?: Waypoint[] }).waypoints)
+    ? [...((context.task.resultFields as { waypoints?: Waypoint[] }).waypoints ?? [])]
+    : [];
+  if (index < 0 || index >= waypoints.length) return;
+
+  waypoints[index] = waypoint;
+  context.scheduleStore.setTask({
+    ...context.task,
+    resultFields: {
+      ...context.task.resultFields,
+      waypoints,
+    },
+  });
+}
+
+export function deleteWaypoint(taskId: string, eventId: string, index: number): void {
+  const context = getTrailTask(taskId, eventId);
+  if (!context) return;
+
+  const waypoints = Array.isArray((context.task.resultFields as { waypoints?: Waypoint[] }).waypoints)
+    ? [...((context.task.resultFields as { waypoints?: Waypoint[] }).waypoints ?? [])]
+    : [];
+  if (index < 0 || index >= waypoints.length) return;
+
+  context.scheduleStore.setTask({
+    ...context.task,
+    resultFields: {
+      ...context.task.resultFields,
+      waypoints: waypoints.filter((_, waypointIndex) => waypointIndex !== index),
+    },
+  });
 }

@@ -33,6 +33,7 @@ interface ScheduleActions {
 
   setActiveEvent: (event: Event | QuickActionsEvent) => void;
   updateEvent: (eventId: string, patch: Partial<Event>) => void;
+  removeTaskFromEvent: (taskId: string, eventId: string) => void;
   archiveEvent: (eventId: string) => void;
   deleteEvent: (eventId: string) => void;
 
@@ -189,6 +190,43 @@ export const useScheduleStore = create<ScheduleState & ScheduleActions>()(
           }
 
           return {};
+        });
+      },
+
+      removeTaskFromEvent: (taskId, eventId) => {
+        set((state) => {
+          const tasks = { ...state.tasks };
+          delete tasks[taskId];
+
+          const activeEvent = state.activeEvents[eventId];
+          if (activeEvent?.eventType !== 'quickActions') {
+            return {
+              tasks,
+              activeEvents: {
+                ...state.activeEvents,
+                [eventId]: {
+                  ...activeEvent,
+                  tasks: activeEvent.tasks.filter((id) => id !== taskId),
+                },
+              },
+            };
+          }
+
+          const historyEvent = state.historyEvents[eventId];
+          if (historyEvent?.eventType !== 'quickActions') {
+            return {
+              tasks,
+              historyEvents: {
+                ...state.historyEvents,
+                [eventId]: {
+                  ...historyEvent,
+                  tasks: historyEvent.tasks.filter((id) => id !== taskId),
+                },
+              },
+            };
+          }
+
+          return { tasks };
         });
       },
 

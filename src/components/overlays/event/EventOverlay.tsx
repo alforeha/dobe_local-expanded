@@ -3,9 +3,9 @@ import { useScheduleStore } from '../../../stores/useScheduleStore';
 import { storageDelete, storageKey } from '../../../storage';
 import { EventOverlayHeader } from './EventOverlayHeader';
 import { TaskBlock } from './TaskBlock';
-import { TaskList } from './TaskList';
 import { ActionBar } from './ActionBar';
 import type { ActionBarSection } from './ActionBar';
+import { ActionsSection } from './sections/ActionsSection';
 import { LocationSection } from './sections/LocationSection';
 import { ParticipantsSection } from './sections/ParticipantsSection';
 import type { Event } from '../../../types';
@@ -67,8 +67,10 @@ export function EventOverlay({ eventId, onClose }: EventOverlayProps) {
     }
   }, [effectiveSelectedTaskId, event, tasks]);
 
-  const handleSectionAdd = useCallback((section: 'participants' | 'location') => {
-    setIsEditMode(true);
+  const handleSectionAdd = useCallback((section: 'actions' | 'participants' | 'location') => {
+    if (section !== 'actions') {
+      setIsEditMode(true);
+    }
     setSectionAddRequest((current) => ({ section, nonce: current.nonce + 1 }));
   }, []);
 
@@ -125,30 +127,20 @@ export function EventOverlay({ eventId, onClose }: EventOverlayProps) {
         />
 
         {activeSection === 'actions' && (
-          <>
-            <div className="flex shrink-0 items-center justify-between border-b border-gray-200 dark:border-gray-700 px-3 py-1.5 text-xs">
-              <span className="font-medium text-gray-600 dark:text-gray-400">
-                {completedCount}/{totalCount} tasks
-              </span>
-              <button
-                type="button"
-                onClick={() => setHideCompleted((h) => !h)}
-                className={`rounded px-2 py-0.5 transition-colors ${
-                  hideCompleted
-                    ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300'
-                    : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600'
-                }`}
-              >
-                {hideCompleted ? 'Show all' : 'Hide completed'}
-              </button>
-            </div>
-
-            <TaskList
-              taskIds={visibleTaskIds}
-              selectedTaskId={effectiveSelectedTaskId}
-              onSelect={setSelectedTaskId}
-            />
-          </>
+          <ActionsSection
+            event={event}
+            eventId={eventId}
+            isEditMode={isEditMode}
+            taskIds={visibleTaskIds}
+            selectedTaskId={effectiveSelectedTaskId}
+            onSelectTask={setSelectedTaskId}
+            onTaskComplete={handleTaskComplete}
+            completedCount={completedCount}
+            totalCount={totalCount}
+            hideCompleted={hideCompleted}
+            onToggleHideCompleted={() => setHideCompleted((hidden) => !hidden)}
+            addRequestNonce={sectionAddRequest.section === 'actions' ? sectionAddRequest.nonce : 0}
+          />
         )}
 
         {activeSection === 'participants' && (
