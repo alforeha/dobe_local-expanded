@@ -6,11 +6,12 @@ interface LocationTrailInputProps {
   inputFields: LocationTrailInputFields;
   task: Task;
   onComplete: (result: Partial<LocationTrailInputFields>) => void;
+  onResultChange?: (result: Partial<LocationTrailInputFields>) => void;
 }
 
 type TrailPhase = 'idle' | 'tracking' | 'manual' | 'done';
 
-export function LocationTrailInput({ inputFields, task, onComplete }: LocationTrailInputProps) {
+export function LocationTrailInput({ inputFields, task, onComplete, onResultChange }: LocationTrailInputProps) {
   const isComplete = task.completionState === 'complete';
   const { label, captureInterval } = inputFields;
 
@@ -26,6 +27,10 @@ export function LocationTrailInput({ inputFields, task, onComplete }: LocationTr
 
   const intervalRef = useRef<number | null>(null);
   const firedRef = useRef(false);
+
+  useEffect(() => {
+    onResultChange?.({ label, captureInterval, waypoints });
+  }, [captureInterval, label, onResultChange, waypoints]);
 
   const collectPoint = () => {
     navigator.geolocation.getCurrentPosition(

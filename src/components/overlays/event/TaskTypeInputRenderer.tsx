@@ -184,6 +184,7 @@ export function TaskTypeInputRenderer({
           inputFields={template.inputFields as LocationPointInputFields}
           task={task}
           onComplete={onComplete as (r: Partial<LocationPointInputFields>) => void}
+          onResultChange={onResultChange as ((r: Partial<LocationPointInputFields>) => void) | undefined}
         />
       );
     case 'LOCATION_TRAIL':
@@ -192,6 +193,7 @@ export function TaskTypeInputRenderer({
           inputFields={template.inputFields as LocationTrailInputFields}
           task={task}
           onComplete={onComplete as (r: Partial<LocationTrailInputFields>) => void}
+          onResultChange={onResultChange as ((r: Partial<LocationTrailInputFields>) => void) | undefined}
         />
       );
     case 'ROLL':

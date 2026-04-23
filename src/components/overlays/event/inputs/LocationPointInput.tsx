@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { LocationPointInputFields } from '../../../../types/taskTemplate';
 import type { Task } from '../../../../types/task';
 
@@ -6,11 +6,12 @@ interface LocationPointInputProps {
   inputFields: LocationPointInputFields;
   task: Task;
   onComplete: (result: Partial<LocationPointInputFields>) => void;
+  onResultChange?: (result: Partial<LocationPointInputFields>) => void;
 }
 
 type CaptureState = 'idle' | 'locating' | 'manual' | 'captured';
 
-export function LocationPointInput({ inputFields, task, onComplete }: LocationPointInputProps) {
+export function LocationPointInput({ inputFields, task, onComplete, onResultChange }: LocationPointInputProps) {
   const isComplete = task.completionState === 'complete';
   const { label, captureAccuracy } = inputFields;
 
@@ -18,6 +19,18 @@ export function LocationPointInput({ inputFields, task, onComplete }: LocationPo
   const [geoError, setGeoError] = useState<string | null>(null);
   const [manualLat, setManualLat] = useState('');
   const [manualLng, setManualLng] = useState('');
+
+  useEffect(() => {
+    const lat = parseFloat(manualLat);
+    const lng = parseFloat(manualLng);
+
+    onResultChange?.({
+      label,
+      captureAccuracy,
+      ...(Number.isFinite(lat) ? { lat } : {}),
+      ...(Number.isFinite(lng) ? { lng } : {}),
+    });
+  }, [captureAccuracy, label, manualLat, manualLng, onResultChange]);
 
   const handleCapture = () => {
     if (!navigator.geolocation) {

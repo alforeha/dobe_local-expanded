@@ -12,6 +12,7 @@ interface TaskBlockProps {
   taskId: string | null;
   eventId: string;
   onTaskComplete: () => void;
+  onPreviewResultChange?: (taskId: string, result: Partial<InputFields>) => void;
   className?: string;
 }
 
@@ -40,7 +41,7 @@ function getSubmitLabel(taskType: TaskType): string {
   }
 }
 
-export function TaskBlock({ taskId, eventId, onTaskComplete, className }: TaskBlockProps) {
+export function TaskBlock({ taskId, eventId, onTaskComplete, onPreviewResultChange, className }: TaskBlockProps) {
   const [nowMs, setNowMs] = useState(() => getOffsetNow().getTime());
   const [resultState, setResultState] = useState<{ taskId: string | null; result: Partial<InputFields> }>({
     taskId: null,
@@ -87,6 +88,11 @@ export function TaskBlock({ taskId, eventId, onTaskComplete, className }: TaskBl
     return () => window.clearInterval(interval);
   }, [isCoolingDown]);
 
+  useEffect(() => {
+    if (!taskId) return;
+    onPreviewResultChange?.(taskId, currentResult);
+  }, [currentResult, onPreviewResultChange, taskId]);
+
   if (!taskId) {
     return (
       <div className={`flex items-center justify-center rounded-lg border border-dashed border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 ${className ?? 'min-h-16'}`}>
@@ -99,12 +105,15 @@ export function TaskBlock({ taskId, eventId, onTaskComplete, className }: TaskBl
     if (!task || isCoolingDown) return;
     if (task.completionState === 'complete' && !canRepeatAfterCooldown) return;
     completeTask(taskId, eventId, { resultFields });
+    setResultState({ taskId, result: {} });
+    onPreviewResultChange?.(taskId, {});
     onTaskComplete();
   };
 
   const handleUndo = () => {
     uncompleteTask(taskId, eventId);
     setResultState({ taskId, result: {} });
+    onPreviewResultChange?.(taskId, {});
   };
 
   const handleDelete = () => {
@@ -159,7 +168,10 @@ export function TaskBlock({ taskId, eventId, onTaskComplete, className }: TaskBl
             task={displayTask ?? null}
             onComplete={handleComplete}
             hideSubmit={true}
-            onResultChange={(result) => setResultState({ taskId, result })}
+            onResultChange={(result) => {
+              setResultState({ taskId, result });
+              onPreviewResultChange?.(taskId, result);
+            }}
           />
         )}
       </div>

@@ -7,7 +7,7 @@ import { useAutoLocationPreferences } from '../../../hooks/useAutoLocationPrefer
 import { useScheduleStore } from '../../../stores/useScheduleStore';
 import type { Event, EventAttachment, Task } from '../../../types';
 import type { EventLocation } from '../../../types/plannedEvent';
-import type { LocationPointInputFields, LocationTrailInputFields, TaskTemplate, TaskType, Waypoint } from '../../../types/taskTemplate';
+import type { InputFields, LocationPointInputFields, LocationTrailInputFields, TaskTemplate, TaskType, Waypoint } from '../../../types/taskTemplate';
 import { resolveTaskDisplayName } from '../../../utils/resolveTaskDisplayName';
 import { resolveTaskTemplate } from '../../../utils/resolveTaskTemplate';
 import './EventGlobeView.css';
@@ -15,6 +15,7 @@ import './EventGlobeView.css';
 interface EventGlobeViewProps {
   event: Event;
   onClose: () => void;
+  previewResults?: Record<string, Partial<InputFields>>;
 }
 
 interface GlobePoint {
@@ -179,7 +180,7 @@ function buildLayerPopup(layer: GlobeLayerDefinition): string {
   `;
 }
 
-export function EventGlobeView({ event, onClose }: EventGlobeViewProps) {
+export function EventGlobeView({ event, onClose, previewResults = {} }: EventGlobeViewProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<L.Map | null>(null);
@@ -209,9 +210,12 @@ export function EventGlobeView({ event, onClose }: EventGlobeViewProps) {
       if (!task || !taskType) continue;
 
       const taskName = resolveTaskDisplayName(task, scheduleTemplates, starterTaskTemplates);
+      const effectiveResultFields = (Object.keys(previewResults[task.id] ?? {}).length > 0
+        ? previewResults[task.id]
+        : task.resultFields ?? {}) as Partial<InputFields>;
 
       if (taskType === 'LOCATION_TRAIL') {
-        const resultFields = (task.resultFields ?? {}) as Partial<LocationTrailInputFields>;
+        const resultFields = effectiveResultFields as Partial<LocationTrailInputFields>;
         const waypoints = (resultFields.waypoints ?? []).filter(
           (waypoint): waypoint is Waypoint => typeof waypoint.lat === 'number' && typeof waypoint.lng === 'number',
         );
@@ -230,7 +234,7 @@ export function EventGlobeView({ event, onClose }: EventGlobeViewProps) {
       }
 
       if (taskType === 'LOCATION_POINT') {
-        const resultFields = (task.resultFields ?? {}) as Partial<LocationPointInputFields>;
+        const resultFields = effectiveResultFields as Partial<LocationPointInputFields>;
         if (typeof resultFields.lat === 'number' && typeof resultFields.lng === 'number') {
           layers.push({
             key: task.id,
@@ -260,7 +264,7 @@ export function EventGlobeView({ event, onClose }: EventGlobeViewProps) {
     }
 
     return layers;
-  }, [event, scheduleTemplates, tasks, templates]);
+  }, [event, previewResults, scheduleTemplates, tasks, templates]);
 
   useEffect(() => {
     setLayerVisibility((current) => {

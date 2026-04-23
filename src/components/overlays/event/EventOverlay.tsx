@@ -15,7 +15,7 @@ import type { Event, Task } from '../../../types';
 import { format } from '../../../utils/dateUtils';
 import { IconDisplay } from '../../shared/IconDisplay';
 import { resolveTaskTemplate } from '../../../utils/resolveTaskTemplate';
-import type { LocationPointInputFields, LocationTrailInputFields } from '../../../types/taskTemplate';
+import type { InputFields, LocationPointInputFields, LocationTrailInputFields } from '../../../types/taskTemplate';
 
 function resolveOverlayTaskType(task: Task | undefined, taskTemplates: ReturnType<typeof useScheduleStore.getState>['taskTemplates']) {
   if (!task) return null;
@@ -47,6 +47,7 @@ export function EventOverlay({ eventId, onClose }: EventOverlayProps) {
   const [isEditMode, setIsEditMode] = useState(false);
   const [showGlobeView, setShowGlobeView] = useState(false);
   const [hideCompleted, setHideCompleted] = useState(false);
+  const [taskPreviewResults, setTaskPreviewResults] = useState<Record<string, Partial<InputFields>>>({});
   const [sectionAddRequest, setSectionAddRequest] = useState({
     section: 'actions' as ActionBarSection,
     nonce: 0,
@@ -123,16 +124,19 @@ export function EventOverlay({ eventId, onClose }: EventOverlayProps) {
     for (const taskId of event.tasks) {
       const task = tasks[taskId];
       const taskType = resolveOverlayTaskType(task, taskTemplates);
+      const effectiveResultFields = (Object.keys(taskPreviewResults[taskId] ?? {}).length > 0
+        ? taskPreviewResults[taskId]
+        : task?.resultFields ?? {}) as Partial<InputFields>;
 
       if (taskType === 'LOCATION_TRAIL') {
-        const resultFields = (task?.resultFields ?? {}) as Partial<LocationTrailInputFields>;
+        const resultFields = effectiveResultFields as Partial<LocationTrailInputFields>;
         if (Array.isArray(resultFields.waypoints) && resultFields.waypoints.length > 0) {
           return true;
         }
       }
 
       if (taskType === 'LOCATION_POINT') {
-        const resultFields = (task?.resultFields ?? {}) as Partial<LocationPointInputFields>;
+        const resultFields = effectiveResultFields as Partial<LocationPointInputFields>;
         if (typeof resultFields.lat === 'number' && typeof resultFields.lng === 'number') {
           return true;
         }
@@ -145,7 +149,7 @@ export function EventOverlay({ eventId, onClose }: EventOverlayProps) {
         typeof attachment.location.latitude === 'number' &&
         typeof attachment.location.longitude === 'number',
     );
-  }, [event, taskTemplates, tasks]);
+  }, [event, taskPreviewResults, taskTemplates, tasks]);
 
   useEffect(() => {
     if (!hasGlobeData && showGlobeView) {
@@ -251,6 +255,18 @@ export function EventOverlay({ eventId, onClose }: EventOverlayProps) {
             taskId={effectiveSelectedTaskId}
             eventId={eventId}
             onTaskComplete={handleTaskComplete}
+            onPreviewResultChange={(taskId, result) => {
+              setTaskPreviewResults((current) => {
+                if (Object.keys(result).length === 0) {
+                  if (!(taskId in current)) return current;
+                  const next = { ...current };
+                  delete next[taskId];
+                  return next;
+                }
+
+                return { ...current, [taskId]: result };
+              });
+            }}
             className="h-full"
           />
         </div>
@@ -316,7 +332,7 @@ export function EventOverlay({ eventId, onClose }: EventOverlayProps) {
 
         {showGlobeView && (
           <div className="absolute inset-0 z-20">
-            <EventGlobeView event={event} onClose={() => setShowGlobeView(false)} />
+            <EventGlobeView event={event} onClose={() => setShowGlobeView(false)} previewResults={taskPreviewResults} />
           </div>
         )}
       </div>
