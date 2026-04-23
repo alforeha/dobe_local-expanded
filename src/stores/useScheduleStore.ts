@@ -7,8 +7,9 @@
 
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { PlannedEvent, Event, QuickActionsEvent, Task, TaskTemplate } from '../types';
+import type { PlannedEvent, Event, EventAttachment, QuickActionsEvent, Task, TaskTemplate } from '../types';
 import { isTemplateQuestLocked } from '../utils/isTemplateQuestLocked';
+import { v4 as uuidv4 } from 'uuid';
 
 // ── STATE ─────────────────────────────────────────────────────────────────────
 
@@ -111,15 +112,91 @@ function normalizeEventFields(event: Event | QuickActionsEvent): {
 
   const nextSharedWith = Array.isArray(event.sharedWith) ? event.sharedWith : [];
   const nextCoAttendees = Array.isArray(event.coAttendees) ? event.coAttendees : [];
+  const normalizedAttachments = normalizeEventAttachments(event.attachments);
+  const nextAttachments = normalizedAttachments.attachments;
 
   return {
     event: {
       ...event,
       sharedWith: nextSharedWith,
       coAttendees: nextCoAttendees,
+      attachments: nextAttachments,
     },
-    changed: nextSharedWith !== event.sharedWith || nextCoAttendees !== event.coAttendees,
+    changed:
+      nextSharedWith !== event.sharedWith ||
+      nextCoAttendees !== event.coAttendees ||
+      normalizedAttachments.changed,
   };
+}
+
+function normalizeEventAttachments(attachments: Event['attachments'] | string[] | undefined): {
+  attachments: EventAttachment[];
+  changed: boolean;
+} {
+  if (!Array.isArray(attachments)) {
+    return { attachments: [], changed: true };
+  }
+
+  let changed = false;
+  const nextAttachments = attachments.map((attachment, index) => {
+    const normalized = normalizeEventAttachment(attachment, index);
+    if (normalized !== attachment) {
+      changed = true;
+    }
+    return normalized;
+  });
+
+  return {
+    attachments: changed ? nextAttachments : (attachments as EventAttachment[]),
+    changed,
+  };
+}
+
+function normalizeEventAttachment(attachment: EventAttachment | string, index: number): EventAttachment {
+  if (typeof attachment === 'string') {
+    return {
+      id: uuidv4(),
+      type: 'document',
+      label: `Legacy attachment ${index + 1}`,
+      uri: attachment,
+      mimeType: 'application/octet-stream',
+      sizeBytes: 0,
+      createdAt: new Date(0).toISOString(),
+      source: 'legacy',
+    };
+  }
+
+  const nextAttachment: EventAttachment = {
+    id: attachment.id || uuidv4(),
+    type: attachment.type === 'photo' ? 'photo' : 'document',
+    label: attachment.label || `Attachment ${index + 1}`,
+    uri: attachment.uri || '',
+    mimeType: attachment.mimeType || 'application/octet-stream',
+    sizeBytes: Number.isFinite(attachment.sizeBytes) ? attachment.sizeBytes : 0,
+    createdAt: attachment.createdAt || new Date(0).toISOString(),
+    source:
+      attachment.source === 'camera' ||
+      attachment.source === 'gallery' ||
+      attachment.source === 'web-upload' ||
+      attachment.source === 'legacy'
+        ? attachment.source
+        : 'legacy',
+  };
+
+  if (
+    attachment.id === nextAttachment.id &&
+    attachment.type === nextAttachment.type &&
+    attachment.label === nextAttachment.label &&
+    attachment.uri === nextAttachment.uri &&
+    attachment.mimeType === nextAttachment.mimeType &&
+    attachment.sizeBytes === nextAttachment.sizeBytes &&
+    attachment.createdAt === nextAttachment.createdAt &&
+    attachment.source === nextAttachment.source
+  ) {
+    return attachment;
+  }
+
+  return nextAttachment;
 }
 
 function normalizeEventRecord<T extends Event | QuickActionsEvent>(

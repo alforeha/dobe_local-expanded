@@ -11,7 +11,7 @@
 
 import { v4 as uuidv4 } from 'uuid';
 import type { Task } from '../types/task';
-import type { Event } from '../types/event';
+import type { Event, EventAttachment, EventAttachmentSource } from '../types/event';
 import type { InputFields, Waypoint, XpAward } from '../types/taskTemplate';
 import type { StatGroupKey } from '../types/user';
 import { useScheduleStore } from '../stores/useScheduleStore';
@@ -74,6 +74,16 @@ export interface AttachmentRecord {
   recordedAt: string;
   /** Optional Task ref for contract validation flow */
   taskRef: string | null;
+}
+
+export interface AddAttachmentInput {
+  type: EventAttachment['type'];
+  label: string;
+  uri: string;
+  mimeType: string;
+  sizeBytes: number;
+  source: EventAttachmentSource;
+  createdAt?: string;
 }
 
 // ── COMPLETE TASK ─────────────────────────────────────────────────────────────
@@ -433,34 +443,74 @@ export function completeEvent(eventId: string): void {
  */
 export function recordAttachment(
   eventId: string,
-  _attachment: AttachmentRecord,
+  attachment: AttachmentRecord,
+): string | null {
+  return addAttachment(
+    {
+      type: attachment.mimeType.startsWith('image/') ? 'photo' : 'document',
+      label: attachment.opfsRef,
+      uri: attachment.opfsRef,
+      mimeType: attachment.mimeType,
+      sizeBytes: attachment.sizeBytes,
+      source: 'legacy',
+      createdAt: attachment.recordedAt,
+    },
+    eventId,
+  );
+}
+
+export function addAttachment(
+  attachment: AddAttachmentInput,
+  eventId: string,
 ): string | null {
   const scheduleStore = useScheduleStore.getState();
-  const event = scheduleStore.activeEvents[eventId] as Event | undefined;
+  const event = (scheduleStore.activeEvents[eventId] ?? scheduleStore.historyEvents[eventId]) as Event | undefined;
 
   if (!event || event.eventType === 'quickActions') {
-    console.warn(`[eventExecution] recordAttachment: Event "${eventId}" not found or is QA event`);
+    console.warn(`[eventExecution] addAttachment: Event "${eventId}" not found or is QA event`);
     return null;
   }
 
   if (event.attachments.length >= EVENT_MAX_ATTACHMENTS) {
     console.warn(
-      `[eventExecution] recordAttachment: Event "${eventId}" is at attachment cap (${EVENT_MAX_ATTACHMENTS})`,
+      `[eventExecution] addAttachment: Event "${eventId}" is at attachment cap (${EVENT_MAX_ATTACHMENTS})`,
     );
     return null;
   }
 
   const attachmentId = uuidv4();
-
-  // Update the event to reference the new attachment
-  const updatedEvent: Event = {
-    ...event,
-    attachments: [...event.attachments, attachmentId],
+  const nextAttachment: EventAttachment = {
+    id: attachmentId,
+    type: attachment.type,
+    label: attachment.label,
+    uri: attachment.uri,
+    mimeType: attachment.mimeType,
+    sizeBytes: attachment.sizeBytes,
+    createdAt: attachment.createdAt ?? getAppNowISO(),
+    source: attachment.source,
   };
 
-  scheduleStore.setActiveEvent(updatedEvent);
+  const updatedEvent: Event = {
+    ...event,
+    attachments: [...event.attachments, nextAttachment],
+  };
+
+  scheduleStore.updateEvent(eventId, { attachments: updatedEvent.attachments });
 
   return attachmentId;
+}
+
+export function removeAttachment(attachmentId: string, eventId: string): void {
+  const scheduleStore = useScheduleStore.getState();
+  const event = (scheduleStore.activeEvents[eventId] ?? scheduleStore.historyEvents[eventId]) as Event | undefined;
+
+  if (!event || event.eventType === 'quickActions') {
+    return;
+  }
+
+  scheduleStore.updateEvent(eventId, {
+    attachments: event.attachments.filter((attachment) => attachment.id !== attachmentId),
+  });
 }
 
 // ── UNDO / REMOVE ─────────────────────────────────────────────────────────────

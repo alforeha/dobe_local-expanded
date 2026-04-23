@@ -7,6 +7,7 @@ import type { ActionBarSection } from './ActionBar';
 import { ActionsSection } from './sections/ActionsSection';
 import { LocationSection } from './sections/LocationSection';
 import { ParticipantsSection } from './sections/ParticipantsSection';
+import { AttachmentsSection } from './sections/AttachmentsSection';
 import type { Event } from '../../../types';
 import { format } from '../../../utils/dateUtils';
 import { IconDisplay } from '../../shared/IconDisplay';
@@ -69,10 +70,11 @@ export function EventOverlay({ eventId, onClose }: EventOverlayProps) {
     }
   }, [effectiveSelectedTaskId, event, tasks]);
 
-  const handleSectionAdd = useCallback((section: 'actions' | 'participants' | 'location') => {
+  const handleSectionAdd = useCallback((section: ActionBarSection) => {
     if (section !== 'actions') {
       setIsEditMode(true);
     }
+    setActiveSection(section);
     setSectionAddRequest((current) => ({ section, nonce: current.nonce + 1 }));
   }, []);
 
@@ -139,6 +141,12 @@ export function EventOverlay({ eventId, onClose }: EventOverlayProps) {
                     type="time"
                     value={event.startTime}
                     onChange={(editEvent) => updateEvent(eventId, { startTime: editEvent.target.value })}
+                    className="rounded-lg border border-gray-300 bg-white px-2 py-1 text-xs text-gray-700 focus:outline-none focus:ring-2 focus:ring-purple-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+                  />
+                  <input
+                    type="date"
+                    value={event.endDate}
+                    onChange={(editEvent) => updateEvent(eventId, { endDate: editEvent.target.value })}
                     className="rounded-lg border border-gray-300 bg-white px-2 py-1 text-xs text-gray-700 focus:outline-none focus:ring-2 focus:ring-purple-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
                   />
                   <input
@@ -230,9 +238,12 @@ export function EventOverlay({ eventId, onClose }: EventOverlayProps) {
         )}
 
         {activeSection === 'attachments' && (
-          <div className="flex flex-1 items-center justify-center px-3 text-sm text-gray-500 dark:text-gray-400">
-            Attachments - coming in LE-09d
-          </div>
+          <AttachmentsSection
+            event={event}
+            eventId={eventId}
+            isEditMode={isEditMode}
+            addRequestNonce={sectionAddRequest.section === 'attachments' ? sectionAddRequest.nonce : 0}
+          />
         )}
       </div>
     </div>

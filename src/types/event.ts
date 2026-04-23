@@ -27,6 +27,21 @@ export interface EventAttendee {
   displayName: string;
 }
 
+export type EventAttachmentType = 'photo' | 'document';
+
+export type EventAttachmentSource = 'web-upload' | 'camera' | 'gallery' | 'legacy';
+
+export interface EventAttachment {
+  id: string;
+  type: EventAttachmentType;
+  label: string;
+  uri: string;
+  mimeType: string;
+  sizeBytes: number;
+  createdAt: string;
+  source: EventAttachmentSource;
+}
+
 // ── EVENT ROOT ────────────────────────────────────────────────────────────────
 
 export interface Event {
@@ -52,7 +67,7 @@ export interface Event {
   /** Sum of completed task XP */
   xpAwarded: number;
   /** Attachment refs — max 5, max 200 KB each (D09) */
-  attachments: string[];
+  attachments: EventAttachment[];
   /** STUB: LOCATION-SHARING — reserved for captured venue/location metadata once the LOCATION-SHARING chapter is enabled. */
   location: EventLocation | null;
   note: string | null;

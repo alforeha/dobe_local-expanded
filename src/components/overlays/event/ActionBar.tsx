@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from 'react';
-import { PopupShell } from '../../shared/popups/PopupShell';
 import './ActionBar.css';
 
 interface ActionBarProps {
@@ -9,13 +8,11 @@ interface ActionBarProps {
   isEditMode: boolean;
   onEnterEdit: () => void;
   onExitEdit: () => void;
-  onSectionAdd?: (section: 'actions' | 'participants' | 'location') => void;
+  onSectionAdd?: (section: ActionBarSection) => void;
   onDeleteEvent?: () => void;
 }
 
 export type ActionBarSection = 'actions' | 'participants' | 'location' | 'attachments';
-
-type PopupType = 'addAttachment' | null;
 
 const sectionOrder: ActionBarSection[] = ['actions', 'participants', 'location', 'attachments'];
 
@@ -34,7 +31,6 @@ const addButtonLabels: Record<ActionBarSection, string> = {
 };
 
 export function ActionBar({ eventId: _eventId, activeSection, onSectionChange, isEditMode, onEnterEdit, onExitEdit, onSectionAdd, onDeleteEvent }: ActionBarProps) {
-  const [openPopup, setOpenPopup] = useState<PopupType>(null);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const dropdownRef = useRef<HTMLDivElement | null>(null);
@@ -71,22 +67,7 @@ export function ActionBar({ eventId: _eventId, activeSection, onSectionChange, i
   };
 
   const handleAddClick = () => {
-    if (activeSection === 'actions') {
-      onSectionAdd?.('actions');
-      return;
-    }
-
-    if (activeSection === 'participants') {
-      onSectionAdd?.('participants');
-      return;
-    }
-
-    if (activeSection === 'location') {
-      onSectionAdd?.('location');
-      return;
-    }
-
-    setOpenPopup('addAttachment');
+    onSectionAdd?.(activeSection);
   };
 
   const handleEditToggle = () => {
@@ -161,13 +142,6 @@ export function ActionBar({ eventId: _eventId, activeSection, onSectionChange, i
           )}
         </div>
       </div>
-
-      {openPopup === 'addAttachment' && (
-        <PopupShell title="Add Attachment" onClose={() => setOpenPopup(null)}>
-          <p className="text-sm text-gray-500 dark:text-gray-400">Attachments - coming in LE-09d</p>
-        </PopupShell>
-      )}
-
     </>
   );
 }
