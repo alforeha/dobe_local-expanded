@@ -25,6 +25,7 @@ import { STARTER_ACT_IDS, STARTER_TEMPLATE_IDS, makeDailyChain } from '../coach/
 import { materialisePlannedEvent } from './materialise';
 import { completeMilestone, fireInitialIntervalMarkers, fireMarker } from './markerEngine';
 import { evaluateMarkerCondition, evaluateTaskCountMarker } from './questEngine';
+import { computeGTDList } from './resourceEngine';
 import { ribbet } from '../coach/ribbet';
 import { appendFeedEntry, FEED_SOURCE } from './feedEngine';
 import { localISODate, addDays, getAppDate } from '../utils/dateUtils';
@@ -494,6 +495,14 @@ async function step9_coachReview(newDate: string): Promise<void> {
   }
 }
 
+// ── STEP 10 — Generate resource GTD items ────────────────────────────────────
+
+function step10_generateResourceGTDItems(rolloverDate: string): void {
+  const user = useUserStore.getState().user;
+  if (!user) return;
+  computeGTDList(user, rolloverDate);
+}
+
 function step7_completeDailyClearDeckQuest(rolloverDate: string): void {
   const progressionStore = useProgressionStore.getState();
   const scheduleStore = useScheduleStore.getState();
@@ -556,11 +565,11 @@ function step7_completeDailyClearDeckQuest(rolloverDate: string): void {
 // ── EXECUTE ROLLOVER ──────────────────────────────────────────────────────────
 
 /**
- * Run all 9 rollover steps in sequence.
+ * Run all 10 rollover steps in sequence.
  *
  * @param rolloverDate  The date being rolled over TO (new day, YYYY-MM-DD).
  *                      Defaults to today.
- * @param resumeFrom    Step number to resume from (1–9). Used on interrupted-boot recovery.
+ * @param resumeFrom    Step number to resume from (1–10). Used on interrupted-boot recovery.
  */
 export async function executeRollover(
   rolloverDate: string = todayISO(),
@@ -636,6 +645,12 @@ export async function executeRollover(
   if (resumeFrom <= 9) {
     systemStore.setRolloverStep(9);
     await step9_coachReview(rolloverDate);
+  }
+
+  // Step 10 — generate resource GTD items for the new day
+  if (resumeFrom <= 10) {
+    systemStore.setRolloverStep(10);
+    step10_generateResourceGTDItems(rolloverDate);
   }
 
   // Mark rollover complete

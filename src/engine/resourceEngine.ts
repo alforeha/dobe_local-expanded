@@ -30,7 +30,7 @@ import type { PlannedEvent } from '../types/plannedEvent';
 import type { Task } from '../types/task';
 import type { XpAward } from '../types/taskTemplate';
 import type { StatGroupKey, User } from '../types/user';
-import { getAppDate, getAppNowISO } from '../utils/dateUtils';
+import { getAppDate, getAppNowISO, localISODate } from '../utils/dateUtils';
 import type { QuickActionsEvent } from '../types/event';
 import { useScheduleStore } from '../stores/useScheduleStore';
 import { useUserStore } from '../stores/useUserStore';
@@ -71,6 +71,10 @@ function getPrimaryStatGroup(statAward: XpAward): StatGroupKey | null {
 
 function todayISO(): string {
   return getAppDate();
+}
+
+function parseISODate(isoDate: string): Date {
+  return new Date(`${isoDate}T00:00:00`);
 }
 
 function findItemTemplate(itemTemplateRef: string) {
@@ -133,10 +137,12 @@ function buildPendingTask(
   templateRef: string,
   resourceRef: string,
   resultFields: Task['resultFields'] = {},
+  title?: string,
 ): Task {
   return {
     id: uuidv4(),
     templateRef,
+    title: title ?? null,
     completionState: 'pending',
     completedAt: null,
     resultFields,
@@ -299,89 +305,144 @@ export function syncOnboardingBackfill(): void {
  * Days until an upcoming date (same year or next year for annual events).
  * Returns null if date is not parseable.
  */
-function daysUntilAnnual(isoDate: string): number | null {
-  const today = new Date(todayISO() + 'T00:00:00');
+function resolveAnnualOccurrence(isoDate: string, referenceDate: string): { date: string; days: number } | null {
+  const today = parseISODate(referenceDate);
   const parts = isoDate.slice(0, 10).split('-');
   if (parts.length < 3) return null;
   const thisYear = today.getFullYear();
-  const candidate = new Date(`${thisYear}-${parts[1]}-${parts[2]}T00:00:00`);
+  const candidate = parseISODate(`${thisYear}-${parts[1]}-${parts[2]}`);
+  if (isNaN(candidate.getTime())) return null;
   if (candidate < today) {
     candidate.setFullYear(thisYear + 1);
   }
-  return Math.round((candidate.getTime() - today.getTime()) / 86_400_000);
+  return {
+    date: localISODate(candidate),
+    days: Math.round((candidate.getTime() - today.getTime()) / 86_400_000),
+  };
 }
 
 /**
  * Days until an absolute future date (not annualised).
  * Returns null if date is not parseable. Negative = in the past.
  */
-function daysUntilDate(isoDate: string): number | null {
-  const today = new Date(todayISO() + 'T00:00:00');
-  const target = new Date(isoDate.slice(0, 10) + 'T00:00:00');
+function daysUntilDate(isoDate: string, referenceDate: string): number | null {
+  const today = parseISODate(referenceDate);
+  const target = parseISODate(isoDate.slice(0, 10));
   if (isNaN(target.getTime())) return null;
   return Math.round((target.getTime() - today.getTime()) / 86_400_000);
 }
 
-function computeNextOccurrence(rule: ResourceRecurrenceRule): { date: string; days: number } {
-  const today = new Date(todayISO() + 'T00:00:00');
-  const seed = new Date(rule.seedDate + 'T00:00:00');
+function isRecurrenceOnDate(rule: ResourceRecurrenceRule, dateISO: string): boolean {
+  if (!rule.seedDate) return false;
+  if (rule.seedDate > dateISO) return false;
+  if (rule.endsOn && rule.endsOn < dateISO) return false;
 
-  if (seed >= today) {
-    const days = Math.round((seed.getTime() - today.getTime()) / 86_400_000);
-    return { date: rule.seedDate, days };
-  }
-
+  const target = parseISODate(dateISO);
+  const seed = parseISODate(rule.seedDate);
   const interval = Math.max(1, rule.interval || 1);
+  const diffDays = Math.round((target.getTime() - seed.getTime()) / 86_400_000);
 
   switch (rule.frequency) {
-    case 'daily': {
-      const periodMs = interval * 86_400_000;
-      const elapsed = Math.floor((today.getTime() - seed.getTime()) / periodMs);
-      const next = new Date(seed.getTime() + (elapsed + 1) * periodMs);
-      const days = Math.round((next.getTime() - today.getTime()) / 86_400_000);
-      return { date: next.toISOString().slice(0, 10), days };
-    }
+    case 'daily':
+      return diffDays >= 0 && diffDays % interval === 0;
     case 'weekly': {
-      const diffCandidates = (rule.days.length > 0 ? rule.days : [['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'][seed.getDay()]])
-        .map((day) => ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'].indexOf(day))
-        .filter((day) => day >= 0)
-        .map((day) => (day - today.getDay() + 7) % 7);
-      if (diffCandidates.length > 0) {
-        const minDiff = Math.min(...diffCandidates);
-        const next = new Date(today);
-        next.setDate(next.getDate() + minDiff);
-        return { date: next.toISOString().slice(0, 10), days: minDiff };
-      }
-      break;
+      const diffWeeks = Math.floor(diffDays / 7);
+      if (diffWeeks < 0 || diffWeeks % interval !== 0) return false;
+      const weekdayKeys = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'] as const;
+      const weekdayKey = weekdayKeys[target.getDay()];
+      return rule.days.length === 0 ? target.getDay() === seed.getDay() : rule.days.includes(weekdayKey);
     }
     case 'monthly': {
+      const monthDiff =
+        (target.getFullYear() - seed.getFullYear()) * 12 +
+        (target.getMonth() - seed.getMonth());
+      if (monthDiff < 0 || monthDiff % interval !== 0) return false;
       const requestedDay = rule.monthlyDay ?? seed.getDate();
-      const next = new Date(today);
-      const resolveDay = (date: Date) => Math.min(requestedDay, new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate());
-      next.setDate(resolveDay(next));
-      if (next < today) next.setMonth(next.getMonth() + interval);
-      next.setDate(resolveDay(next));
-      const days = Math.round((next.getTime() - today.getTime()) / 86_400_000);
-      return { date: next.toISOString().slice(0, 10), days };
+      const resolvedDay = Math.min(requestedDay, new Date(target.getFullYear(), target.getMonth() + 1, 0).getDate());
+      return target.getDate() === resolvedDay;
     }
     case 'yearly': {
-      const next = new Date(seed);
-      while (next < today) next.setFullYear(next.getFullYear() + interval);
-      const days = Math.round((next.getTime() - today.getTime()) / 86_400_000);
-      return { date: next.toISOString().slice(0, 10), days };
+      const yearDiff = target.getFullYear() - seed.getFullYear();
+      return (
+        yearDiff >= 0 &&
+        yearDiff % interval === 0 &&
+        target.getMonth() === seed.getMonth() &&
+        target.getDate() === seed.getDate()
+      );
+    }
+    default:
+      return false;
+  }
+}
+
+function computeNextOccurrence(rule: ResourceRecurrenceRule, referenceDate: string): { date: string; days: number } {
+  const start = parseISODate(referenceDate);
+  for (let offset = 0; offset <= 366 * 5; offset++) {
+    const candidate = new Date(start);
+    candidate.setDate(candidate.getDate() + offset);
+    const candidateISO = localISODate(candidate);
+    if (isRecurrenceOnDate(rule, candidateISO)) {
+      return { date: candidateISO, days: offset };
     }
   }
 
-  return { date: today.toISOString().slice(0, 10), days: 0 };
+  return { date: referenceDate, days: 0 };
 }
 
-function buildResourceReminderTask(resourceId: string, templateKey: string): Task {
+function buildResourceTaskFields(
+  resourceTaskId: string,
+  dueDate: string,
+  fields: Task['resultFields'] = {},
+): Task['resultFields'] {
+  return ({
+    ...fields,
+    resourceTaskId,
+    dueDate,
+  } as unknown) as Task['resultFields'];
+}
+
+function buildResourceTaskDedupKey(resourceTaskId: string, dueDate: string): string {
+  return `${resourceTaskId}::${dueDate}`;
+}
+
+function readResourceTaskIdentity(task: Task): { resourceTaskId: string; dueDate: string } | null {
+  const fields = task.resultFields as Record<string, unknown>;
+  const resourceTaskId = typeof fields.resourceTaskId === 'string' ? fields.resourceTaskId : null;
+  const dueDate = typeof fields.dueDate === 'string' ? fields.dueDate : null;
+  if (!resourceTaskId || !dueDate) return null;
+  return { resourceTaskId, dueDate };
+}
+
+function getExistingPendingResourceTaskKeys(user: User | null | undefined): Set<string> {
+  if (!user) return new Set<string>();
+
+  const scheduleStore = useScheduleStore.getState();
+  const keys = new Set<string>();
+  for (const taskId of user.lists.gtdList) {
+    const task = scheduleStore.tasks[taskId];
+    if (!task || task.completionState !== 'pending') continue;
+    const identity = readResourceTaskIdentity(task);
+    if (!identity) continue;
+    keys.add(buildResourceTaskDedupKey(identity.resourceTaskId, identity.dueDate));
+  }
+  return keys;
+}
+
+function buildResourceReminderTask(
+  resourceId: string,
+  templateKey: string,
+  resourceTaskId: string,
+  dueDate: string,
+  title?: string,
+  resultFields: Task['resultFields'] = {},
+): Task {
   return {
     id: uuidv4(),
     templateRef: templateKey,
+    title: title ?? null,
     completionState: 'pending',
     completedAt: null,
-    resultFields: {},
+    resultFields: buildResourceTaskFields(resourceTaskId, dueDate, resultFields),
     attachmentRef: null,
     resourceRef: resourceId,
     location: null,
@@ -461,85 +522,98 @@ export function generateScheduledTasks(_resource: Resource): PlannedEvent[] {
  *
  * @returns Array of Task objects created
  */
-export function generateGTDItems(resource: Resource): Task[] {
+interface GenerateGTDOptions {
+  referenceDate?: string;
+  persist?: boolean;
+}
+
+export function generateGTDItems(resource: Resource, options: GenerateGTDOptions = {}): Task[] {
+  const referenceDate = options.referenceDate ?? todayISO();
   const created: Task[] = [];
 
   switch (resource.type) {
     case 'contact':
-      created.push(..._genContactGTD(resource));
+      created.push(..._genContactGTD(resource, referenceDate));
       break;
     case 'account':
-      created.push(..._genAccountGTD(resource));
+      created.push(..._genAccountGTD(resource, referenceDate));
       break;
     case 'inventory':
-      created.push(..._genInventoryGTD(resource));
+      created.push(..._genInventoryGTD(resource, referenceDate));
       break;
     case 'home':
-      created.push(..._genHomeGTD(resource));
+      created.push(..._genHomeGTD(resource, referenceDate));
       break;
     case 'vehicle':
-      created.push(..._genVehicleGTD(resource));
+      created.push(..._genVehicleGTD(resource, referenceDate));
       break;
     case 'doc':
-      created.push(..._genDocGTD(resource));
+      created.push(..._genDocGTD(resource, referenceDate));
       break;
   }
 
-  if (created.length > 0) {
+  const latestUser = useUserStore.getState().user;
+  const existingKeys = getExistingPendingResourceTaskKeys(latestUser);
+  const createdKeys = new Set<string>();
+  const deduped = created.filter((task) => {
+    const identity = readResourceTaskIdentity(task);
+    if (!identity) return true;
+    const dedupKey = buildResourceTaskDedupKey(identity.resourceTaskId, identity.dueDate);
+    if (existingKeys.has(dedupKey) || createdKeys.has(dedupKey)) {
+      return false;
+    }
+    createdKeys.add(dedupKey);
+    return true;
+  });
+
+  if (options.persist !== false && deduped.length > 0) {
     const scheduleStore = useScheduleStore.getState();
-    const userStore = useUserStore.getState();
-    const latestUser = userStore.user;
     if (latestUser) {
-      for (const task of created) {
+      for (const task of deduped) {
         scheduleStore.setTask(task);
       }
       const updatedUser: User = {
         ...latestUser,
         lists: {
           ...latestUser.lists,
-          gtdList: [...new Set([...latestUser.lists.gtdList, ...created.map((t) => t.id)])],
+          gtdList: [...new Set([...latestUser.lists.gtdList, ...deduped.map((t) => t.id)])],
         },
       };
-      userStore.setUser(updatedUser);
+      useUserStore.getState().setUser(updatedUser);
     }
   }
 
-  return created;
+  return deduped;
 }
 
 function _genContactSchedule(_resource: ContactResource): PlannedEvent[] {
   return [];
 }
 
-function _genContactGTD(resource: ContactResource): Task[] {
-  if (!resource.birthday) return [];
+function _genContactGTD(resource: ContactResource, referenceDate: string): Task[] {
+  if (!resource.birthday || resource.birthdayLeadDays == null) return [];
 
-  const lead = resource.birthdayLeadDays ?? 14;
+  const lead = resource.birthdayLeadDays;
   if (lead === -1) return [];
 
-  const days = daysUntilAnnual(resource.birthday);
-  if (days === null || days > lead) return [];
+  const nextBirthday = resolveAnnualOccurrence(resource.birthday, referenceDate);
+  if (!nextBirthday || nextBirthday.days > lead) return [];
 
-  const templateKey = 'task-res-contacts-birthday';
-
-  const task: Task = {
-    id: uuidv4(),
-    templateRef: templateKey,
-    completionState: 'pending',
-    completedAt: null,
-    resultFields: {},
-    attachmentRef: null,
-    resourceRef: resource.id,
-    location: null,
-    sharedWith: null,
-    questRef: null,
-    actRef: null,
-    secondaryTag: null,
-  };
-  return [task];
+  const title = `Birthday — ${resource.displayName}`;
+  const resourceTaskId = `resource-task:${resource.id}:birthday`;
+  return [
+    buildResourceReminderTask(
+      resource.id,
+      resourceTaskId,
+      resourceTaskId,
+      nextBirthday.date,
+      title,
+      { label: title } as Task['resultFields'],
+    ),
+  ];
 }
 
-function _genAccountGTD(resource: AccountResource): Task[] {
+function _genAccountGTD(resource: AccountResource, referenceDate: string): Task[] {
   const tasks: Task[] = [];
 
   for (const task of resource.accountTasks ?? []) {
@@ -559,56 +633,68 @@ function _genAccountGTD(resource: AccountResource): Task[] {
       clearPendingResourceTasks(templateKey, resource.id);
       continue;
     }
-    const next = computeNextOccurrence(task.recurrence);
+    const next = computeNextOccurrence(task.recurrence, referenceDate);
     if (next.days < 0 || next.days > task.reminderLeadDays) {
       clearPendingResourceTasks(templateKey, resource.id);
       continue;
     }
 
-    tasks.push(buildResourceReminderTask(resource.id, templateKey));
+    tasks.push(
+      buildResourceReminderTask(
+        resource.id,
+        templateKey,
+        templateKey,
+        next.date,
+        task.name,
+        { label: task.name } as Task['resultFields'],
+      ),
+    );
   }
 
   // Pending transactions
   const pendingOnes = (resource.pendingTransactions ?? []).filter((t) => t.status === 'pending');
   if (pendingOnes.length > 0) {
     const templateKey = 'task-res-accounts-transaction';
-    for (const _ of pendingOnes) {
-      void _;
-      tasks.push({
-        id: uuidv4(),
-        templateRef: templateKey,
-        completionState: 'pending',
-        completedAt: null,
-        resultFields: {},
-        attachmentRef: null,
-        resourceRef: resource.id,
-        location: null,
-        sharedWith: null,
-        questRef: null,
-        actRef: null,
-        secondaryTag: null,
-      });
+    for (const pendingTransaction of pendingOnes) {
+      const title = pendingTransaction.description || `Pending transaction for ${resource.name}`;
+      const resourceTaskId = `resource-task:${resource.id}:pending-transaction:${pendingTransaction.id}`;
+      tasks.push(
+        buildResourceReminderTask(
+          resource.id,
+          templateKey,
+          resourceTaskId,
+          pendingTransaction.date || referenceDate,
+          title,
+          { label: title } as Task['resultFields'],
+        ),
+      );
     }
   }
 
   // W25: Payment due
   if (resource.dueDate) {
     const dueLead = resource.dueDateLeadDays ?? 7;
-    const d = daysUntilDate(resource.dueDate);
+    const d = daysUntilDate(resource.dueDate, referenceDate);
     if (dueLead !== -1 && d !== null && d >= 0 && d <= dueLead) {
       const label = resource.institution
         ? `Payment due: ${resource.institution}`
         : `Payment due: ${resource.name}`;
       const templateKey = `resource-task:${resource.id}:payment-due`;
-      void label;
-      tasks.push(buildPendingTask(templateKey, resource.id));
+      tasks.push(
+        buildPendingTask(
+          templateKey,
+          resource.id,
+          buildResourceTaskFields(templateKey, resource.dueDate, { label } as Task['resultFields']),
+          label,
+        ),
+      );
     }
   }
 
   return tasks;
 }
 
-function _genInventoryGTD(resource: InventoryResource): Task[] {
+function _genInventoryGTD(resource: InventoryResource, referenceDate: string): Task[] {
   const inventoryItems = (resource.containers ?? []).flatMap((container) => container.items);
   const lowStock = (inventoryItems.length > 0 ? inventoryItems : resource.items).filter(
     (item) =>
@@ -618,10 +704,19 @@ function _genInventoryGTD(resource: InventoryResource): Task[] {
   );
   const templateKey = 'task-res-inventory-replenish';
   const tasks: Task[] = lowStock.map((item) => ({
-    ...buildPendingTask(templateKey, resource.id, {
-      itemName: findItemTemplate(item.itemTemplateRef)?.name ?? item.itemTemplateRef,
-      label: `Restock ${findItemTemplate(item.itemTemplateRef)?.name ?? item.itemTemplateRef} in ${resource.name}`,
-    } as Task['resultFields']),
+    ...buildPendingTask(
+      templateKey,
+      resource.id,
+      buildResourceTaskFields(
+        `resource-task:${resource.id}:inventory-low-stock:${item.id}`,
+        referenceDate,
+        {
+          itemName: findItemTemplate(item.itemTemplateRef)?.name ?? item.itemTemplateRef,
+          label: `Restock ${findItemTemplate(item.itemTemplateRef)?.name ?? item.itemTemplateRef} in ${resource.name}`,
+        } as Task['resultFields'],
+      ),
+      `Restock ${findItemTemplate(item.itemTemplateRef)?.name ?? item.itemTemplateRef} in ${resource.name}`,
+    ),
   }));
 
   const itemSource = inventoryItems.length > 0 ? inventoryItems : resource.items;
@@ -634,13 +729,20 @@ function _genInventoryGTD(resource: InventoryResource): Task[] {
       const reminderLeadDays = recurringTask.reminderLeadDays ?? 7;
       if (reminderLeadDays === -1) continue;
 
-      const next = computeNextOccurrence(recurringTask.recurrence);
+      const next = computeNextOccurrence(recurringTask.recurrence, referenceDate);
       if (next.days < 0 || next.days > reminderLeadDays) continue;
 
-      const taskTemplateRef = recurringTask.taskTemplateRef;
       const reminderTemplateKey = `resource-task:${resource.id}:inventory:${item.id}:${recurringTask.id}`;
-      void taskTemplateRef;
-      tasks.push(buildResourceReminderTask(resource.id, reminderTemplateKey));
+      tasks.push(
+        buildResourceReminderTask(
+          resource.id,
+          reminderTemplateKey,
+          reminderTemplateKey,
+          next.date,
+          resolveTaskTemplateName(recurringTask.taskTemplateRef),
+          { label: resolveTaskTemplateName(recurringTask.taskTemplateRef) } as Task['resultFields'],
+        ),
+      );
     }
   }
 
@@ -726,6 +828,7 @@ function _buildLowStockTasks(
   items: ItemInstance[],
   resourceId: string,
   containerName: string,
+  referenceDate: string,
   roomName?: string,
 ): Task[] {
   const templateKey = 'task-res-inventory-replenish';
@@ -734,72 +837,92 @@ function _buildLowStockTasks(
     .map((item) => {
       const itemName = findItemTemplate(item.itemTemplateRef)?.name ?? item.itemTemplateRef;
       const locationName = roomName ? `${containerName} (${roomName})` : containerName;
-      return buildPendingTask(templateKey, resourceId, {
-        itemName,
-        label: `Restock ${itemName} in ${locationName}`,
-      } as Task['resultFields']);
+      const label = `Restock ${itemName} in ${locationName}`;
+      return buildPendingTask(
+        templateKey,
+        resourceId,
+        buildResourceTaskFields(
+          `resource-task:${resourceId}:home-container-low-stock:${item.id}`,
+          referenceDate,
+          {
+            itemName,
+            label,
+          } as Task['resultFields'],
+        ),
+        label,
+      );
     });
 }
 
-function _genHomeContainerGTD(resource: HomeResource): Task[] {
+function _genHomeContainerGTD(resource: HomeResource, referenceDate: string): Task[] {
   return (resource.rooms ?? []).flatMap((room) =>
     room.containers.flatMap((container) =>
-      _buildLowStockTasks(container.items, resource.id, container.name, room.name),
+      _buildLowStockTasks(container.items, resource.id, container.name, referenceDate, room.name),
     ),
   );
 }
 
-function _genHomeGTD(resource: HomeResource): Task[] {
-  const tasks = _genHomeContainerGTD(resource);
+function _genHomeGTD(resource: HomeResource, referenceDate: string): Task[] {
+  const tasks = _genHomeContainerGTD(resource, referenceDate);
 
   for (const chore of resource.chores ?? []) {
     if (normalizeRecurrenceMode(chore.recurrenceMode) === 'never') continue;
     const reminderLeadDays = chore.reminderLeadDays ?? 0;
     if (reminderLeadDays === -1) continue;
-    const next = computeNextOccurrence(chore.recurrence);
+    const next = computeNextOccurrence(chore.recurrence, referenceDate);
     if (next.days < 0 || next.days > reminderLeadDays) continue;
 
     const templateKey = `resource-task:${resource.id}:chore:${chore.id}`;
-    tasks.push(buildResourceReminderTask(resource.id, templateKey));
+    tasks.push(
+      buildResourceReminderTask(
+        resource.id,
+        templateKey,
+        templateKey,
+        next.date,
+        chore.name,
+        { label: chore.name } as Task['resultFields'],
+      ),
+    );
   }
 
   return tasks;
 }
 
 /** W24: GTD items for vehicle — insurance expiry (≤30d) + service date (≤14d). */
-function _genVehicleGTD(resource: VehicleResource): Task[] {
+function _genVehicleGTD(resource: VehicleResource, referenceDate: string): Task[] {
   const tasks: Task[] = [];
 
   if (resource.insuranceExpiry) {
     const insuranceLead = resource.insuranceLeadDays ?? 30;
-    const d = daysUntilDate(resource.insuranceExpiry);
+    const d = daysUntilDate(resource.insuranceExpiry, referenceDate);
     if (insuranceLead !== -1 && d !== null && d >= 0 && d <= insuranceLead) {
       const templateKey = `resource-task:${resource.id}:insurance`;
-      tasks.push({
-        id: uuidv4(),
-        templateRef: templateKey,
-        completionState: 'pending',
-        completedAt: null,
-        resultFields: {},
-        attachmentRef: null,
-        resourceRef: resource.id,
-        location: null,
-        sharedWith: null,
-        questRef: null,
-        actRef: null,
-        secondaryTag: null,
-      });
+      tasks.push(
+        buildPendingTask(
+          templateKey,
+          resource.id,
+          buildResourceTaskFields(templateKey, resource.insuranceExpiry, { label: 'Insurance expiry' } as Task['resultFields']),
+          `Insurance expiry — ${resource.name}`,
+        ),
+      );
     }
   }
 
   if (resource.serviceNextDate) {
     const serviceLead = resource.serviceLeadDays ?? 14;
-    const d = daysUntilDate(resource.serviceNextDate);
+    const d = daysUntilDate(resource.serviceNextDate, referenceDate);
     if (serviceLead !== -1 && d !== null && d >= 0 && d <= serviceLead) {
       const templateKey = `resource-task:${resource.id}:service`;
-      tasks.push({
-        ...buildResourceReminderTask(resource.id, templateKey),
-      });
+      tasks.push(
+        buildResourceReminderTask(
+          resource.id,
+          templateKey,
+          templateKey,
+          resource.serviceNextDate,
+          `Service — ${resource.name}`,
+          { label: 'Service due' } as Task['resultFields'],
+        ),
+      );
     }
   }
 
@@ -820,57 +943,61 @@ function _genVehicleGTD(resource: VehicleResource): Task[] {
       clearPendingResourceTasks(templateKey, resource.id);
       continue;
     }
-    const next = computeNextOccurrence(task.recurrence);
+    const next = computeNextOccurrence(task.recurrence, referenceDate);
     if (next.days < 0 || next.days > task.reminderLeadDays) {
       clearPendingResourceTasks(templateKey, resource.id);
       continue;
     }
 
-    tasks.push(buildResourceReminderTask(resource.id, templateKey));
+    tasks.push(
+      buildResourceReminderTask(
+        resource.id,
+        templateKey,
+        templateKey,
+        next.date,
+        task.name,
+        { label: task.name } as Task['resultFields'],
+      ),
+    );
   }
 
   return tasks;
 }
 
 /** W27: GTD item for doc expiry within configurable lead days (default 30). */
-function _genDocGTD(resource: DocResource): Task[] {
+function _genDocGTD(resource: DocResource, referenceDate: string): Task[] {
   if (resource.docType === 'layout') return [];
   if (!resource.expiryDate) return [];
 
   const lead = resource.expiryLeadDays ?? 30;
   if (lead === -1) return [];
 
-  const d = daysUntilDate(resource.expiryDate);
+  const d = daysUntilDate(resource.expiryDate, referenceDate);
   if (d === null || d < 0 || d > lead) return [];
 
   const templateKey = `resource-task:${resource.id}:expiry`;
 
-  return [{
-    id: uuidv4(),
-    templateRef: templateKey,
-    completionState: 'pending',
-    completedAt: null,
-    resultFields: {},
-    attachmentRef: null,
-    resourceRef: resource.id,
-    location: null,
-    sharedWith: null,
-    questRef: null,
-    actRef: null,
-    secondaryTag: null,
-  }];
+  return [
+    buildPendingTask(
+      templateKey,
+      resource.id,
+      buildResourceTaskFields(templateKey, resource.expiryDate, { label: 'Expiry date' } as Task['resultFields']),
+      `Expiry — ${resource.name}`,
+    ),
+  ];
 }
 
 // ── COMPUTE GTD LIST ──────────────────────────────────────────────────────────
 
 /**
  * Scan all active Resources for a User, generate GTD items per resource, and
- * return a merged, deduplicated, ordered Task list (D05).
+ * return the merged pending GTD Task list after scanning every resource.
  *
- * Does NOT write to storage (read-only scan). Call generateGTDItems() to also
- * persist and enqueue items.
+ * This is the primary resource GTD scan entry point used by rollover. It will
+ * generate and persist any newly due resource GTD items before returning the
+ * combined pending list.
  */
-export function computeGTDList(user: User): Task[] {
+export function computeGTDList(user: User, referenceDate: string = todayISO()): Task[] {
   const scheduleStore = useScheduleStore.getState();
   const resourceStore = useResourceStore.getState();
 
@@ -883,7 +1010,7 @@ export function computeGTDList(user: User): Task[] {
     }
   }
 
-  // Scan all resource refs and generate fresh items for any resource not covered
+  // Scan all resource refs and generate fresh items for any resource not covered.
   const allResourceIds = [
     ...user.resources.contacts,
     ...user.resources.homes,
@@ -899,7 +1026,7 @@ export function computeGTDList(user: User): Task[] {
   for (const resourceId of allResourceIds) {
     const resource = resourceStore.resources[resourceId];
     if (!resource) continue;
-    const generated = generateGTDItems(resource);
+    const generated = generateGTDItems(resource, { referenceDate });
     for (const task of generated) {
       if (!generatedIds.has(task.id)) {
         generatedIds.add(task.id);

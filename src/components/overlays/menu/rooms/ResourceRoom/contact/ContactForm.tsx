@@ -5,7 +5,7 @@ import { CONTACT_GROUPS } from '../../../../../../types/resource';
 import type { ContactGroup } from '../../../../../../types/resource';
 import { useResourceStore } from '../../../../../../stores/useResourceStore';
 import { useUserStore } from '../../../../../../stores/useUserStore';
-import { generateScheduledTasks } from '../../../../../../engine/resourceEngine';
+import { generateGTDItems, generateScheduledTasks } from '../../../../../../engine/resourceEngine';
 import { TextInput } from '../../../../../shared/inputs/TextInput';
 import { IconPicker } from '../../../../../shared/IconPicker';
 import { NotesLogEditor } from '../../../../../shared/NotesLogEditor';
@@ -85,6 +85,7 @@ export function ContactForm({ existing, onSaved, onCancel }: ContactFormProps) {
     }
 
     generateScheduledTasks(resource);
+    generateGTDItems(resource);
     onSaved();
   }
 

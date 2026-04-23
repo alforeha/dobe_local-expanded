@@ -127,6 +127,16 @@ function detailText(entry: GtdEntry): string | null {
   return null;
 }
 
+function getSystemDueDate(task: Task): string | null {
+  const fields = task.resultFields as Record<string, unknown>;
+  return typeof fields.dueDate === 'string' ? fields.dueDate : null;
+}
+
+function getSystemLabel(task: Task): string | null {
+  const fields = task.resultFields as Record<string, unknown>;
+  return typeof fields.label === 'string' ? fields.label : null;
+}
+
 function getEntryFilter(entry: GtdEntry): GtdFilter {
   if (entry.kind === 'manual') return 'user';
   if (entry.isMilestone) return 'milestone';
@@ -168,6 +178,7 @@ export function GTDSection() {
     .map((task) => {
       const template = getTemplateByRef(taskTemplates, task.templateRef);
       const resource = task.resourceRef ? resources[task.resourceRef] ?? null : null;
+      const dueDate = getSystemDueDate(task);
       return {
         kind: 'system',
         id: task.id,
@@ -175,9 +186,9 @@ export function GTDSection() {
         template,
         resource,
         isMilestone: task.questRef !== null,
-        title: template?.name ?? resource?.name ?? task.title ?? task.templateRef ?? 'Unknown task',
+        title: task.title ?? getSystemLabel(task) ?? template?.name ?? resource?.name ?? task.templateRef ?? 'Unknown task',
         note: template?.description ?? null,
-        dueDate: null,
+        dueDate,
       };
     });
 

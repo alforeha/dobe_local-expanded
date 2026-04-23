@@ -3,6 +3,7 @@ import {
   isContact,
   isDoc,
   isHome,
+  isInventory,
   isVehicle,
   normalizeRecurrenceMode,
   type HomeChore,
@@ -24,6 +25,14 @@ function getLastDayOfMonth(year: number, monthIndex: number): number {
 function isChoreOnDate(chore: HomeChore, dateISO: string): boolean {
   if (normalizeRecurrenceMode(chore.recurrenceMode) === 'never') return false;
   return isRuleOnDate(chore.recurrence, dateISO);
+}
+
+function isIntermittentOnDate(
+  recurrenceMode: 'recurring' | 'never' | undefined,
+  rule: ResourceRecurrenceRule | undefined,
+  dateISO: string,
+): boolean {
+  return normalizeRecurrenceMode(recurrenceMode) === 'never' && typeof rule?.seedDate === 'string' && rule.seedDate === dateISO;
 }
 
 function isRuleOnDate(rule: ResourceRecurrenceRule, dateISO: string): boolean {
@@ -77,6 +86,7 @@ export function getResourceIconsForDate(dateISO: string, resources: Resource[]):
 export interface ResourceIndicator {
   iconKey: string;
   resourceId: string;
+  resourceName: string;
   resourceType: ResourceType;
   label: string;
 }
@@ -85,6 +95,7 @@ function makeIndicator(resource: Resource, iconKey: string, label: string): Reso
   return {
     iconKey,
     resourceId: resource.id,
+    resourceName: resource.name,
     resourceType: resource.type,
     label,
   };
@@ -95,13 +106,16 @@ export function getResourceIndicatorsForDate(dateISO: string, resources: Resourc
 
   for (const resource of resources) {
     if (isContact(resource) && resource.birthday && resource.birthday.slice(5) === dateISO.slice(5)) {
-      indicators.push(makeIndicator(resource, 'birthday', 'Birthday'));
+      indicators.push(makeIndicator(resource, 'birthday', `Birthday — ${resource.displayName}`));
     }
 
     if (isHome(resource)) {
       for (const chore of resource.chores ?? []) {
         if (isChoreOnDate(chore, dateISO)) {
-          indicators.push(makeIndicator(resource, 'chore', chore.name || 'Chore due'));
+          indicators.push(makeIndicator(resource, chore.icon || 'chore', chore.name || 'Chore due'));
+        }
+        if (isIntermittentOnDate(chore.recurrenceMode, chore.recurrence, dateISO)) {
+          indicators.push(makeIndicator(resource, chore.icon || 'chore', chore.name || 'Intermittent task'));
         }
       }
     }
@@ -109,10 +123,36 @@ export function getResourceIndicatorsForDate(dateISO: string, resources: Resourc
     if (isVehicle(resource)) {
       if (resource.serviceNextDate === dateISO) indicators.push(makeIndicator(resource, 'vehicle', 'Service due'));
       if (resource.insuranceExpiry === dateISO) indicators.push(makeIndicator(resource, 'document', 'Insurance expiry'));
+      for (const task of resource.maintenanceTasks ?? []) {
+        if (isIntermittentOnDate(task.recurrenceMode, task.recurrence, dateISO)) {
+          indicators.push(makeIndicator(resource, task.icon || 'vehicle', task.name || 'Intermittent task'));
+        }
+      }
     }
 
-    if (isAccount(resource) && resource.dueDate === dateISO) {
-      indicators.push(makeIndicator(resource, 'account', 'Due date'));
+    if (isAccount(resource)) {
+      if (resource.dueDate === dateISO) {
+        indicators.push(makeIndicator(resource, 'account', 'Due date'));
+      }
+      for (const task of resource.accountTasks ?? []) {
+        if (isIntermittentOnDate(task.recurrenceMode, task.recurrence, dateISO)) {
+          indicators.push(makeIndicator(resource, task.icon || 'account', task.name || 'Intermittent task'));
+        }
+      }
+    }
+
+    if (isInventory(resource)) {
+      const itemSource = (resource.containers ?? []).flatMap((container) => container.items).length > 0
+        ? (resource.containers ?? []).flatMap((container) => container.items)
+        : resource.items;
+
+      for (const item of itemSource) {
+        for (const task of item.recurringTasks ?? []) {
+          if (isIntermittentOnDate(task.recurrenceMode, task.recurrence, dateISO)) {
+            indicators.push(makeIndicator(resource, 'task', task.taskTemplateRef || 'Intermittent task'));
+          }
+        }
+      }
     }
 
     if (isDoc(resource) && resource.expiryDate === dateISO) {

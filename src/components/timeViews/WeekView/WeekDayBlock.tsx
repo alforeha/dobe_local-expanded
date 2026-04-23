@@ -8,7 +8,7 @@ import { WeekEventCard } from './WeekEventCard';
 import { IconDisplay } from '../../shared/IconDisplay';
 import { format, getOffsetNow, isSameDay } from '../../../utils/dateUtils';
 import { isPlannedEventDue } from '../../../engine/rollover';
-import { getResourceIconsForDate } from '../../../utils/resourceSchedule';
+import { getResourceIndicatorsForDate } from '../../../utils/resourceSchedule';
 import type { Event, PlannedEvent } from '../../../types';
 import type { WeatherSummaryDay } from '../../../utils/weatherService';
 
@@ -140,7 +140,9 @@ export function WeekDayBlock({ date, weather, onDaySelect }: WeekDayBlockProps) 
   const isToday = isSameDay(date, today);
   const isFuture = date > today;
   const dateIso = format(date, 'iso');
-  const resourceIcons = getResourceIconsForDate(dateIso, resources).slice(0, 2);
+  const [openIndicatorKey, setOpenIndicatorKey] = useState<string | null>(null);
+  const resourceIndicators = getResourceIndicatorsForDate(dateIso, resources).slice(0, 2);
+  const activeIndicator = resourceIndicators.find((indicator) => `${indicator.resourceId}:${indicator.label}` === openIndicatorKey) ?? null;
 
   const dayEvents: Array<WeekProjectedEvent | WeekProjectedPlannedEvent> = [];
   const projectEventForDay = (raw: Event | unknown) => {
@@ -298,18 +300,39 @@ export function WeekDayBlock({ date, weather, onDaySelect }: WeekDayBlockProps) 
       onClick={() => onDaySelect?.(date)}
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onDaySelect?.(date); }}
     >
-      <div className="flex items-center justify-between gap-2 border-b border-gray-100 px-2 py-1 dark:border-gray-700">
+      <div className="relative flex items-center justify-between gap-2 border-b border-gray-100 px-2 py-1 dark:border-gray-700">
         <span className={`text-xs font-semibold ${isToday ? 'text-purple-600' : 'text-gray-700 dark:text-gray-200'}`}>
           {date.toLocaleDateString(undefined, { weekday: 'short' })} {format(date, 'short')}
         </span>
 
         <div className="flex min-h-3 items-center gap-1 text-[10px] text-gray-500 dark:text-gray-300">
-          {resourceIcons.map((iconKey) => (
-            <IconDisplay key={iconKey} iconKey={iconKey} size={12} className="h-3 w-3 object-contain" alt="" />
+          {resourceIndicators.map((indicator) => (
+            <button
+              key={`${indicator.resourceId}:${indicator.iconKey}:${indicator.label}`}
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                const key = `${indicator.resourceId}:${indicator.label}`;
+                setOpenIndicatorKey((current) => (current === key ? null : key));
+              }}
+              className="rounded-sm p-0.5 transition-colors hover:bg-gray-100 dark:hover:bg-gray-700"
+              aria-label={`${indicator.label} for ${indicator.resourceName}`}
+            >
+              <IconDisplay iconKey={indicator.iconKey} size={12} className="h-3 w-3 object-contain" alt="" />
+            </button>
           ))}
           {weather && <IconDisplay iconKey={weather.icon} size={12} className="h-3 w-3 object-contain" alt="" />}
           {weather && <span>{`${weather.high}°`}</span>}
         </div>
+        {activeIndicator && (
+          <div
+            className="absolute right-2 top-full z-20 mt-1 w-52 rounded-xl border border-gray-200 bg-white p-2 text-left shadow-lg dark:border-gray-700 dark:bg-gray-900"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="text-xs font-semibold text-gray-800 dark:text-gray-100">{activeIndicator.label}</div>
+            <div className="text-[11px] text-gray-500 dark:text-gray-400">{activeIndicator.resourceName}</div>
+          </div>
+        )}
       </div>
 
       <div ref={gridRef} className="relative flex-1 w-full overflow-hidden">
