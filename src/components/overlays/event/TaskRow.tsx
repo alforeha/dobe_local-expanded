@@ -185,20 +185,30 @@ export function TaskRow({ taskId, eventId, isEditMode, isSelected, onSelect, onT
   return (
     <div className={`border-b border-gray-100 dark:border-gray-700 ${isSelected ? 'bg-purple-50 dark:bg-purple-900/20' : ''}`}>
       <div className="flex items-start gap-3 px-3 py-3">
-        <button
-          type="button"
-          onClick={isEditMode ? handleDeleteTask : handleComplete}
-          disabled={!isEditMode && task.completionState === 'complete'}
-          className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border text-sm font-semibold transition-colors ${
-            isEditMode
-              ? 'border-red-300 text-red-600 hover:bg-red-50 dark:border-red-700 dark:text-red-400 dark:hover:bg-red-900/20'
-              : task.completionState === 'complete'
+        {isEditMode ? (
+          <span
+            className={`mt-0.5 flex h-8 w-8 shrink-0 cursor-default items-center justify-center rounded-full border text-sm font-semibold opacity-60 ${
+              task.completionState === 'complete'
+                ? 'border-green-400 bg-green-100 text-green-700 dark:border-green-700 dark:bg-green-900/20 dark:text-green-300'
+                : 'border-gray-300 text-gray-400 dark:border-gray-600 dark:text-gray-500'
+            }`}
+          >
+            {task.completionState === 'complete' ? '✓' : '○'}
+          </span>
+        ) : (
+          <button
+            type="button"
+            onClick={handleComplete}
+            disabled={task.completionState === 'complete'}
+            className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border text-sm font-semibold transition-colors ${
+              task.completionState === 'complete'
                 ? 'border-green-500 bg-green-500 text-white'
                 : 'border-gray-300 text-gray-500 hover:bg-gray-100 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700'
-          }`}
-        >
-          {isEditMode ? '×' : task.completionState === 'complete' ? '✓' : '○'}
-        </button>
+            }`}
+          >
+            {task.completionState === 'complete' ? '✓' : '○'}
+          </button>
+        )}
 
         <button
           type="button"
@@ -212,15 +222,27 @@ export function TaskRow({ taskId, eventId, isEditMode, isSelected, onSelect, onT
         >
           <div className="flex w-full items-start justify-between gap-3">
             <span className="truncate text-sm font-medium text-gray-800 dark:text-gray-100">{displayName}</span>
-            <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${task.completionState === 'complete' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300' : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300'}`}>
-              {stateLabel}
-            </span>
+            {!isEditMode && (
+              <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${task.completionState === 'complete' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300' : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300'}`}>
+                {stateLabel}
+              </span>
+            )}
           </div>
           <div className="mt-1 flex flex-wrap items-center gap-2">
             <span className="rounded-full bg-purple-100 px-2 py-0.5 text-xs font-medium text-purple-700 dark:bg-purple-900/30 dark:text-purple-300">{taskType}</span>
             {summary && <span className="text-xs text-gray-500 dark:text-gray-400">{summary}</span>}
           </div>
         </button>
+
+        {isEditMode && (
+          <button
+            type="button"
+            onClick={handleDeleteTask}
+            className="shrink-0 rounded-lg border border-red-300 px-3 py-2 text-xs font-medium text-red-600 transition-colors hover:bg-red-50 dark:border-red-700 dark:text-red-400 dark:hover:bg-red-900/20"
+          >
+            Delete
+          </button>
+        )}
       </div>
 
       {taskType === 'LOCATION_TRAIL' && expanded && (

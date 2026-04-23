@@ -28,7 +28,9 @@ export function EventTaskTable({
         eventId={event.id}
         activeSection={activeSection}
         onSectionChange={setActiveSection}
+        isEditMode={false}
         onEnterEdit={() => undefined}
+        onExitEdit={() => undefined}
       />
 
       {activeSection === 'actions' && (

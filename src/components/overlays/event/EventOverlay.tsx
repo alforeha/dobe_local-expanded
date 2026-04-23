@@ -1,7 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useScheduleStore } from '../../../stores/useScheduleStore';
 import { storageDelete, storageKey } from '../../../storage';
-import { EventOverlayHeader } from './EventOverlayHeader';
 import { TaskBlock } from './TaskBlock';
 import { ActionBar } from './ActionBar';
 import type { ActionBarSection } from './ActionBar';
@@ -9,6 +8,8 @@ import { ActionsSection } from './sections/ActionsSection';
 import { LocationSection } from './sections/LocationSection';
 import { ParticipantsSection } from './sections/ParticipantsSection';
 import type { Event } from '../../../types';
+import { format } from '../../../utils/dateUtils';
+import { IconDisplay } from '../../shared/IconDisplay';
 
 interface EventOverlayProps {
   eventId: string;
@@ -20,6 +21,7 @@ export function EventOverlay({ eventId, onClose }: EventOverlayProps) {
   const historyEvents = useScheduleStore((s) => s.historyEvents);
   const tasks = useScheduleStore((s) => s.tasks);
   const deleteEvent = useScheduleStore((s) => s.deleteEvent);
+  const updateEvent = useScheduleStore((s) => s.updateEvent);
 
   const event = (activeEvents[eventId] ?? historyEvents[eventId]) as Event | undefined;
 
@@ -86,6 +88,8 @@ export function EventOverlay({ eventId, onClose }: EventOverlayProps) {
   }
 
   const color = '#9333ea';
+  const startDateTime = `${event.startDate} ${event.startTime}`;
+  const endDateTime = `${event.endDate} ${event.endTime}`;
 
   const totalCount = event.tasks.length;
   const completedCount = event.tasks.filter(
@@ -101,7 +105,71 @@ export function EventOverlay({ eventId, onClose }: EventOverlayProps) {
       data-edit-mode={isEditMode ? 'true' : 'false'}
       style={{ borderTop: `4px solid ${color}` }}
     >
-      <EventOverlayHeader event={event} onClose={onClose} />
+      <div className="flex shrink-0 items-start justify-between border-b border-gray-200 dark:border-gray-700 px-4 py-3">
+        <div className="flex items-center gap-3">
+          {isEditMode ? (
+            <input
+              type="text"
+              value={event.icon ?? ''}
+              onChange={(editEvent) => updateEvent(eventId, { icon: editEvent.target.value || null })}
+              placeholder="Icon"
+              className="w-20 rounded-lg border border-gray-300 bg-white px-2 py-1 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-purple-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+            />
+          ) : (
+            event.icon && <IconDisplay iconKey={event.icon} size={28} className="h-7 w-7 shrink-0 object-contain" alt="" />
+          )}
+
+          <div className="flex flex-col gap-1">
+            {isEditMode ? (
+              <>
+                <input
+                  type="text"
+                  value={event.name}
+                  onChange={(editEvent) => updateEvent(eventId, { name: editEvent.target.value })}
+                  className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-base font-bold text-gray-900 focus:outline-none focus:ring-2 focus:ring-purple-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+                />
+                <div className="flex flex-wrap gap-2">
+                  <input
+                    type="date"
+                    value={event.startDate}
+                    onChange={(editEvent) => updateEvent(eventId, { startDate: editEvent.target.value })}
+                    className="rounded-lg border border-gray-300 bg-white px-2 py-1 text-xs text-gray-700 focus:outline-none focus:ring-2 focus:ring-purple-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+                  />
+                  <input
+                    type="time"
+                    value={event.startTime}
+                    onChange={(editEvent) => updateEvent(eventId, { startTime: editEvent.target.value })}
+                    className="rounded-lg border border-gray-300 bg-white px-2 py-1 text-xs text-gray-700 focus:outline-none focus:ring-2 focus:ring-purple-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+                  />
+                  <input
+                    type="time"
+                    value={event.endTime}
+                    onChange={(editEvent) => updateEvent(eventId, { endTime: editEvent.target.value })}
+                    className="rounded-lg border border-gray-300 bg-white px-2 py-1 text-xs text-gray-700 focus:outline-none focus:ring-2 focus:ring-purple-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+                  />
+                </div>
+              </>
+            ) : (
+              <>
+                <h2 className="text-base font-bold text-gray-900 dark:text-gray-100">{event.name}</h2>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  {format(new Date(startDateTime.split(' ')[0] + 'T00:00:00'), 'short')} {event.startTime}
+                  {' → '}
+                  {format(new Date(endDateTime.split(' ')[0] + 'T00:00:00'), 'short')} {event.endTime}
+                </p>
+              </>
+            )}
+          </div>
+        </div>
+        <button
+          type="button"
+          aria-label="Close event"
+          onClick={onClose}
+          className="rounded-full p-1 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700"
+        >
+          ✕
+        </button>
+      </div>
 
       <div className="flex-1 min-h-0 overflow-hidden p-3">
         <TaskBlock
@@ -117,7 +185,9 @@ export function EventOverlay({ eventId, onClose }: EventOverlayProps) {
           eventId={eventId}
           activeSection={activeSection}
           onSectionChange={setActiveSection}
+          isEditMode={isEditMode}
           onEnterEdit={() => setIsEditMode(true)}
+          onExitEdit={() => setIsEditMode(false)}
           onSectionAdd={handleSectionAdd}
           onDeleteEvent={() => {
             deleteEvent(eventId);

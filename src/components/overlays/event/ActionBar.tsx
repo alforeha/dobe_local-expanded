@@ -6,7 +6,9 @@ interface ActionBarProps {
   eventId: string;
   activeSection: ActionBarSection;
   onSectionChange: (section: ActionBarSection) => void;
+  isEditMode: boolean;
   onEnterEdit: () => void;
+  onExitEdit: () => void;
   onSectionAdd?: (section: 'actions' | 'participants' | 'location') => void;
   onDeleteEvent?: () => void;
 }
@@ -31,7 +33,7 @@ const addButtonLabels: Record<ActionBarSection, string> = {
   attachments: '+ Attachment',
 };
 
-export function ActionBar({ eventId: _eventId, activeSection, onSectionChange, onEnterEdit, onSectionAdd, onDeleteEvent }: ActionBarProps) {
+export function ActionBar({ eventId: _eventId, activeSection, onSectionChange, isEditMode, onEnterEdit, onExitEdit, onSectionAdd, onDeleteEvent }: ActionBarProps) {
   const [openPopup, setOpenPopup] = useState<PopupType>(null);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -87,8 +89,12 @@ export function ActionBar({ eventId: _eventId, activeSection, onSectionChange, o
     setOpenPopup('addAttachment');
   };
 
-  const handleEnterEdit = () => {
-    onEnterEdit();
+  const handleEditToggle = () => {
+    if (isEditMode) {
+      onExitEdit();
+    } else {
+      onEnterEdit();
+    }
     setIsDropdownOpen(false);
   };
 
@@ -135,10 +141,10 @@ export function ActionBar({ eventId: _eventId, activeSection, onSectionChange, o
               <button
                 type="button"
                 role="menuitem"
-                onClick={handleEnterEdit}
+                onClick={handleEditToggle}
                 className="action-bar-menu-item"
               >
-                <span>Edit</span>
+                <span>{isEditMode ? 'Done' : 'Edit'}</span>
               </button>
 
               {onDeleteEvent && (
