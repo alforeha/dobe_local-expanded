@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import type { ContactResource, ResourceNote } from '../../../../../../types/resource';
 import { CONTACT_GROUPS } from '../../../../../../types/resource';
@@ -34,6 +34,21 @@ export function ContactForm({ existing, onSaved, onCancel }: ContactFormProps) {
   const setUser = useUserStore((s) => s.setUser);
   const user = useUserStore((s) => s.user);
   const currentExisting = existing ? resources[existing.id] as ContactResource | undefined : undefined;
+  const customGroupOptions = useMemo(() => {
+    const allTags = new Set<string>();
+    for (const resource of Object.values(resources)) {
+      if (resource.type !== 'contact') continue;
+      for (const tag of resource.customGroups ?? []) {
+        const normalizedTag = tag.trim();
+        if (normalizedTag) allTags.add(normalizedTag);
+      }
+    }
+    for (const tag of customGroups) {
+      const normalizedTag = tag.trim();
+      if (normalizedTag) allTags.add(normalizedTag);
+    }
+    return Array.from(allTags).sort((left, right) => left.localeCompare(right, undefined, { sensitivity: 'base' }));
+  }, [customGroups, resources]);
 
   function toggleGroup(group: ContactGroup) {
     setGroups((prev) => (
@@ -52,6 +67,14 @@ export function ContactForm({ existing, onSaved, onCancel }: ContactFormProps) {
 
   function removeCustomGroup(tag: string) {
     setCustomGroups((prev) => prev.filter((entry) => entry !== tag));
+  }
+
+  function toggleCustomGroup(tag: string) {
+    setCustomGroups((prev) => (
+      prev.includes(tag)
+        ? prev.filter((entry) => entry !== tag)
+        : [...prev, tag]
+    ));
   }
 
   const canSave = displayName.trim().length > 0;
@@ -181,6 +204,27 @@ export function ContactForm({ existing, onSaved, onCancel }: ContactFormProps) {
               Add
             </button>
           </div>
+          {customGroupOptions.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {customGroupOptions.map((tag) => {
+                const selected = customGroups.includes(tag);
+                return (
+                  <button
+                    key={tag}
+                    type="button"
+                    onClick={() => toggleCustomGroup(tag)}
+                    className={`rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
+                      selected
+                        ? 'border-emerald-500 bg-emerald-500 text-white'
+                        : 'border-emerald-300 bg-white text-emerald-700 hover:border-emerald-400 hover:bg-emerald-50 dark:border-emerald-700 dark:bg-gray-800 dark:text-emerald-300'
+                    }`}
+                  >
+                    {tag}
+                  </button>
+                );
+              })}
+            </div>
+          )}
           {customGroups.length > 0 && (
             <div className="flex flex-wrap gap-1.5">
               {customGroups.map((tag) => (
