@@ -282,6 +282,7 @@ export interface ContactResource {
   updatedAt: string;
   displayName: string;
   groups: ContactGroup[];
+  customGroups?: string[];
   phone?: string;
   email?: string;
   birthday?: string; // YYYY-MM-DD

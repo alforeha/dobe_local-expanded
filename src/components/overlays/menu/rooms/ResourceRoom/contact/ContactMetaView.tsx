@@ -25,6 +25,7 @@ function formatBirthday(isoDate: string): string {
 
 export function ContactMetaView({ resource }: ContactMetaViewProps) {
   const resources = useResourceStore((s) => s.resources);
+  const hasGroupBadges = resource.groups.length > 0 || (resource.customGroups?.length ?? 0) > 0;
 
   const hasAny =
     resource.phone ||
@@ -39,6 +40,29 @@ export function ContactMetaView({ resource }: ContactMetaViewProps) {
       {!hasAny ? (
         <p className="text-xs text-gray-400 italic">No details on file.</p>
       ) : null}
+      {hasGroupBadges && (
+        <div className="flex gap-2">
+          <span className="text-gray-400 w-16 shrink-0">Groups</span>
+          <div className="flex flex-wrap gap-1.5">
+            {resource.groups.map((group) => (
+              <span
+                key={group}
+                className="rounded-full bg-blue-100 px-2 py-0.5 text-[11px] font-medium capitalize text-blue-700 dark:bg-blue-950/40 dark:text-blue-300"
+              >
+                {group}
+              </span>
+            ))}
+            {(resource.customGroups ?? []).map((group) => (
+              <span
+                key={group}
+                className="rounded-full border border-emerald-300 px-2 py-0.5 text-[11px] font-medium text-emerald-700 dark:border-emerald-700 dark:text-emerald-300"
+              >
+                {group}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
       {resource.phone && (
         <div className="flex gap-2">
           <span className="text-gray-400 w-16 shrink-0">Phone</span>

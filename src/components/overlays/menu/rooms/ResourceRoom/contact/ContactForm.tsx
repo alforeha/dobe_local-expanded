@@ -20,6 +20,8 @@ export function ContactForm({ existing, onSaved, onCancel }: ContactFormProps) {
   const [iconKey, setIconKey] = useState<string>(existing?.icon ?? 'social');
   const [displayName, setDisplayName] = useState(existing?.displayName ?? existing?.name ?? '');
   const [groups, setGroups] = useState<ContactGroup[]>(existing?.groups ?? []);
+  const [customGroups, setCustomGroups] = useState<string[]>(existing?.customGroups ?? []);
+  const [customGroupInput, setCustomGroupInput] = useState('');
   const [birthday, setBirthday] = useState(existing?.birthday ?? '');
   const [birthdayLeadDays, setBirthdayLeadDays] = useState<number>(existing?.birthdayLeadDays ?? 14);
   const [phone, setPhone] = useState(existing?.phone ?? '');
@@ -41,6 +43,17 @@ export function ContactForm({ existing, onSaved, onCancel }: ContactFormProps) {
     ));
   }
 
+  function addCustomGroup() {
+    const nextTag = customGroupInput.trim();
+    if (!nextTag) return;
+    setCustomGroups((prev) => (prev.includes(nextTag) ? prev : [...prev, nextTag]));
+    setCustomGroupInput('');
+  }
+
+  function removeCustomGroup(tag: string) {
+    setCustomGroups((prev) => prev.filter((entry) => entry !== tag));
+  }
+
   const canSave = displayName.trim().length > 0;
 
   function handleSave() {
@@ -56,6 +69,7 @@ export function ContactForm({ existing, onSaved, onCancel }: ContactFormProps) {
       updatedAt: now,
       displayName: displayName.trim(),
       groups,
+      customGroups: customGroups.length > 0 ? customGroups : undefined,
       phone: phone || undefined,
       email: email || undefined,
       birthday: birthday || undefined,
@@ -147,6 +161,40 @@ export function ContactForm({ existing, onSaved, onCancel }: ContactFormProps) {
               );
             })}
           </div>
+        </div>
+
+        <div className="flex flex-col gap-1.5">
+          <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Custom groups</label>
+          <div className="flex gap-2">
+            <TextInput
+              value={customGroupInput}
+              onChange={setCustomGroupInput}
+              placeholder="Add custom tag"
+              maxLength={40}
+              className="flex-1"
+            />
+            <button
+              type="button"
+              onClick={addCustomGroup}
+              className="self-end rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-600 transition-colors hover:border-blue-400 hover:text-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300"
+            >
+              Add
+            </button>
+          </div>
+          {customGroups.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {customGroups.map((tag) => (
+                <button
+                  key={tag}
+                  type="button"
+                  onClick={() => removeCustomGroup(tag)}
+                  className="rounded-full border border-emerald-300 bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700 transition-colors hover:border-emerald-400 hover:bg-emerald-100 dark:border-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300"
+                >
+                  {tag} ×
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         <div className="grid grid-cols-2 gap-3">
