@@ -22,8 +22,10 @@ export type EventCompletionState = 'pending' | 'complete' | 'skipped';
 /** Contact Resource ids this Event is shared with. */
 export type EventSharedWith = string[];
 
-/** STUB: MULTI-USER — reserved for additional attendee records once the MULTI-USER chapter ships. */
-export type CoAttendeesStub = null;
+export interface EventAttendee {
+  contactId: string;
+  displayName: string;
+}
 
 // ── EVENT ROOT ────────────────────────────────────────────────────────────────
 
@@ -56,8 +58,7 @@ export interface Event {
   note: string | null;
   /** Contact Resource ids this Event is shared with. */
   sharedWith: EventSharedWith;
-  /** STUB: MULTI-USER — stores attendee identities beyond the owner once the MULTI-USER chapter is enabled. */
-  coAttendees: CoAttendeesStub;
+  coAttendees: EventAttendee[];
 }
 
 // ── QUICK ACTIONS EVENT (D12, D44) ───────────────────────────────────────────

@@ -32,6 +32,7 @@ interface ScheduleActions {
   removePlannedEvent: (id: string) => void;
 
   setActiveEvent: (event: Event | QuickActionsEvent) => void;
+  updateEvent: (eventId: string, patch: Partial<Event>) => void;
   archiveEvent: (eventId: string) => void;
   deleteEvent: (eventId: string) => void;
 
@@ -95,29 +96,44 @@ function persistCleanedScheduleState(state: Partial<ScheduleState & ScheduleActi
     };
     window.localStorage.setItem('cdb-schedule', JSON.stringify(next));
   } catch (error) {
-    console.warn('[scheduleStore] failed to persist cleaned taskTemplates during hydration', error);
+    console.warn('[scheduleStore] failed to persist cleaned schedule state during hydration', error);
   }
 }
 
-function normalizeEventSharedWith(event: Event | QuickActionsEvent): Event | QuickActionsEvent {
-  if (event.eventType === 'quickActions') return event;
+function normalizeEventFields(event: Event | QuickActionsEvent): {
+  event: Event | QuickActionsEvent;
+  changed: boolean;
+} {
+  if (event.eventType === 'quickActions') {
+    return { event, changed: false };
+  }
+
+  const nextSharedWith = Array.isArray(event.sharedWith) ? event.sharedWith : [];
+  const nextCoAttendees = Array.isArray(event.coAttendees) ? event.coAttendees : [];
 
   return {
-    ...event,
-    sharedWith: Array.isArray(event.sharedWith) ? event.sharedWith : [],
+    event: {
+      ...event,
+      sharedWith: nextSharedWith,
+      coAttendees: nextCoAttendees,
+    },
+    changed: nextSharedWith !== event.sharedWith || nextCoAttendees !== event.coAttendees,
   };
 }
 
 function normalizeEventRecord<T extends Event | QuickActionsEvent>(
   events: Record<string, T> | undefined,
-): Record<string, T> {
+): { events: Record<string, T>; changed: boolean } {
   const next: Record<string, T> = {};
+  let changed = false;
 
   for (const [id, event] of Object.entries(events ?? {})) {
-    next[id] = normalizeEventSharedWith(event) as T;
+    const normalized = normalizeEventFields(event);
+    next[id] = normalized.event as T;
+    changed = changed || normalized.changed;
   }
 
-  return next;
+  return { events: next, changed };
 }
 
 // ── STORE ─────────────────────────────────────────────────────────────────────
@@ -148,6 +164,32 @@ export const useScheduleStore = create<ScheduleState & ScheduleActions>()(
           activeEvents: { ...state.activeEvents, [event.id]: event },
         }));
         // TODO: MVP06 — persist to event:{uuid} or qa:{date} via storageLayer
+      },
+
+      updateEvent: (eventId, patch) => {
+        set((state) => {
+          const activeEvent = state.activeEvents[eventId];
+          if (activeEvent?.eventType !== 'quickActions') {
+            return {
+              activeEvents: {
+                ...state.activeEvents,
+                [eventId]: { ...activeEvent, ...patch },
+              },
+            };
+          }
+
+          const historyEvent = state.historyEvents[eventId];
+          if (historyEvent?.eventType !== 'quickActions') {
+            return {
+              historyEvents: {
+                ...state.historyEvents,
+                [eventId]: { ...historyEvent, ...patch },
+              },
+            };
+          }
+
+          return {};
+        });
       },
 
       archiveEvent: (eventId) =>
@@ -214,10 +256,20 @@ export const useScheduleStore = create<ScheduleState & ScheduleActions>()(
         const stripped = stripLibraryTaskTemplates(
           (persisted.taskTemplates as Record<string, TaskTemplate> | undefined) ?? currentState.taskTemplates,
         );
+        const normalizedActive = normalizeEventRecord(
+          (persisted.activeEvents as Record<string, Event | QuickActionsEvent> | undefined) ??
+            currentState.activeEvents,
+        );
+        const normalizedHistory = normalizeEventRecord(
+          (persisted.historyEvents as Record<string, Event | QuickActionsEvent> | undefined) ??
+            currentState.historyEvents,
+        );
 
-        if (stripped.changed) {
+        if (stripped.changed || normalizedActive.changed || normalizedHistory.changed) {
           persistCleanedScheduleState({
             ...persisted,
+            activeEvents: normalizedActive.events,
+            historyEvents: normalizedHistory.events,
             taskTemplates: stripped.taskTemplates,
           });
         }
@@ -225,14 +277,8 @@ export const useScheduleStore = create<ScheduleState & ScheduleActions>()(
         return {
           ...currentState,
           ...persisted,
-          activeEvents: normalizeEventRecord(
-            (persisted.activeEvents as Record<string, Event | QuickActionsEvent> | undefined) ??
-              currentState.activeEvents,
-          ),
-          historyEvents: normalizeEventRecord(
-            (persisted.historyEvents as Record<string, Event | QuickActionsEvent> | undefined) ??
-              currentState.historyEvents,
-          ),
+          activeEvents: normalizedActive.events,
+          historyEvents: normalizedHistory.events,
           taskTemplates: stripped.taskTemplates,
         };
       },

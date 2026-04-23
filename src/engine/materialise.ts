@@ -184,7 +184,7 @@ export function materialisePlannedEvent(
     location: pe.location,
     note: null,
     sharedWith: [],
-    coAttendees: null,
+    coAttendees: [],
   };
 
   const updatedPlannedEvent: PlannedEvent = {

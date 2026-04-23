@@ -10,12 +10,13 @@ interface ActionBarProps {
   activeSection: ActionBarSection;
   onSectionChange: (section: ActionBarSection) => void;
   onEnterEdit: () => void;
+  onSectionAdd?: (section: 'participants' | 'location') => void;
   onDeleteEvent?: () => void;
 }
 
 export type ActionBarSection = 'actions' | 'participants' | 'location' | 'attachments';
 
-type PopupType = 'addTask' | 'addParticipant' | 'addLocation' | 'addAttachment' | null;
+type PopupType = 'addTask' | 'addAttachment' | null;
 
 const sectionOrder: ActionBarSection[] = ['actions', 'participants', 'location', 'attachments'];
 
@@ -33,7 +34,7 @@ const addButtonLabels: Record<ActionBarSection, string> = {
   attachments: '+ Attachment',
 };
 
-export function ActionBar({ eventId, activeSection, onSectionChange, onEnterEdit, onDeleteEvent }: ActionBarProps) {
+export function ActionBar({ eventId, activeSection, onSectionChange, onEnterEdit, onSectionAdd, onDeleteEvent }: ActionBarProps) {
   const [openPopup, setOpenPopup] = useState<PopupType>(null);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -112,12 +113,12 @@ export function ActionBar({ eventId, activeSection, onSectionChange, onEnterEdit
     }
 
     if (activeSection === 'participants') {
-      setOpenPopup('addParticipant');
+      onSectionAdd?.('participants');
       return;
     }
 
     if (activeSection === 'location') {
-      setOpenPopup('addLocation');
+      onSectionAdd?.('location');
       return;
     }
 
@@ -192,18 +193,6 @@ export function ActionBar({ eventId, activeSection, onSectionChange, onEnterEdit
           )}
         </div>
       </div>
-
-      {openPopup === 'addParticipant' && (
-        <PopupShell title="Add Participant" onClose={() => setOpenPopup(null)}>
-          <p className="text-sm text-gray-500 dark:text-gray-400">Participants - coming in LE-09b</p>
-        </PopupShell>
-      )}
-
-      {openPopup === 'addLocation' && (
-        <PopupShell title="Add Location" onClose={() => setOpenPopup(null)}>
-          <p className="text-sm text-gray-500 dark:text-gray-400">Location - coming in LE-09b</p>
-        </PopupShell>
-      )}
 
       {openPopup === 'addAttachment' && (
         <PopupShell title="Add Attachment" onClose={() => setOpenPopup(null)}>

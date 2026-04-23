@@ -233,7 +233,7 @@ export async function seedTestDataset(): Promise<TestDatasetResult> {
       location: null,
       note: null,
       sharedWith: [],
-      coAttendees: null,
+      coAttendees: [],
     };
 
     // Archive directly into historyEvents

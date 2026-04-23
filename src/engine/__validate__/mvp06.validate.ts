@@ -245,7 +245,7 @@ async function main(): Promise<void> {
     location: null,
     note: null,
     sharedWith: [],
-    coAttendees: null,
+    coAttendees: [],
   };
   // Intentionally empty templates map so the templateRef lookup falls back to wisdom
   useScheduleStore.setState({

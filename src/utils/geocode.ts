@@ -18,6 +18,7 @@ interface NominatimReverseResponse {
 interface NominatimSearchResult {
   lat: string;
   lon: string;
+  display_name?: string;
 }
 
 /**
@@ -55,7 +56,7 @@ export async function reverseGeocode(lat: number, lng: number): Promise<string> 
  */
 export async function forwardGeocode(
   address: string,
-): Promise<{ lat: number; lng: number } | null> {
+): Promise<{ lat: number; lng: number; displayName?: string } | null> {
   try {
     const params = new URLSearchParams({
       format: 'json',
@@ -73,7 +74,7 @@ export async function forwardGeocode(
     const lat = parseFloat(first.lat);
     const lon = parseFloat(first.lon);
     if (Number.isNaN(lat) || Number.isNaN(lon)) return null;
-    return { lat, lng: lon };
+    return { lat, lng: lon, displayName: first.display_name };
   } catch {
     return null;
   }

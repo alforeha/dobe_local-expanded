@@ -178,7 +178,7 @@ function makeTestEvent(
     location: null,
     note: null,
     sharedWith: [],
-    coAttendees: null,
+    coAttendees: [],
   };
 }
 
@@ -958,7 +958,7 @@ async function main(): Promise<void> {
       location: null,
       note: null,
       sharedWith: [],
-      coAttendees: null,
+      coAttendees: [],
     };
     // Archive directly into historyEvents
     const currentHistory = useScheduleStore.getState().historyEvents;

@@ -276,7 +276,7 @@ export function AppShell() {
       location: null,
       note: null,
       sharedWith: [],
-      coAttendees: null,
+      coAttendees: [],
     };
     scheduleStore.setTask(welcomeTask);
     scheduleStore.setActiveEvent(welcomeEvent);

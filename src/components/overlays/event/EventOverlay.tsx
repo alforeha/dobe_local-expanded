@@ -6,6 +6,8 @@ import { TaskBlock } from './TaskBlock';
 import { TaskList } from './TaskList';
 import { ActionBar } from './ActionBar';
 import type { ActionBarSection } from './ActionBar';
+import { LocationSection } from './sections/LocationSection';
+import { ParticipantsSection } from './sections/ParticipantsSection';
 import type { Event } from '../../../types';
 
 interface EventOverlayProps {
@@ -27,6 +29,10 @@ export function EventOverlay({ eventId, onClose }: EventOverlayProps) {
   const [activeSection, setActiveSection] = useState<ActionBarSection>('actions');
   const [isEditMode, setIsEditMode] = useState(false);
   const [hideCompleted, setHideCompleted] = useState(false);
+  const [sectionAddRequest, setSectionAddRequest] = useState({
+    section: 'actions' as ActionBarSection,
+    nonce: 0,
+  });
 
   const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const alreadyCompleteOnMount = useRef(event?.completionState === 'complete');
@@ -60,6 +66,11 @@ export function EventOverlay({ eventId, onClose }: EventOverlayProps) {
       setSelectedTaskId(nextPending);
     }
   }, [effectiveSelectedTaskId, event, tasks]);
+
+  const handleSectionAdd = useCallback((section: 'participants' | 'location') => {
+    setIsEditMode(true);
+    setSectionAddRequest((current) => ({ section, nonce: current.nonce + 1 }));
+  }, []);
 
   if (!event) {
     return (
@@ -105,6 +116,7 @@ export function EventOverlay({ eventId, onClose }: EventOverlayProps) {
           activeSection={activeSection}
           onSectionChange={setActiveSection}
           onEnterEdit={() => setIsEditMode(true)}
+          onSectionAdd={handleSectionAdd}
           onDeleteEvent={() => {
             deleteEvent(eventId);
             storageDelete(storageKey.plannedEvent(eventId));
@@ -140,15 +152,19 @@ export function EventOverlay({ eventId, onClose }: EventOverlayProps) {
         )}
 
         {activeSection === 'participants' && (
-          <div className="flex flex-1 items-center justify-center px-3 text-sm text-gray-500 dark:text-gray-400">
-            Participants - coming in LE-09b
-          </div>
+          <ParticipantsSection
+            event={event}
+            isEditMode={isEditMode}
+            addRequestNonce={sectionAddRequest.section === 'participants' ? sectionAddRequest.nonce : 0}
+          />
         )}
 
         {activeSection === 'location' && (
-          <div className="flex flex-1 items-center justify-center px-3 text-sm text-gray-500 dark:text-gray-400">
-            Location - coming in LE-09b
-          </div>
+          <LocationSection
+            event={event}
+            isEditMode={isEditMode}
+            addRequestNonce={sectionAddRequest.section === 'location' ? sectionAddRequest.nonce : 0}
+          />
         )}
 
         {activeSection === 'attachments' && (
