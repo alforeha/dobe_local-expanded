@@ -166,6 +166,7 @@ export function TaskBlock({ taskId, eventId, onTaskComplete, onPreviewResultChan
             taskType={taskType}
             template={template}
             task={displayTask ?? null}
+            eventId={eventId}
             onComplete={handleComplete}
             hideSubmit={true}
             onResultChange={(result) => {

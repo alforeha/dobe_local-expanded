@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import './ActionBar.css';
 
 interface ActionBarProps {
@@ -10,6 +11,9 @@ interface ActionBarProps {
   onExitEdit: () => void;
   onSectionAdd?: (section: ActionBarSection) => void;
   onDeleteEvent?: () => void;
+  showGlobeButton?: boolean;
+  isGlobeViewOpen?: boolean;
+  onToggleGlobeView?: () => void;
 }
 
 export type ActionBarSection = 'actions' | 'participants' | 'location' | 'attachments';
@@ -30,10 +34,12 @@ const addButtonLabels: Record<ActionBarSection, string> = {
   attachments: '+ Attachment',
 };
 
-export function ActionBar({ eventId: _eventId, activeSection, onSectionChange, isEditMode, onEnterEdit, onExitEdit, onSectionAdd, onDeleteEvent }: ActionBarProps) {
+export function ActionBar({ eventId: _eventId, activeSection, onSectionChange, isEditMode, onEnterEdit, onExitEdit, onSectionAdd, onDeleteEvent, showGlobeButton = false, isGlobeViewOpen = false, onToggleGlobeView }: ActionBarProps) {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [dropdownPosition, setDropdownPosition] = useState<{ top: number; left: number } | null>(null);
   const dropdownRef = useRef<HTMLDivElement | null>(null);
+  const dropdownButtonRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
     if (!isDropdownOpen) {
@@ -42,13 +48,43 @@ export function ActionBar({ eventId: _eventId, activeSection, onSectionChange, i
     }
 
     const handlePointerDown = (event: MouseEvent) => {
-      if (!dropdownRef.current?.contains(event.target as Node)) {
+      const target = event.target as Node;
+      if (!dropdownRef.current?.contains(target) && !dropdownButtonRef.current?.contains(target)) {
         setIsDropdownOpen(false);
       }
     };
 
     document.addEventListener('mousedown', handlePointerDown);
     return () => document.removeEventListener('mousedown', handlePointerDown);
+  }, [isDropdownOpen]);
+
+  useEffect(() => {
+    if (isGlobeViewOpen) {
+      setIsDropdownOpen(false);
+      setConfirmDelete(false);
+    }
+  }, [isGlobeViewOpen]);
+
+  useLayoutEffect(() => {
+    if (!isDropdownOpen || !dropdownButtonRef.current) return;
+
+    const updatePosition = () => {
+      if (!dropdownButtonRef.current) return;
+      const rect = dropdownButtonRef.current.getBoundingClientRect();
+      setDropdownPosition({
+        top: rect.top - 8,
+        left: rect.right,
+      });
+    };
+
+    updatePosition();
+    window.addEventListener('resize', updatePosition);
+    window.addEventListener('scroll', updatePosition, true);
+
+    return () => {
+      window.removeEventListener('resize', updatePosition);
+      window.removeEventListener('scroll', updatePosition, true);
+    };
   }, [isDropdownOpen]);
 
   const handleDeleteClick = () => {
@@ -81,62 +117,87 @@ export function ActionBar({ eventId: _eventId, activeSection, onSectionChange, i
 
   return (
     <>
-      <div className="relative flex shrink-0 items-center justify-between border-b border-gray-200 dark:border-gray-700 px-3 py-2">
-        <button
-          type="button"
-          aria-label={addButtonLabels[activeSection]}
-          onClick={handleAddClick}
-          className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
-        >
-          {addButtonLabels[activeSection]}
-        </button>
-
-        <div ref={dropdownRef} className="action-bar-menu-wrap">
+      <div className="relative z-[80] flex shrink-0 items-center justify-between border-b border-gray-200 dark:border-gray-700 px-3 py-2">
+        {isGlobeViewOpen ? <div /> : (
           <button
             type="button"
-            aria-haspopup="menu"
-            aria-expanded={isDropdownOpen}
-            onClick={() => setIsDropdownOpen((open) => !open)}
-            className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+            aria-label={addButtonLabels[activeSection]}
+            onClick={handleAddClick}
+            className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
           >
-            {sectionLabels[activeSection]}
-            <span className="text-xs text-gray-400 dark:text-gray-500">▾</span>
+            {addButtonLabels[activeSection]}
           </button>
+        )}
 
-          {isDropdownOpen && (
-            <div className="action-bar-dropdown" role="menu">
-              {sectionOrder.map((section) => (
-                <button
-                  key={section}
-                  type="button"
-                  role="menuitem"
-                  onClick={() => handleSectionSelect(section)}
-                  className={`action-bar-menu-item${activeSection === section ? ' is-active' : ''}`}
-                >
-                  <span>{sectionLabels[section]}</span>
-                </button>
-              ))}
+        <div className="action-bar-right-cluster">
+          {showGlobeButton && (
+            <button
+              type="button"
+              aria-label={isGlobeViewOpen ? 'Close globe view' : 'Open globe view'}
+              aria-pressed={isGlobeViewOpen}
+              onClick={onToggleGlobeView}
+              className={`action-bar-globe-button${isGlobeViewOpen ? ' is-active' : ''}`}
+            >
+              <span aria-hidden="true">🌍</span>
+            </button>
+          )}
 
-              <div className="action-bar-menu-divider" />
-
+          {!isGlobeViewOpen && (
+            <div ref={dropdownRef} className="action-bar-menu-wrap">
               <button
+                ref={dropdownButtonRef}
                 type="button"
-                role="menuitem"
-                onClick={handleEditToggle}
-                className="action-bar-menu-item"
+                aria-haspopup="menu"
+                aria-expanded={isDropdownOpen}
+                onClick={() => setIsDropdownOpen((open) => !open)}
+                className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
               >
-                <span>{isEditMode ? 'Done' : 'Edit'}</span>
+                {sectionLabels[activeSection]}
+                <span className="text-xs text-gray-400 dark:text-gray-500">▾</span>
               </button>
 
-              {onDeleteEvent && (
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={handleDeleteClick}
-                  className="action-bar-menu-item is-danger"
+              {isDropdownOpen && dropdownPosition && createPortal(
+                <div
+                  ref={dropdownRef}
+                  className="action-bar-dropdown action-bar-dropdown-portal"
+                  role="menu"
+                  style={{ top: dropdownPosition.top, left: dropdownPosition.left }}
                 >
-                  <span>{confirmDelete ? 'Confirm delete' : 'Delete'}</span>
-                </button>
+                  {sectionOrder.map((section) => (
+                    <button
+                      key={section}
+                      type="button"
+                      role="menuitem"
+                      onClick={() => handleSectionSelect(section)}
+                      className={`action-bar-menu-item${activeSection === section ? ' is-active' : ''}`}
+                    >
+                      <span>{sectionLabels[section]}</span>
+                    </button>
+                  ))}
+
+                  <div className="action-bar-menu-divider" />
+
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={handleEditToggle}
+                    className="action-bar-menu-item"
+                  >
+                    <span>{isEditMode ? 'Done' : 'Edit'}</span>
+                  </button>
+
+                  {onDeleteEvent && (
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={handleDeleteClick}
+                      className="action-bar-menu-item is-danger"
+                    >
+                      <span>{confirmDelete ? 'Confirm delete' : 'Delete'}</span>
+                    </button>
+                  )}
+                </div>,
+                document.body,
               )}
             </div>
           )}

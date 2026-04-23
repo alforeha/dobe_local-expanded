@@ -1,9 +1,9 @@
 .cdb-event-globe-view {
   --map-trail-color: #0ea5e9;
-  position: absolute;
-  inset: 0;
+  position: relative;
   display: flex;
   flex-direction: column;
+  height: 100%;
   min-height: 0;
   background: rgb(255 255 255 / 0.96);
   backdrop-filter: blur(12px);
@@ -15,10 +15,9 @@
 
 .cdb-event-globe-view__map-area {
   position: relative;
-  flex: 0 0 60%;
-  min-height: 240px;
+  flex: 1 1 auto;
+  min-height: 0;
   overflow: hidden;
-  border-bottom: 1px solid rgb(148 163 184 / 0.16);
 }
 
 .cdb-event-globe-view__map {
@@ -52,8 +51,8 @@
 }
 
 .cdb-event-globe-view__layers {
-  flex: 1 1 40%;
   min-height: 0;
+  height: 100%;
   overflow-y: auto;
   padding: 14px 14px 18px;
 }
@@ -194,8 +193,7 @@
 
 @media (max-width: 640px) {
   .cdb-event-globe-view__map-area {
-    flex-basis: 56%;
-    min-height: 220px;
+    min-height: 0;
   }
 
   .cdb-event-globe-view__layers {

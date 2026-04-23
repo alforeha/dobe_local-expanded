@@ -1,6 +1,4 @@
-import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
-import { starterTaskTemplates } from '../../../coach/StarterQuestLibrary';
-import { taskTemplateLibrary } from '../../../coach';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useScheduleStore } from '../../../stores/useScheduleStore';
 import { storageDelete, storageKey } from '../../../storage';
 import { TaskBlock } from './TaskBlock';
@@ -10,20 +8,11 @@ import { ActionsSection } from './sections/ActionsSection';
 import { LocationSection } from './sections/LocationSection';
 import { ParticipantsSection } from './sections/ParticipantsSection';
 import { AttachmentsSection } from './sections/AttachmentsSection';
-import { EventGlobeView } from './EventGlobeView';
-import type { Event, Task } from '../../../types';
+import { EventGlobeLayerControls, EventGlobeView, useEventGlobeLayers } from './EventGlobeView.tsx';
+import type { Event } from '../../../types';
 import { format } from '../../../utils/dateUtils';
 import { IconDisplay } from '../../shared/IconDisplay';
-import { resolveTaskTemplate } from '../../../utils/resolveTaskTemplate';
-import type { InputFields, LocationPointInputFields, LocationTrailInputFields } from '../../../types/taskTemplate';
-
-function resolveOverlayTaskType(task: Task | undefined, taskTemplates: ReturnType<typeof useScheduleStore.getState>['taskTemplates']) {
-  if (!task) return null;
-  if (task.isUnique === true) return task.taskType ?? null;
-  if (!task.templateRef) return null;
-
-  return resolveTaskTemplate(task.templateRef, taskTemplates, starterTaskTemplates, taskTemplateLibrary)?.taskType ?? null;
-}
+import type { InputFields } from '../../../types/taskTemplate';
 
 interface EventOverlayProps {
   eventId: string;
@@ -34,7 +23,6 @@ export function EventOverlay({ eventId, onClose }: EventOverlayProps) {
   const activeEvents = useScheduleStore((s) => s.activeEvents);
   const historyEvents = useScheduleStore((s) => s.historyEvents);
   const tasks = useScheduleStore((s) => s.tasks);
-  const taskTemplates = useScheduleStore((s) => s.taskTemplates);
   const deleteEvent = useScheduleStore((s) => s.deleteEvent);
   const updateEvent = useScheduleStore((s) => s.updateEvent);
 
@@ -55,6 +43,9 @@ export function EventOverlay({ eventId, onClose }: EventOverlayProps) {
 
   const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const alreadyCompleteOnMount = useRef(event?.completionState === 'complete');
+  const { layerDefinitions, layerVisibility, toggleLayer } = useEventGlobeLayers(event, taskPreviewResults);
+  const hasGlobeData = layerDefinitions.length > 0;
+  const isGlobeViewOpen = showGlobeView && hasGlobeData;
 
   useEffect(() => {
     if (event?.completionState === 'complete' && !alreadyCompleteOnMount.current) {
@@ -116,46 +107,6 @@ export function EventOverlay({ eventId, onClose }: EventOverlayProps) {
   const visibleTaskIds = hideCompleted
     ? event.tasks.filter((id) => tasks[id]?.completionState !== 'complete')
     : event.tasks;
-
-  const hasGlobeData = useMemo(() => {
-    if (!event) return false;
-    if (event.location) return true;
-
-    for (const taskId of event.tasks) {
-      const task = tasks[taskId];
-      const taskType = resolveOverlayTaskType(task, taskTemplates);
-      const effectiveResultFields = (Object.keys(taskPreviewResults[taskId] ?? {}).length > 0
-        ? taskPreviewResults[taskId]
-        : task?.resultFields ?? {}) as Partial<InputFields>;
-
-      if (taskType === 'LOCATION_TRAIL') {
-        const resultFields = effectiveResultFields as Partial<LocationTrailInputFields>;
-        if (Array.isArray(resultFields.waypoints) && resultFields.waypoints.length > 0) {
-          return true;
-        }
-      }
-
-      if (taskType === 'LOCATION_POINT') {
-        const resultFields = effectiveResultFields as Partial<LocationPointInputFields>;
-        if (typeof resultFields.lat === 'number' && typeof resultFields.lng === 'number') {
-          return true;
-        }
-      }
-    }
-
-    return event.attachments.some(
-      (attachment) =>
-        attachment.location &&
-        typeof attachment.location.latitude === 'number' &&
-        typeof attachment.location.longitude === 'number',
-    );
-  }, [event, taskPreviewResults, taskTemplates, tasks]);
-
-  useEffect(() => {
-    if (!hasGlobeData && showGlobeView) {
-      setShowGlobeView(false);
-    }
-  }, [hasGlobeData, showGlobeView]);
 
   return (
     <div
@@ -226,18 +177,6 @@ export function EventOverlay({ eventId, onClose }: EventOverlayProps) {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          {hasGlobeData && (
-            <button
-              type="button"
-              aria-label={showGlobeView ? 'Close globe view' : 'Open globe view'}
-              aria-pressed={showGlobeView}
-              onClick={() => setShowGlobeView((current) => !current)}
-              className={`rounded-full px-3 py-1.5 text-sm transition-colors ${showGlobeView ? 'bg-purple-600 text-white shadow-sm' : 'text-gray-500 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700'}`}
-            >
-              <span aria-hidden="true">🌍</span>
-            </button>
-          )}
-
           <button
             type="button"
             aria-label="Close event"
@@ -251,24 +190,34 @@ export function EventOverlay({ eventId, onClose }: EventOverlayProps) {
 
       <div className="relative flex min-h-0 flex-1 flex-col">
         <div className="flex-1 min-h-0 overflow-hidden p-3">
-          <TaskBlock
-            taskId={effectiveSelectedTaskId}
-            eventId={eventId}
-            onTaskComplete={handleTaskComplete}
-            onPreviewResultChange={(taskId, result) => {
-              setTaskPreviewResults((current) => {
-                if (Object.keys(result).length === 0) {
-                  if (!(taskId in current)) return current;
-                  const next = { ...current };
-                  delete next[taskId];
-                  return next;
-                }
+          {isGlobeViewOpen ? (
+            <EventGlobeView
+              event={event}
+              layerDefinitions={layerDefinitions}
+              layerVisibility={layerVisibility}
+              onClose={() => setShowGlobeView(false)}
+              showCloseButton={true}
+            />
+          ) : (
+            <TaskBlock
+              taskId={effectiveSelectedTaskId}
+              eventId={eventId}
+              onTaskComplete={handleTaskComplete}
+              onPreviewResultChange={(taskId, result) => {
+                setTaskPreviewResults((current) => {
+                  if (Object.keys(result).length === 0) {
+                    if (!(taskId in current)) return current;
+                    const next = { ...current };
+                    delete next[taskId];
+                    return next;
+                  }
 
-                return { ...current, [taskId]: result };
-              });
-            }}
-            className="h-full"
-          />
+                  return { ...current, [taskId]: result };
+                });
+              }}
+              className="h-full"
+            />
+          )}
         </div>
 
         <div className="flex h-1/3 min-h-0 flex-col shrink-0 border-t border-gray-200 dark:border-gray-700">
@@ -280,6 +229,12 @@ export function EventOverlay({ eventId, onClose }: EventOverlayProps) {
             onEnterEdit={() => setIsEditMode(true)}
             onExitEdit={() => setIsEditMode(false)}
             onSectionAdd={handleSectionAdd}
+            showGlobeButton={hasGlobeData}
+            isGlobeViewOpen={isGlobeViewOpen}
+            onToggleGlobeView={() => {
+              if (!hasGlobeData) return;
+              setShowGlobeView((current) => !current);
+            }}
             onDeleteEvent={() => {
               deleteEvent(eventId);
               storageDelete(storageKey.plannedEvent(eventId));
@@ -287,7 +242,13 @@ export function EventOverlay({ eventId, onClose }: EventOverlayProps) {
             }}
           />
 
-          {activeSection === 'actions' && (
+          {isGlobeViewOpen ? (
+            <EventGlobeLayerControls
+              layerDefinitions={layerDefinitions}
+              layerVisibility={layerVisibility}
+              onToggleLayer={toggleLayer}
+            />
+          ) : activeSection === 'actions' && (
             <ActionsSection
               event={event}
               eventId={eventId}
@@ -304,7 +265,7 @@ export function EventOverlay({ eventId, onClose }: EventOverlayProps) {
             />
           )}
 
-          {activeSection === 'participants' && (
+          {!isGlobeViewOpen && activeSection === 'participants' && (
             <ParticipantsSection
               event={event}
               isEditMode={isEditMode}
@@ -312,7 +273,7 @@ export function EventOverlay({ eventId, onClose }: EventOverlayProps) {
             />
           )}
 
-          {activeSection === 'location' && (
+          {!isGlobeViewOpen && activeSection === 'location' && (
             <LocationSection
               event={event}
               isEditMode={isEditMode}
@@ -320,7 +281,7 @@ export function EventOverlay({ eventId, onClose }: EventOverlayProps) {
             />
           )}
 
-          {activeSection === 'attachments' && (
+          {!isGlobeViewOpen && activeSection === 'attachments' && (
             <AttachmentsSection
               event={event}
               eventId={eventId}
@@ -329,12 +290,6 @@ export function EventOverlay({ eventId, onClose }: EventOverlayProps) {
             />
           )}
         </div>
-
-        {showGlobeView && (
-          <div className="absolute inset-0 z-20">
-            <EventGlobeView event={event} onClose={() => setShowGlobeView(false)} previewResults={taskPreviewResults} />
-          </div>
-        )}
       </div>
     </div>
   );

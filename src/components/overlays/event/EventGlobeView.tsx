@@ -12,10 +12,18 @@ import { resolveTaskDisplayName } from '../../../utils/resolveTaskDisplayName';
 import { resolveTaskTemplate } from '../../../utils/resolveTaskTemplate';
 import './EventGlobeView.css';
 
-interface EventGlobeViewProps {
+export interface EventGlobeViewProps {
   event: Event;
-  onClose: () => void;
-  previewResults?: Record<string, Partial<InputFields>>;
+  layerDefinitions: EventGlobeLayerDefinition[];
+  layerVisibility: Record<string, boolean>;
+  onClose?: () => void;
+  showCloseButton?: boolean;
+}
+
+export interface EventGlobeLayerControlsProps {
+  layerDefinitions: EventGlobeLayerDefinition[];
+  layerVisibility: Record<string, boolean>;
+  onToggleLayer: (layerKey: string) => void;
 }
 
 interface GlobePoint {
@@ -53,7 +61,7 @@ interface PhotoLayerDefinition extends BaseLayerDefinition {
   attachment: EventAttachment;
 }
 
-type GlobeLayerDefinition =
+export type EventGlobeLayerDefinition =
   | EventLocationLayerDefinition
   | TrailLayerDefinition
   | PointLayerDefinition
@@ -138,7 +146,22 @@ function createPhotoIcon(): L.DivIcon {
   });
 }
 
-function buildLayerPopup(layer: GlobeLayerDefinition): string {
+function createFinishFlagIcon(): L.DivIcon {
+  return L.divIcon({
+    className: '',
+    html: `
+      <div style="position:relative;width:20px;height:24px;">
+        <div style="position:absolute;left:6px;bottom:0;width:3px;height:22px;border-radius:9999px;background:#0f172a;"></div>
+        <div style="position:absolute;left:9px;top:2px;width:10px;height:8px;clip-path:polygon(0 0,100% 25%,0 100%);background:#ef4444;box-shadow:0 0 0 1px rgba(15,23,42,0.08);"></div>
+      </div>
+    `,
+    iconSize: [20, 24],
+    iconAnchor: [8, 22],
+    popupAnchor: [0, -18],
+  });
+}
+
+function buildLayerPopup(layer: EventGlobeLayerDefinition): string {
   if (layer.kind === 'event-location') {
     return `
       <div class="cdb-event-globe-view__popup">
@@ -180,19 +203,16 @@ function buildLayerPopup(layer: GlobeLayerDefinition): string {
   `;
 }
 
-export function EventGlobeView({ event, onClose, previewResults = {} }: EventGlobeViewProps) {
-  const containerRef = useRef<HTMLDivElement | null>(null);
-  const rootRef = useRef<HTMLDivElement | null>(null);
-  const mapRef = useRef<L.Map | null>(null);
-  const layerGroupRef = useRef<L.LayerGroup | null>(null);
+export function useEventGlobeLayers(event: Event | undefined, previewResults: Record<string, Partial<InputFields>> = {}) {
   const [layerVisibility, setLayerVisibility] = useState<Record<string, boolean>>({});
-  const activeLocation = useAutoLocationPreferences();
   const tasks = useScheduleStore((state) => state.tasks);
   const scheduleTemplates = useScheduleStore((state) => state.taskTemplates);
   const templates = useMemo(() => buildTemplateRecord(scheduleTemplates), [scheduleTemplates]);
 
-  const layerDefinitions = useMemo<GlobeLayerDefinition[]>(() => {
-    const layers: GlobeLayerDefinition[] = [];
+  const layerDefinitions = useMemo<EventGlobeLayerDefinition[]>(() => {
+    if (!event) return [];
+
+    const layers: EventGlobeLayerDefinition[] = [];
 
     if (event.location) {
       layers.push({
@@ -210,7 +230,8 @@ export function EventGlobeView({ event, onClose, previewResults = {} }: EventGlo
       if (!task || !taskType) continue;
 
       const taskName = resolveTaskDisplayName(task, scheduleTemplates, starterTaskTemplates);
-      const effectiveResultFields = (Object.keys(previewResults[task.id] ?? {}).length > 0
+      const hasPreviewResults = Object.keys(previewResults[task.id] ?? {}).length > 0;
+      const effectiveResultFields = ((task.completionState !== 'complete' && hasPreviewResults)
         ? previewResults[task.id]
         : task.resultFields ?? {}) as Partial<InputFields>;
 
@@ -286,6 +307,57 @@ export function EventGlobeView({ event, onClose, previewResults = {} }: EventGlo
     });
   }, [layerDefinitions]);
 
+  return {
+    layerDefinitions,
+    layerVisibility,
+    toggleLayer: (layerKey: string) => {
+      setLayerVisibility((current) => ({
+        ...current,
+        [layerKey]: !(current[layerKey] ?? true),
+      }));
+    },
+  };
+}
+
+export function EventGlobeLayerControls({ layerDefinitions, layerVisibility, onToggleLayer }: EventGlobeLayerControlsProps) {
+  return (
+    <div className="cdb-event-globe-view__layers">
+      <p className="cdb-event-globe-view__layers-title">Layers</p>
+
+      {layerDefinitions.length === 0 ? (
+        <div className="cdb-event-globe-view__empty">No mapped event data</div>
+      ) : (
+        <div className="cdb-event-globe-view__layers-list">
+          {layerDefinitions.map((layer) => {
+            const isOn = layerVisibility[layer.key] ?? true;
+
+            return (
+              <div key={layer.key} className="cdb-event-globe-view__toggle-row">
+                <span className="cdb-event-globe-view__toggle-label">{layer.label}</span>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={isOn}
+                  aria-label={`Toggle ${layer.label}`}
+                  onClick={() => onToggleLayer(layer.key)}
+                  className={`cdb-event-globe-view__toggle-switch${isOn ? ' is-on' : ''}`}
+                />
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function EventGlobeView({ event: _event, layerDefinitions, layerVisibility, onClose, showCloseButton = true }: EventGlobeViewProps) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const mapRef = useRef<L.Map | null>(null);
+  const layerGroupRef = useRef<L.LayerGroup | null>(null);
+  const activeLocation = useAutoLocationPreferences();
+
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return undefined;
 
@@ -346,6 +418,15 @@ export function EventGlobeView({ event, onClose, previewResults = {} }: EventGlo
         ).addTo(layerGroup);
 
         polyline.bindPopup(buildLayerPopup(layer));
+
+        const finishWaypoint = layer.waypoints[layer.waypoints.length - 1];
+        if (finishWaypoint) {
+          L.marker([finishWaypoint.lat, finishWaypoint.lng], {
+            icon: createFinishFlagIcon(),
+          })
+            .bindPopup(buildLayerPopup(layer))
+            .addTo(layerGroup);
+        }
         continue;
       }
 
@@ -400,36 +481,10 @@ export function EventGlobeView({ event, onClose, previewResults = {} }: EventGlo
     <div ref={rootRef} className="cdb-event-globe-view">
       <div className="cdb-event-globe-view__map-area">
         <div ref={containerRef} className="cdb-event-globe-view__map" aria-label="Event globe view map" />
-        <button type="button" onClick={onClose} className="cdb-event-globe-view__map-close">
-          Close
-        </button>
-      </div>
-
-      <div className="cdb-event-globe-view__layers">
-        <p className="cdb-event-globe-view__layers-title">Layers</p>
-
-        {layerDefinitions.length === 0 ? (
-          <div className="cdb-event-globe-view__empty">No mapped event data</div>
-        ) : (
-          <div className="cdb-event-globe-view__layers-list">
-            {layerDefinitions.map((layer) => {
-              const isOn = layerVisibility[layer.key] ?? true;
-
-              return (
-                <div key={layer.key} className="cdb-event-globe-view__toggle-row">
-                  <span className="cdb-event-globe-view__toggle-label">{layer.label}</span>
-                  <button
-                    type="button"
-                    role="switch"
-                    aria-checked={isOn}
-                    aria-label={`Toggle ${layer.label}`}
-                    onClick={() => setLayerVisibility((current) => ({ ...current, [layer.key]: !isOn }))}
-                    className={`cdb-event-globe-view__toggle-switch${isOn ? ' is-on' : ''}`}
-                  />
-                </div>
-              );
-            })}
-          </div>
+        {showCloseButton && onClose && (
+          <button type="button" onClick={onClose} className="cdb-event-globe-view__map-close">
+            Close
+          </button>
         )}
       </div>
     </div>

@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 
 interface PopupShellProps {
   title: string;
@@ -14,7 +15,11 @@ export function PopupShell({ title, onClose, children, size = 'default', headerR
     ? 'relative flex w-full max-w-5xl flex-col rounded-2xl bg-white shadow-xl dark:bg-gray-800 max-h-[calc(100dvh-2rem)]'
     : 'relative flex w-full max-w-md flex-col rounded-xl bg-white shadow-xl dark:bg-gray-800 max-h-[calc(100dvh-2rem)]';
 
-  return (
+  if (typeof document === 'undefined') {
+    return null;
+  }
+
+  return createPortal(
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-3 sm:p-4"
       onClick={onClose}
@@ -42,6 +47,7 @@ export function PopupShell({ title, onClose, children, size = 'default', headerR
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

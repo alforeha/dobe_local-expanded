@@ -12,7 +12,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import type { Task } from '../types/task';
 import type { Event, EventAttachment, EventAttachmentSource } from '../types/event';
-import type { InputFields, Waypoint, XpAward } from '../types/taskTemplate';
+import type { InputFields, LocationPointInputFields, Waypoint, XpAward } from '../types/taskTemplate';
 import type { StatGroupKey } from '../types/user';
 import { useScheduleStore } from '../stores/useScheduleStore';
 import { useUserStore } from '../stores/useUserStore';
@@ -618,6 +618,25 @@ export function addWaypoint(taskId: string, eventId: string, waypoint: Waypoint)
   });
 }
 
+export function insertWaypoint(taskId: string, eventId: string, index: number, waypoint: Waypoint): void {
+  const context = getTrailTask(taskId, eventId);
+  if (!context) return;
+
+  const waypoints = Array.isArray((context.task.resultFields as { waypoints?: Waypoint[] }).waypoints)
+    ? [...((context.task.resultFields as { waypoints?: Waypoint[] }).waypoints ?? [])]
+    : [];
+
+  const safeIndex = Math.max(0, Math.min(index, waypoints.length));
+
+  context.scheduleStore.setTask({
+    ...context.task,
+    resultFields: {
+      ...context.task.resultFields,
+      waypoints: [...waypoints.slice(0, safeIndex), waypoint, ...waypoints.slice(safeIndex)],
+    },
+  });
+}
+
 export function updateWaypoint(taskId: string, eventId: string, index: number, waypoint: Waypoint): void {
   const context = getTrailTask(taskId, eventId);
   if (!context) return;
@@ -651,6 +670,19 @@ export function deleteWaypoint(taskId: string, eventId: string, index: number): 
     resultFields: {
       ...context.task.resultFields,
       waypoints: waypoints.filter((_, waypointIndex) => waypointIndex !== index),
+    },
+  });
+}
+
+export function updateLocationPoint(taskId: string, eventId: string, resultFields: Partial<LocationPointInputFields>): void {
+  const context = getTrailTask(taskId, eventId);
+  if (!context) return;
+
+  context.scheduleStore.setTask({
+    ...context.task,
+    resultFields: {
+      ...context.task.resultFields,
+      ...resultFields,
     },
   });
 }

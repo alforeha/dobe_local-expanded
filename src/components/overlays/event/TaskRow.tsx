@@ -1,12 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import type { FormEvent } from 'react';
-import L from 'leaflet';
-import 'leaflet/dist/leaflet.css';
+import { useMemo } from 'react';
 import { starterTaskTemplates } from '../../../coach/StarterQuestLibrary';
-import { addWaypoint, completeTask, deleteWaypoint, removeTaskFromEvent, updateWaypoint } from '../../../engine/eventExecution';
+import { completeTask, removeTaskFromEvent } from '../../../engine/eventExecution';
 import { useScheduleStore } from '../../../stores/useScheduleStore';
 import { resolveTaskDisplayName } from '../../../utils/resolveTaskDisplayName';
-import type { LocationTrailInputFields, TaskType, Waypoint } from '../../../types/taskTemplate';
+import type { LocationTrailInputFields, TaskType } from '../../../types/taskTemplate';
 
 interface TaskRowProps {
   taskId: string;
@@ -15,93 +12,6 @@ interface TaskRowProps {
   isSelected: boolean;
   onSelect: (taskId: string) => void;
   onTaskComplete: () => void;
-}
-
-function TrailMiniMap({ waypoints }: { waypoints: Waypoint[] }) {
-  const containerRef = useRef<HTMLDivElement | null>(null);
-  const mapRef = useRef<L.Map | null>(null);
-  const layerRef = useRef<L.LayerGroup | null>(null);
-
-  useEffect(() => {
-    if (!containerRef.current || mapRef.current) return undefined;
-
-    const map = L.map(containerRef.current, {
-      attributionControl: true,
-      zoomControl: true,
-    }).setView(waypoints.length > 0 ? [waypoints[0].lat, waypoints[0].lng] : [20, 0], waypoints.length > 0 ? 13 : 2);
-
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '&copy; OpenStreetMap contributors',
-      maxZoom: 19,
-    }).addTo(map);
-
-    layerRef.current = L.layerGroup().addTo(map);
-    mapRef.current = map;
-    const resizeId = window.setTimeout(() => map.invalidateSize(), 50);
-
-    return () => {
-      window.clearTimeout(resizeId);
-      map.remove();
-      mapRef.current = null;
-      layerRef.current = null;
-    };
-  }, [waypoints]);
-
-  useEffect(() => {
-    if (!mapRef.current || !layerRef.current) return;
-
-    layerRef.current.clearLayers();
-    if (waypoints.length === 0) {
-      mapRef.current.setView([20, 0], 2);
-      return;
-    }
-
-    const latLngs = waypoints.map((waypoint): L.LatLngExpression => [waypoint.lat, waypoint.lng]);
-    const polyline = L.polyline(latLngs, { color: '#7c3aed', weight: 4, opacity: 0.85 }).addTo(layerRef.current);
-    waypoints.forEach((waypoint, index) => {
-      L.circleMarker([waypoint.lat, waypoint.lng], {
-        radius: 5,
-        color: '#4c1d95',
-        fillColor: '#a855f7',
-        fillOpacity: 0.95,
-        weight: 2,
-      })
-        .bindTooltip(`#${index + 1}`)
-        .addTo(layerRef.current!);
-    });
-
-    if (waypoints.length === 1) {
-      mapRef.current.setView(latLngs[0], 14);
-    } else {
-      mapRef.current.fitBounds(polyline.getBounds(), { padding: [16, 16] });
-    }
-  }, [waypoints]);
-
-  return <div ref={containerRef} className="h-48 w-full overflow-hidden rounded-xl border border-gray-200 dark:border-gray-700" />;
-}
-
-function isoToLocalInput(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return '';
-  }
-
-  const offset = date.getTimezoneOffset();
-  const local = new Date(date.getTime() - offset * 60000);
-  return local.toISOString().slice(0, 16);
-}
-
-function localInputToIso(value: string): string {
-  if (!value) return new Date().toISOString();
-  return new Date(value).toISOString();
-}
-
-function createDefaultWaypointDraft(): { lat: string; lng: string; timestamp: string } {
-  return {
-    lat: '',
-    lng: '',
-    timestamp: isoToLocalInput(new Date().toISOString()),
-  };
 }
 
 export function TaskRow({ taskId, eventId, isEditMode, isSelected, onSelect, onTaskComplete }: TaskRowProps) {
@@ -116,17 +26,6 @@ export function TaskRow({ taskId, eventId, isEditMode, isSelected, onSelect, onT
   const trailFields = (task?.resultFields ?? {}) as Partial<LocationTrailInputFields>;
   const waypoints = Array.isArray(trailFields.waypoints) ? trailFields.waypoints : [];
 
-  const [expanded, setExpanded] = useState(false);
-  const [newWaypoint, setNewWaypoint] = useState(createDefaultWaypointDraft());
-  const [editingIndex, setEditingIndex] = useState<number | null>(null);
-  const [editingDraft, setEditingDraft] = useState(createDefaultWaypointDraft());
-
-  useEffect(() => {
-    if (!expanded) {
-      setEditingIndex(null);
-    }
-  }, [expanded]);
-
   const handleComplete = () => {
     if (!task || task.completionState === 'complete') return;
     completeTask(taskId, eventId, { resultFields: task.resultFields ?? {} });
@@ -135,44 +34,6 @@ export function TaskRow({ taskId, eventId, isEditMode, isSelected, onSelect, onT
 
   const handleDeleteTask = () => {
     removeTaskFromEvent(taskId, eventId);
-  };
-
-  const handleAddWaypoint = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const lat = Number(newWaypoint.lat);
-    const lng = Number(newWaypoint.lng);
-    if (Number.isNaN(lat) || Number.isNaN(lng)) return;
-
-    addWaypoint(taskId, eventId, {
-      lat,
-      lng,
-      timestamp: localInputToIso(newWaypoint.timestamp),
-    });
-    setExpanded(true);
-    setNewWaypoint(createDefaultWaypointDraft());
-  };
-
-  const beginEditWaypoint = (index: number, waypoint: Waypoint) => {
-    setExpanded(true);
-    setEditingIndex(index);
-    setEditingDraft({
-      lat: String(waypoint.lat),
-      lng: String(waypoint.lng),
-      timestamp: isoToLocalInput(waypoint.timestamp),
-    });
-  };
-
-  const handleSaveWaypoint = (index: number) => {
-    const lat = Number(editingDraft.lat);
-    const lng = Number(editingDraft.lng);
-    if (Number.isNaN(lat) || Number.isNaN(lng)) return;
-
-    updateWaypoint(taskId, eventId, index, {
-      lat,
-      lng,
-      timestamp: localInputToIso(editingDraft.timestamp),
-    });
-    setEditingIndex(null);
   };
 
   const summary = useMemo(() => {
@@ -212,12 +73,7 @@ export function TaskRow({ taskId, eventId, isEditMode, isSelected, onSelect, onT
 
         <button
           type="button"
-          onClick={() => {
-            onSelect(taskId);
-            if (taskType === 'LOCATION_TRAIL') {
-              setExpanded((current) => !current);
-            }
-          }}
+          onClick={() => onSelect(taskId)}
           className="flex min-w-0 flex-1 flex-col items-start text-left"
         >
           <div className="flex w-full items-start justify-between gap-3">
@@ -245,50 +101,6 @@ export function TaskRow({ taskId, eventId, isEditMode, isSelected, onSelect, onT
         )}
       </div>
 
-      {taskType === 'LOCATION_TRAIL' && expanded && (
-        <div className="space-y-3 px-3 pb-3">
-          <TrailMiniMap waypoints={waypoints} />
-
-          <form onSubmit={handleAddWaypoint} className="grid gap-2 rounded-xl border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-800/60 md:grid-cols-[1fr_1fr_1fr_auto]">
-            <input type="number" step="any" value={newWaypoint.lat} onChange={(event) => setNewWaypoint((current) => ({ ...current, lat: event.target.value }))} placeholder="Latitude" className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100" />
-            <input type="number" step="any" value={newWaypoint.lng} onChange={(event) => setNewWaypoint((current) => ({ ...current, lng: event.target.value }))} placeholder="Longitude" className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100" />
-            <input type="datetime-local" value={newWaypoint.timestamp} onChange={(event) => setNewWaypoint((current) => ({ ...current, timestamp: event.target.value }))} className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100" />
-            <button type="submit" className="rounded-lg bg-purple-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-purple-700">Add</button>
-          </form>
-
-          <div className="space-y-2">
-            {waypoints.map((waypoint, index) => (
-              <div key={`${waypoint.timestamp}-${index}`} className="rounded-xl border border-gray-200 p-3 text-sm dark:border-gray-700">
-                {editingIndex === index ? (
-                  <div className="grid gap-2 md:grid-cols-[1fr_1fr_1fr_auto_auto]">
-                    <input type="number" step="any" value={editingDraft.lat} onChange={(event) => setEditingDraft((current) => ({ ...current, lat: event.target.value }))} className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100" />
-                    <input type="number" step="any" value={editingDraft.lng} onChange={(event) => setEditingDraft((current) => ({ ...current, lng: event.target.value }))} className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100" />
-                    <input type="datetime-local" value={editingDraft.timestamp} onChange={(event) => setEditingDraft((current) => ({ ...current, timestamp: event.target.value }))} className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100" />
-                    <button type="button" onClick={() => handleSaveWaypoint(index)} className="rounded-lg bg-purple-600 px-3 py-2 text-xs font-medium text-white transition-colors hover:bg-purple-700">Save</button>
-                    <button type="button" onClick={() => setEditingIndex(null)} className="rounded-lg border border-gray-300 px-3 py-2 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700">Cancel</button>
-                  </div>
-                ) : (
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div className="space-y-1">
-                      <p className="font-medium text-gray-800 dark:text-gray-100">Waypoint {index + 1}</p>
-                      <p className="text-xs text-gray-500 dark:text-gray-400">{waypoint.lat.toFixed(5)}, {waypoint.lng.toFixed(5)}</p>
-                      <p className="text-xs text-gray-500 dark:text-gray-400">{new Date(waypoint.timestamp).toLocaleString()}</p>
-                    </div>
-                    <div className="flex gap-2">
-                      <button type="button" onClick={() => beginEditWaypoint(index, waypoint)} className="rounded-lg border border-gray-300 px-3 py-2 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700">Edit</button>
-                      <button type="button" onClick={() => deleteWaypoint(taskId, eventId, index)} className="rounded-lg border border-red-300 px-3 py-2 text-xs font-medium text-red-600 transition-colors hover:bg-red-50 dark:border-red-700 dark:text-red-400 dark:hover:bg-red-900/20">Delete</button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            ))}
-
-            {waypoints.length === 0 && (
-              <p className="text-sm text-gray-500 dark:text-gray-400">No waypoints yet.</p>
-            )}
-          </div>
-        </div>
-      )}
     </div>
   );
 }

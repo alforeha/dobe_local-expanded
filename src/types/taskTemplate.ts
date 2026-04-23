@@ -189,6 +189,7 @@ export interface LogInputFields {
 export interface LocationPointInputFields {
   label: string;
   captureAccuracy: boolean;
+  iconKey?: string;
   /** Result capture */
   lat?: number;
   lng?: number;

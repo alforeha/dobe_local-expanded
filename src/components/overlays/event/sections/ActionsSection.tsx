@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { Event } from '../../../../types';
 import { AddTaskPanel } from '../AddTaskPanel';
 import { TaskRow } from '../TaskRow';
@@ -33,11 +33,24 @@ export function ActionsSection({
   addRequestNonce,
 }: ActionsSectionProps) {
   const [isAddPanelOpen, setIsAddPanelOpen] = useState(false);
+  const lastHandledAddRequestRef = useRef(addRequestNonce);
 
   useEffect(() => {
-    if (addRequestNonce > 0) {
-      setIsAddPanelOpen(true);
+    let openTimer: ReturnType<typeof setTimeout> | null = null;
+
+    if (addRequestNonce > lastHandledAddRequestRef.current) {
+      openTimer = setTimeout(() => {
+        setIsAddPanelOpen(true);
+      }, 0);
     }
+
+    lastHandledAddRequestRef.current = addRequestNonce;
+
+    return () => {
+      if (openTimer !== null) {
+        clearTimeout(openTimer);
+      }
+    };
   }, [addRequestNonce]);
 
   return (

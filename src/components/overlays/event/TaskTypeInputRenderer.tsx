@@ -41,6 +41,7 @@ interface TaskTypeInputRendererProps {
   taskType: TaskType;
   template: TaskTemplate | null | undefined;
   task: Task | null;
+  eventId?: string;
   onComplete: (result: Partial<InputFields>) => void;
   hideSubmit?: boolean;
   onResultChange?: (result: Partial<InputFields>) => void;
@@ -50,6 +51,7 @@ export function TaskTypeInputRenderer({
   taskType,
   template,
   task,
+  eventId,
   onComplete,
   hideSubmit,
   onResultChange,
@@ -181,6 +183,7 @@ export function TaskTypeInputRenderer({
     case 'LOCATION_POINT':
       return (
         <LocationPointInput
+          eventId={eventId}
           inputFields={template.inputFields as LocationPointInputFields}
           task={task}
           onComplete={onComplete as (r: Partial<LocationPointInputFields>) => void}
@@ -190,6 +193,7 @@ export function TaskTypeInputRenderer({
     case 'LOCATION_TRAIL':
       return (
         <LocationTrailInput
+          eventId={eventId}
           inputFields={template.inputFields as LocationTrailInputFields}
           task={task}
           onComplete={onComplete as (r: Partial<LocationTrailInputFields>) => void}
