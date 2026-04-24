@@ -1,23 +1,34 @@
 import { useState } from 'react';
 import { v4 as uuidv4 } from 'uuid';
+import { taskTemplateLibrary } from '../../../../../../coach';
+import { CUSTOM_ITEM_TEMPLATE_PREFIX, getItemTaskTemplateMeta } from '../../../../../../coach/ItemLibrary';
 import type {
   AccountKind,
   AccountResource,
   AccountTask,
   ContactResource,
   CryptoUnit,
+  HomeResource,
+  InventoryItemTemplate,
+  InventoryResource,
   RecurrenceDayOfWeek,
+  Resource,
   ResourceNote,
   ResourceRecurrenceRule,
+  VehicleResource,
 } from '../../../../../../types/resource';
 import {
+  isInventory,
   makeDefaultRecurrenceRule,
   normalizeRecurrenceMode,
   toRecurrenceRule,
 } from '../../../../../../types/resource';
 import { useResourceStore } from '../../../../../../stores/useResourceStore';
+import { useScheduleStore } from '../../../../../../stores/useScheduleStore';
 import { useUserStore } from '../../../../../../stores/useUserStore';
 import { generateGTDItems } from '../../../../../../engine/resourceEngine';
+import { getCustomTemplatePool, getLibraryTemplatePool } from '../../../../../../utils/resolveTaskTemplate';
+import { getUserInventoryItemTemplates, mergeInventoryItemTemplates } from '../../../../../../utils/inventoryItems';
 import { TextInput } from '../../../../../shared/inputs/TextInput';
 import { NumberInput } from '../../../../../shared/inputs/NumberInput';
 import { IconPicker } from '../../../../../shared/IconPicker';
@@ -39,6 +50,14 @@ interface TaskDraft {
   recurrenceMode: 'recurring' | 'never';
   recurrence: ResourceRecurrenceRule;
   reminderLeadDays: number;
+}
+
+interface AllowanceTaskSourceOption {
+  value: string;
+  label: string;
+  icon: string;
+  detail?: string;
+  seed: Omit<TaskDraft, 'id' | 'kind'>;
 }
 
 const KIND_OPTIONS: { value: AccountKind; label: string }[] = [
@@ -92,6 +111,44 @@ function makeBlankTaskDraft(): TaskDraft {
     recurrenceMode: 'never',
     recurrence: makeDefaultRecurrenceRule(),
     reminderLeadDays: 7,
+  };
+}
+
+function cloneRecurrenceRule(rule: ResourceRecurrenceRule): ResourceRecurrenceRule {
+  return {
+    ...rule,
+    days: [...rule.days],
+  };
+}
+
+function buildTaskDraftSeed(
+  name: string,
+  icon: string,
+  recurrenceMode: TaskDraft['recurrenceMode'] = 'never',
+  recurrence: ResourceRecurrenceRule = makeDefaultRecurrenceRule(),
+  reminderLeadDays = 7,
+  anticipatedValue: number | '' = '',
+): Omit<TaskDraft, 'id' | 'kind'> {
+  return {
+    icon,
+    name,
+    anticipatedValue,
+    recurrenceMode,
+    recurrence: cloneRecurrenceRule(recurrence),
+    reminderLeadDays,
+  };
+}
+
+function makeTaskDraftFromSeed(seed: Omit<TaskDraft, 'id' | 'kind'>): TaskDraft {
+  return {
+    id: uuidv4(),
+    kind: 'account-task',
+    icon: seed.icon,
+    name: seed.name,
+    anticipatedValue: seed.anticipatedValue,
+    recurrenceMode: seed.recurrenceMode,
+    recurrence: cloneRecurrenceRule(seed.recurrence),
+    reminderLeadDays: seed.reminderLeadDays,
   };
 }
 
@@ -197,6 +254,162 @@ function describeReminder(leadDays: number): string {
   return `${leadDays} days before`;
 }
 
+function resolveInventoryTaskDisplay(
+  taskTemplateRef: string,
+  itemTemplateRef: string,
+  templates: InventoryItemTemplate[],
+): { name: string; icon: string } {
+  if (itemTemplateRef.startsWith(CUSTOM_ITEM_TEMPLATE_PREFIX)) {
+    const template = templates.find((entry) => entry.id === itemTemplateRef);
+    const customTask = template?.customTaskTemplates?.find((entry) => entry.name.trim() === taskTemplateRef);
+    if (customTask) {
+      return {
+        name: customTask.name,
+        icon: customTask.icon || 'task',
+      };
+    }
+  }
+
+  const coachTask = taskTemplateLibrary.find((template) => template.id === taskTemplateRef);
+  if (coachTask) {
+    return {
+      name: coachTask.name,
+      icon: coachTask.icon || 'task',
+    };
+  }
+
+  const itemTaskMeta = getItemTaskTemplateMeta(taskTemplateRef);
+  if (itemTaskMeta) {
+    return {
+      name: itemTaskMeta.name,
+      icon: itemTaskMeta.icon || 'task',
+    };
+  }
+
+  return {
+    name: taskTemplateRef,
+    icon: 'task',
+  };
+}
+
+function collectExistingResourceTaskOptions(
+  resources: Record<string, Resource>,
+  inventoryTemplates: InventoryItemTemplate[],
+  currentAccountId?: string,
+): AllowanceTaskSourceOption[] {
+  const options: AllowanceTaskSourceOption[] = [];
+
+  for (const resource of Object.values(resources)) {
+    if (resource.type === 'home') {
+      const home = resource as HomeResource;
+      for (const chore of home.chores ?? []) {
+        options.push({
+          value: `resource:${home.id}:home:${chore.id}`,
+          label: `${home.name} - ${chore.name}`,
+          icon: chore.icon || home.icon || 'home',
+          detail: 'Existing home chore',
+          seed: buildTaskDraftSeed(
+            chore.name,
+            chore.icon || home.icon || 'home',
+            normalizeRecurrenceMode(chore.recurrenceMode),
+            chore.recurrence,
+            chore.reminderLeadDays ?? 7,
+          ),
+        });
+      }
+      continue;
+    }
+
+    if (resource.type === 'vehicle') {
+      const vehicle = resource as VehicleResource;
+      for (const task of vehicle.maintenanceTasks ?? []) {
+        options.push({
+          value: `resource:${vehicle.id}:vehicle:${task.id}`,
+          label: `${vehicle.name} - ${task.name}`,
+          icon: task.icon || vehicle.icon || 'vehicle',
+          detail: 'Existing vehicle task',
+          seed: buildTaskDraftSeed(
+            task.name,
+            task.icon || vehicle.icon || 'vehicle',
+            normalizeRecurrenceMode(task.recurrenceMode),
+            task.recurrence,
+            task.reminderLeadDays,
+          ),
+        });
+      }
+      continue;
+    }
+
+    if (resource.type === 'account') {
+      const account = resource as AccountResource;
+      if (account.id === currentAccountId) continue;
+      for (const task of [...(account.accountTasks ?? []), ...(account.allowanceTasks ?? [])]) {
+        if (task.kind === 'transaction-log') continue;
+        options.push({
+          value: `resource:${account.id}:account:${task.id}`,
+          label: `${account.name} - ${task.name}`,
+          icon: task.icon || account.icon || 'finance',
+          detail: 'Existing account task',
+          seed: buildTaskDraftSeed(
+            task.name,
+            task.icon || account.icon || 'finance',
+            normalizeRecurrenceMode(task.recurrenceMode),
+            task.recurrence,
+            task.reminderLeadDays ?? 7,
+            task.anticipatedValue ?? '',
+          ),
+        });
+      }
+      continue;
+    }
+
+    if (isInventory(resource)) {
+      const inventory = resource as InventoryResource;
+      for (const item of inventory.items ?? []) {
+        for (const task of item.recurringTasks ?? []) {
+          const display = resolveInventoryTaskDisplay(task.taskTemplateRef, item.itemTemplateRef, inventoryTemplates);
+          options.push({
+            value: `resource:${inventory.id}:inventory:${item.id}:${task.id}`,
+            label: `${inventory.name} - ${display.name}`,
+            icon: display.icon || inventory.icon || 'task',
+            detail: 'Existing inventory task',
+            seed: buildTaskDraftSeed(
+              display.name,
+              display.icon || inventory.icon || 'task',
+              normalizeRecurrenceMode(task.recurrenceMode),
+              task.recurrence,
+              task.reminderLeadDays ?? 7,
+            ),
+          });
+        }
+      }
+
+      for (const container of inventory.containers ?? []) {
+        for (const item of container.items ?? []) {
+          for (const task of item.recurringTasks ?? []) {
+            const display = resolveInventoryTaskDisplay(task.taskTemplateRef, item.itemTemplateRef, inventoryTemplates);
+            options.push({
+              value: `resource:${inventory.id}:inventory:${container.id}:${item.id}:${task.id}`,
+              label: `${inventory.name} - ${display.name}`,
+              icon: display.icon || inventory.icon || 'task',
+              detail: `Existing inventory task${container.name ? ` · ${container.name}` : ''}`,
+              seed: buildTaskDraftSeed(
+                display.name,
+                display.icon || inventory.icon || 'task',
+                normalizeRecurrenceMode(task.recurrenceMode),
+                task.recurrence,
+                task.reminderLeadDays ?? 7,
+              ),
+            });
+          }
+        }
+      }
+    }
+  }
+
+  return options.sort((left, right) => left.label.localeCompare(right.label));
+}
+
 export function AccountForm({ existing, onSaved, onCancel }: AccountFormProps) {
   const [iconKey, setIconKey] = useState<string>(existing?.icon ?? 'finance');
   const [displayName, setDisplayName] = useState(existing?.name ?? '');
@@ -215,14 +428,37 @@ export function AccountForm({ existing, onSaved, onCancel }: AccountFormProps) {
   const [allowanceContactId, setAllowanceContactId] = useState(existing?.allowanceContactId ?? '');
   const [expandedAccountTaskId, setExpandedAccountTaskId] = useState<string | null>(null);
   const [expandedAllowanceTaskId, setExpandedAllowanceTaskId] = useState<string | null>(null);
+  const [showAllowanceTaskSources, setShowAllowanceTaskSources] = useState(false);
+  const [selectedAllowanceResourceTask, setSelectedAllowanceResourceTask] = useState('');
+  const [selectedAllowanceLibraryTask, setSelectedAllowanceLibraryTask] = useState('');
+  const [selectedAllowanceUserTemplate, setSelectedAllowanceUserTemplate] = useState('');
   const [notes, setNotes] = useState<ResourceNote[]>(existing?.notes ?? []);
 
   const resources = useResourceStore((s) => s.resources);
   const setResource = useResourceStore((s) => s.setResource);
+  const userTaskTemplates = useScheduleStore((s) => s.taskTemplates);
   const setUser = useUserStore((s) => s.setUser);
   const user = useUserStore((s) => s.user);
   const currentExisting = existing ? (resources[existing.id] as typeof existing | undefined) : undefined;
   const contactOptions = Object.values(resources).filter((resource): resource is ContactResource => resource.type === 'contact');
+  const inventoryTemplates = mergeInventoryItemTemplates(getUserInventoryItemTemplates(user), undefined);
+  const existingResourceTaskOptions = collectExistingResourceTaskOptions(resources, inventoryTemplates, existing?.id);
+  const libraryTaskOptions: AllowanceTaskSourceOption[] = getLibraryTemplatePool()
+    .sort((left, right) => left.name.localeCompare(right.name))
+    .map((template) => ({
+      value: template.id ?? template.name,
+      label: template.name,
+      icon: template.icon || 'task',
+      detail: 'Built-in library',
+      seed: buildTaskDraftSeed(template.name, template.icon || 'task'),
+    }));
+  const userTemplateOptions: AllowanceTaskSourceOption[] = getCustomTemplatePool(userTaskTemplates).map(({ ref, template }) => ({
+    value: ref,
+    label: template.name,
+    icon: template.icon || 'task',
+    detail: 'User template',
+    seed: buildTaskDraftSeed(template.name, template.icon || 'task'),
+  }));
 
   const canSave = displayName.trim().length > 0;
 
@@ -259,6 +495,24 @@ export function AccountForm({ existing, onSaved, onCancel }: AccountFormProps) {
     }
     setAllowanceTasks((prev) => [...prev, nextTask]);
     setExpandedAllowanceTaskId(nextTask.id);
+  }
+
+  function addAllowanceTaskFromOption(option: AllowanceTaskSourceOption) {
+    const nextTask = makeTaskDraftFromSeed(option.seed);
+    setAllowanceTasks((prev) => [...prev, nextTask]);
+    setExpandedAllowanceTaskId(nextTask.id);
+    setShowAllowanceTaskSources(false);
+  }
+
+  function addAllowanceTaskFromSelection(
+    optionValue: string,
+    options: AllowanceTaskSourceOption[],
+    clearSelection: (value: string) => void,
+  ) {
+    const option = options.find((entry) => entry.value === optionValue);
+    if (!option) return;
+    addAllowanceTaskFromOption(option);
+    clearSelection('');
   }
 
   function updateTask(
@@ -316,6 +570,7 @@ export function AccountForm({ existing, onSaved, onCancel }: AccountFormProps) {
     section: 'account' | 'allowance',
     title: string,
     actionLabel: string,
+    onAddTask?: () => void,
   ) {
     const tasks = section === 'account' ? accountTasks : allowanceTasks;
     const expandedTaskId = section === 'account' ? expandedAccountTaskId : expandedAllowanceTaskId;
@@ -327,7 +582,7 @@ export function AccountForm({ existing, onSaved, onCancel }: AccountFormProps) {
           <span className="text-xs font-medium text-gray-500 dark:text-gray-400">{title}</span>
           <button
             type="button"
-            onClick={() => addTask(section)}
+            onClick={onAddTask ?? (() => addTask(section))}
             className="text-xs font-medium text-blue-500 hover:text-blue-600"
           >
             {actionLabel}
@@ -768,7 +1023,89 @@ export function AccountForm({ existing, onSaved, onCancel }: AccountFormProps) {
             <p className="text-xs italic text-gray-400">
               Allowance push available in multi-user.
             </p>
-            {renderTaskSection('allowance', 'Tasks for allowance recipient', '+ Add allowance task')}
+            {showAllowanceTaskSources ? (
+              <div className="space-y-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-3 dark:border-gray-600 dark:bg-gray-800/50">
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  Add an allowance task from existing resource tasks, the built-in library, or your saved templates.
+                </p>
+
+                <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
+                  <select
+                    value={selectedAllowanceResourceTask}
+                    onChange={(event) => setSelectedAllowanceResourceTask(event.target.value)}
+                    className={SELECT_CLS}
+                  >
+                    <option value="">Existing tasks in your resources</option>
+                    {existingResourceTaskOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => addAllowanceTaskFromSelection(selectedAllowanceResourceTask, existingResourceTaskOptions, setSelectedAllowanceResourceTask)}
+                    disabled={!selectedAllowanceResourceTask}
+                    className="rounded-md bg-blue-500 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Add
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
+                  <select
+                    value={selectedAllowanceLibraryTask}
+                    onChange={(event) => setSelectedAllowanceLibraryTask(event.target.value)}
+                    className={SELECT_CLS}
+                  >
+                    <option value="">Built-in library tasks</option>
+                    {libraryTaskOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => addAllowanceTaskFromSelection(selectedAllowanceLibraryTask, libraryTaskOptions, setSelectedAllowanceLibraryTask)}
+                    disabled={!selectedAllowanceLibraryTask}
+                    className="rounded-md bg-blue-500 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Add
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
+                  <select
+                    value={selectedAllowanceUserTemplate}
+                    onChange={(event) => setSelectedAllowanceUserTemplate(event.target.value)}
+                    className={SELECT_CLS}
+                  >
+                    <option value="">Your saved task templates</option>
+                    {userTemplateOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => addAllowanceTaskFromSelection(selectedAllowanceUserTemplate, userTemplateOptions, setSelectedAllowanceUserTemplate)}
+                    disabled={!selectedAllowanceUserTemplate}
+                    className="rounded-md bg-blue-500 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Add
+                  </button>
+                </div>
+              </div>
+            ) : null}
+
+            {renderTaskSection(
+              'allowance',
+              'Tasks for allowance recipient',
+              showAllowanceTaskSources ? 'Hide sources' : '+ Add task',
+              () => setShowAllowanceTaskSources((prev) => !prev),
+            )}
           </>
         ) : null}
 
