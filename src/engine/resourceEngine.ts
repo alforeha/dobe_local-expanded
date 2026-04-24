@@ -81,7 +81,6 @@ export function buildVehicleInspectionTask(layout: VehicleLayout): VehicleMainte
   if (layout.areas.length === 0) return null;
 
   const seedDate = todayISO();
-  const monthlyDay = Number(seedDate.split('-')[2] ?? '1');
   const steps: CircuitInputFields['steps'] = [
     ...layout.areas.map((area) => ({
       id: uuidv4(),
@@ -110,16 +109,16 @@ export function buildVehicleInspectionTask(layout: VehicleLayout): VehicleMainte
       rounds: 1,
       restBetweenRounds: null,
     },
-    recurrenceMode: 'recurring',
+    recurrenceMode: 'never',
     recurrence: {
       frequency: 'monthly',
       interval: 1,
       days: [],
-      monthlyDay,
+      monthlyDay: Number(seedDate.split('-')[2] ?? '1'),
       seedDate,
       endsOn: null,
     },
-    reminderLeadDays: 7,
+    reminderLeadDays: -1,
   };
 }
 

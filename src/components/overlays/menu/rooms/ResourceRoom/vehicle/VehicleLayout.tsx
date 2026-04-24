@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { Capacitor } from '@capacitor/core';
 import { v4 as uuidv4 } from 'uuid';
 import type { VehicleLayout as VehicleLayoutModel, VehicleLayoutArea, VehicleResource, VehicleZoneInspection } from '../../../../../../types/resource';
 import { isInventory } from '../../../../../../types/resource';
@@ -14,6 +15,8 @@ interface VehicleLayoutProps {
   onLayoutChange?: (layout: VehicleLayoutModel | undefined) => void;
 }
 
+const CAMERA_MODULE_SPECIFIER = '@capacitor/camera';
+
 function titleCase(value: string): string {
   return value.slice(0, 1).toUpperCase() + value.slice(1);
 }
@@ -27,17 +30,37 @@ function withTrimmedInspectionHistory(history: VehicleZoneInspection[]): Vehicle
   return [...history].sort((left, right) => right.date.localeCompare(left.date)).slice(0, 10);
 }
 
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : '');
+    reader.onerror = () => reject(reader.error ?? new Error('Unable to read file.'));
+    reader.readAsDataURL(file);
+  });
+}
+
+function estimateDataUrlSizeBytes(dataUrl: string): number {
+  const base64 = dataUrl.split(',')[1] ?? '';
+  const padding = base64.endsWith('==') ? 2 : base64.endsWith('=') ? 1 : 0;
+  return Math.max(0, Math.floor((base64.length * 3) / 4) - padding);
+}
+
 export function VehicleLayout({ resource, isEditMode = false, onLayoutChange }: VehicleLayoutProps) {
   const resources = useResourceStore((state) => state.resources);
   const setResource = useResourceStore((state) => state.setResource);
+  const inspectionPhotoInputId = useId();
+  const inspectionPhotoInputRef = useRef<HTMLInputElement | null>(null);
   const [selectedZoneId, setSelectedZoneId] = useState<string | null>(resource.layout?.areas[0]?.zoneId ?? null);
   const [pendingContainerIdByZone, setPendingContainerIdByZone] = useState<Record<string, string>>({});
   const [inspectionFormZoneId, setInspectionFormZoneId] = useState<string | null>(null);
-  const [inspectionDraft, setInspectionDraft] = useState<{ result: 'pass' | 'fail'; notes: string }>({ result: 'pass', notes: '' });
+  const [inspectionDraft, setInspectionDraft] = useState<{ result: 'pass' | 'fail'; notes: string; photoUri?: string }>({ result: 'pass', notes: '' });
   const [fullInspectionState, setFullInspectionState] = useState<string | null>(null);
+  const [inspectionPhotoStatus, setInspectionPhotoStatus] = useState<string | null>(null);
+  const [isInspectionPhotoBusy, setIsInspectionPhotoBusy] = useState(false);
 
   const layout = resource.layout;
   const definition = layout ? getVehicleLayoutDefinition(layout.template) : null;
+  const isNativePlatform = useMemo(() => Capacitor.isNativePlatform(), []);
 
   const inventoryEntries = useMemo(() => {
     return Object.values(resources)
@@ -123,7 +146,8 @@ export function VehicleLayout({ resource, isEditMode = false, onLayoutChange }: 
 
   function openInspectionForm(zoneId: string) {
     setInspectionFormZoneId(zoneId);
-    setInspectionDraft({ result: 'pass', notes: '' });
+    setInspectionDraft({ result: 'pass', notes: '', photoUri: undefined });
+    setInspectionPhotoStatus(null);
   }
 
   function saveInspection(zoneId: string) {
@@ -132,6 +156,7 @@ export function VehicleLayout({ resource, isEditMode = false, onLayoutChange }: 
       date: new Date().toISOString().slice(0, 10),
       result: inspectionDraft.result,
       notes: inspectionDraft.notes.trim() || undefined,
+      photoUri: inspectionDraft.photoUri,
     };
     const currentArea = activeLayout.areas.find((area) => area.zoneId === zoneId);
     if (!currentArea) return;
@@ -139,7 +164,83 @@ export function VehicleLayout({ resource, isEditMode = false, onLayoutChange }: 
       inspectionHistory: withTrimmedInspectionHistory([nextEntry, ...(currentArea.inspectionHistory ?? [])]),
     });
     setInspectionFormZoneId(null);
-    setInspectionDraft({ result: 'pass', notes: '' });
+    setInspectionDraft({ result: 'pass', notes: '', photoUri: undefined });
+    setInspectionPhotoStatus(null);
+  }
+
+  async function commitInspectionPhoto(data: { uri: string; sizeBytes: number; source: 'web-upload' | 'camera' | 'gallery' }) {
+    if (data.sizeBytes > 200 * 1024) {
+      setInspectionPhotoStatus('Photo is larger than 200 KB.');
+      return;
+    }
+    setInspectionDraft((prev) => ({ ...prev, photoUri: data.uri }));
+    setInspectionPhotoStatus(data.source === 'web-upload' ? 'Photo added.' : `Photo added from ${data.source}.`);
+  }
+
+  async function handleInspectionPhotoFileChange(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+
+    setIsInspectionPhotoBusy(true);
+    setInspectionPhotoStatus(null);
+
+    try {
+      const dataUrl = await readFileAsDataUrl(file);
+      await commitInspectionPhoto({
+        uri: dataUrl,
+        sizeBytes: file.size,
+        source: 'web-upload',
+      });
+    } catch {
+      setInspectionPhotoStatus('Unable to load that photo.');
+    } finally {
+      setIsInspectionPhotoBusy(false);
+    }
+  }
+
+  async function handleNativeInspectionPhoto(source: 'camera' | 'gallery') {
+    if (!isNativePlatform) {
+      inspectionPhotoInputRef.current?.click();
+      return;
+    }
+
+    setIsInspectionPhotoBusy(true);
+    setInspectionPhotoStatus(null);
+
+    try {
+      const cameraModule = await import(/* @vite-ignore */ CAMERA_MODULE_SPECIFIER);
+      const { Camera, CameraResultType, CameraSource } = cameraModule as {
+        Camera: {
+          getPhoto: (options: Record<string, unknown>) => Promise<Record<string, unknown>>;
+        };
+        CameraResultType: { DataUrl: string };
+        CameraSource: { Camera: string; Photos: string };
+      };
+
+      const photo = await Camera.getPhoto({
+        quality: 80,
+        resultType: CameraResultType.DataUrl,
+        source: source === 'camera' ? CameraSource.Camera : CameraSource.Photos,
+      });
+
+      const dataUrl = typeof photo.dataUrl === 'string' ? photo.dataUrl : '';
+      if (!dataUrl) {
+        setInspectionPhotoStatus('No image was returned.');
+        return;
+      }
+
+      await commitInspectionPhoto({
+        uri: dataUrl,
+        sizeBytes: estimateDataUrlSizeBytes(dataUrl),
+        source,
+      });
+    } catch {
+      setInspectionPhotoStatus('Camera/gallery is unavailable here. Using upload instead.');
+      inspectionPhotoInputRef.current?.click();
+    } finally {
+      setIsInspectionPhotoBusy(false);
+    }
   }
 
   function triggerFullInspection() {
@@ -307,6 +408,15 @@ export function VehicleLayout({ resource, isEditMode = false, onLayoutChange }: 
 
                   {inspectionFormZoneId === selectedArea.zoneId ? (
                     <div className="space-y-3 rounded-xl border border-gray-200 bg-gray-50 px-3 py-3 dark:border-gray-700 dark:bg-gray-800/60">
+                      <input
+                        id={inspectionPhotoInputId}
+                        ref={inspectionPhotoInputRef}
+                        type="file"
+                        accept="image/*"
+                        capture="environment"
+                        className="hidden"
+                        onChange={handleInspectionPhotoFileChange}
+                      />
                       <div className="flex rounded-full bg-white p-1 dark:bg-gray-900">
                         {(['pass', 'fail'] as const).map((result) => (
                           <button
@@ -318,6 +428,61 @@ export function VehicleLayout({ resource, isEditMode = false, onLayoutChange }: 
                             {result === 'pass' ? 'Pass' : 'Fail'}
                           </button>
                         ))}
+                      </div>
+                      <div className="space-y-3 rounded-lg border border-gray-200 bg-white px-3 py-3 dark:border-gray-700 dark:bg-gray-900/60">
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Photo</span>
+                          {inspectionDraft.photoUri ? (
+                            <button
+                              type="button"
+                              onClick={() => setInspectionDraft((prev) => ({ ...prev, photoUri: undefined }))}
+                              className="text-xs text-gray-400 hover:text-red-400"
+                            >
+                              Remove
+                            </button>
+                          ) : null}
+                        </div>
+
+                        {inspectionDraft.photoUri ? (
+                          <div className="overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-950">
+                            <img src={inspectionDraft.photoUri} alt="Inspection evidence" className="h-36 w-full object-cover" />
+                          </div>
+                        ) : (
+                          <div className="rounded-xl border border-dashed border-gray-300 px-4 py-5 text-sm text-gray-500 dark:border-gray-700 dark:text-gray-400">
+                            No photo selected
+                          </div>
+                        )}
+
+                        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+                          <button
+                            type="button"
+                            onClick={() => inspectionPhotoInputRef.current?.click()}
+                            disabled={isInspectionPhotoBusy}
+                            className="rounded-lg bg-blue-500 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-600 disabled:opacity-50"
+                          >
+                            Upload photo
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void handleNativeInspectionPhoto('camera')}
+                            disabled={isInspectionPhotoBusy || !isNativePlatform}
+                            className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-100 disabled:opacity-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700"
+                          >
+                            Camera
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void handleNativeInspectionPhoto('gallery')}
+                            disabled={isInspectionPhotoBusy || !isNativePlatform}
+                            className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-100 disabled:opacity-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700"
+                          >
+                            Gallery
+                          </button>
+                        </div>
+
+                        {inspectionPhotoStatus ? (
+                          <p className="text-xs text-gray-500 dark:text-gray-400">{inspectionPhotoStatus}</p>
+                        ) : null}
                       </div>
                       <textarea
                         value={inspectionDraft.notes}
@@ -357,6 +522,11 @@ export function VehicleLayout({ resource, isEditMode = false, onLayoutChange }: 
                               {entry.result === 'pass' ? 'Pass' : 'Fail'}
                             </span>
                           </div>
+                          {entry.photoUri ? (
+                            <div className="mt-2 overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-950">
+                              <img src={entry.photoUri} alt={`${selectedArea.name} inspection`} className="h-28 w-full object-cover" />
+                            </div>
+                          ) : null}
                           {entry.notes ? <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{entry.notes}</p> : null}
                         </div>
                       ))}

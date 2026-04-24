@@ -222,6 +222,7 @@ export interface VehicleZoneInspection {
   date: string;
   result: 'pass' | 'fail';
   notes?: string;
+  photoUri?: string;
 }
 
 export interface VehicleLayoutArea {

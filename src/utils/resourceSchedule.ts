@@ -32,7 +32,10 @@ function isIntermittentOnDate(
   rule: ResourceRecurrenceRule | undefined,
   dateISO: string,
 ): boolean {
-  return normalizeRecurrenceMode(recurrenceMode) === 'never' && typeof rule?.seedDate === 'string' && rule.seedDate === dateISO;
+  void recurrenceMode;
+  void rule;
+  void dateISO;
+  return false;
 }
 
 function isRuleOnDate(rule: ResourceRecurrenceRule, dateISO: string): boolean {
