@@ -4,7 +4,7 @@ import { useProgressionStore } from '../../../../stores/useProgressionStore';
 import { useScheduleStore } from '../../../../stores/useScheduleStore';
 import { useUserStore } from '../../../../stores/useUserStore';
 import { getLibraryTemplatePool } from '../../../../utils/resolveTaskTemplate';
-import type { InputFields, TaskSecondaryTag, TaskTemplate, TaskType, XpAward } from '../../../../types/taskTemplate';
+import { normalizeCircuitInputFields, type InputFields, type TaskSecondaryTag, type TaskTemplate, type TaskType, type XpAward } from '../../../../types/taskTemplate';
 import type { StatGroupKey } from '../../../../types/user';
 import { IconDisplay } from '../../../shared/IconDisplay';
 import { TaskTemplateIcon } from '../../../shared/TaskTemplateIcon';
@@ -79,7 +79,15 @@ function summariseInputFields(inputFields: InputFields): string[] {
       inputFields.weight ? `Weight ${inputFields.weight}${inputFields.weightUnit ?? ''}` : 'Bodyweight',
     ];
   }
-  if ('exercises' in inputFields) return [`${inputFields.rounds} rounds`, `${inputFields.exercises.join(', ')}`];
+  if ('steps' in inputFields && 'rounds' in inputFields) {
+    const circuit = normalizeCircuitInputFields(inputFields);
+    return [
+      `${circuit.rounds} rounds`,
+      circuit.steps.length > 0
+        ? circuit.steps.map((step) => `${step.label} (${step.stepType})`).join(', ')
+        : 'No steps configured',
+    ];
+  }
   if ('targetDuration' in inputFields) return [`${inputFields.targetDuration} ${inputFields.unit}`];
   if ('countdownFrom' in inputFields) return [`Countdown ${inputFields.countdownFrom}s`];
   if ('scale' in inputFields && 'label' in inputFields) return [`${inputFields.label} · ${inputFields.scale}-point scale`];

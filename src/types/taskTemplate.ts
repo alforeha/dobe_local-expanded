@@ -82,24 +82,104 @@ export interface SetsRepsInputFields {
   dropSet: boolean;
 }
 
-export type CircuitStepInputType = 'TEXT' | 'CHOICE' | 'RATING' | 'CHECK';
+export type CircuitStepType = 'CHECK' | 'CHOICE' | 'COUNTER' | 'DURATION' | 'TIMER' | 'RATING' | 'TEXT' | 'SCAN';
 
 export interface CircuitStep {
-  key: string;
+  id: string;
   label: string;
-  inputType?: CircuitStepInputType | null;
-  options?: string[] | null;
-  scale?: number | null;
-  optional?: boolean;
+  stepType: CircuitStepType;
+  options?: string[];
+  scale?: number;
+  target?: number;
+  unit?: string;
+  seconds?: number;
+  required?: boolean;
 }
 
 export interface CircuitInputFields {
-  exercises: string[];
+  label: string;
+  steps: CircuitStep[];
   rounds: number;
   /** Time to rest between rounds (seconds) */
   restBetweenRounds: number | null;
-  /** Optional structured step metadata for richer circuit flows */
-  steps?: CircuitStep[];
+  /** Result capture — saved per-step values keyed by stepId-roundN */
+  stepResults?: Record<string, unknown>;
+}
+
+type LegacyCircuitStepInputType = 'TEXT' | 'CHOICE' | 'RATING' | 'CHECK';
+
+interface LegacyCircuitStep {
+  key?: string;
+  id?: string;
+  label?: string;
+  inputType?: LegacyCircuitStepInputType | null;
+  stepType?: CircuitStepType;
+  options?: string[] | null;
+  scale?: number | null;
+  optional?: boolean;
+  required?: boolean;
+}
+
+interface LegacyCircuitInputFields {
+  label?: string;
+  rounds?: number;
+  restBetweenRounds?: number | null;
+  exercises?: string[];
+  steps?: LegacyCircuitStep[];
+}
+
+const LEGACY_CIRCUIT_STEP_TYPE_MAP: Record<LegacyCircuitStepInputType, CircuitStepType> = {
+  CHECK: 'CHECK',
+  CHOICE: 'CHOICE',
+  RATING: 'RATING',
+  TEXT: 'TEXT',
+};
+
+export function normalizeCircuitInputFields(inputFields: LegacyCircuitInputFields | null | undefined): CircuitInputFields {
+  const steps = Array.isArray(inputFields?.steps)
+    ? inputFields.steps.map((step, index) => ({
+        id: step.id?.trim() || step.key?.trim() || `circuit-step-${index + 1}`,
+        label: step.label?.trim() || `Step ${index + 1}`,
+        stepType: step.stepType ?? LEGACY_CIRCUIT_STEP_TYPE_MAP[step.inputType ?? 'CHECK'] ?? 'CHECK',
+        options: Array.isArray(step.options) ? step.options.filter((option): option is string => typeof option === 'string') : undefined,
+        scale: typeof step.scale === 'number' ? step.scale : undefined,
+        required: typeof step.required === 'boolean'
+          ? step.required
+          : step.optional === true
+            ? false
+            : true,
+      }))
+    : [];
+
+  const fallbackSteps = steps.length > 0
+    ? steps
+    : Array.isArray(inputFields?.exercises)
+      ? inputFields.exercises.map((exercise, index) => ({
+          id: `circuit-step-${index + 1}`,
+          label: typeof exercise === 'string' && exercise.trim() ? exercise.trim() : `Step ${index + 1}`,
+          stepType: 'CHECK' as const,
+          required: true,
+        }))
+      : [];
+
+  const label = typeof inputFields?.label === 'string' && inputFields.label.trim()
+    ? inputFields.label.trim()
+    : 'Circuit';
+
+  const rounds = typeof inputFields?.rounds === 'number' && inputFields.rounds > 0
+    ? inputFields.rounds
+    : 1;
+
+  const restBetweenRounds = typeof inputFields?.restBetweenRounds === 'number'
+    ? inputFields.restBetweenRounds
+    : null;
+
+  return {
+    label,
+    steps: fallbackSteps,
+    rounds,
+    restBetweenRounds,
+  };
 }
 
 export interface DurationInputFields {

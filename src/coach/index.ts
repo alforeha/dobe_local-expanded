@@ -5,7 +5,7 @@
 // ─────────────────────────────────────────
 
 import type { CommentLibrary, AchievementLibrary, CharacterLibrary } from '../types/coach';
-import type { TaskTemplate } from '../types/taskTemplate';
+import { normalizeCircuitInputFields, type TaskTemplate } from '../types/taskTemplate';
 import { normalizeTaskTemplateIconKey } from '../constants/iconMap';
 
 import commentLibraryRaw from './CommentLibrary.json';
@@ -19,4 +19,7 @@ export const characterLibrary = characterLibraryRaw as CharacterLibrary;
 export const taskTemplateLibrary = (taskTemplateLibraryRaw as unknown as TaskTemplate[]).map((template) => ({
   ...template,
   icon: normalizeTaskTemplateIconKey(template.icon, template.taskType),
+  inputFields: template.taskType === 'CIRCUIT'
+    ? normalizeCircuitInputFields(template.inputFields as unknown as Parameters<typeof normalizeCircuitInputFields>[0])
+    : template.inputFields,
 }));

@@ -5,7 +5,7 @@ import { getTaskTypeIconKey, normalizeTaskTemplateIconKey } from '../../../../..
 import { PopupShell } from '../../../../shared/popups/PopupShell';
 import { IconPicker } from '../../../../shared/IconPicker';
 import { useScheduleStore } from '../../../../../stores/useScheduleStore';
-import type { TaskTemplate, TaskType, TaskSecondaryTag, InputFields, FormField, ChecklistItem } from '../../../../../types';
+import { normalizeCircuitInputFields, type ChecklistItem, type CircuitInputFields, type CircuitStep, type CircuitStepType, type FormField, type InputFields, type TaskSecondaryTag, type TaskTemplate, type TaskType } from '../../../../../types';
 import type { StatGroupKey } from '../../../../../types/user';
 
 const TASK_TYPES: TaskType[] = [
@@ -67,6 +67,85 @@ const STAT_GROUPS: { key: StatGroupKey; label: string }[] = [
   { key: 'wisdom', label: 'Wisdom' },
 ];
 
+const CIRCUIT_STEP_TYPES: CircuitStepType[] = ['CHECK', 'CHOICE', 'COUNTER', 'DURATION', 'TIMER', 'RATING', 'TEXT', 'SCAN'];
+
+function makeDefaultCircuitStep(stepType: CircuitStepType = 'CHECK'): CircuitStep {
+  switch (stepType) {
+    case 'CHOICE':
+      return {
+        id: uuidv4(),
+        label: '',
+        stepType,
+        options: ['Pass', 'Fail'],
+        required: true,
+      };
+    case 'COUNTER':
+      return {
+        id: uuidv4(),
+        label: '',
+        stepType,
+        target: 1,
+        unit: '',
+        required: true,
+      };
+    case 'DURATION':
+      return {
+        id: uuidv4(),
+        label: '',
+        stepType,
+        target: 5,
+        required: true,
+      };
+    case 'TIMER':
+      return {
+        id: uuidv4(),
+        label: '',
+        stepType,
+        seconds: 60,
+        required: true,
+      };
+    case 'RATING':
+      return {
+        id: uuidv4(),
+        label: '',
+        stepType,
+        scale: 5,
+        required: true,
+      };
+    default:
+      return {
+        id: uuidv4(),
+        label: '',
+        stepType,
+        required: true,
+      };
+  }
+}
+
+function applyCircuitStepTypeDefaults(step: CircuitStep, stepType: CircuitStepType): CircuitStep {
+  const base: CircuitStep = {
+    id: step.id,
+    label: step.label,
+    stepType,
+    required: step.required ?? true,
+  };
+
+  switch (stepType) {
+    case 'CHOICE':
+      return { ...base, options: step.options && step.options.length > 0 ? step.options : ['Pass', 'Fail'] };
+    case 'COUNTER':
+      return { ...base, target: step.target ?? 1, unit: step.unit ?? '' };
+    case 'DURATION':
+      return { ...base, target: step.target ?? 5 };
+    case 'TIMER':
+      return { ...base, seconds: step.seconds ?? 60 };
+    case 'RATING':
+      return { ...base, scale: step.scale ?? 5 };
+    default:
+      return base;
+  }
+}
+
 function defaultInputFields(taskType: TaskType): InputFields {
   switch (taskType) {
     case 'CHECK':
@@ -76,7 +155,7 @@ function defaultInputFields(taskType: TaskType): InputFields {
     case 'SETS_REPS':
       return { sets: 3, reps: 10, weight: null, weightUnit: 'kg', restAfter: null, dropSet: false };
     case 'CIRCUIT':
-      return { exercises: ['Exercise 1', 'Exercise 2'], rounds: 3, restBetweenRounds: null };
+      return { label: 'Circuit', steps: [], rounds: 3, restBetweenRounds: null };
     case 'DURATION':
       return { targetDuration: 1800, unit: 'seconds' };
     case 'TIMER':
@@ -139,10 +218,6 @@ export function TaskTemplatePopup({
   readOnly = false,
 }: TaskTemplatePopupProps) {
   const setTaskTemplate = useScheduleStore((s) => s.setTaskTemplate);
-  const taskTemplates = useScheduleStore((s) => s.taskTemplates);
-  const taskTemplateOptions = Object.entries(taskTemplates)
-    .filter(([k, t]) => !t.isSystem && !k.startsWith('resource-task:'))
-    .sort(([, a], [, b]) => (a.name ?? '').localeCompare(b.name ?? ''));
   const isEditMode = editKey !== null && editTemplate !== null;
 
   const initialStatGroup: StatGroupKey = (() => {
@@ -170,9 +245,12 @@ export function TaskTemplatePopup({
   );
   const [description, setDescription] = useState(isEditMode && editTemplate ? editTemplate.description : '');
   const [inputFields, setInputFields] = useState<InputFields>(
-    isEditMode && editTemplate ? editTemplate.inputFields : defaultInputFields(taskType),
+    isEditMode && editTemplate
+      ? (editTemplate.taskType === 'CIRCUIT' ? normalizeCircuitInputFields(editTemplate.inputFields as CircuitInputFields) : editTemplate.inputFields)
+      : defaultInputFields(taskType),
   );
   const [error, setError] = useState('');
+  const [expandedCircuitStepId, setExpandedCircuitStepId] = useState<string | null>(null);
 
   function updateField(key: string, value: unknown) {
     setInputFields((prev) => ({ ...prev, [key]: value }));
@@ -276,67 +354,275 @@ export function TaskTemplatePopup({
         );
 
       case 'CIRCUIT': {
-        const exercises: string[] = f.exercises ?? [];
-        function moveExercise(idx: number, dir: -1 | 1) {
-          const next = [...exercises];
-          const swap = idx + dir;
-          if (swap < 0 || swap >= next.length) return;
-          [next[idx], next[swap]] = [next[swap], next[idx]];
-          updateField('exercises', next);
+        const circuitFields = normalizeCircuitInputFields(inputFields as CircuitInputFields);
+
+        function setCircuitFields(next: CircuitInputFields) {
+          setInputFields(next);
         }
+
+        function updateCircuitStep(stepId: string, patch: Partial<CircuitStep>) {
+          setCircuitFields({
+            ...circuitFields,
+            steps: circuitFields.steps.map((step) => step.id === stepId ? { ...step, ...patch } : step),
+          });
+        }
+
+        function moveStep(stepIndex: number, dir: -1 | 1) {
+          const next = [...circuitFields.steps];
+          const swapIndex = stepIndex + dir;
+          if (swapIndex < 0 || swapIndex >= next.length) return;
+          [next[stepIndex], next[swapIndex]] = [next[swapIndex], next[stepIndex]];
+          setCircuitFields({ ...circuitFields, steps: next });
+        }
+
+        function addStep() {
+          const newStep = makeDefaultCircuitStep();
+          setCircuitFields({ ...circuitFields, steps: [...circuitFields.steps, newStep] });
+          setExpandedCircuitStepId(newStep.id);
+        }
+
         return (
           <div className="space-y-3">
+            {labeledRow('Circuit label', (
+              <input
+                type="text"
+                value={circuitFields.label}
+                onChange={(e) => setCircuitFields({ ...circuitFields, label: e.target.value })}
+                disabled={readOnly}
+                placeholder="e.g. Pre-drive safety circuit"
+                className={inputClassName(readOnly)}
+              />
+            ))}
             <div className="grid grid-cols-2 gap-3">
-              {labeledRow('Rounds', numInput('rounds', '3', 1))}
-              {labeledRow('Rest between rounds (sec)', numInput('restBetweenRounds', 'None', 0))}
+              {labeledRow('Rounds', (
+                <input
+                  type="number"
+                  value={circuitFields.rounds}
+                  min={1}
+                  onChange={(e) => setCircuitFields({ ...circuitFields, rounds: Math.max(1, Number(e.target.value) || 1) })}
+                  disabled={readOnly}
+                  className={inputClassName(readOnly)}
+                />
+              ))}
+              {labeledRow('Rest between rounds (sec)', (
+                <input
+                  type="number"
+                  value={circuitFields.restBetweenRounds ?? ''}
+                  min={0}
+                  onChange={(e) => setCircuitFields({ ...circuitFields, restBetweenRounds: e.target.value === '' ? null : Math.max(0, Number(e.target.value) || 0) })}
+                  disabled={readOnly}
+                  placeholder="None"
+                  className={inputClassName(readOnly)}
+                />
+              ))}
             </div>
             <div>
-              <label className="mb-1.5 block text-xs font-medium text-gray-500 dark:text-gray-400">Exercises</label>
-              <div className="space-y-1.5">
-                {exercises.map((templateKey, idx) => (
-                  <div key={idx} className="flex items-center gap-1.5">
-                    {/* Order buttons */}
-                    <div className="flex flex-col gap-0.5 shrink-0">
-                      <button type="button" disabled={readOnly || idx === 0}
-                        onClick={() => moveExercise(idx, -1)}
-                        className="flex h-5 w-5 items-center justify-center rounded text-gray-400 hover:bg-gray-100 disabled:opacity-30 dark:hover:bg-gray-700 text-xs leading-none">
-                        ▲
-                      </button>
-                      <button type="button" disabled={readOnly || idx === exercises.length - 1}
-                        onClick={() => moveExercise(idx, 1)}
-                        className="flex h-5 w-5 items-center justify-center rounded text-gray-400 hover:bg-gray-100 disabled:opacity-30 dark:hover:bg-gray-700 text-xs leading-none">
-                        ▼
-                      </button>
-                    </div>
-                    {/* Template selector */}
-                    <select
-                      value={templateKey}
-                      disabled={readOnly}
-                      onChange={(e) => {
-                        const next = [...exercises];
-                        next[idx] = e.target.value;
-                        updateField('exercises', next);
-                      }}
-                      className={`flex-1 ${inputClassName(readOnly)}`}
-                    >
-                      <option value="">— select task —</option>
-                      {taskTemplateOptions.map(([key, tpl]) => (
-                        <option key={key} value={key}>{tpl.name}</option>
-                      ))}
-                    </select>
-                    {/* Remove */}
-                    {!readOnly && (
-                      <button type="button"
-                        onClick={() => updateField('exercises', exercises.filter((_, i) => i !== idx))}
-                        className="shrink-0 px-1 text-sm text-gray-400 hover:text-red-400">×</button>
-                    )}
-                  </div>
-                ))}
+              <div className="mb-1.5 flex items-center justify-between gap-3">
+                <label className="block text-xs font-medium text-gray-500 dark:text-gray-400">Steps</label>
                 {!readOnly && (
-                  <button type="button"
-                    onClick={() => updateField('exercises', [...exercises, ''])}
-                    className="text-xs font-medium text-blue-500 hover:text-blue-600">+ Add exercise</button>
+                  <button
+                    type="button"
+                    onClick={addStep}
+                    className="text-xs font-medium text-blue-500 hover:text-blue-600"
+                  >
+                    + Add step
+                  </button>
                 )}
+              </div>
+              <div className="space-y-1.5">
+                {circuitFields.steps.length === 0 && (
+                  <p className="rounded-lg border border-dashed border-gray-300 px-3 py-3 text-sm text-gray-500 dark:border-gray-600 dark:text-gray-400">
+                    No circuit steps yet.
+                  </p>
+                )}
+                {circuitFields.steps.map((step, idx) => {
+                  const isExpanded = expandedCircuitStepId === step.id;
+                  return (
+                    <div key={step.id} className="rounded-xl border border-gray-200 bg-white px-3 py-3 dark:border-gray-700 dark:bg-gray-900/40">
+                      <div className="flex items-start gap-2">
+                        <div className="flex flex-col gap-0.5 shrink-0">
+                          <button
+                            type="button"
+                            disabled={readOnly || idx === 0}
+                            onClick={() => moveStep(idx, -1)}
+                            className="flex h-5 w-5 items-center justify-center rounded text-xs leading-none text-gray-400 hover:bg-gray-100 disabled:opacity-30 dark:hover:bg-gray-700"
+                          >
+                            ▲
+                          </button>
+                          <button
+                            type="button"
+                            disabled={readOnly || idx === circuitFields.steps.length - 1}
+                            onClick={() => moveStep(idx, 1)}
+                            className="flex h-5 w-5 items-center justify-center rounded text-xs leading-none text-gray-400 hover:bg-gray-100 disabled:opacity-30 dark:hover:bg-gray-700"
+                          >
+                            ▼
+                          </button>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setExpandedCircuitStepId((prev) => prev === step.id ? null : step.id)}
+                          className="flex flex-1 items-center justify-between gap-3 text-left"
+                        >
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-medium text-gray-800 dark:text-gray-100">{step.label.trim() || 'Untitled step'}</p>
+                            <p className="text-xs text-gray-500 dark:text-gray-400">{step.stepType}</p>
+                          </div>
+                          <span className="text-xs font-medium text-blue-500">{isExpanded ? 'Close' : 'Edit'}</span>
+                        </button>
+                        {!readOnly && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setCircuitFields({ ...circuitFields, steps: circuitFields.steps.filter((entry) => entry.id !== step.id) });
+                              setExpandedCircuitStepId((prev) => prev === step.id ? null : prev);
+                            }}
+                            className="shrink-0 px-1 text-sm text-gray-400 hover:text-red-400"
+                          >
+                            ×
+                          </button>
+                        )}
+                      </div>
+
+                      {isExpanded && (
+                        <div className="mt-3 space-y-3 border-t border-gray-200 pt-3 dark:border-gray-700">
+                          <div className="grid grid-cols-2 gap-3">
+                            <div>
+                              <label className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">Label</label>
+                              <input
+                                type="text"
+                                value={step.label}
+                                onChange={(e) => updateCircuitStep(step.id, { label: e.target.value })}
+                                disabled={readOnly}
+                                placeholder="Step label"
+                                className={inputClassName(readOnly)}
+                              />
+                            </div>
+                            <div>
+                              <label className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">Step type</label>
+                              <select
+                                value={step.stepType}
+                                onChange={(e) => updateCircuitStep(step.id, applyCircuitStepTypeDefaults(step, e.target.value as CircuitStepType))}
+                                disabled={readOnly}
+                                className={inputClassName(readOnly)}
+                              >
+                                {CIRCUIT_STEP_TYPES.map((type) => (
+                                  <option key={type} value={type}>{type}</option>
+                                ))}
+                              </select>
+                            </div>
+                          </div>
+                          <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={step.required ?? true}
+                              onChange={(e) => updateCircuitStep(step.id, { required: e.target.checked })}
+                              disabled={readOnly}
+                              className="rounded border-gray-300"
+                            />
+                            Required step
+                          </label>
+
+                          {step.stepType === 'CHOICE' && (
+                            <div className="space-y-2">
+                              <label className="block text-xs font-medium text-gray-500 dark:text-gray-400">Options</label>
+                              {(step.options ?? []).map((option, optionIndex) => (
+                                <div key={`${step.id}-option-${optionIndex}`} className="flex gap-2">
+                                  <input
+                                    type="text"
+                                    value={option}
+                                    onChange={(e) => {
+                                      const nextOptions = [...(step.options ?? [])];
+                                      nextOptions[optionIndex] = e.target.value;
+                                      updateCircuitStep(step.id, { options: nextOptions });
+                                    }}
+                                    disabled={readOnly}
+                                    className={`flex-1 ${inputClassName(readOnly)}`}
+                                  />
+                                  {!readOnly && (
+                                    <button
+                                      type="button"
+                                      onClick={() => updateCircuitStep(step.id, { options: (step.options ?? []).filter((_, idx2) => idx2 !== optionIndex) })}
+                                      className="px-1 text-xs text-gray-400 hover:text-red-400"
+                                    >
+                                      ×
+                                    </button>
+                                  )}
+                                </div>
+                              ))}
+                              {!readOnly && (
+                                <button
+                                  type="button"
+                                  onClick={() => updateCircuitStep(step.id, { options: [...(step.options ?? []), ''] })}
+                                  className="text-xs font-medium text-blue-500 hover:text-blue-600"
+                                >
+                                  + Add option
+                                </button>
+                              )}
+                            </div>
+                          )}
+
+                          {step.stepType === 'RATING' && labeledRow('Scale', (
+                            <input
+                              type="number"
+                              value={step.scale ?? 5}
+                              min={2}
+                              onChange={(e) => updateCircuitStep(step.id, { scale: Math.max(2, Number(e.target.value) || 5) })}
+                              disabled={readOnly}
+                              className={inputClassName(readOnly)}
+                            />
+                          ))}
+
+                          {step.stepType === 'COUNTER' && (
+                            <div className="grid grid-cols-2 gap-3">
+                              {labeledRow('Target', (
+                                <input
+                                  type="number"
+                                  value={step.target ?? 1}
+                                  min={1}
+                                  onChange={(e) => updateCircuitStep(step.id, { target: Math.max(1, Number(e.target.value) || 1) })}
+                                  disabled={readOnly}
+                                  className={inputClassName(readOnly)}
+                                />
+                              ))}
+                              {labeledRow('Unit', (
+                                <input
+                                  type="text"
+                                  value={step.unit ?? ''}
+                                  onChange={(e) => updateCircuitStep(step.id, { unit: e.target.value })}
+                                  disabled={readOnly}
+                                  placeholder="Optional"
+                                  className={inputClassName(readOnly)}
+                                />
+                              ))}
+                            </div>
+                          )}
+
+                          {step.stepType === 'DURATION' && labeledRow('Target minutes', (
+                            <input
+                              type="number"
+                              value={step.target ?? 5}
+                              min={1}
+                              onChange={(e) => updateCircuitStep(step.id, { target: Math.max(1, Number(e.target.value) || 1) })}
+                              disabled={readOnly}
+                              className={inputClassName(readOnly)}
+                            />
+                          ))}
+
+                          {step.stepType === 'TIMER' && labeledRow('Seconds', (
+                            <input
+                              type="number"
+                              value={step.seconds ?? 60}
+                              min={1}
+                              onChange={(e) => updateCircuitStep(step.id, { seconds: Math.max(1, Number(e.target.value) || 1) })}
+                              disabled={readOnly}
+                              className={inputClassName(readOnly)}
+                            />
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           </div>
@@ -624,6 +910,7 @@ export function TaskTemplatePopup({
                   const t = e.target.value as TaskType;
                   setTaskType(t);
                   setInputFields(defaultInputFields(t));
+                  setExpandedCircuitStepId(null);
                 }}
                 disabled={readOnly}
                 className={inputClassName(readOnly)}
