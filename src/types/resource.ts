@@ -61,6 +61,40 @@ export interface HomeRoom {
   containers: HomeContainer[];
 }
 
+export type SegmentDirection = 'up' | 'down' | 'left' | 'right';
+
+export interface FloorPlanSegment {
+  direction: SegmentDirection;
+  distance: number;
+}
+
+export interface PlacedInstance {
+  id: string;
+  kind: 'item' | 'container';
+  refId: string;
+  width: number;
+  depth: number;
+  x: number;
+  y: number;
+  rotation: number;
+}
+
+export interface FloorPlanRoom {
+  id: string;
+  name: string;
+  icon: string;
+  color?: string;
+  segments: FloorPlanSegment[];
+  origin: { x: number; y: number };
+  placedItems: PlacedInstance[];
+}
+
+export interface HomeStory {
+  id: string;
+  name: string;
+  rooms: FloorPlanRoom[];
+}
+
 export interface ItemRecurringTask {
   id: string;
   taskTemplateRef: string;
@@ -356,6 +390,7 @@ export interface HomeResource {
   address?: string;
   members?: string[];
   rooms?: HomeRoom[];
+  stories?: HomeStory[];
   chores?: HomeChore[];
   notes?: ResourceNote[];
   links?: ResourceLink[];

@@ -5,6 +5,7 @@ import { getItemTemplateByRef } from '../../../../../../coach/ItemLibrary';
 import { useResourceStore } from '../../../../../../stores/useResourceStore';
 import { IconDisplay } from '../../../../../shared/IconDisplay';
 import { ResourceMetaTabs } from '../shared/ResourceMetaTabs';
+import { HomeLayout } from './HomeLayout';
 
 interface HomeMetaViewProps {
   resource: HomeResource;
@@ -46,6 +47,7 @@ export function HomeMetaView({ resource }: HomeMetaViewProps) {
     !!resource.address ||
     memberContacts.length > 0 ||
     linkedResources.length > 0 ||
+    (resource.stories?.length ?? 0) > 0 ||
     (resource.rooms?.length ?? 0) > 0 ||
     (resource.chores?.length ?? 0) > 0 ||
     (resource.notes?.length ?? 0) > 0;
@@ -139,6 +141,18 @@ export function HomeMetaView({ resource }: HomeMetaViewProps) {
               </span>
             ))}
           </div>
+        </div>
+      )}
+
+      {resource.stories && resource.stories.length > 0 && (
+        <div className="space-y-2 pt-2">
+          <div className="flex items-center gap-2">
+            <span className="text-gray-400 w-16 shrink-0">Layout</span>
+            <span className="text-[11px] text-gray-400">
+              {resource.stories.length} stor{resource.stories.length === 1 ? 'y' : 'ies'} · {resource.stories.reduce((sum, story) => sum + story.rooms.length, 0)} rooms
+            </span>
+          </div>
+          <HomeLayout stories={resource.stories} />
         </div>
       )}
     </div>

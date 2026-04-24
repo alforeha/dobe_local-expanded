@@ -5,6 +5,7 @@ import {
   type HomeContainer,
   type HomeResource,
   type HomeRoom,
+  type HomeStory,
   type HomeChore,
   type ItemInstance,
   type ItemRecurringTask,
@@ -32,6 +33,7 @@ import { IconDisplay } from '../../../../../shared/IconDisplay';
 import { TextInput } from '../../../../../shared/inputs/TextInput';
 import { IconPicker } from '../../../../../shared/IconPicker';
 import { NotesLogEditor } from '../../../../../shared/NotesLogEditor';
+import { HomeLayout } from './HomeLayout';
 
 interface HomeFormProps {
   existing?: HomeResource;
@@ -148,6 +150,7 @@ function buildHomeFormSnapshot(input: {
   address: string;
   notes: ResourceNote[];
   rooms: RoomDraft[];
+  stories: HomeStory[];
   chores: ChoreDraft[];
 }): string {
   return JSON.stringify(input);
@@ -266,6 +269,7 @@ export function HomeForm({ existing, onSaved, onCancel }: HomeFormProps) {
     })) ?? [],
   );
   const [expandedRoomId, setExpandedRoomId] = useState<string | null>(null);
+  const [stories, setStories] = useState<HomeStory[]>(existing?.stories ?? []);
   const [chores, setChores] = useState<ChoreDraft[]>(
     existing?.chores?.map((chore) => ({
       id: chore.id,
@@ -313,6 +317,7 @@ export function HomeForm({ existing, onSaved, onCancel }: HomeFormProps) {
       displayName: existing?.name ?? '',
       address: existing?.address ?? '',
       notes: existing?.notes ?? [],
+      stories: existing?.stories ?? [],
       rooms:
         existing?.rooms?.map((room) => ({
           id: room.id,
@@ -344,6 +349,7 @@ export function HomeForm({ existing, onSaved, onCancel }: HomeFormProps) {
       displayName,
       address,
       notes,
+      stories,
       rooms,
       chores,
     }) !== initialSnapshot;
@@ -585,6 +591,26 @@ export function HomeForm({ existing, onSaved, onCancel }: HomeFormProps) {
         assignedTo: chore.assignedTo,
       }));
 
+    const finalStories: HomeStory[] = stories
+      .map((story, index) => ({
+        ...story,
+        name: story.name.trim() || `Story ${index + 1}`,
+        rooms: story.rooms
+          .filter((room) => room.name.trim() && room.segments.length > 0)
+          .map((room) => ({
+            ...room,
+            name: room.name.trim(),
+            icon: room.icon.trim(),
+            color: room.color?.trim() || undefined,
+            segments: room.segments.map((segment) => ({
+              direction: segment.direction,
+              distance: Math.max(1, Number(segment.distance) || 1),
+            })),
+            placedItems: room.placedItems ?? [],
+          })),
+      }))
+      .filter((story) => story.name.trim() || story.rooms.length > 0);
+
     const currentLinks = (currentExisting?.links ?? existing?.links ?? []).filter((link) => {
       const target = allResources[link.targetResourceId];
       return target?.type === 'contact' && link.relationship.trim().toLowerCase() === 'member';
@@ -601,6 +627,7 @@ export function HomeForm({ existing, onSaved, onCancel }: HomeFormProps) {
       address: address.trim() || undefined,
       members: memberIds.length > 0 ? memberIds : undefined,
       rooms: finalRooms.length > 0 ? finalRooms : undefined,
+      stories: finalStories.length > 0 ? finalStories : undefined,
       chores: finalChores.length > 0 ? finalChores : undefined,
       notes,
       links: currentLinks.length > 0 ? currentLinks : undefined,
@@ -659,6 +686,16 @@ export function HomeForm({ existing, onSaved, onCancel }: HomeFormProps) {
         </div>
 
         <TextInput label="Address" value={address} onChange={setAddress} placeholder="123 Main St" maxLength={200} />
+
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Floor plan</span>
+            <span className="text-[11px] text-gray-400 dark:text-gray-500">
+              {stories.length} stor{stories.length === 1 ? 'y' : 'ies'} · {stories.reduce((sum, story) => sum + story.rooms.length, 0)} rooms
+            </span>
+          </div>
+          <HomeLayout stories={stories} onChange={setStories} editable />
+        </div>
 
         <div className="flex flex-col gap-2">
           <div className="flex items-center justify-between">
