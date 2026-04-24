@@ -18,16 +18,20 @@ import type {
   AccountResource,
   ContactResource,
   DocResource,
+  InventoryContainerLink,
   HomeResource,
   ItemInstance,
   InventoryResource,
   Resource,
+  VehicleLayout,
+  VehicleMaintenanceTask,
   ResourceRecurrenceRule,
   VehicleResource,
 } from '../types/resource';
 import { normalizeRecurrenceMode } from '../types/resource';
 import type { PlannedEvent } from '../types/plannedEvent';
 import type { Task } from '../types/task';
+import type { CircuitInputFields } from '../types/taskTemplate';
 import type { XpAward } from '../types/taskTemplate';
 import type { StatGroupKey, User } from '../types/user';
 import { getAppDate, getAppNowISO, localISODate } from '../utils/dateUtils';
@@ -71,6 +75,132 @@ function getPrimaryStatGroup(statAward: XpAward): StatGroupKey | null {
 
 function todayISO(): string {
   return getAppDate();
+}
+
+export function buildVehicleInspectionTask(layout: VehicleLayout): VehicleMaintenanceTask | null {
+  if (layout.areas.length === 0) return null;
+
+  const seedDate = todayISO();
+  const monthlyDay = Number(seedDate.split('-')[2] ?? '1');
+  const steps: CircuitInputFields['steps'] = [
+    ...layout.areas.map((area) => ({
+      id: uuidv4(),
+      label: `Check ${area.name}`,
+      stepType: 'CHOICE' as const,
+      options: ['Pass', 'Fail'],
+      required: true,
+    })),
+    {
+      id: uuidv4(),
+      label: 'Capture overall condition',
+      stepType: 'SCAN' as const,
+      required: true,
+    },
+  ];
+
+  return {
+    id: uuidv4(),
+    icon: 'circuit',
+    name: 'Vehicle Inspection',
+    kind: 'maintenance',
+    taskType: 'CIRCUIT',
+    inputFields: {
+      label: 'Vehicle Inspection',
+      steps,
+      rounds: 1,
+      restBetweenRounds: null,
+    },
+    recurrenceMode: 'recurring',
+    recurrence: {
+      frequency: 'monthly',
+      interval: 1,
+      days: [],
+      monthlyDay,
+      seedDate,
+      endsOn: null,
+    },
+    reminderLeadDays: 7,
+    areaId: layout.areas[0]?.id,
+  };
+}
+
+export function ensureVehicleInspectionTask(
+  maintenanceTasks: VehicleMaintenanceTask[] | undefined,
+  layout: VehicleLayout | undefined,
+  hadLayoutBefore: boolean,
+): VehicleMaintenanceTask[] | undefined {
+  const tasks = maintenanceTasks ?? [];
+  if (!layout || hadLayoutBefore) return tasks.length > 0 ? tasks : undefined;
+  if (tasks.some((task) => task.name === 'Vehicle Inspection')) return tasks;
+
+  const inspectionTask = buildVehicleInspectionTask(layout);
+  if (!inspectionTask) return tasks.length > 0 ? tasks : undefined;
+  return [...tasks, inspectionTask];
+}
+
+export function syncVehicleLayoutContainerAssignments(
+  resources: Record<string, Resource>,
+  vehicleId: string,
+  layout: VehicleLayout | undefined,
+): InventoryResource[] {
+  const now = new Date().toISOString();
+  const areaAssignments = new Map<string, string>();
+  for (const area of layout?.areas ?? []) {
+    for (const containerId of area.containerIds) {
+      areaAssignments.set(containerId, area.id);
+    }
+  }
+
+  return Object.values(resources)
+    .filter((resource): resource is InventoryResource => resource.type === 'inventory')
+    .flatMap((inventory) => {
+      let changed = false;
+      const nextContainers = (inventory.containers ?? []).map((container) => {
+        const locationLink = container.links?.find((link) => link.relationship === 'location' && link.targetKind === 'vehicle' && link.targetResourceId === vehicleId);
+        const baseLinks = (container.links ?? []).filter((link) => !(link.relationship === 'location' && link.targetKind === 'vehicle' && link.targetResourceId === vehicleId));
+        const assignedAreaId = areaAssignments.get(container.id);
+
+        if (!assignedAreaId) {
+          if (!locationLink) return container;
+          changed = true;
+          return {
+            ...container,
+            links: baseLinks.length > 0 ? baseLinks : undefined,
+          };
+        }
+
+        const nextLocationLink: InventoryContainerLink = {
+          id: locationLink?.id ?? uuidv4(),
+          relationship: 'location',
+          targetKind: 'vehicle',
+          targetResourceId: vehicleId,
+          targetAreaId: assignedAreaId,
+          createdAt: locationLink?.createdAt ?? now,
+        };
+
+        const nextLinks = [...baseLinks, nextLocationLink];
+        if (
+          locationLink?.targetAreaId === assignedAreaId &&
+          (container.links?.length ?? 0) === nextLinks.length
+        ) {
+          return container;
+        }
+
+        changed = true;
+        return {
+          ...container,
+          links: nextLinks,
+        };
+      });
+
+      return changed
+        ? [{
+            ...inventory,
+            updatedAt: now,
+            containers: nextContainers,
+          }]
+        : [];
+    });
 }
 
 function parseISODate(isoDate: string): Date {

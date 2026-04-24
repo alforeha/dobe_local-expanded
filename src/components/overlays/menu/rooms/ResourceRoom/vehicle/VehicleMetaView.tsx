@@ -4,6 +4,7 @@ import { normalizeRecurrenceMode, type VehicleMaintenanceTask, type VehicleResou
 import { useResourceStore } from '../../../../../../stores/useResourceStore';
 import { IconDisplay } from '../../../../../shared/IconDisplay';
 import { ResourceMetaTabs } from '../shared/ResourceMetaTabs';
+import { VehicleLayout } from './VehicleLayout';
 
 interface VehicleMetaViewProps {
   resource: VehicleResource;
@@ -119,6 +120,17 @@ export function VehicleMetaView({ resource }: VehicleMetaViewProps) {
           </div>
         </div>
       )}
+
+      <div className="flex gap-2">
+        <span className="text-gray-400 w-16 shrink-0">Layout</span>
+        <div className="flex-1">
+          {resource.layout ? (
+            <VehicleLayout resource={resource} />
+          ) : (
+            <p className="text-xs italic text-gray-400">Set up vehicle layout in edit mode.</p>
+          )}
+        </div>
+      </div>
 
       {linkedResources.length > 0 && (
         <div className="flex gap-2">

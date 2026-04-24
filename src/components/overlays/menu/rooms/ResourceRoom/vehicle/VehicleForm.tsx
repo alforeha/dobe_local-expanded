@@ -1,21 +1,25 @@
 import { useState } from 'react';
 import { v4 as uuidv4 } from 'uuid';
+import { normalizeCircuitInputFields, type CircuitInputFields, type CircuitStep, type CircuitStepType, type LogInputFields } from '../../../../../../types/taskTemplate';
 import type {
   ResourceRecurrenceRule,
   RecurrenceDayOfWeek,
   ResourceNote,
+  VehicleLayout,
+  VehicleLayoutTemplate,
   VehicleMaintenanceTask,
   VehicleResource,
 } from '../../../../../../types/resource';
 import { makeDefaultRecurrenceRule, normalizeRecurrenceMode, toRecurrenceRule } from '../../../../../../types/resource';
 import { useResourceStore } from '../../../../../../stores/useResourceStore';
 import { useUserStore } from '../../../../../../stores/useUserStore';
-import { generateScheduledTasks, generateGTDItems } from '../../../../../../engine/resourceEngine';
+import { ensureVehicleInspectionTask, generateScheduledTasks, generateGTDItems, syncVehicleLayoutContainerAssignments } from '../../../../../../engine/resourceEngine';
 import { TextInput } from '../../../../../shared/inputs/TextInput';
 import { NumberInput } from '../../../../../shared/inputs/NumberInput';
 import { IconPicker } from '../../../../../shared/IconPicker';
 import { IconDisplay } from '../../../../../shared/IconDisplay';
 import { NotesLogEditor } from '../../../../../shared/NotesLogEditor';
+import { VehicleLayout as VehicleLayoutEditor, buildVehicleLayout } from './VehicleLayout';
 
 const SMALL_INPUT_CLS = 'rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 focus:border-purple-500 focus:outline-none dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100';
 
@@ -30,9 +34,49 @@ interface TaskDraft {
   icon: string;
   name: string;
   kind?: 'maintenance' | 'mileage-log';
+  taskType?: VehicleMaintenanceTask['taskType'];
+  inputFields?: CircuitInputFields | LogInputFields;
   recurrenceMode: 'recurring' | 'never';
   recurrence: ResourceRecurrenceRule;
   reminderLeadDays: number;
+  areaId?: string;
+}
+
+const CIRCUIT_STEP_TYPES: CircuitStepType[] = ['CHECK', 'CHOICE', 'COUNTER', 'DURATION', 'TIMER', 'RATING', 'TEXT', 'SCAN'];
+
+function makeDefaultCircuitStep(stepType: CircuitStepType = 'CHECK'): CircuitStep {
+  switch (stepType) {
+    case 'CHOICE':
+      return { id: uuidv4(), label: '', stepType, options: ['Pass', 'Fail'], required: true };
+    case 'COUNTER':
+      return { id: uuidv4(), label: '', stepType, target: 1, unit: '', required: true };
+    case 'DURATION':
+      return { id: uuidv4(), label: '', stepType, target: 5, required: true };
+    case 'TIMER':
+      return { id: uuidv4(), label: '', stepType, seconds: 60, required: true };
+    case 'RATING':
+      return { id: uuidv4(), label: '', stepType, scale: 5, required: true };
+    default:
+      return { id: uuidv4(), label: '', stepType, required: true };
+  }
+}
+
+function applyCircuitStepDefaults(step: CircuitStep, stepType: CircuitStepType): CircuitStep {
+  const base: CircuitStep = { id: step.id, label: step.label, stepType, required: step.required ?? true };
+  switch (stepType) {
+    case 'CHOICE':
+      return { ...base, options: step.options && step.options.length > 0 ? step.options : ['Pass', 'Fail'] };
+    case 'COUNTER':
+      return { ...base, target: step.target ?? 1, unit: step.unit ?? '' };
+    case 'DURATION':
+      return { ...base, target: step.target ?? 5 };
+    case 'TIMER':
+      return { ...base, seconds: step.seconds ?? 60 };
+    case 'RATING':
+      return { ...base, scale: step.scale ?? 5 };
+    default:
+      return base;
+  }
 }
 
 function makeMileageLogTask(): TaskDraft {
@@ -41,6 +85,7 @@ function makeMileageLogTask(): TaskDraft {
     icon: 'vehicle',
     name: 'Mileage Log',
     kind: 'mileage-log',
+    taskType: 'LOG',
     recurrenceMode: 'never',
     recurrence: makeDefaultRecurrenceRule(),
     reminderLeadDays: -1,
@@ -114,15 +159,23 @@ export function VehicleForm({ existing, onSaved, onCancel }: VehicleFormProps) {
   const [showVehicleInfo, setShowVehicleInfo] = useState(
     Boolean(existing?.year || existing?.make || existing?.model),
   );
+  const [layoutEnabled, setLayoutEnabled] = useState(existing ? Boolean(existing.layout) : true);
+  const [layoutTemplateSelection, setLayoutTemplateSelection] = useState<VehicleLayoutTemplate>(existing?.layout?.template ?? 'car');
+  const [layout, setLayout] = useState<VehicleLayout | undefined>(existing?.layout ?? (existing ? undefined : buildVehicleLayout('car')));
   const [maintenanceTasks, setMaintenanceTasks] = useState<TaskDraft[]>(
     existing?.maintenanceTasks?.map((task) => ({
       id: task.id,
       icon: task.icon ?? '',
       name: task.name,
       kind: task.kind ?? 'maintenance',
+      taskType: task.taskType,
+      inputFields: task.taskType === 'CIRCUIT'
+        ? normalizeCircuitInputFields(task.inputFields as CircuitInputFields)
+        : task.inputFields,
       recurrenceMode: normalizeRecurrenceMode(task.recurrenceMode),
       recurrence: toRecurrenceRule(task.recurrence),
       reminderLeadDays: task.reminderLeadDays ?? 14,
+      areaId: task.areaId,
     })) ?? [makeMileageLogTask()],
   );
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
@@ -135,12 +188,28 @@ export function VehicleForm({ existing, onSaved, onCancel }: VehicleFormProps) {
   const currentExisting = existing ? resources[existing.id] as VehicleResource | undefined : undefined;
 
   const canSave = displayName.trim().length > 0;
+  const layoutAreas = layout?.areas ?? [];
+  const draftVehicleId = existing?.id ?? 'vehicle-draft';
+
+  function getAreaName(areaId: string | undefined): string | null {
+    if (!areaId) return null;
+    return layoutAreas.find((area) => area.id === areaId)?.name ?? null;
+  }
 
   function addTask() {
     const nextId = uuidv4();
     setMaintenanceTasks((prev) => [
       ...prev,
-      { id: nextId, icon: '', name: '', kind: 'maintenance', recurrenceMode: 'never', recurrence: makeDefaultRecurrenceRule(), reminderLeadDays: 14 },
+      {
+        id: nextId,
+        icon: '',
+        name: '',
+        kind: 'maintenance',
+        recurrenceMode: 'never',
+        recurrence: makeDefaultRecurrenceRule(),
+        reminderLeadDays: 14,
+        areaId: layout?.areas[0]?.id,
+      },
     ]);
     setExpandedTaskId(nextId);
   }
@@ -149,6 +218,10 @@ export function VehicleForm({ existing, onSaved, onCancel }: VehicleFormProps) {
     setMaintenanceTasks((prev) =>
       prev.map((task) => (task.id === id ? { ...task, [field]: value } : task)),
     );
+  }
+
+  function updateTaskPatch(id: string, patch: Partial<TaskDraft>) {
+    setMaintenanceTasks((prev) => prev.map((task) => (task.id === id ? { ...task, ...patch } : task)));
   }
 
   function updateTaskRecurrence(id: string, patch: Partial<ResourceRecurrenceRule>) {
@@ -181,19 +254,32 @@ export function VehicleForm({ existing, onSaved, onCancel }: VehicleFormProps) {
     setExpandedTaskId((prev) => (prev === id ? null : prev));
   }
 
+  function updateCircuitInputFields(taskId: string, nextInputFields: CircuitInputFields) {
+    updateTaskPatch(taskId, { taskType: 'CIRCUIT', inputFields: nextInputFields });
+  }
+
   function handleSave() {
     if (!canSave) return;
 
-    const finalTasks: VehicleMaintenanceTask[] = maintenanceTasks
+    const resourceId = existing?.id ?? uuidv4();
+    const resolvedLayout = layoutEnabled ? (layout ?? buildVehicleLayout(layoutTemplateSelection)) : undefined;
+    const validAreaIds = new Set((resolvedLayout?.areas ?? []).map((area) => area.id));
+
+    let finalTasks: VehicleMaintenanceTask[] = maintenanceTasks
       .filter((task) => task.name.trim().length > 0)
       .map((task) => ({
         id: task.id,
         icon: task.icon.trim(),
         name: task.name.trim(),
         kind: task.kind ?? 'maintenance',
+        taskType: task.taskType,
+        inputFields: task.taskType === 'CIRCUIT'
+          ? normalizeCircuitInputFields(task.inputFields as CircuitInputFields | undefined)
+          : task.inputFields,
         recurrenceMode: normalizeRecurrenceMode(task.recurrenceMode),
         recurrence: task.recurrence,
         reminderLeadDays: normalizeRecurrenceMode(task.recurrenceMode) === 'recurring' ? task.reminderLeadDays : -1,
+        areaId: task.areaId && validAreaIds.has(task.areaId) ? task.areaId : undefined,
       }));
 
     if (!existing && !finalTasks.some((task) => task.kind === 'mileage-log')) {
@@ -202,15 +288,22 @@ export function VehicleForm({ existing, onSaved, onCancel }: VehicleFormProps) {
         icon: 'vehicle',
         name: 'Mileage Log',
         kind: 'mileage-log',
+        taskType: 'LOG',
         recurrenceMode: 'never',
         recurrence: makeDefaultRecurrenceRule(),
         reminderLeadDays: -1,
       });
     }
 
+    finalTasks = ensureVehicleInspectionTask(finalTasks, resolvedLayout, Boolean(existing?.layout)) ?? [];
+
+    if (!resolvedLayout) {
+      finalTasks = finalTasks.map((task) => ({ ...task, areaId: undefined }));
+    }
+
     const now = new Date().toISOString();
     const resource: VehicleResource = {
-      id: existing?.id ?? uuidv4(),
+      id: resourceId,
       type: 'vehicle',
       icon: iconKey,
       name: displayName.trim(),
@@ -225,6 +318,7 @@ export function VehicleForm({ existing, onSaved, onCancel }: VehicleFormProps) {
       insuranceLeadDays: existing?.insuranceLeadDays,
       serviceNextDate: existing?.serviceNextDate,
       serviceLeadDays: existing?.serviceLeadDays,
+      layout: resolvedLayout,
       maintenanceTasks: finalTasks.length > 0 ? finalTasks : undefined,
       notes,
       links: currentExisting?.links ?? existing?.links,
@@ -235,6 +329,11 @@ export function VehicleForm({ existing, onSaved, onCancel }: VehicleFormProps) {
     };
 
     setResource(resource);
+
+    const updatedInventories = syncVehicleLayoutContainerAssignments(resources, resource.id, resolvedLayout);
+    for (const inventory of updatedInventories) {
+      setResource(inventory);
+    }
 
     if (!existing && user) {
       setUser({
@@ -336,6 +435,106 @@ export function VehicleForm({ existing, onSaved, onCancel }: VehicleFormProps) {
           </div>
         ) : null}
 
+        <div className="space-y-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-3 dark:border-gray-700 dark:bg-gray-800/40">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold text-gray-800 dark:text-gray-100">Vehicle layout</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400">Group areas and link inventory containers to this vehicle.</p>
+            </div>
+            <label className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-200">
+              <input
+                type="checkbox"
+                checked={layoutEnabled}
+                onChange={(event) => {
+                  const checked = event.target.checked;
+                  setLayoutEnabled(checked);
+                  if (checked && !layout) {
+                    setLayout(buildVehicleLayout(layoutTemplateSelection));
+                  }
+                }}
+                className="h-4 w-4 rounded border-gray-300 text-blue-500 focus:ring-blue-500 dark:border-gray-500"
+              />
+              Enable layout
+            </label>
+          </div>
+
+          {layoutEnabled ? (
+            <div className="space-y-3">
+              <div className="flex flex-wrap items-center gap-2">
+                {(['bike', 'car', 'truck', 'plane'] as const).map((template) => (
+                  <button
+                    key={template}
+                    type="button"
+                    onClick={() => {
+                      setLayoutTemplateSelection(template);
+                      if (!layout) {
+                        setLayout(buildVehicleLayout(template));
+                      }
+                    }}
+                    className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
+                      (layout?.template ?? layoutTemplateSelection) === template
+                        ? 'bg-blue-500 text-white'
+                        : 'bg-white text-gray-600 hover:bg-gray-100 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-700'
+                    }`}
+                  >
+                    {template.slice(0, 1).toUpperCase() + template.slice(1)}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => setLayout(buildVehicleLayout(layoutTemplateSelection))}
+                  className="ml-auto text-xs font-medium text-blue-500 hover:text-blue-600"
+                >
+                  Reset areas
+                </button>
+              </div>
+
+              {layout ? (
+                <VehicleLayoutEditor
+                  resource={{
+                    ...(existing ?? {
+                      id: draftVehicleId,
+                      type: 'vehicle',
+                      icon: iconKey,
+                      name: displayName || 'Vehicle',
+                      createdAt: currentExisting?.createdAt ?? new Date().toISOString(),
+                      updatedAt: new Date().toISOString(),
+                      sharedWith: null,
+                    }),
+                    id: draftVehicleId,
+                    type: 'vehicle',
+                    icon: iconKey,
+                    name: displayName || existing?.name || 'Vehicle',
+                    createdAt: existing?.createdAt ?? new Date().toISOString(),
+                    updatedAt: new Date().toISOString(),
+                    layout,
+                    maintenanceTasks,
+                    sharedWith: currentExisting?.sharedWith ?? existing?.sharedWith ?? null,
+                  }}
+                  isEditMode
+                  onLayoutChange={setLayout}
+                  onMaintenanceTasksChange={(tasks) => setMaintenanceTasks(tasks.map((task) => ({
+                    id: task.id,
+                    icon: task.icon,
+                    name: task.name,
+                    kind: task.kind,
+                    taskType: task.taskType,
+                    inputFields: task.taskType === 'CIRCUIT'
+                      ? normalizeCircuitInputFields(task.inputFields as CircuitInputFields | undefined)
+                      : task.inputFields,
+                    recurrenceMode: normalizeRecurrenceMode(task.recurrenceMode),
+                    recurrence: toRecurrenceRule(task.recurrence),
+                    reminderLeadDays: task.reminderLeadDays,
+                    areaId: task.areaId,
+                  })))}
+                />
+              ) : null}
+            </div>
+          ) : (
+            <p className="text-xs text-gray-500 dark:text-gray-400">Layout is disabled for this vehicle.</p>
+          )}
+        </div>
+
         <div className="flex flex-col gap-2">
           <div className="flex items-center justify-between">
             <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
@@ -373,6 +572,7 @@ export function VehicleForm({ existing, onSaved, onCancel }: VehicleFormProps) {
                       {normalizeRecurrenceMode(task.recurrenceMode) === 'recurring'
                         ? `${describeTaskSchedule(task)} · ${describeReminder(task.reminderLeadDays)}`
                         : describeTaskSchedule(task)}
+                      {getAreaName(task.areaId) ? ` · ${getAreaName(task.areaId)}` : ''}
                     </div>
                   </div>
                   <span className="text-xs font-medium text-blue-500">{isExpanded ? 'Close' : 'Edit'}</span>
@@ -560,6 +760,218 @@ export function VehicleForm({ existing, onSaved, onCancel }: VehicleFormProps) {
                         </select>
                       </div>
                     ) : null}
+
+                    {layoutAreas.length > 0 && task.kind !== 'mileage-log' ? (
+                      <div className="flex items-center gap-2">
+                        <span className="shrink-0 text-xs font-medium text-gray-500 dark:text-gray-400">Area:</span>
+                        <select
+                          value={task.areaId ?? ''}
+                          onChange={(event) => updateTaskPatch(task.id, { areaId: event.target.value || undefined })}
+                          className="ml-auto w-40 rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs text-gray-900 focus:border-purple-500 focus:outline-none dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+                        >
+                          <option value="">No area link</option>
+                          {layoutAreas.map((area) => (
+                            <option key={area.id} value={area.id}>{area.name || 'Untitled area'}</option>
+                          ))}
+                        </select>
+                      </div>
+                    ) : null}
+
+                    {task.taskType === 'CIRCUIT' ? (() => {
+                      const circuitFields = normalizeCircuitInputFields(task.inputFields as CircuitInputFields | undefined);
+                      return (
+                        <div className="space-y-3 rounded-md border border-gray-200 bg-white px-3 py-3 dark:border-gray-600 dark:bg-gray-800/70">
+                          <div className="flex items-center justify-between gap-3">
+                            <div>
+                              <p className="text-xs font-medium text-gray-500 dark:text-gray-400">Inspection steps</p>
+                              <p className="text-[11px] text-gray-400 dark:text-gray-500">{circuitFields.steps.length} step{circuitFields.steps.length === 1 ? '' : 's'} in template</p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => updateCircuitInputFields(task.id, { ...circuitFields, steps: [...circuitFields.steps, makeDefaultCircuitStep()] })}
+                              className="text-xs font-medium text-blue-500 hover:text-blue-600"
+                            >
+                              + Add step
+                            </button>
+                          </div>
+                          <input
+                            type="text"
+                            value={circuitFields.label}
+                            onChange={(event) => updateCircuitInputFields(task.id, { ...circuitFields, label: event.target.value })}
+                            placeholder="Circuit label"
+                            className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 focus:border-purple-500 focus:outline-none dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100"
+                          />
+                          <div className="space-y-2">
+                            {circuitFields.steps.map((step, stepIndex) => (
+                              <div key={step.id} className="space-y-2 rounded-lg border border-gray-200 px-3 py-3 dark:border-gray-700">
+                                <div className="flex items-center gap-2">
+                                  <div className="flex flex-col gap-0.5">
+                                    <button
+                                      type="button"
+                                      disabled={stepIndex === 0}
+                                      onClick={() => {
+                                        const nextSteps = [...circuitFields.steps];
+                                        [nextSteps[stepIndex - 1], nextSteps[stepIndex]] = [nextSteps[stepIndex], nextSteps[stepIndex - 1]];
+                                        updateCircuitInputFields(task.id, { ...circuitFields, steps: nextSteps });
+                                      }}
+                                      className="flex h-5 w-5 items-center justify-center rounded text-xs text-gray-400 hover:bg-gray-100 disabled:opacity-30 dark:hover:bg-gray-700"
+                                    >
+                                      ▲
+                                    </button>
+                                    <button
+                                      type="button"
+                                      disabled={stepIndex === circuitFields.steps.length - 1}
+                                      onClick={() => {
+                                        const nextSteps = [...circuitFields.steps];
+                                        [nextSteps[stepIndex], nextSteps[stepIndex + 1]] = [nextSteps[stepIndex + 1], nextSteps[stepIndex]];
+                                        updateCircuitInputFields(task.id, { ...circuitFields, steps: nextSteps });
+                                      }}
+                                      className="flex h-5 w-5 items-center justify-center rounded text-xs text-gray-400 hover:bg-gray-100 disabled:opacity-30 dark:hover:bg-gray-700"
+                                    >
+                                      ▼
+                                    </button>
+                                  </div>
+                                  <input
+                                    type="text"
+                                    value={step.label}
+                                    onChange={(event) => {
+                                      const nextSteps = circuitFields.steps.map((entry) => entry.id === step.id ? { ...entry, label: event.target.value } : entry);
+                                      updateCircuitInputFields(task.id, { ...circuitFields, steps: nextSteps });
+                                    }}
+                                    placeholder="Step label"
+                                    className="flex-1 rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 focus:border-purple-500 focus:outline-none dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100"
+                                  />
+                                  <select
+                                    value={step.stepType}
+                                    onChange={(event) => {
+                                      const nextSteps = circuitFields.steps.map((entry) => entry.id === step.id ? applyCircuitStepDefaults(entry, event.target.value as CircuitStepType) : entry);
+                                      updateCircuitInputFields(task.id, { ...circuitFields, steps: nextSteps });
+                                    }}
+                                    className="rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100"
+                                  >
+                                    {CIRCUIT_STEP_TYPES.map((stepType) => (
+                                      <option key={stepType} value={stepType}>{stepType}</option>
+                                    ))}
+                                  </select>
+                                  <button
+                                    type="button"
+                                    onClick={() => updateCircuitInputFields(task.id, { ...circuitFields, steps: circuitFields.steps.filter((entry) => entry.id !== step.id) })}
+                                    className="text-xs text-gray-400 hover:text-red-400"
+                                  >
+                                    Remove
+                                  </button>
+                                </div>
+
+                                {step.stepType === 'CHOICE' ? (
+                                  <div className="space-y-2">
+                                    <p className="text-xs font-medium text-gray-500 dark:text-gray-400">Options</p>
+                                    {(step.options ?? []).map((option, optionIndex) => (
+                                      <div key={`${step.id}-option-${optionIndex}`} className="flex gap-2">
+                                        <input
+                                          type="text"
+                                          value={option}
+                                          onChange={(event) => {
+                                            const nextOptions = [...(step.options ?? [])];
+                                            nextOptions[optionIndex] = event.target.value;
+                                            const nextSteps = circuitFields.steps.map((entry) => entry.id === step.id ? { ...entry, options: nextOptions } : entry);
+                                            updateCircuitInputFields(task.id, { ...circuitFields, steps: nextSteps });
+                                          }}
+                                          className="flex-1 rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100"
+                                        />
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            const nextSteps = circuitFields.steps.map((entry) => entry.id === step.id ? { ...entry, options: (step.options ?? []).filter((_, idx) => idx !== optionIndex) } : entry);
+                                            updateCircuitInputFields(task.id, { ...circuitFields, steps: nextSteps });
+                                          }}
+                                          className="text-xs text-gray-400 hover:text-red-400"
+                                        >
+                                          ×
+                                        </button>
+                                      </div>
+                                    ))}
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        const nextSteps = circuitFields.steps.map((entry) => entry.id === step.id ? { ...entry, options: [...(step.options ?? []), ''] } : entry);
+                                        updateCircuitInputFields(task.id, { ...circuitFields, steps: nextSteps });
+                                      }}
+                                      className="text-xs font-medium text-blue-500 hover:text-blue-600"
+                                    >
+                                      + Add option
+                                    </button>
+                                  </div>
+                                ) : null}
+
+                                {step.stepType === 'RATING' ? (
+                                  <input
+                                    type="number"
+                                    value={step.scale ?? 5}
+                                    min={2}
+                                    onChange={(event) => {
+                                      const nextSteps = circuitFields.steps.map((entry) => entry.id === step.id ? { ...entry, scale: Math.max(2, Number(event.target.value) || 5) } : entry);
+                                      updateCircuitInputFields(task.id, { ...circuitFields, steps: nextSteps });
+                                    }}
+                                    className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100"
+                                  />
+                                ) : null}
+
+                                {step.stepType === 'COUNTER' ? (
+                                  <div className="grid grid-cols-2 gap-2">
+                                    <input
+                                      type="number"
+                                      value={step.target ?? 1}
+                                      min={1}
+                                      onChange={(event) => {
+                                        const nextSteps = circuitFields.steps.map((entry) => entry.id === step.id ? { ...entry, target: Math.max(1, Number(event.target.value) || 1) } : entry);
+                                        updateCircuitInputFields(task.id, { ...circuitFields, steps: nextSteps });
+                                      }}
+                                      className="rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100"
+                                    />
+                                    <input
+                                      type="text"
+                                      value={step.unit ?? ''}
+                                      onChange={(event) => {
+                                        const nextSteps = circuitFields.steps.map((entry) => entry.id === step.id ? { ...entry, unit: event.target.value } : entry);
+                                        updateCircuitInputFields(task.id, { ...circuitFields, steps: nextSteps });
+                                      }}
+                                      placeholder="Unit"
+                                      className="rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100"
+                                    />
+                                  </div>
+                                ) : null}
+
+                                {step.stepType === 'DURATION' ? (
+                                  <input
+                                    type="number"
+                                    value={step.target ?? 5}
+                                    min={1}
+                                    onChange={(event) => {
+                                      const nextSteps = circuitFields.steps.map((entry) => entry.id === step.id ? { ...entry, target: Math.max(1, Number(event.target.value) || 1) } : entry);
+                                      updateCircuitInputFields(task.id, { ...circuitFields, steps: nextSteps });
+                                    }}
+                                    className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100"
+                                  />
+                                ) : null}
+
+                                {step.stepType === 'TIMER' ? (
+                                  <input
+                                    type="number"
+                                    value={step.seconds ?? 60}
+                                    min={1}
+                                    onChange={(event) => {
+                                      const nextSteps = circuitFields.steps.map((entry) => entry.id === step.id ? { ...entry, seconds: Math.max(1, Number(event.target.value) || 1) } : entry);
+                                      updateCircuitInputFields(task.id, { ...circuitFields, steps: nextSteps });
+                                    }}
+                                    className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100"
+                                  />
+                                ) : null}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })() : null}
 
                     <div className="flex items-center justify-between pt-1">
                       {isLockedTask ? (

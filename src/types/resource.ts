@@ -1,3 +1,5 @@
+import type { CircuitInputFields, LogInputFields, TaskType } from './taskTemplate';
+
 // RESOURCE - RESOURCE CLUSTER
 // Parent object for all real-world resources.
 // Most type-specific data lives in meta{}.
@@ -106,6 +108,7 @@ export interface InventoryContainerLink {
   targetKind: 'home-room' | 'vehicle';
   targetResourceId: string;
   targetRoomId?: string;
+  targetAreaId?: string;
   relationship: 'location';
   createdAt: string;
 }
@@ -204,10 +207,27 @@ export interface VehicleMaintenanceTask {
   icon: string;
   name: string;
   kind?: 'maintenance' | 'mileage-log';
+  taskType?: Extract<TaskType, 'CIRCUIT' | 'LOG'>;
+  inputFields?: CircuitInputFields | LogInputFields;
   recurrenceMode?: 'recurring' | 'never';
   recurrence: ResourceRecurrenceRule;
   /** Days before task triggers a GTD push. Default 14. -1 = never. */
   reminderLeadDays: number;
+  areaId?: string;
+}
+
+export type VehicleLayoutTemplate = 'bike' | 'car' | 'truck' | 'plane';
+
+export interface VehicleLayoutArea {
+  id: string;
+  name: string;
+  icon: string;
+  containerIds: string[];
+}
+
+export interface VehicleLayout {
+  template: VehicleLayoutTemplate;
+  areas: VehicleLayoutArea[];
 }
 
 /**
@@ -351,6 +371,7 @@ export interface VehicleResource {
   insuranceLeadDays?: number;
   serviceNextDate?: string;
   serviceLeadDays?: number;
+  layout?: VehicleLayout;
   maintenanceTasks?: VehicleMaintenanceTask[];
   notes?: ResourceNote[];
   links?: ResourceLink[];
