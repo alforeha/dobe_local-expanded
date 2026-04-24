@@ -120,7 +120,6 @@ export function buildVehicleInspectionTask(layout: VehicleLayout): VehicleMainte
       endsOn: null,
     },
     reminderLeadDays: 7,
-    areaId: layout.areas[0]?.id,
   };
 }
 
@@ -201,6 +200,52 @@ export function syncVehicleLayoutContainerAssignments(
           }]
         : [];
     });
+}
+
+export function triggerVehicleInspectionTask(resource: VehicleResource): 'queued' | 'completed' | 'missing' {
+  const inspectionTask = (resource.maintenanceTasks ?? []).find(
+    (task) => task.taskType === 'CIRCUIT' && task.name === 'Vehicle Inspection',
+  );
+  if (!inspectionTask) return 'missing';
+
+  const scheduleStore = useScheduleStore.getState();
+  const latestUser = useUserStore.getState().user;
+  if (!latestUser) return 'missing';
+
+  const today = todayISO();
+  const resourceTaskId = `resource-task:${resource.id}:maintenance:${inspectionTask.id}`;
+  const existingPendingTask = latestUser.lists.gtdList
+    .map((taskId) => scheduleStore.tasks[taskId])
+    .find((task) => {
+      if (!task || task.completionState !== 'pending') return false;
+      const identity = readResourceTaskIdentity(task);
+      return identity?.resourceTaskId === resourceTaskId;
+    });
+
+  if (existingPendingTask) {
+    completeGTDItem(existingPendingTask.id, latestUser);
+    return 'completed';
+  }
+
+  const queuedTask = buildResourceReminderTask(
+    resource.id,
+    resourceTaskId,
+    resourceTaskId,
+    today,
+    inspectionTask.name,
+    { label: inspectionTask.name } as Task['resultFields'],
+  );
+
+  scheduleStore.setTask(queuedTask);
+  useUserStore.getState().setUser({
+    ...latestUser,
+    lists: {
+      ...latestUser.lists,
+      gtdList: [...new Set([...latestUser.lists.gtdList, queuedTask.id])],
+    },
+  });
+
+  return 'queued';
 }
 
 function parseISODate(isoDate: string): Date {

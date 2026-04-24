@@ -213,16 +213,25 @@ export interface VehicleMaintenanceTask {
   recurrence: ResourceRecurrenceRule;
   /** Days before task triggers a GTD push. Default 14. -1 = never. */
   reminderLeadDays: number;
-  areaId?: string;
 }
 
 export type VehicleLayoutTemplate = 'bike' | 'car' | 'truck' | 'plane';
 
+export interface VehicleZoneInspection {
+  id: string;
+  date: string;
+  result: 'pass' | 'fail';
+  notes?: string;
+}
+
 export interface VehicleLayoutArea {
   id: string;
+  zoneId: string;
   name: string;
   icon: string;
+  allowsContainers: boolean;
   containerIds: string[];
+  inspectionHistory: VehicleZoneInspection[];
 }
 
 export interface VehicleLayout {

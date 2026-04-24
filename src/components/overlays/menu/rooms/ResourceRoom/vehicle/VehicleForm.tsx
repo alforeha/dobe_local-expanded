@@ -13,13 +13,14 @@ import type {
 import { makeDefaultRecurrenceRule, normalizeRecurrenceMode, toRecurrenceRule } from '../../../../../../types/resource';
 import { useResourceStore } from '../../../../../../stores/useResourceStore';
 import { useUserStore } from '../../../../../../stores/useUserStore';
-import { ensureVehicleInspectionTask, generateScheduledTasks, generateGTDItems, syncVehicleLayoutContainerAssignments } from '../../../../../../engine/resourceEngine';
+import { buildVehicleInspectionTask, ensureVehicleInspectionTask, generateScheduledTasks, generateGTDItems, syncVehicleLayoutContainerAssignments } from '../../../../../../engine/resourceEngine';
 import { TextInput } from '../../../../../shared/inputs/TextInput';
 import { NumberInput } from '../../../../../shared/inputs/NumberInput';
 import { IconPicker } from '../../../../../shared/IconPicker';
 import { IconDisplay } from '../../../../../shared/IconDisplay';
 import { NotesLogEditor } from '../../../../../shared/NotesLogEditor';
-import { VehicleLayout as VehicleLayoutEditor, buildVehicleLayout } from './VehicleLayout';
+import { VehicleLayout as VehicleLayoutEditor } from './VehicleLayout';
+import { buildVehicleLayout } from './vehicleLayoutTemplates';
 
 const SMALL_INPUT_CLS = 'rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 focus:border-purple-500 focus:outline-none dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100';
 
@@ -39,7 +40,6 @@ interface TaskDraft {
   recurrenceMode: 'recurring' | 'never';
   recurrence: ResourceRecurrenceRule;
   reminderLeadDays: number;
-  areaId?: string;
 }
 
 const CIRCUIT_STEP_TYPES: CircuitStepType[] = ['CHECK', 'CHOICE', 'COUNTER', 'DURATION', 'TIMER', 'RATING', 'TEXT', 'SCAN'];
@@ -149,6 +149,61 @@ function describeReminder(leadDays: number): string {
   return `${leadDays} days before`;
 }
 
+function isVehicleLayoutCustomized(layout: VehicleLayout | undefined): boolean {
+  if (!layout) return false;
+  const defaultLayout = buildVehicleLayout(layout.template);
+  if (layout.areas.length !== defaultLayout.areas.length) return true;
+
+  return layout.areas.some((area, index) => {
+    const seededArea = defaultLayout.areas[index];
+    if (!seededArea) return true;
+    return area.name !== seededArea.name
+      || area.icon !== seededArea.icon
+      || area.zoneId !== seededArea.zoneId
+      || area.containerIds.length > 0
+      || (area.inspectionHistory?.length ?? 0) > 0;
+  });
+}
+
+function remapAreaIdsForTemplateChange(
+  currentLayout: VehicleLayout,
+  nextLayout: VehicleLayout,
+  keepContainers: boolean,
+): VehicleLayout {
+  const nextAreas = nextLayout.areas.map((area) => ({ ...area, containerIds: [] as string[] }));
+  const matchAreaByName = (name: string) => nextAreas.find((area) => area.name.trim().toLowerCase() === name.trim().toLowerCase()) ?? nextAreas[0];
+
+  if (keepContainers) {
+    for (const existingArea of currentLayout.areas) {
+      const targetArea = matchAreaByName(existingArea.name);
+      if (!targetArea) continue;
+      targetArea.containerIds = [...new Set([...targetArea.containerIds, ...existingArea.containerIds])];
+    }
+  }
+
+  return {
+    ...nextLayout,
+    areas: nextAreas,
+  };
+}
+
+function remapMaintenanceTasksForLayoutChange(
+  tasks: TaskDraft[],
+  nextLayout: VehicleLayout | undefined,
+): TaskDraft[] {
+  return tasks.map((task) => {
+    if (task.taskType === 'CIRCUIT' && task.name === 'Vehicle Inspection') {
+      const seededInspection = nextLayout ? buildVehicleInspectionTask(nextLayout) : null;
+      return {
+        ...task,
+        inputFields: seededInspection?.inputFields ?? task.inputFields,
+      };
+    }
+
+    return task;
+  });
+}
+
 export function VehicleForm({ existing, onSaved, onCancel }: VehicleFormProps) {
   const [iconKey, setIconKey] = useState<string>(existing?.icon ?? 'vehicle');
   const [displayName, setDisplayName] = useState(existing?.name ?? '');
@@ -159,9 +214,8 @@ export function VehicleForm({ existing, onSaved, onCancel }: VehicleFormProps) {
   const [showVehicleInfo, setShowVehicleInfo] = useState(
     Boolean(existing?.year || existing?.make || existing?.model),
   );
-  const [layoutEnabled, setLayoutEnabled] = useState(existing ? Boolean(existing.layout) : true);
-  const [layoutTemplateSelection, setLayoutTemplateSelection] = useState<VehicleLayoutTemplate>(existing?.layout?.template ?? 'car');
-  const [layout, setLayout] = useState<VehicleLayout | undefined>(existing?.layout ?? (existing ? undefined : buildVehicleLayout('car')));
+  const [layoutSelection, setLayoutSelection] = useState<'none' | VehicleLayoutTemplate>(existing?.layout?.template ?? 'none');
+  const [layout, setLayout] = useState<VehicleLayout | undefined>(existing?.layout);
   const [maintenanceTasks, setMaintenanceTasks] = useState<TaskDraft[]>(
     existing?.maintenanceTasks?.map((task) => ({
       id: task.id,
@@ -175,7 +229,6 @@ export function VehicleForm({ existing, onSaved, onCancel }: VehicleFormProps) {
       recurrenceMode: normalizeRecurrenceMode(task.recurrenceMode),
       recurrence: toRecurrenceRule(task.recurrence),
       reminderLeadDays: task.reminderLeadDays ?? 14,
-      areaId: task.areaId,
     })) ?? [makeMileageLogTask()],
   );
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
@@ -188,13 +241,7 @@ export function VehicleForm({ existing, onSaved, onCancel }: VehicleFormProps) {
   const currentExisting = existing ? resources[existing.id] as VehicleResource | undefined : undefined;
 
   const canSave = displayName.trim().length > 0;
-  const layoutAreas = layout?.areas ?? [];
   const draftVehicleId = existing?.id ?? 'vehicle-draft';
-
-  function getAreaName(areaId: string | undefined): string | null {
-    if (!areaId) return null;
-    return layoutAreas.find((area) => area.id === areaId)?.name ?? null;
-  }
 
   function addTask() {
     const nextId = uuidv4();
@@ -208,7 +255,6 @@ export function VehicleForm({ existing, onSaved, onCancel }: VehicleFormProps) {
         recurrenceMode: 'never',
         recurrence: makeDefaultRecurrenceRule(),
         reminderLeadDays: 14,
-        areaId: layout?.areas[0]?.id,
       },
     ]);
     setExpandedTaskId(nextId);
@@ -258,12 +304,77 @@ export function VehicleForm({ existing, onSaved, onCancel }: VehicleFormProps) {
     updateTaskPatch(taskId, { taskType: 'CIRCUIT', inputFields: nextInputFields });
   }
 
+  function handleLayoutSelectionChange(nextSelection: 'none' | VehicleLayoutTemplate) {
+    if (nextSelection === layoutSelection) return;
+
+    const shouldConfirm = isVehicleLayoutCustomized(layout);
+
+    if (!shouldConfirm) {
+      if (nextSelection === 'none') {
+        setLayout(undefined);
+        setMaintenanceTasks((prev) => remapMaintenanceTasksForLayoutChange(prev, undefined));
+      } else {
+        const nextLayout = buildVehicleLayout(nextSelection);
+        setLayout(nextLayout);
+        setMaintenanceTasks((prev) => remapMaintenanceTasksForLayoutChange(prev, nextLayout));
+      }
+      setLayoutSelection(nextSelection);
+      return;
+    }
+
+    const confirmed = window.confirm(
+      nextSelection === 'none'
+        ? 'Disable the current vehicle layout?\n\nChoose OK to continue to the keep/delete step.'
+        : `Switch the vehicle layout to ${nextSelection}?\n\nChoose OK to continue to the keep/delete step.`,
+    );
+    if (!confirmed) return;
+
+    const keepContainers = window.confirm(
+      'Keep existing linked containers?\n\nChoose OK to keep them and remap them into the new layout.\nChoose Cancel to clear existing container assignments.',
+    );
+
+    if (nextSelection === 'none') {
+      setLayout(undefined);
+      setMaintenanceTasks((prev) => remapMaintenanceTasksForLayoutChange(prev, undefined));
+      setLayoutSelection('none');
+      return;
+    }
+
+    const reseededLayout = remapAreaIdsForTemplateChange(layout ?? buildVehicleLayout(nextSelection), buildVehicleLayout(nextSelection), keepContainers);
+    setLayout(reseededLayout);
+    setMaintenanceTasks((prev) => remapMaintenanceTasksForLayoutChange(prev, reseededLayout));
+    setLayoutSelection(nextSelection);
+  }
+
+  function handleResetCurrentLayout() {
+    if (layoutSelection === 'none') return;
+
+    const shouldConfirm = isVehicleLayoutCustomized(layout);
+    if (shouldConfirm) {
+      const confirmed = window.confirm(
+        'Reset the current layout template?\n\nChoose OK to continue to the keep/delete step.',
+      );
+      if (!confirmed) return;
+    }
+
+    const keepContainers = shouldConfirm
+      ? window.confirm(
+          'Keep existing linked containers?\n\nChoose OK to keep them and remap them into the reset layout.\nChoose Cancel to clear existing container assignments.',
+        )
+      : true;
+
+    const nextLayout = remapAreaIdsForTemplateChange(layout ?? buildVehicleLayout(layoutSelection), buildVehicleLayout(layoutSelection), keepContainers);
+    setLayout(nextLayout);
+    setMaintenanceTasks((prev) => remapMaintenanceTasksForLayoutChange(prev, nextLayout));
+  }
+
   function handleSave() {
     if (!canSave) return;
 
     const resourceId = existing?.id ?? uuidv4();
-    const resolvedLayout = layoutEnabled ? (layout ?? buildVehicleLayout(layoutTemplateSelection)) : undefined;
-    const validAreaIds = new Set((resolvedLayout?.areas ?? []).map((area) => area.id));
+    const resolvedLayout = layoutSelection === 'none'
+      ? undefined
+      : (layout ?? buildVehicleLayout(layoutSelection));
 
     let finalTasks: VehicleMaintenanceTask[] = maintenanceTasks
       .filter((task) => task.name.trim().length > 0)
@@ -279,7 +390,6 @@ export function VehicleForm({ existing, onSaved, onCancel }: VehicleFormProps) {
         recurrenceMode: normalizeRecurrenceMode(task.recurrenceMode),
         recurrence: task.recurrence,
         reminderLeadDays: normalizeRecurrenceMode(task.recurrenceMode) === 'recurring' ? task.reminderLeadDays : -1,
-        areaId: task.areaId && validAreaIds.has(task.areaId) ? task.areaId : undefined,
       }));
 
     if (!existing && !finalTasks.some((task) => task.kind === 'mileage-log')) {
@@ -296,10 +406,6 @@ export function VehicleForm({ existing, onSaved, onCancel }: VehicleFormProps) {
     }
 
     finalTasks = ensureVehicleInspectionTask(finalTasks, resolvedLayout, Boolean(existing?.layout)) ?? [];
-
-    if (!resolvedLayout) {
-      finalTasks = finalTasks.map((task) => ({ ...task, areaId: undefined }));
-    }
 
     const now = new Date().toISOString();
     const resource: VehicleResource = {
@@ -441,49 +547,29 @@ export function VehicleForm({ existing, onSaved, onCancel }: VehicleFormProps) {
               <p className="text-sm font-semibold text-gray-800 dark:text-gray-100">Vehicle layout</p>
               <p className="text-xs text-gray-500 dark:text-gray-400">Group areas and link inventory containers to this vehicle.</p>
             </div>
-            <label className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-200">
-              <input
-                type="checkbox"
-                checked={layoutEnabled}
-                onChange={(event) => {
-                  const checked = event.target.checked;
-                  setLayoutEnabled(checked);
-                  if (checked && !layout) {
-                    setLayout(buildVehicleLayout(layoutTemplateSelection));
-                  }
-                }}
-                className="h-4 w-4 rounded border-gray-300 text-blue-500 focus:ring-blue-500 dark:border-gray-500"
-              />
-              Enable layout
-            </label>
+            <select
+              value={layoutSelection}
+              onChange={(event) => handleLayoutSelectionChange(event.target.value as 'none' | VehicleLayoutTemplate)}
+              className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-900 focus:border-purple-500 focus:outline-none dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+            >
+              <option value="none">None</option>
+              <option value="bike">Bike</option>
+              <option value="car">Car</option>
+              <option value="truck">Truck</option>
+              <option value="plane">Plane</option>
+            </select>
           </div>
 
-          {layoutEnabled ? (
+          {layoutSelection !== 'none' ? (
             <div className="space-y-3">
-              <div className="flex flex-wrap items-center gap-2">
-                {(['bike', 'car', 'truck', 'plane'] as const).map((template) => (
-                  <button
-                    key={template}
-                    type="button"
-                    onClick={() => {
-                      setLayoutTemplateSelection(template);
-                      if (!layout) {
-                        setLayout(buildVehicleLayout(template));
-                      }
-                    }}
-                    className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
-                      (layout?.template ?? layoutTemplateSelection) === template
-                        ? 'bg-blue-500 text-white'
-                        : 'bg-white text-gray-600 hover:bg-gray-100 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-700'
-                    }`}
-                  >
-                    {template.slice(0, 1).toUpperCase() + template.slice(1)}
-                  </button>
-                ))}
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  Current template: <span className="font-medium text-gray-700 dark:text-gray-200">{(layout?.template ?? layoutSelection).slice(0, 1).toUpperCase() + (layout?.template ?? layoutSelection).slice(1)}</span>
+                </p>
                 <button
                   type="button"
-                  onClick={() => setLayout(buildVehicleLayout(layoutTemplateSelection))}
-                  className="ml-auto text-xs font-medium text-blue-500 hover:text-blue-600"
+                  onClick={handleResetCurrentLayout}
+                  className="ml-auto text-xs font-medium text-blue-500 hover:text-blue-600 disabled:opacity-40"
                 >
                   Reset areas
                 </button>
@@ -513,25 +599,11 @@ export function VehicleForm({ existing, onSaved, onCancel }: VehicleFormProps) {
                   }}
                   isEditMode
                   onLayoutChange={setLayout}
-                  onMaintenanceTasksChange={(tasks) => setMaintenanceTasks(tasks.map((task) => ({
-                    id: task.id,
-                    icon: task.icon,
-                    name: task.name,
-                    kind: task.kind,
-                    taskType: task.taskType,
-                    inputFields: task.taskType === 'CIRCUIT'
-                      ? normalizeCircuitInputFields(task.inputFields as CircuitInputFields | undefined)
-                      : task.inputFields,
-                    recurrenceMode: normalizeRecurrenceMode(task.recurrenceMode),
-                    recurrence: toRecurrenceRule(task.recurrence),
-                    reminderLeadDays: task.reminderLeadDays,
-                    areaId: task.areaId,
-                  })))}
                 />
               ) : null}
             </div>
           ) : (
-            <p className="text-xs text-gray-500 dark:text-gray-400">Layout is disabled for this vehicle.</p>
+            <p className="text-xs text-gray-500 dark:text-gray-400">No vehicle layout selected.</p>
           )}
         </div>
 
@@ -572,7 +644,6 @@ export function VehicleForm({ existing, onSaved, onCancel }: VehicleFormProps) {
                       {normalizeRecurrenceMode(task.recurrenceMode) === 'recurring'
                         ? `${describeTaskSchedule(task)} · ${describeReminder(task.reminderLeadDays)}`
                         : describeTaskSchedule(task)}
-                      {getAreaName(task.areaId) ? ` · ${getAreaName(task.areaId)}` : ''}
                     </div>
                   </div>
                   <span className="text-xs font-medium text-blue-500">{isExpanded ? 'Close' : 'Edit'}</span>
@@ -757,22 +828,6 @@ export function VehicleForm({ existing, onSaved, onCancel }: VehicleFormProps) {
                           <option value={7}>7 days before</option>
                           <option value={14}>14 days before</option>
                           <option value={30}>30 days before</option>
-                        </select>
-                      </div>
-                    ) : null}
-
-                    {layoutAreas.length > 0 && task.kind !== 'mileage-log' ? (
-                      <div className="flex items-center gap-2">
-                        <span className="shrink-0 text-xs font-medium text-gray-500 dark:text-gray-400">Area:</span>
-                        <select
-                          value={task.areaId ?? ''}
-                          onChange={(event) => updateTaskPatch(task.id, { areaId: event.target.value || undefined })}
-                          className="ml-auto w-40 rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs text-gray-900 focus:border-purple-500 focus:outline-none dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
-                        >
-                          <option value="">No area link</option>
-                          {layoutAreas.map((area) => (
-                            <option key={area.id} value={area.id}>{area.name || 'Untitled area'}</option>
-                          ))}
                         </select>
                       </div>
                     ) : null}
