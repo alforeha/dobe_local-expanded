@@ -8,12 +8,13 @@ import type {
   InventoryResource,
   ItemInstance,
   ItemRecurringTask,
+  InventoryContainer,
   RecurrenceDayOfWeek,
   ResourceNote,
   ResourceRecurrenceRule,
   VehicleResource,
 } from '../../../../../../types/resource';
-import { makeDefaultRecurrenceRule, toRecurrenceRule } from '../../../../../../types/resource';
+import { makeDefaultRecurrenceRule, normalizeRecurrenceMode, toRecurrenceRule } from '../../../../../../types/resource';
 import { useResourceStore } from '../../../../../../stores/useResourceStore';
 import { useUserStore } from '../../../../../../stores/useUserStore';
 import { generateScheduledTasks, generateGTDItems } from '../../../../../../engine/resourceEngine';
@@ -63,6 +64,8 @@ interface ContainerDraft {
   recurringTasks: ItemRecurringTask[];
 }
 
+type CarryTaskDraft = NonNullable<InventoryContainer['carryTask']>;
+
 const DOW_LABELS: { key: RecurrenceDayOfWeek; label: string }[] = [
   { key: 'sun', label: 'Su' },
   { key: 'mon', label: 'Mo' },
@@ -94,6 +97,16 @@ function makeContainerDraft(seedRef = ''): ContainerDraft {
     threshold: '',
     unit: '',
     recurringTasks: [],
+  };
+}
+
+function makeCarryTaskDraft(containerName = ''): CarryTaskDraft {
+  return {
+    id: uuidv4(),
+    name: containerName.trim() ? `Carry ${containerName.trim()}` : 'Carry container',
+    recurrenceMode: 'never',
+    recurrence: makeDefaultRecurrenceRule(),
+    reminderLeadDays: 7,
   };
 }
 
@@ -287,6 +300,17 @@ export function InventoryForm({
   const [containerIconKey, setContainerIconKey] = useState(editingContainer?.icon ?? 'inventory');
   const [containerNotes, setContainerNotes] = useState<ResourceNote[]>(editingContainer?.notes ?? []);
   const [containerLinks, setContainerLinks] = useState<InventoryContainerLink[]>(editingContainer?.links ?? []);
+  const [carryTaskEnabled, setCarryTaskEnabled] = useState(Boolean(editingContainer?.carryTask));
+  const [carryTask, setCarryTask] = useState<CarryTaskDraft>(
+    editingContainer?.carryTask
+      ? {
+          ...editingContainer.carryTask,
+          recurrenceMode: normalizeRecurrenceMode(editingContainer.carryTask.recurrenceMode),
+          recurrence: toRecurrenceRule(editingContainer.carryTask.recurrence),
+          reminderLeadDays: editingContainer.carryTask.reminderLeadDays ?? 7,
+        }
+      : makeCarryTaskDraft(editingContainer?.name ?? ''),
+  );
   const [newContainerNote, setNewContainerNote] = useState('');
   const [activeContainerMetaTab, setActiveContainerMetaTab] = useState<'location' | 'notes' | 'attachments'>('location');
   const [newContainerLinkType, setNewContainerLinkType] = useState<'home-room' | 'vehicle'>('home-room');
@@ -344,7 +368,7 @@ export function InventoryForm({
   const canSave = editorMode === 'item'
     ? itemTemplates.some((item) => item.name.trim().length > 0)
     : editorMode === 'container'
-      ? displayName.trim().length > 0 && hasValidContainerItems
+      ? displayName.trim().length > 0 && hasValidContainerItems && (!carryTaskEnabled || carryTask.name.trim().length > 0)
       : displayName.trim().length > 0;
   const showItemsEditor = editorMode !== 'container';
   const showContainersEditor = editorMode !== 'item';
@@ -546,6 +570,35 @@ export function InventoryForm({
     setContainerLinks((prev) => prev.filter((link) => link.id !== id));
   }
 
+  function updateCarryTaskField(field: keyof CarryTaskDraft, value: string | number | ResourceRecurrenceRule) {
+    setCarryTask((prev) => ({ ...prev, [field]: value }));
+  }
+
+  function updateCarryTaskRecurrence(patch: Partial<ResourceRecurrenceRule>) {
+    setCarryTask((prev) => ({
+      ...prev,
+      recurrence: {
+        ...prev.recurrence,
+        ...patch,
+      },
+    }));
+  }
+
+  function toggleCarryTaskDay(day: RecurrenceDayOfWeek) {
+    setCarryTask((prev) => {
+      const days = prev.recurrence.days.includes(day)
+        ? prev.recurrence.days.filter((entry) => entry !== day)
+        : [...prev.recurrence.days, day];
+      return {
+        ...prev,
+        recurrence: {
+          ...prev.recurrence,
+          days,
+        },
+      };
+    });
+  }
+
   function describeContainerLink(link: InventoryContainerLink): string {
     if (link.targetKind === 'home-room') {
       const home = resources[link.targetResourceId];
@@ -609,6 +662,17 @@ export function InventoryForm({
             name: displayName.trim(),
             icon: containerIconKey || 'inventory',
             items: finalContainers,
+            carryTask: carryTaskEnabled
+              ? {
+                  ...carryTask,
+                  name: carryTask.name.trim() || `Carry ${displayName.trim()}`,
+                  recurrenceMode: normalizeRecurrenceMode(carryTask.recurrenceMode),
+                  reminderLeadDays:
+                    normalizeRecurrenceMode(carryTask.recurrenceMode) === 'recurring'
+                      ? (carryTask.reminderLeadDays ?? 7)
+                      : -1,
+                }
+              : undefined,
             notes: containerNotes,
             attachments: editingContainer?.attachments ?? [],
             links: containerLinks,
@@ -690,7 +754,199 @@ export function InventoryForm({
             </div>
 
             {editorMode === 'container' ? (
-              <div className="flex flex-col gap-2 rounded-xl border border-gray-200 bg-gray-50/70 px-3 py-3 dark:border-gray-700 dark:bg-gray-800/60">
+              <div className="flex flex-col gap-3 rounded-xl border border-gray-200 bg-gray-50/70 px-3 py-3 dark:border-gray-700 dark:bg-gray-800/60">
+                <div className="space-y-3 rounded-lg border border-gray-200 bg-white px-3 py-3 dark:border-gray-600 dark:bg-gray-800">
+                  <label className="flex items-center justify-between gap-3 text-sm font-medium text-gray-700 dark:text-gray-200">
+                    <span>Carry task</span>
+                    <input
+                      type="checkbox"
+                      checked={carryTaskEnabled}
+                      onChange={(event) => {
+                        const enabled = event.target.checked;
+                        setCarryTaskEnabled(enabled);
+                        if (enabled) {
+                          setCarryTask((prev) => ({
+                            ...prev,
+                            name: prev.name.trim() || `Carry ${displayName.trim() || 'container'}`,
+                          }));
+                        }
+                      }}
+                      className="h-4 w-4 rounded border-gray-300 text-blue-500 focus:ring-blue-500"
+                    />
+                  </label>
+
+                  {carryTaskEnabled ? (
+                    <div className="space-y-3">
+                      <TextInput
+                        label="Task name"
+                        value={carryTask.name}
+                        onChange={(value) => updateCarryTaskField('name', value)}
+                        placeholder={`Carry ${displayName.trim() || 'container'}`}
+                        maxLength={80}
+                      />
+
+                      <div className="flex rounded-full bg-gray-100 p-1 dark:bg-gray-900/60">
+                        {(['recurring', 'never'] as const).map((mode) => (
+                          <button
+                            key={mode}
+                            type="button"
+                            onClick={() => updateCarryTaskField('recurrenceMode', mode)}
+                            className={`rounded-full px-3 py-1 text-[11px] font-medium transition-colors ${
+                              normalizeRecurrenceMode(carryTask.recurrenceMode) === mode
+                                ? 'bg-blue-500 text-white'
+                                : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
+                            }`}
+                          >
+                            {mode === 'recurring' ? 'Recurring' : 'Intermittent'}
+                          </button>
+                        ))}
+                      </div>
+
+                      {normalizeRecurrenceMode(carryTask.recurrenceMode) === 'recurring' ? (
+                        <div className="space-y-2 rounded-md border border-gray-200 bg-white px-3 py-3 dark:border-gray-600 dark:bg-gray-800/70">
+                          <div className="flex items-center gap-2">
+                            <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-gray-500 dark:text-gray-400">Frequency</span>
+                            <select
+                              value={carryTask.recurrence.frequency}
+                              onChange={(event) =>
+                                updateCarryTaskRecurrence({
+                                  frequency: event.target.value as ResourceRecurrenceRule['frequency'],
+                                  days: event.target.value === 'weekly' ? carryTask.recurrence.days : [],
+                                  monthlyDay:
+                                    event.target.value === 'monthly'
+                                      ? (carryTask.recurrence.monthlyDay ?? getDayOfMonth(carryTask.recurrence.seedDate))
+                                      : null,
+                                })
+                              }
+                              className={`ml-auto w-36 ${SMALL_INPUT_CLS}`}
+                            >
+                              <option value="daily">Daily</option>
+                              <option value="weekly">Weekly</option>
+                              <option value="monthly">Monthly</option>
+                              <option value="yearly">Yearly</option>
+                            </select>
+                          </div>
+
+                          {carryTask.recurrence.frequency === 'monthly' ? (
+                            <div className="space-y-2">
+                              <div className="grid grid-cols-2 gap-2">
+                                <div className="space-y-1">
+                                  <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Every</label>
+                                  <input
+                                    type="number"
+                                    min={1}
+                                    max={99}
+                                    value={carryTask.recurrence.interval}
+                                    onChange={(event) => updateCarryTaskRecurrence({ interval: Math.max(1, Number(event.target.value) || 1) })}
+                                    className={SMALL_INPUT_CLS}
+                                  />
+                                </div>
+                                <div className="space-y-1">
+                                  <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Day of month</label>
+                                  <input
+                                    type="number"
+                                    min={1}
+                                    max={31}
+                                    value={carryTask.recurrence.monthlyDay ?? getDayOfMonth(carryTask.recurrence.seedDate)}
+                                    onChange={(event) =>
+                                      updateCarryTaskRecurrence({
+                                        monthlyDay: Math.min(31, Math.max(1, Number(event.target.value) || 1)),
+                                      })
+                                    }
+                                    className={SMALL_INPUT_CLS}
+                                  />
+                                </div>
+                              </div>
+                              <p className="text-[11px] text-gray-400 dark:text-gray-500">Days 29-31 use the last day of shorter months automatically.</p>
+                            </div>
+                          ) : (
+                            <div className="space-y-1">
+                              <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Interval</label>
+                              <input
+                                type="number"
+                                min={1}
+                                max={99}
+                                value={carryTask.recurrence.interval}
+                                onChange={(event) => updateCarryTaskRecurrence({ interval: Math.max(1, Number(event.target.value) || 1) })}
+                                className={SMALL_INPUT_CLS}
+                              />
+                            </div>
+                          )}
+
+                          {carryTask.recurrence.frequency === 'weekly' ? (
+                            <div className="space-y-1">
+                              <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Days</label>
+                              <div className="flex gap-1">
+                                {DOW_LABELS.map(({ key, label }) => (
+                                  <button
+                                    key={key}
+                                    type="button"
+                                    onClick={() => toggleCarryTaskDay(key)}
+                                    className={`h-7 w-7 rounded text-xs font-medium transition-colors ${
+                                      carryTask.recurrence.days.includes(key)
+                                        ? 'bg-blue-500 text-white'
+                                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600'
+                                    }`}
+                                  >
+                                    {label}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          ) : null}
+
+                          <div className="space-y-1">
+                            <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Start date</label>
+                            <input
+                              type="date"
+                              value={carryTask.recurrence.seedDate}
+                              onChange={(event) =>
+                                updateCarryTaskRecurrence({
+                                  seedDate: event.target.value,
+                                  monthlyDay:
+                                    carryTask.recurrence.frequency === 'monthly'
+                                      ? (carryTask.recurrence.monthlyDay ?? getDayOfMonth(event.target.value))
+                                      : carryTask.recurrence.monthlyDay,
+                                })
+                              }
+                              className={SMALL_INPUT_CLS}
+                            />
+                          </div>
+
+                          <div className="space-y-1">
+                            <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Ends on</label>
+                            <input
+                              type="date"
+                              value={carryTask.recurrence.endsOn ?? ''}
+                              onChange={(event) => updateCarryTaskRecurrence({ endsOn: event.target.value || null })}
+                              className={SMALL_INPUT_CLS}
+                            />
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            <span className="shrink-0 text-xs font-medium text-gray-500 dark:text-gray-400">Reminder:</span>
+                            <select
+                              value={carryTask.reminderLeadDays ?? 7}
+                              onChange={(event) => updateCarryTaskField('reminderLeadDays', Number(event.target.value))}
+                              className="ml-auto w-40 rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs text-gray-900 focus:border-purple-500 focus:outline-none dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+                            >
+                              <option value={-1}>No reminder</option>
+                              <option value={0}>Day of</option>
+                              <option value={1}>1 day before</option>
+                              <option value={3}>3 days before</option>
+                              <option value={7}>7 days before</option>
+                              <option value={14}>14 days before</option>
+                              <option value={30}>30 days before</option>
+                            </select>
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <p className="text-xs italic text-gray-400">No carry task for this container.</p>
+                  )}
+                </div>
+
                 <div className="flex gap-4 border-b border-gray-100 pb-1 dark:border-gray-700">
                   {(['location', 'notes', 'attachments'] as const).map((tab) => (
                     <button

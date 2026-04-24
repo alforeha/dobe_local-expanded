@@ -55,6 +55,7 @@ export interface HomeRoom {
   name: string;
   /** Contact IDs assigned to this room */
   assignedTo: string[];
+  /** @deprecated Containers are now owned by InventoryResource and placed via InventoryContainerLink. This field is preserved for backward compatibility only. */
   containers: HomeContainer[];
 }
 
@@ -88,6 +89,13 @@ export interface InventoryContainer {
   name: string;
   icon: string;
   items: ItemInstance[];
+  carryTask?: {
+    id: string;
+    name: string;
+    recurrenceMode?: 'recurring' | 'never';
+    recurrence: ResourceRecurrenceRule;
+    reminderLeadDays?: number;
+  };
   notes?: ResourceNote[];
   attachments?: string[];
   links?: InventoryContainerLink[];

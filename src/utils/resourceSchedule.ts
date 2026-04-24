@@ -153,6 +153,12 @@ export function getResourceIndicatorsForDate(dateISO: string, resources: Resourc
           }
         }
       }
+
+      for (const container of resource.containers ?? []) {
+        if (isIntermittentOnDate(container.carryTask?.recurrenceMode, container.carryTask?.recurrence, dateISO)) {
+          indicators.push(makeIndicator(resource, container.icon || 'inventory', container.carryTask?.name || `Carry ${container.name}`));
+        }
+      }
     }
 
     if (isDoc(resource) && resource.expiryDate === dateISO) {

@@ -746,6 +746,31 @@ function _genInventoryGTD(resource: InventoryResource, referenceDate: string): T
     }
   }
 
+  for (const container of resource.containers ?? []) {
+    const carryTask = container.carryTask;
+    if (!carryTask) continue;
+    if (normalizeRecurrenceMode(carryTask.recurrenceMode) === 'never') continue;
+
+    const reminderLeadDays = carryTask.reminderLeadDays ?? 7;
+    if (reminderLeadDays === -1) continue;
+
+    const next = computeNextOccurrence(carryTask.recurrence, referenceDate);
+    if (next.days < 0 || next.days > reminderLeadDays) continue;
+
+    const reminderTemplateKey = `resource-task:${resource.id}:inventory-container:${container.id}:carry-task:${carryTask.id}`;
+    const label = carryTask.name || `Carry ${container.name}`;
+    tasks.push(
+      buildResourceReminderTask(
+        resource.id,
+        reminderTemplateKey,
+        reminderTemplateKey,
+        next.date,
+        label,
+        { label } as Task['resultFields'],
+      ),
+    );
+  }
+
   return tasks;
 }
 

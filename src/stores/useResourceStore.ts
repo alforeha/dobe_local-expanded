@@ -133,6 +133,10 @@ function pruneDeletedReferences(resource: Resource, deletedIds: Set<string>): Re
       return {
         ...resource,
         links: nextLinks?.length ? nextLinks : undefined,
+        containers: resource.containers?.map((container) => ({
+          ...container,
+          links: container.links?.filter((link) => !deletedIds.has(link.targetResourceId)),
+        })),
         linkedHomeId: resource.linkedHomeId && deletedIds.has(resource.linkedHomeId) ? undefined : resource.linkedHomeId,
       };
     case 'doc':
