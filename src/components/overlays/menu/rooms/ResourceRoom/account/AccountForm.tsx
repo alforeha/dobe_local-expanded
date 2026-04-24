@@ -4,6 +4,8 @@ import type {
   AccountKind,
   AccountResource,
   AccountTask,
+  ContactResource,
+  CryptoUnit,
   RecurrenceDayOfWeek,
   ResourceNote,
   ResourceRecurrenceRule,
@@ -46,7 +48,10 @@ const KIND_OPTIONS: { value: AccountKind; label: string }[] = [
   { value: 'income', label: 'Income' },
   { value: 'debt', label: 'Debt' },
   { value: 'allowance', label: 'Allowance' },
+  { value: 'crypto', label: 'Crypto' },
 ];
+
+const CRYPTO_WHOLE_SCALE = 100_000_000;
 
 const DOW_LABELS: { key: RecurrenceDayOfWeek; label: string }[] = [
   { key: 'sun', label: 'Su' },
@@ -75,6 +80,65 @@ function makeTransactionLogTask(): TaskDraft {
     recurrence: makeDefaultRecurrenceRule(),
     reminderLeadDays: -1,
   };
+}
+
+function makeBlankTaskDraft(): TaskDraft {
+  return {
+    id: uuidv4(),
+    icon: '',
+    name: '',
+    kind: 'account-task',
+    anticipatedValue: '',
+    recurrenceMode: 'never',
+    recurrence: makeDefaultRecurrenceRule(),
+    reminderLeadDays: 7,
+  };
+}
+
+function toTaskDraft(task: AccountTask): TaskDraft {
+  return {
+    id: task.id,
+    icon: task.icon ?? '',
+    name: task.name,
+    kind: task.kind ?? 'account-task',
+    anticipatedValue: task.anticipatedValue ?? '',
+    recurrenceMode: normalizeRecurrenceMode(task.recurrenceMode),
+    recurrence: toRecurrenceRule(task.recurrence),
+    reminderLeadDays: task.reminderLeadDays ?? 7,
+  };
+}
+
+function finaliseTaskDrafts(taskDrafts: TaskDraft[], ensureTransactionLog: boolean): AccountTask[] {
+  const finalTasks: AccountTask[] = taskDrafts
+    .filter((task) => task.name.trim().length > 0)
+    .map((task) => {
+      const recurrenceMode = normalizeRecurrenceMode(task.recurrenceMode);
+      return {
+        id: task.id,
+        icon: task.icon.trim(),
+        name: task.name.trim(),
+        kind: task.kind ?? 'account-task',
+        anticipatedValue: task.anticipatedValue === '' ? undefined : task.anticipatedValue,
+        recurrenceMode,
+        recurrence: task.recurrence,
+        reminderLeadDays: recurrenceMode === 'recurring' ? task.reminderLeadDays : -1,
+      };
+    });
+
+  if (ensureTransactionLog && !finalTasks.some((task) => task.kind === 'transaction-log')) {
+    finalTasks.unshift({
+      id: uuidv4(),
+      icon: 'finance',
+      name: 'Transaction Log',
+      kind: 'transaction-log',
+      anticipatedValue: undefined,
+      recurrenceMode: 'never',
+      recurrence: makeDefaultRecurrenceRule(),
+      reminderLeadDays: -1,
+    });
+  }
+
+  return finalTasks;
 }
 
 function formatCurrency(value: number): string {
@@ -138,21 +202,19 @@ export function AccountForm({ existing, onSaved, onCancel }: AccountFormProps) {
   const [displayName, setDisplayName] = useState(existing?.name ?? '');
   const [balance, setBalance] = useState<number | ''>(existing?.balance ?? '');
   const [kind, setKind] = useState<AccountKind>(existing?.kind ?? 'bank');
+  const [cryptoTicker, setCryptoTicker] = useState(existing?.cryptoTicker ?? '');
+  const [cryptoUnit, setCryptoUnit] = useState<CryptoUnit>(existing?.cryptoUnit ?? 'whole');
   const [showAccountInfo, setShowAccountInfo] = useState(Boolean(existing?.institution));
   const [institution, setInstitution] = useState(existing?.institution ?? '');
   const [accountTasks, setAccountTasks] = useState<TaskDraft[]>(
-    existing?.accountTasks?.map((task) => ({
-      id: task.id,
-      icon: task.icon ?? '',
-      name: task.name,
-      kind: task.kind ?? 'account-task',
-      anticipatedValue: task.anticipatedValue ?? '',
-      recurrenceMode: normalizeRecurrenceMode(task.recurrenceMode),
-      recurrence: toRecurrenceRule(task.recurrence),
-      reminderLeadDays: task.reminderLeadDays ?? 7,
-    })) ?? [makeTransactionLogTask()],
+    existing?.accountTasks?.map(toTaskDraft) ?? [makeTransactionLogTask()],
   );
-  const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
+  const [allowanceTasks, setAllowanceTasks] = useState<TaskDraft[]>(
+    existing?.allowanceTasks?.map(toTaskDraft) ?? [],
+  );
+  const [allowanceContactId, setAllowanceContactId] = useState(existing?.allowanceContactId ?? '');
+  const [expandedAccountTaskId, setExpandedAccountTaskId] = useState<string | null>(null);
+  const [expandedAllowanceTaskId, setExpandedAllowanceTaskId] = useState<string | null>(null);
   const [notes, setNotes] = useState<ResourceNote[]>(existing?.notes ?? []);
 
   const resources = useResourceStore((s) => s.resources);
@@ -160,35 +222,64 @@ export function AccountForm({ existing, onSaved, onCancel }: AccountFormProps) {
   const setUser = useUserStore((s) => s.setUser);
   const user = useUserStore((s) => s.user);
   const currentExisting = existing ? (resources[existing.id] as typeof existing | undefined) : undefined;
+  const contactOptions = Object.values(resources).filter((resource): resource is ContactResource => resource.type === 'contact');
 
   const canSave = displayName.trim().length > 0;
 
-  function addTask() {
-    const nextId = uuidv4();
-    setAccountTasks((prev) => [
-      ...prev,
-      {
-        id: nextId,
-        icon: '',
-        name: '',
-        kind: 'account-task',
-        anticipatedValue: '',
-        recurrenceMode: 'never',
-        recurrence: makeDefaultRecurrenceRule(),
-        reminderLeadDays: 7,
-      },
-    ]);
-    setExpandedTaskId(nextId);
+  const displayedBalance =
+    kind === 'crypto' && cryptoUnit === 'whole' && balance !== ''
+      ? Number((balance / CRYPTO_WHOLE_SCALE).toFixed(8))
+      : balance;
+  const balanceLabel =
+    kind === 'crypto'
+      ? cryptoUnit === 'sats'
+        ? 'Balance (sats)'
+        : `Balance (${cryptoTicker.trim().toUpperCase() || 'whole'})`
+      : 'Balance';
+  const balanceStep = kind === 'crypto' ? (cryptoUnit === 'sats' ? 1 : 0.00000001) : 0.01;
+
+  function handleBalanceChange(value: number | '') {
+    if (value === '') {
+      setBalance('');
+      return;
+    }
+    if (kind !== 'crypto') {
+      setBalance(value);
+      return;
+    }
+    setBalance(cryptoUnit === 'sats' ? Math.round(value) : Math.round(value * CRYPTO_WHOLE_SCALE));
   }
 
-  function updateTask(id: string, field: keyof TaskDraft, value: string | number | ResourceRecurrenceRule) {
-    setAccountTasks((prev) =>
+  function addTask(section: 'account' | 'allowance') {
+    const nextTask = makeBlankTaskDraft();
+    if (section === 'account') {
+      setAccountTasks((prev) => [...prev, nextTask]);
+      setExpandedAccountTaskId(nextTask.id);
+      return;
+    }
+    setAllowanceTasks((prev) => [...prev, nextTask]);
+    setExpandedAllowanceTaskId(nextTask.id);
+  }
+
+  function updateTask(
+    section: 'account' | 'allowance',
+    id: string,
+    field: keyof TaskDraft,
+    value: string | number | ResourceRecurrenceRule,
+  ) {
+    const setTasks = section === 'account' ? setAccountTasks : setAllowanceTasks;
+    setTasks((prev) =>
       prev.map((task) => (task.id === id ? { ...task, [field]: value } : task)),
     );
   }
 
-  function updateTaskRecurrence(id: string, patch: Partial<ResourceRecurrenceRule>) {
-    setAccountTasks((prev) =>
+  function updateTaskRecurrence(
+    section: 'account' | 'allowance',
+    id: string,
+    patch: Partial<ResourceRecurrenceRule>,
+  ) {
+    const setTasks = section === 'account' ? setAccountTasks : setAllowanceTasks;
+    setTasks((prev) =>
       prev.map((task) =>
         task.id === id
           ? { ...task, recurrence: { ...task.recurrence, ...patch } }
@@ -197,8 +288,9 @@ export function AccountForm({ existing, onSaved, onCancel }: AccountFormProps) {
     );
   }
 
-  function toggleTaskDay(id: string, day: RecurrenceDayOfWeek) {
-    setAccountTasks((prev) =>
+  function toggleTaskDay(section: 'account' | 'allowance', id: string, day: RecurrenceDayOfWeek) {
+    const setTasks = section === 'account' ? setAccountTasks : setAllowanceTasks;
+    setTasks((prev) =>
       prev.map((task) => {
         if (task.id !== id) return task;
         const days = task.recurrence.days.includes(day)
@@ -209,45 +301,290 @@ export function AccountForm({ existing, onSaved, onCancel }: AccountFormProps) {
     );
   }
 
-  function removeTask(id: string) {
-    const taskToRemove = accountTasks.find((task) => task.id === id);
-    if (taskToRemove?.kind === 'transaction-log') return;
+  function removeTask(section: 'account' | 'allowance', id: string) {
+    const tasks = section === 'account' ? accountTasks : allowanceTasks;
+    const taskToRemove = tasks.find((task) => task.id === id);
+    if (section === 'account' && taskToRemove?.kind === 'transaction-log') return;
 
-    setAccountTasks((prev) => prev.filter((task) => task.id !== id));
+    const setTasks = section === 'account' ? setAccountTasks : setAllowanceTasks;
+    const setExpandedTaskId = section === 'account' ? setExpandedAccountTaskId : setExpandedAllowanceTaskId;
+    setTasks((prev) => prev.filter((task) => task.id !== id));
     setExpandedTaskId((prev) => (prev === id ? null : prev));
+  }
+
+  function renderTaskSection(
+    section: 'account' | 'allowance',
+    title: string,
+    actionLabel: string,
+  ) {
+    const tasks = section === 'account' ? accountTasks : allowanceTasks;
+    const expandedTaskId = section === 'account' ? expandedAccountTaskId : expandedAllowanceTaskId;
+    const setExpandedTaskId = section === 'account' ? setExpandedAccountTaskId : setExpandedAllowanceTaskId;
+
+    return (
+      <div className="flex flex-col gap-2">
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-medium text-gray-500 dark:text-gray-400">{title}</span>
+          <button
+            type="button"
+            onClick={() => addTask(section)}
+            className="text-xs font-medium text-blue-500 hover:text-blue-600"
+          >
+            {actionLabel}
+          </button>
+        </div>
+        {tasks.map((task) => {
+          const isExpanded = expandedTaskId === task.id;
+          const isLockedTask = section === 'account' && task.kind === 'transaction-log';
+          return (
+            <div key={task.id} className="rounded-lg bg-gray-50 px-3 py-2 dark:bg-gray-700">
+              <button
+                type="button"
+                onClick={() => setExpandedTaskId((prev) => (prev === task.id ? null : task.id))}
+                className="flex w-full items-center gap-3 text-left"
+              >
+                <span className="flex h-9 w-9 items-center justify-center rounded-md bg-white dark:bg-gray-800">
+                  <IconDisplay iconKey={task.icon?.trim() || 'finance'} size={20} className="h-5 w-5 object-contain" alt="" />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm font-medium text-gray-800 dark:text-gray-100">
+                    {task.name.trim() || 'Untitled account task'}
+                  </div>
+                  <div className="truncate text-xs text-gray-500 dark:text-gray-400">
+                    {normalizeRecurrenceMode(task.recurrenceMode) === 'recurring'
+                      ? `${describeTaskSchedule(task)} - ${describeReminder(task.reminderLeadDays)}${task.anticipatedValue !== '' ? ` - ${formatCurrency(task.anticipatedValue)}` : ''}`
+                      : `${describeTaskSchedule(task)}${task.anticipatedValue !== '' ? ` - ${formatCurrency(task.anticipatedValue)}` : ''}`}
+                  </div>
+                </div>
+                <span className="text-xs font-medium text-blue-500">{isExpanded ? 'Close' : 'Edit'}</span>
+              </button>
+
+              {isExpanded ? (
+                <div className="mt-3 space-y-3 border-t border-gray-200 pt-3 dark:border-gray-600">
+                  <div className="flex items-center gap-2">
+                    <IconPicker value={task.icon || 'finance'} onChange={(value) => updateTask(section, task.id, 'icon', value)} align="left" />
+                    {isLockedTask ? (
+                      <div className="flex-1 rounded-md border border-gray-200 bg-gray-100 px-2 py-1.5 text-sm text-gray-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300">
+                        {task.name}
+                      </div>
+                    ) : (
+                      <input
+                        type="text"
+                        value={task.name}
+                        onChange={(event) => updateTask(section, task.id, 'name', event.target.value)}
+                        placeholder="Task name"
+                        maxLength={80}
+                        className="flex-1 rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 focus:border-purple-500 focus:outline-none dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+                      />
+                    )}
+                  </div>
+
+                  <div className="flex items-end gap-2">
+                    <div className="flex rounded-full bg-white p-1 dark:bg-gray-800">
+                      {(['recurring', 'never'] as const).map((mode) => (
+                        <button
+                          key={mode}
+                          type="button"
+                          onClick={() => updateTask(section, task.id, 'recurrenceMode', mode)}
+                          className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                            normalizeRecurrenceMode(task.recurrenceMode) === mode
+                              ? 'bg-blue-500 text-white'
+                              : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
+                          }`}
+                        >
+                          {mode === 'recurring' ? 'Recurring' : 'Intermittent'}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="ml-auto w-36">
+                      <NumberInput
+                        label="Anticipated"
+                        value={task.anticipatedValue}
+                        onChange={(value) => updateTask(section, task.id, 'anticipatedValue', value)}
+                        placeholder="0.00"
+                        step={0.01}
+                      />
+                    </div>
+                  </div>
+
+                  {normalizeRecurrenceMode(task.recurrenceMode) === 'recurring' ? (
+                    <div className="space-y-2 rounded-md border border-gray-200 bg-white px-3 py-3 dark:border-gray-600 dark:bg-gray-800/70">
+                      {task.recurrence.frequency === 'monthly' ? (
+                        <div className="space-y-2">
+                          <div className="grid grid-cols-2 gap-2">
+                            <div className="space-y-1">
+                              <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Every</label>
+                              <input
+                                type="number"
+                                min={1}
+                                max={99}
+                                value={task.recurrence.interval}
+                                onChange={(event) => updateTaskRecurrence(section, task.id, { interval: Math.max(1, Number(event.target.value) || 1) })}
+                                className={SMALL_INPUT_CLS}
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Day of month</label>
+                              <input
+                                type="number"
+                                min={1}
+                                max={31}
+                                value={task.recurrence.monthlyDay ?? getDayOfMonth(task.recurrence.seedDate)}
+                                onChange={(event) =>
+                                  updateTaskRecurrence(section, task.id, {
+                                    monthlyDay: Math.min(31, Math.max(1, Number(event.target.value) || 1)),
+                                  })
+                                }
+                                className={SMALL_INPUT_CLS}
+                              />
+                            </div>
+                          </div>
+                          <p className="text-[11px] text-gray-400 dark:text-gray-500">
+                            Days 29-31 use the last day of shorter months automatically.
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="space-y-1">
+                          <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Interval</label>
+                          <input
+                            type="number"
+                            min={1}
+                            max={99}
+                            value={task.recurrence.interval}
+                            onChange={(event) => updateTaskRecurrence(section, task.id, { interval: Math.max(1, Number(event.target.value) || 1) })}
+                            className={SMALL_INPUT_CLS}
+                          />
+                        </div>
+                      )}
+
+                      <div className="flex items-center gap-2">
+                        <div className="ml-auto">
+                          <select
+                            value={task.recurrence.frequency}
+                            onChange={(event) =>
+                              updateTaskRecurrence(section, task.id, {
+                                frequency: event.target.value as ResourceRecurrenceRule['frequency'],
+                                days: event.target.value === 'weekly' ? task.recurrence.days : [],
+                                monthlyDay:
+                                  event.target.value === 'monthly'
+                                    ? (task.recurrence.monthlyDay ?? getDayOfMonth(task.recurrence.seedDate))
+                                    : null,
+                              })
+                            }
+                            className={`w-36 ${SMALL_INPUT_CLS}`}
+                          >
+                            <option value="daily">Daily</option>
+                            <option value="weekly">Weekly</option>
+                            <option value="monthly">Monthly</option>
+                            <option value="yearly">Yearly</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      {task.recurrence.frequency === 'weekly' ? (
+                        <div className="space-y-1">
+                          <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Days</label>
+                          <div className="flex gap-1">
+                            {DOW_LABELS.map(({ key, label }) => (
+                              <button
+                                key={key}
+                                type="button"
+                                onClick={() => toggleTaskDay(section, task.id, key)}
+                                className={`h-7 w-7 rounded text-xs font-medium transition-colors ${
+                                  task.recurrence.days.includes(key)
+                                    ? 'bg-blue-500 text-white'
+                                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600'
+                                }`}
+                              >
+                                {label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      ) : null}
+
+                      <div className="space-y-1">
+                        <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Start date</label>
+                        <input
+                          type="date"
+                          value={task.recurrence.seedDate}
+                          onChange={(event) =>
+                            updateTaskRecurrence(section, task.id, {
+                              seedDate: event.target.value,
+                              monthlyDay:
+                                task.recurrence.frequency === 'monthly'
+                                  ? (task.recurrence.monthlyDay ?? getDayOfMonth(event.target.value))
+                                  : task.recurrence.monthlyDay,
+                            })
+                          }
+                          className={SMALL_INPUT_CLS}
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Ends on</label>
+                        <input
+                          type="date"
+                          value={task.recurrence.endsOn ?? ''}
+                          onChange={(event) => updateTaskRecurrence(section, task.id, { endsOn: event.target.value || null })}
+                          className={SMALL_INPUT_CLS}
+                        />
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {normalizeRecurrenceMode(task.recurrenceMode) === 'recurring' ? (
+                    <div className="flex items-center gap-2">
+                      <span className="shrink-0 text-xs font-medium text-gray-500 dark:text-gray-400">Reminder:</span>
+                      <select
+                        value={task.reminderLeadDays}
+                        onChange={(event) => updateTask(section, task.id, 'reminderLeadDays', Number(event.target.value))}
+                        className="ml-auto w-40 rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs text-gray-900 focus:border-purple-500 focus:outline-none dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+                      >
+                        <option value={-1}>No reminder</option>
+                        <option value={0}>Day of</option>
+                        <option value={3}>3 days before</option>
+                        <option value={7}>7 days before</option>
+                        <option value={14}>14 days before</option>
+                        <option value={30}>30 days before</option>
+                      </select>
+                    </div>
+                  ) : null}
+
+                  <div className="flex items-center justify-between pt-1">
+                    {isLockedTask ? (
+                      <span className="text-xs text-gray-400">Required task</span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => removeTask(section, task.id)}
+                        className="text-xs text-gray-400 hover:text-red-400"
+                      >
+                        Remove
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setExpandedTaskId(null)}
+                      className="rounded-md bg-blue-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-600"
+                    >
+                      Save
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
+    );
   }
 
   function handleSave() {
     if (!canSave) return;
 
-    const finalTasks: AccountTask[] = accountTasks
-      .filter((task) => task.name.trim().length > 0)
-      .map((task) => {
-        const recurrenceMode = normalizeRecurrenceMode(task.recurrenceMode);
-        return {
-        id: task.id,
-        icon: task.icon.trim(),
-        name: task.name.trim(),
-        kind: task.kind ?? 'account-task',
-        anticipatedValue: task.anticipatedValue === '' ? undefined : task.anticipatedValue,
-        recurrenceMode,
-        recurrence: task.recurrence,
-        reminderLeadDays: recurrenceMode === 'recurring' ? task.reminderLeadDays : -1,
-      };
-      });
-
-    if (!finalTasks.some((task) => task.kind === 'transaction-log')) {
-      finalTasks.unshift({
-        id: uuidv4(),
-        icon: 'finance',
-        name: 'Transaction Log',
-        kind: 'transaction-log',
-        anticipatedValue: undefined,
-        recurrenceMode: 'never',
-        recurrence: makeDefaultRecurrenceRule(),
-        reminderLeadDays: -1,
-      });
-    }
+    const finalTasks = finaliseTaskDrafts(accountTasks, true);
+    const finalAllowanceTasks = finaliseTaskDrafts(allowanceTasks, false);
 
     const now = new Date().toISOString();
     const resource: AccountResource = {
@@ -260,10 +597,14 @@ export function AccountForm({ existing, onSaved, onCancel }: AccountFormProps) {
       kind,
       institution: showAccountInfo ? (institution.trim() || undefined) : undefined,
       balance: balance === '' ? undefined : balance,
+      cryptoUnit: kind === 'crypto' ? cryptoUnit : undefined,
+      cryptoTicker: kind === 'crypto' ? (cryptoTicker.trim().toUpperCase() || undefined) : undefined,
       dueDate: undefined,
       dueDateLeadDays: undefined,
       pendingTransactions: existing?.pendingTransactions ?? [],
       accountTasks: finalTasks,
+      allowanceTasks: kind === 'allowance' && finalAllowanceTasks.length > 0 ? finalAllowanceTasks : undefined,
+      allowanceContactId: kind === 'allowance' ? (allowanceContactId || undefined) : undefined,
       notes,
       links: currentExisting?.links ?? existing?.links,
       linkedHomeId: existing?.linkedHomeId,
@@ -329,11 +670,11 @@ export function AccountForm({ existing, onSaved, onCancel }: AccountFormProps) {
 
         <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] items-end gap-3">
           <NumberInput
-            label="Balance"
-            value={balance}
-            onChange={setBalance}
+            label={balanceLabel}
+            value={displayedBalance}
+            onChange={handleBalanceChange}
             placeholder="0.00"
-            step={0.01}
+            step={balanceStep}
           />
           <div className="flex flex-col gap-1">
             <label className="text-xs font-medium text-gray-500 dark:text-gray-400">
@@ -362,6 +703,37 @@ export function AccountForm({ existing, onSaved, onCancel }: AccountFormProps) {
           </label>
         </div>
 
+        {kind === 'crypto' ? (
+          <div className="grid grid-cols-2 gap-3">
+            <TextInput
+              label="Ticker"
+              value={cryptoTicker}
+              onChange={setCryptoTicker}
+              placeholder="BTC"
+              maxLength={10}
+            />
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Unit</label>
+              <div className="flex rounded-full bg-gray-100 p-1 dark:bg-gray-700">
+                {(['whole', 'sats'] as const).map((unit) => (
+                  <button
+                    key={unit}
+                    type="button"
+                    onClick={() => setCryptoUnit(unit)}
+                    className={`flex-1 rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
+                      cryptoUnit === unit
+                        ? 'bg-blue-500 text-white'
+                        : 'text-gray-500 hover:text-gray-700 dark:text-gray-300 dark:hover:text-gray-100'
+                    }`}
+                  >
+                    {unit === 'whole' ? 'Whole' : 'Sats'}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        ) : null}
+
         {showAccountInfo ? (
           <TextInput
             label="Institution"
@@ -372,263 +744,33 @@ export function AccountForm({ existing, onSaved, onCancel }: AccountFormProps) {
           />
         ) : null}
 
-        <div className="flex flex-col gap-2">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
-              Transaction tasks
-            </span>
-            <button
-              type="button"
-              onClick={addTask}
-              className="text-xs font-medium text-blue-500 hover:text-blue-600"
-            >
-              + Add task
-            </button>
-          </div>
-          {accountTasks.map((task) => {
-            const isExpanded = expandedTaskId === task.id;
-            const isLockedTask = task.kind === 'transaction-log';
-            return (
-              <div key={task.id} className="rounded-lg bg-gray-50 px-3 py-2 dark:bg-gray-700">
-                <button
-                  type="button"
-                  onClick={() => setExpandedTaskId((prev) => (prev === task.id ? null : task.id))}
-                  className="flex w-full items-center gap-3 text-left"
+        {renderTaskSection('account', 'Transaction tasks', '+ Add task')}
+
+        {kind === 'allowance' ? (
+          <>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Recipient</label>
+                <select
+                  value={allowanceContactId}
+                  onChange={(event) => setAllowanceContactId(event.target.value)}
+                  className={SELECT_CLS}
                 >
-                  <span className="flex h-9 w-9 items-center justify-center rounded-md bg-white dark:bg-gray-800">
-                    <IconDisplay iconKey={task.icon?.trim() || 'finance'} size={20} className="h-5 w-5 object-contain" alt="" />
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-sm font-medium text-gray-800 dark:text-gray-100">
-                      {task.name.trim() || 'Untitled account task'}
-                    </div>
-                    <div className="truncate text-xs text-gray-500 dark:text-gray-400">
-                      {normalizeRecurrenceMode(task.recurrenceMode) === 'recurring'
-                        ? `${describeTaskSchedule(task)} - ${describeReminder(task.reminderLeadDays)}${task.anticipatedValue !== '' ? ` - ${formatCurrency(task.anticipatedValue)}` : ''}`
-                        : `${describeTaskSchedule(task)}${task.anticipatedValue !== '' ? ` - ${formatCurrency(task.anticipatedValue)}` : ''}`}
-                    </div>
-                  </div>
-                  <span className="text-xs font-medium text-blue-500">{isExpanded ? 'Close' : 'Edit'}</span>
-                </button>
-
-                {isExpanded ? (
-                  <div className="mt-3 space-y-3 border-t border-gray-200 pt-3 dark:border-gray-600">
-                    <div className="flex items-center gap-2">
-                      <IconPicker value={task.icon || 'finance'} onChange={(value) => updateTask(task.id, 'icon', value)} align="left" />
-                      {isLockedTask ? (
-                        <div className="flex-1 rounded-md border border-gray-200 bg-gray-100 px-2 py-1.5 text-sm text-gray-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300">
-                          {task.name}
-                        </div>
-                      ) : (
-                        <input
-                          type="text"
-                          value={task.name}
-                          onChange={(event) => updateTask(task.id, 'name', event.target.value)}
-                          placeholder="Task name"
-                          maxLength={80}
-                          className="flex-1 rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 focus:border-purple-500 focus:outline-none dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
-                        />
-                      )}
-                    </div>
-
-                    <div className="flex items-end gap-2">
-                      <div className="flex rounded-full bg-white p-1 dark:bg-gray-800">
-                        {(['recurring', 'never'] as const).map((mode) => (
-                          <button
-                            key={mode}
-                            type="button"
-                            onClick={() => updateTask(task.id, 'recurrenceMode', mode)}
-                            className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
-                              normalizeRecurrenceMode(task.recurrenceMode) === mode
-                                ? 'bg-blue-500 text-white'
-                                : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
-                            }`}
-                          >
-                            {mode === 'recurring' ? 'Recurring' : 'Intermittent'}
-                          </button>
-                        ))}
-                      </div>
-                      <div className="ml-auto w-36">
-                        <NumberInput
-                          label="Anticipated"
-                          value={task.anticipatedValue}
-                          onChange={(value) => updateTask(task.id, 'anticipatedValue', value)}
-                          placeholder="0.00"
-                          step={0.01}
-                        />
-                      </div>
-                    </div>
-
-                    {normalizeRecurrenceMode(task.recurrenceMode) === 'recurring' ? (
-                      <div className="space-y-2 rounded-md border border-gray-200 bg-white px-3 py-3 dark:border-gray-600 dark:bg-gray-800/70">
-                        {task.recurrence.frequency === 'monthly' ? (
-                          <div className="space-y-2">
-                            <div className="grid grid-cols-2 gap-2">
-                              <div className="space-y-1">
-                                <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Every</label>
-                                <input
-                                  type="number"
-                                  min={1}
-                                  max={99}
-                                  value={task.recurrence.interval}
-                                  onChange={(event) => updateTaskRecurrence(task.id, { interval: Math.max(1, Number(event.target.value) || 1) })}
-                                  className={SMALL_INPUT_CLS}
-                                />
-                              </div>
-                              <div className="space-y-1">
-                                <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Day of month</label>
-                                <input
-                                  type="number"
-                                  min={1}
-                                  max={31}
-                                  value={task.recurrence.monthlyDay ?? getDayOfMonth(task.recurrence.seedDate)}
-                                  onChange={(event) =>
-                                    updateTaskRecurrence(task.id, {
-                                      monthlyDay: Math.min(31, Math.max(1, Number(event.target.value) || 1)),
-                                    })
-                                  }
-                                  className={SMALL_INPUT_CLS}
-                                />
-                              </div>
-                            </div>
-                            <p className="text-[11px] text-gray-400 dark:text-gray-500">
-                              Days 29-31 use the last day of shorter months automatically.
-                            </p>
-                          </div>
-                        ) : (
-                          <div className="space-y-1">
-                            <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Interval</label>
-                            <input
-                              type="number"
-                              min={1}
-                              max={99}
-                              value={task.recurrence.interval}
-                              onChange={(event) => updateTaskRecurrence(task.id, { interval: Math.max(1, Number(event.target.value) || 1) })}
-                              className={SMALL_INPUT_CLS}
-                            />
-                          </div>
-                        )}
-
-                        <div className="flex items-center gap-2">
-                          <div className="ml-auto">
-                            <select
-                              value={task.recurrence.frequency}
-                              onChange={(event) =>
-                                updateTaskRecurrence(task.id, {
-                                  frequency: event.target.value as ResourceRecurrenceRule['frequency'],
-                                  days: event.target.value === 'weekly' ? task.recurrence.days : [],
-                                  monthlyDay:
-                                    event.target.value === 'monthly'
-                                      ? (task.recurrence.monthlyDay ?? getDayOfMonth(task.recurrence.seedDate))
-                                      : null,
-                                })
-                              }
-                              className={`w-36 ${SMALL_INPUT_CLS}`}
-                            >
-                              <option value="daily">Daily</option>
-                              <option value="weekly">Weekly</option>
-                              <option value="monthly">Monthly</option>
-                              <option value="yearly">Yearly</option>
-                            </select>
-                          </div>
-                        </div>
-
-                        {task.recurrence.frequency === 'weekly' ? (
-                          <div className="space-y-1">
-                            <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Days</label>
-                            <div className="flex gap-1">
-                              {DOW_LABELS.map(({ key, label }) => (
-                                <button
-                                  key={key}
-                                  type="button"
-                                  onClick={() => toggleTaskDay(task.id, key)}
-                                  className={`h-7 w-7 rounded text-xs font-medium transition-colors ${
-                                    task.recurrence.days.includes(key)
-                                      ? 'bg-blue-500 text-white'
-                                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600'
-                                  }`}
-                                >
-                                  {label}
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-                        ) : null}
-
-                        <div className="space-y-1">
-                          <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Start date</label>
-                          <input
-                            type="date"
-                            value={task.recurrence.seedDate}
-                            onChange={(event) =>
-                              updateTaskRecurrence(task.id, {
-                                seedDate: event.target.value,
-                                monthlyDay:
-                                  task.recurrence.frequency === 'monthly'
-                                    ? (task.recurrence.monthlyDay ?? getDayOfMonth(event.target.value))
-                                    : task.recurrence.monthlyDay,
-                              })
-                            }
-                            className={SMALL_INPUT_CLS}
-                          />
-                        </div>
-
-                        <div className="space-y-1">
-                          <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Ends on</label>
-                          <input
-                            type="date"
-                            value={task.recurrence.endsOn ?? ''}
-                            onChange={(event) => updateTaskRecurrence(task.id, { endsOn: event.target.value || null })}
-                            className={SMALL_INPUT_CLS}
-                          />
-                        </div>
-                      </div>
-                    ) : null}
-
-                    {normalizeRecurrenceMode(task.recurrenceMode) === 'recurring' ? (
-                      <div className="flex items-center gap-2">
-                        <span className="shrink-0 text-xs font-medium text-gray-500 dark:text-gray-400">Reminder:</span>
-                        <select
-                          value={task.reminderLeadDays}
-                          onChange={(event) => updateTask(task.id, 'reminderLeadDays', Number(event.target.value))}
-                          className="ml-auto w-40 rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs text-gray-900 focus:border-purple-500 focus:outline-none dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
-                        >
-                          <option value={-1}>No reminder</option>
-                          <option value={0}>Day of</option>
-                          <option value={3}>3 days before</option>
-                          <option value={7}>7 days before</option>
-                          <option value={14}>14 days before</option>
-                          <option value={30}>30 days before</option>
-                        </select>
-                      </div>
-                    ) : null}
-
-                    <div className="flex items-center justify-between pt-1">
-                      {isLockedTask ? (
-                        <span className="text-xs text-gray-400">Required task</span>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => removeTask(task.id)}
-                          className="text-xs text-gray-400 hover:text-red-400"
-                        >
-                          Remove
-                        </button>
-                      )}
-                      <button
-                        type="button"
-                        onClick={() => setExpandedTaskId(null)}
-                        className="rounded-md bg-blue-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-600"
-                      >
-                        Save
-                      </button>
-                    </div>
-                  </div>
-                ) : null}
+                  <option value="">Select contact</option>
+                  {contactOptions.map((contact) => (
+                    <option key={contact.id} value={contact.id}>
+                      {contact.displayName || contact.name}
+                    </option>
+                  ))}
+                </select>
               </div>
-            );
-          })}
-        </div>
+            </div>
+            <p className="text-xs italic text-gray-400">
+              Allowance push available in multi-user.
+            </p>
+            {renderTaskSection('allowance', 'Tasks for allowance recipient', '+ Add allowance task')}
+          </>
+        ) : null}
 
         {(existing?.pendingTransactions?.length ?? 0) > 0 ? (
           <div className="flex flex-col gap-1">

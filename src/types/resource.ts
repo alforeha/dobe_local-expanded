@@ -204,10 +204,12 @@ export interface VehicleMaintenanceTask {
 
 /**
  * Account resource fields - generates: transaction tasks (LOG)
- * kind discriminator: bank | bill | income | debt | subscription | allowance (D42).
+ * kind discriminator: bank | bill | income | debt | subscription | allowance | crypto (D42).
  * pendingTransactions[] for shopping list -> transaction flow.
  */
-export type AccountKind = 'bank' | 'bill' | 'income' | 'debt' | 'subscription' | 'allowance' | string;
+export type AccountKind = 'bank' | 'bill' | 'income' | 'debt' | 'subscription' | 'allowance' | 'crypto' | string;
+
+export type CryptoUnit = 'whole' | 'sats';
 
 export type PendingTransactionStatus = 'pending' | 'assigned' | 'posted';
 
@@ -352,10 +354,14 @@ export interface AccountResource {
   kind: AccountKind;
   institution?: string;
   balance?: number;
+  cryptoUnit?: CryptoUnit;
+  cryptoTicker?: string;
   dueDate?: string;
   dueDateLeadDays?: number;
   pendingTransactions?: PendingTransaction[];
   accountTasks?: AccountTask[];
+  allowanceTasks?: AccountTask[];
+  allowanceContactId?: string;
   notes?: ResourceNote[];
   links?: ResourceLink[];
   linkedHomeId?: string;

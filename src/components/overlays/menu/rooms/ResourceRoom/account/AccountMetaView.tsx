@@ -1,10 +1,12 @@
 // AccountMetaView - read-only display of AccountResource. W25 / G.
 
-import type { AccountResource, AccountTask } from '../../../../../../types/resource';
+import type { AccountResource, AccountTask, ContactResource, CryptoUnit } from '../../../../../../types/resource';
 import { normalizeRecurrenceMode } from '../../../../../../types/resource';
 import { useResourceStore } from '../../../../../../stores/useResourceStore';
 import { IconDisplay } from '../../../../../shared/IconDisplay';
 import { ResourceMetaTabs } from '../shared/ResourceMetaTabs';
+
+const CRYPTO_WHOLE_SCALE = 100_000_000;
 
 interface AccountMetaViewProps {
   resource: AccountResource;
@@ -17,6 +19,17 @@ function formatDate(isoDate: string): string {
 
 function formatBalance(amount: number): string {
   return '$' + amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function formatCryptoBalance(amount: number, ticker: string | undefined, unit: CryptoUnit | undefined): string {
+  if (unit === 'sats') {
+    return `${Math.round(amount).toLocaleString()} sats`;
+  }
+  const wholeValue = (amount / CRYPTO_WHOLE_SCALE).toLocaleString(undefined, {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 8,
+  });
+  return `${wholeValue} ${ticker?.trim().toUpperCase() || 'CRYPTO'}`;
 }
 
 function capitalise(value: string): string {
@@ -38,6 +51,10 @@ function describeAccountTask(task: AccountTask): string {
 
 export function AccountMetaView({ resource }: AccountMetaViewProps) {
   const allResources = useResourceStore((s) => s.resources);
+  const allowanceRecipient =
+    resource.allowanceContactId && allResources[resource.allowanceContactId]?.type === 'contact'
+      ? (allResources[resource.allowanceContactId] as ContactResource)
+      : null;
 
   const linkedResources = [
     resource.linkedHomeId,
@@ -60,6 +77,8 @@ export function AccountMetaView({ resource }: AccountMetaViewProps) {
     !!resource.dueDate ||
     (resource.pendingTransactions?.length ?? 0) > 0 ||
     (resource.accountTasks?.length ?? 0) > 0 ||
+    (resource.allowanceTasks?.length ?? 0) > 0 ||
+    !!resource.allowanceContactId ||
     hasLinked ||
     (resource.notes?.length ?? 0) > 0;
 
@@ -91,9 +110,27 @@ export function AccountMetaView({ resource }: AccountMetaViewProps) {
       {resource.balance != null && (
         <div className="flex gap-2">
           <span className="text-gray-400 w-16 shrink-0">Balance</span>
-          <span>{formatBalance(resource.balance)}</span>
+          <span>
+            {resource.kind === 'crypto'
+              ? formatCryptoBalance(resource.balance, resource.cryptoTicker, resource.cryptoUnit)
+              : formatBalance(resource.balance)}
+          </span>
         </div>
       )}
+
+      {resource.kind === 'crypto' && resource.cryptoTicker ? (
+        <div className="flex gap-2">
+          <span className="text-gray-400 w-16 shrink-0">Ticker</span>
+          <span>{resource.cryptoTicker.trim().toUpperCase()}</span>
+        </div>
+      ) : null}
+
+      {resource.kind === 'crypto' ? (
+        <div className="flex gap-2">
+          <span className="text-gray-400 w-16 shrink-0">Unit</span>
+          <span>{resource.cryptoUnit === 'sats' ? 'Sats' : 'Whole'}</span>
+        </div>
+      ) : null}
 
       {resource.dueDate && (
         <div className="flex gap-2">
@@ -121,6 +158,33 @@ export function AccountMetaView({ resource }: AccountMetaViewProps) {
           <span className="text-gray-400 w-16 shrink-0">Tasks</span>
           <div className="flex flex-col gap-0.5">
             {(resource.accountTasks ?? []).map((task) => (
+              <span key={task.id} className="flex items-center gap-1.5">
+                {task.icon ? <IconDisplay iconKey={task.icon} size={14} className="h-3.5 w-3.5 object-contain" alt="" /> : null}
+                <span>{task.name}</span>
+                <span className="text-gray-400">
+                  - {describeAccountTask(task)}
+                </span>
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {resource.kind === 'allowance' && (
+        <div className="flex gap-2">
+          <span className="text-gray-400 w-16 shrink-0">Recipient</span>
+          <div className="flex flex-col gap-0.5">
+            <span>{allowanceRecipient ? allowanceRecipient.displayName || allowanceRecipient.name : 'Not selected'}</span>
+            <span className="text-[11px] italic text-gray-400">Allowance push available in multi-user.</span>
+          </div>
+        </div>
+      )}
+
+      {(resource.allowanceTasks?.length ?? 0) > 0 && (
+        <div className="flex gap-2">
+          <span className="text-gray-400 w-16 shrink-0">Allowance</span>
+          <div className="flex flex-col gap-0.5">
+            {(resource.allowanceTasks ?? []).map((task) => (
               <span key={task.id} className="flex items-center gap-1.5">
                 {task.icon ? <IconDisplay iconKey={task.icon} size={14} className="h-3.5 w-3.5 object-contain" alt="" /> : null}
                 <span>{task.name}</span>
