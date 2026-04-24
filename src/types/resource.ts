@@ -236,7 +236,7 @@ export interface AccountTask {
   reminderLeadDays: number;
 }
 
-export type DocType = 'reference' | 'manual' | 'contract' | 'recipe' | 'layout' | 'course' | string;
+export type DocType = 'reference' | 'manual' | 'contract' | 'license' | 'recipe' | 'course' | string;
 
 export interface DocRecipeIngredient {
   id: string;
@@ -260,6 +260,15 @@ export interface DocLayoutArea {
 export interface DocContractDepositTemplate {
   name: string;
   value?: number;
+}
+
+export interface ContractTask {
+  id: string;
+  isUnique: boolean;
+  title?: string;
+  taskType?: string;
+  templateRef?: string;
+  parameters?: Record<string, unknown>;
 }
 
 export interface ResourceBase {
@@ -396,6 +405,9 @@ export interface DocResource {
   updatedAt: string;
   docType: DocType;
   url?: string;
+  licensePhoto?: string;
+  licenseNumber?: string;
+  renewalNotes?: string;
   expiryDate?: string;
   expiryLeadDays?: number;
   walkthroughType?: 'linear' | 'checklist' | 'none';
@@ -407,6 +419,7 @@ export interface DocResource {
   linkedContactIds?: string[];
   linkedAccountId?: string;
   contractDepositTemplate?: DocContractDepositTemplate;
+  contractTasks?: ContractTask[];
   trackedTasks?: string[];
   recipeIngredients?: DocRecipeIngredient[];
   recipeSteps?: DocRecipeStep[];
