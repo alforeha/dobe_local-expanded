@@ -28,9 +28,10 @@ export function EventOverlay({ eventId, onClose }: EventOverlayProps) {
   const updateEvent = useScheduleStore((s) => s.updateEvent);
 
   const event = (activeEvents[eventId] ?? historyEvents[eventId]) as Event | undefined;
+  const eventTaskIds = Array.isArray(event?.tasks) ? event.tasks : [];
 
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(
-    event?.tasks?.[0] ?? null,
+    eventTaskIds[0] ?? null,
   );
   const [activeSection, setActiveSection] = useState<ActionBarSection>('actions');
   const [isEditMode, setIsEditMode] = useState(false);
@@ -61,15 +62,16 @@ export function EventOverlay({ eventId, onClose }: EventOverlayProps) {
     };
   }, [event?.completionState, onClose]);
 
-  const effectiveSelectedTaskId = event && selectedTaskId && event.tasks.includes(selectedTaskId)
+  const effectiveSelectedTaskId = event && selectedTaskId && eventTaskIds.includes(selectedTaskId)
     ? selectedTaskId
-    : event?.tasks[0] ?? null;
+    : eventTaskIds[0] ?? null;
 
   const handleTaskComplete = useCallback(() => {
     if (!event) return;
-    const currentIndex = event.tasks.indexOf(effectiveSelectedTaskId ?? '');
-    const after = event.tasks.slice(currentIndex + 1);
-    const before = event.tasks.slice(0, currentIndex);
+    const taskIds = Array.isArray(event.tasks) ? event.tasks : [];
+    const currentIndex = taskIds.indexOf(effectiveSelectedTaskId ?? '');
+    const after = taskIds.slice(currentIndex + 1);
+    const before = taskIds.slice(0, currentIndex);
     const nextPending = [...after, ...before].find(
       (id) => tasks[id]?.completionState !== 'complete',
     );
@@ -101,13 +103,13 @@ export function EventOverlay({ eventId, onClose }: EventOverlayProps) {
   const startDateTime = `${event.startDate} ${event.startTime}`;
   const endDateTime = `${event.endDate} ${event.endTime}`;
 
-  const totalCount = event.tasks.length;
-  const completedCount = event.tasks.filter(
+  const totalCount = eventTaskIds.length;
+  const completedCount = eventTaskIds.filter(
     (id) => tasks[id]?.completionState === 'complete',
   ).length;
   const visibleTaskIds = hideCompleted
-    ? event.tasks.filter((id) => tasks[id]?.completionState !== 'complete')
-    : event.tasks;
+    ? eventTaskIds.filter((id) => tasks[id]?.completionState !== 'complete')
+    : eventTaskIds;
 
   return (
     <div
