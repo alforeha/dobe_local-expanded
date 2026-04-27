@@ -312,7 +312,7 @@ export const useScheduleStore = create<ScheduleState & ScheduleActions>()(
       updateEvent: (eventId, patch) => {
         set((state) => {
           const activeEvent = state.activeEvents[eventId];
-          if (activeEvent?.eventType !== 'quickActions') {
+          if (activeEvent && activeEvent.eventType !== 'quickActions') {
             return {
               activeEvents: {
                 ...state.activeEvents,
@@ -322,7 +322,7 @@ export const useScheduleStore = create<ScheduleState & ScheduleActions>()(
           }
 
           const historyEvent = state.historyEvents[eventId];
-          if (historyEvent?.eventType !== 'quickActions') {
+          if (historyEvent && historyEvent.eventType !== 'quickActions') {
             return {
               historyEvents: {
                 ...state.historyEvents,
@@ -341,7 +341,7 @@ export const useScheduleStore = create<ScheduleState & ScheduleActions>()(
           delete tasks[taskId];
 
           const activeEvent = state.activeEvents[eventId];
-          if (activeEvent?.eventType !== 'quickActions') {
+          if (activeEvent && activeEvent.eventType !== 'quickActions') {
             return {
               tasks,
               activeEvents: {
@@ -355,7 +355,7 @@ export const useScheduleStore = create<ScheduleState & ScheduleActions>()(
           }
 
           const historyEvent = state.historyEvents[eventId];
-          if (historyEvent?.eventType !== 'quickActions') {
+          if (historyEvent && historyEvent.eventType !== 'quickActions') {
             return {
               tasks,
               historyEvents: {
