@@ -244,9 +244,11 @@ function ScheduleTaskPool({ templates, taskPool, setTaskPool }: ScheduleTaskPool
 export function OneOffEventPopup({ editEvent, onClose }: OneOffEventPopupProps) {
   const setPlannedEvent = useScheduleStore((s) => s.setPlannedEvent);
   const removePlannedEvent = useScheduleStore((s) => s.removePlannedEvent);
+  const archiveEvent = useScheduleStore((s) => s.archiveEvent);
   const taskTemplates = useScheduleStore((s) => s.taskTemplates);
 
   const isEditMode = editEvent !== null;
+  const initialStartDate = isEditMode ? editEvent.seedDate : todayISO();
 
   const allTemplates = useMemo(() => {
     return Object.entries(taskTemplates)
@@ -256,9 +258,9 @@ export function OneOffEventPopup({ editEvent, onClose }: OneOffEventPopupProps) 
 
   const [name, setName] = useState(isEditMode ? editEvent.name : '');
   const [iconKey, setIconKey] = useState(isEditMode ? editEvent.icon : 'event');
-  const [startDate, setStartDate] = useState(isEditMode ? editEvent.seedDate : todayISO());
+  const [startDate, setStartDate] = useState(initialStartDate);
   const [startTime, setStartTime] = useState(isEditMode ? editEvent.startTime : '09:00');
-  const [endDate, setEndDate] = useState(isEditMode ? (editEvent.dieDate ?? editEvent.seedDate) : todayISO());
+  const [endDate, setEndDate] = useState(isEditMode ? (editEvent.dieDate ?? editEvent.seedDate) : initialStartDate);
   const [endTime, setEndTime] = useState(isEditMode ? editEvent.endTime : addHour('09:00'));
   const [color, setColor] = useState(isEditMode ? editEvent.color : '#6366f1');
   const [taskPool, setTaskPool] = useState<string[]>(isEditMode ? editEvent.taskPool : []);
@@ -266,6 +268,7 @@ export function OneOffEventPopup({ editEvent, onClose }: OneOffEventPopupProps) 
   const [description, setDescription] = useState(isEditMode ? editEvent.description : '');
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [error, setError] = useState('');
+  const [dateError, setDateError] = useState('');
 
   const inputCls =
     'w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-800 focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200';
@@ -278,10 +281,17 @@ export function OneOffEventPopup({ editEvent, onClose }: OneOffEventPopupProps) 
       setError('Name is required.');
       return;
     }
-    if (!endsAfterStart) {
-      setError('End date and time must be after the start.');
+    if (startDate > endDate) {
+      setDateError('Start date must be before end date');
       return;
     }
+    if (!endsAfterStart) {
+      setDateError('End date and time must be after the start.');
+      return;
+    }
+
+    setError('');
+    setDateError('');
 
     const today = todayISO();
     const recurrenceInterval = {
@@ -291,6 +301,8 @@ export function OneOffEventPopup({ editEvent, onClose }: OneOffEventPopupProps) 
       endsOn: startDate,
       customCondition: null,
     };
+    const shouldMaterialiseImmediately = startDate <= today;
+    const isHistoricalEvent = endDate < today;
 
     if (isEditMode) {
       const updated: PlannedEvent = {
@@ -309,9 +321,12 @@ export function OneOffEventPopup({ editEvent, onClose }: OneOffEventPopupProps) 
       };
       setPlannedEvent(updated);
 
-      if (startDate <= today) {
+      if (shouldMaterialiseImmediately) {
         const currentTemplates = useScheduleStore.getState().taskTemplates;
-        materialisePlannedEvent(updated, today, currentTemplates);
+        const { event } = materialisePlannedEvent(updated, startDate, currentTemplates);
+        if (isHistoricalEvent) {
+          archiveEvent(event.id);
+        }
         // One-off event is now active — remove from plannedEvents
         removePlannedEvent(editEvent.id);
         storageDelete(storageKey.plannedEvent(editEvent.id));
@@ -339,13 +354,14 @@ export function OneOffEventPopup({ editEvent, onClose }: OneOffEventPopupProps) 
         pushReminder: null,
       };
 
-      if (startDate <= today) {
+      if (shouldMaterialiseImmediately) {
         // Materialise immediately — no need to keep in plannedEvents
         setPlannedEvent(newEvent);
         const currentTemplates = useScheduleStore.getState().taskTemplates;
-        materialisePlannedEvent(newEvent, today, currentTemplates);
-        removePlannedEvent(id);
-        storageDelete(storageKey.plannedEvent(id));
+        const { event } = materialisePlannedEvent(newEvent, startDate, currentTemplates);
+        if (isHistoricalEvent) {
+          archiveEvent(event.id);
+        }
       } else {
         // Future event — keep in plannedEvents for midnight rollover
         setPlannedEvent(newEvent);
@@ -405,6 +421,7 @@ export function OneOffEventPopup({ editEvent, onClose }: OneOffEventPopupProps) 
                   setEndDate(nextDate);
                 }
                 setError('');
+                setDateError('');
               }}
               className={inputCls}
             />
@@ -419,6 +436,7 @@ export function OneOffEventPopup({ editEvent, onClose }: OneOffEventPopupProps) 
                 if (!isEditMode && startDate === endDate) {
                   setEndTime(addHour(nextTime));
                 }
+                setDateError('');
               }}
               className={inputCls}
             />
@@ -434,6 +452,7 @@ export function OneOffEventPopup({ editEvent, onClose }: OneOffEventPopupProps) 
               onChange={(event) => {
                 setEndDate(event.target.value);
                 setError('');
+                setDateError('');
               }}
               className={inputCls}
             />
@@ -445,11 +464,14 @@ export function OneOffEventPopup({ editEvent, onClose }: OneOffEventPopupProps) 
               onChange={(event) => {
                 setEndTime(event.target.value);
                 setError('');
+                setDateError('');
               }}
               className={inputCls}
             />
           </Field>
         </div>
+
+        {dateError && <p className="text-sm text-red-500">{dateError}</p>}
 
         <div className="min-h-0 flex-1 overflow-hidden">
           <Field
