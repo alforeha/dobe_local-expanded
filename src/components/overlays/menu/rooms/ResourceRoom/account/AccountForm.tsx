@@ -46,11 +46,14 @@ interface TaskDraft {
   icon: string;
   name: string;
   kind?: 'account-task' | 'transaction-log';
+  taskType?: string;
   anticipatedValue: number | '';
   recurrenceMode: 'recurring' | 'never';
   recurrence: ResourceRecurrenceRule;
   reminderLeadDays: number;
 }
+
+const RESOURCE_TASK_TYPE_OPTIONS = ['CHECK', 'COUNTER', 'DURATION', 'TIMER', 'RATING', 'TEXT'] as const;
 
 interface AllowanceTaskSourceOption {
   value: string;
@@ -94,6 +97,7 @@ function makeTransactionLogTask(): TaskDraft {
     icon: 'finance',
     name: 'Transaction Log',
     kind: 'transaction-log',
+    taskType: 'TEXT',
     anticipatedValue: '',
     recurrenceMode: 'never',
     recurrence: makeDefaultRecurrenceRule(),
@@ -107,6 +111,7 @@ function makeBlankTaskDraft(): TaskDraft {
     icon: '',
     name: '',
     kind: 'account-task',
+    taskType: 'CHECK',
     anticipatedValue: '',
     recurrenceMode: 'never',
     recurrence: makeDefaultRecurrenceRule(),
@@ -128,10 +133,12 @@ function buildTaskDraftSeed(
   recurrence: ResourceRecurrenceRule = makeDefaultRecurrenceRule(),
   reminderLeadDays = 7,
   anticipatedValue: number | '' = '',
+  taskType: string = 'CHECK',
 ): Omit<TaskDraft, 'id' | 'kind'> {
   return {
     icon,
     name,
+    taskType,
     anticipatedValue,
     recurrenceMode,
     recurrence: cloneRecurrenceRule(recurrence),
@@ -145,6 +152,7 @@ function makeTaskDraftFromSeed(seed: Omit<TaskDraft, 'id' | 'kind'>): TaskDraft 
     kind: 'account-task',
     icon: seed.icon,
     name: seed.name,
+    taskType: seed.taskType,
     anticipatedValue: seed.anticipatedValue,
     recurrenceMode: seed.recurrenceMode,
     recurrence: cloneRecurrenceRule(seed.recurrence),
@@ -158,6 +166,7 @@ function toTaskDraft(task: AccountTask): TaskDraft {
     icon: task.icon ?? '',
     name: task.name,
     kind: task.kind ?? 'account-task',
+    taskType: task.taskType ?? (task.kind === 'transaction-log' ? 'TEXT' : 'CHECK'),
     anticipatedValue: task.anticipatedValue ?? '',
     recurrenceMode: normalizeRecurrenceMode(task.recurrenceMode),
     recurrence: toRecurrenceRule(task.recurrence),
@@ -175,6 +184,7 @@ function finaliseTaskDrafts(taskDrafts: TaskDraft[], ensureTransactionLog: boole
         icon: task.icon.trim(),
         name: task.name.trim(),
         kind: task.kind ?? 'account-task',
+        taskType: task.taskType ?? (task.kind === 'transaction-log' ? 'TEXT' : 'CHECK'),
         anticipatedValue: task.anticipatedValue === '' ? undefined : task.anticipatedValue,
         recurrenceMode,
         recurrence: task.recurrence,
@@ -188,6 +198,7 @@ function finaliseTaskDrafts(taskDrafts: TaskDraft[], ensureTransactionLog: boole
       icon: 'finance',
       name: 'Transaction Log',
       kind: 'transaction-log',
+      taskType: 'TEXT',
       anticipatedValue: undefined,
       recurrenceMode: 'never',
       recurrence: makeDefaultRecurrenceRule(),
@@ -632,6 +643,20 @@ export function AccountForm({ existing, onSaved, onCancel }: AccountFormProps) {
                         className="flex-1 rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 focus:border-purple-500 focus:outline-none dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
                       />
                     )}
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Task type</label>
+                    <select
+                      value={task.taskType ?? (isLockedTask ? 'TEXT' : 'CHECK')}
+                      onChange={(event) => updateTask(section, task.id, 'taskType', event.target.value)}
+                      disabled={isLockedTask}
+                      className={SMALL_INPUT_CLS}
+                    >
+                      {RESOURCE_TASK_TYPE_OPTIONS.map((taskType) => (
+                        <option key={taskType} value={taskType}>{taskType}</option>
+                      ))}
+                    </select>
                   </div>
 
                   <div className="flex items-end gap-2">

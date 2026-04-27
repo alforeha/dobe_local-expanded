@@ -1,4 +1,4 @@
-import type { CircuitInputFields, LogInputFields, TaskType } from './taskTemplate';
+import type { InputFields } from './taskTemplate';
 
 // RESOURCE - RESOURCE CLUSTER
 // Parent object for all real-world resources.
@@ -106,6 +106,7 @@ export interface HomeStory {
 export interface ItemRecurringTask {
   id: string;
   taskTemplateRef: string;
+  taskType?: string;
   recurrenceMode?: 'recurring' | 'never';
   recurrence: ResourceRecurrenceRule;
   reminderLeadDays?: number;
@@ -176,6 +177,7 @@ export interface HomeChore {
   id: string;
   icon: string;
   name: string;
+  taskType?: string;
   recurrenceMode?: 'recurring' | 'never';
   recurrence: ResourceRecurrenceRule;
   /** Days before task triggers a GTD push. Default 0. -1 = never. */
@@ -252,8 +254,8 @@ export interface VehicleMaintenanceTask {
   icon: string;
   name: string;
   kind?: 'maintenance' | 'mileage-log';
-  taskType?: Extract<TaskType, 'CIRCUIT' | 'LOG'>;
-  inputFields?: CircuitInputFields | LogInputFields;
+  taskType?: string;
+  inputFields?: Partial<InputFields>;
   recurrenceMode?: 'recurring' | 'never';
   recurrence: ResourceRecurrenceRule;
   /** Days before task triggers a GTD push. Default 14. -1 = never. */
@@ -312,6 +314,7 @@ export interface AccountTask {
   icon: string;
   name: string;
   kind?: 'account-task' | 'transaction-log';
+  taskType?: string;
   anticipatedValue?: number;
   recurrenceMode?: 'recurring' | 'never';
   recurrence: ResourceRecurrenceRule;

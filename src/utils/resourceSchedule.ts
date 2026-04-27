@@ -36,9 +36,10 @@ function isIntermittentOnDate(
   return rule?.seedDate === dateISO;
 }
 
-function isRuleOnDate(rule: ResourceRecurrenceRule, dateISO: string): boolean {
+function isRuleOnDate(rule: ResourceRecurrenceRule, dateISO: string, excludeSeedDate = false): boolean {
   if (!rule?.seedDate) return false;
   if (rule.seedDate > dateISO) return false;
+  if (excludeSeedDate && rule.seedDate === dateISO) return false;
   if (rule.endsOn && rule.endsOn < dateISO) return false;
 
   const target = new Date(`${dateISO}T00:00:00`);
@@ -126,7 +127,7 @@ export function getResourceIndicatorsForDate(dateISO: string, resources: Resourc
       if (resource.insuranceExpiry === dateISO) indicators.push(makeIndicator(resource, 'document', 'Insurance expiry'));
       for (const task of resource.maintenanceTasks ?? []) {
         if (normalizeRecurrenceMode(task.recurrenceMode) === 'recurring') {
-          if (isRuleOnDate(task.recurrence, dateISO)) {
+          if (isRuleOnDate(task.recurrence, dateISO, true)) {
             indicators.push(makeIndicator(resource, task.icon || 'vehicle', task.name || 'Intermittent task'));
           }
         } else if (isIntermittentOnDate(task.recurrenceMode, task.recurrence, dateISO)) {
@@ -141,7 +142,7 @@ export function getResourceIndicatorsForDate(dateISO: string, resources: Resourc
       }
       for (const task of resource.accountTasks ?? []) {
         if (normalizeRecurrenceMode(task.recurrenceMode) === 'recurring') {
-          if (isRuleOnDate(task.recurrence, dateISO)) {
+          if (isRuleOnDate(task.recurrence, dateISO, true)) {
             indicators.push(makeIndicator(resource, task.icon || 'account', task.name || 'Intermittent task'));
           }
         } else if (isIntermittentOnDate(task.recurrenceMode, task.recurrence, dateISO)) {

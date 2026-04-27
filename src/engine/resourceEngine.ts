@@ -31,7 +31,7 @@ import type {
 import { normalizeRecurrenceMode } from '../types/resource';
 import type { PlannedEvent } from '../types/plannedEvent';
 import type { Task } from '../types/task';
-import type { CircuitInputFields } from '../types/taskTemplate';
+import type { CircuitInputFields, InputFields, TaskType } from '../types/taskTemplate';
 import type { XpAward } from '../types/taskTemplate';
 import type { StatGroupKey, User } from '../types/user';
 import { getAppDate, getAppNowISO, localISODate } from '../utils/dateUtils';
@@ -233,6 +233,10 @@ export function triggerVehicleInspectionTask(resource: VehicleResource): 'queued
     today,
     inspectionTask.name,
     { label: inspectionTask.name } as Task['resultFields'],
+    {
+      taskType: inspectionTask.taskType ?? 'CIRCUIT',
+      inputFields: inspectionTask.inputFields,
+    },
   );
 
   scheduleStore.setTask(queuedTask);
@@ -551,7 +555,7 @@ function isRecurrenceOnDate(rule: ResourceRecurrenceRule, dateISO: string): bool
 
 function computeNextOccurrence(rule: ResourceRecurrenceRule, referenceDate: string): { date: string; days: number } {
   const start = parseISODate(referenceDate);
-  for (let offset = 0; offset <= 366 * 5; offset++) {
+  for (let offset = 1; offset <= 366 * 5; offset++) {
     const candidate = new Date(start);
     candidate.setDate(candidate.getDate() + offset);
     const candidateISO = localISODate(candidate);
@@ -577,6 +581,45 @@ function buildResourceTaskFields(
 
 function buildResourceTaskDedupKey(resourceTaskId: string, dueDate: string): string {
   return `${resourceTaskId}::${dueDate}`;
+}
+
+interface UniqueResourceTaskConfig {
+  taskType?: string | null;
+  inputFields?: Partial<InputFields> | null;
+}
+
+function buildUniqueResourceTaskInputFields(
+  taskType: string,
+  title?: string,
+  inputFields?: Partial<InputFields> | null,
+): Partial<InputFields> {
+  switch (taskType as TaskType) {
+    case 'COUNTER':
+      return { target: 1, unit: 'count', step: 1, ...(inputFields ?? {}) };
+    case 'DURATION': {
+      const durationFields = (inputFields ?? {}) as {
+        targetDuration?: number;
+        unit?: 'seconds' | 'minutes' | 'hours';
+      };
+      return {
+        targetDuration: durationFields.targetDuration ?? 300,
+        unit: durationFields.unit ?? 'minutes',
+      };
+    }
+    case 'TIMER':
+      return { countdownFrom: 300, ...(inputFields ?? {}) };
+    case 'RATING':
+      return { scale: 5, label: title ?? 'Rate this', ...(inputFields ?? {}) };
+    case 'TEXT':
+      return { prompt: title ?? 'Add details', maxLength: null, ...(inputFields ?? {}) };
+    case 'LOG':
+      return { prompt: title ?? null, ...(inputFields ?? {}) };
+    case 'CIRCUIT':
+      return { label: title ?? 'Circuit', steps: [], rounds: 1, restBetweenRounds: null, ...(inputFields ?? {}) };
+    case 'CHECK':
+    default:
+      return { label: title ?? 'Done', ...(inputFields ?? {}) };
+  }
 }
 
 function readResourceTaskIdentity(task: Task): { resourceTaskId: string; dueDate: string } | null {
@@ -609,14 +652,25 @@ function buildResourceReminderTask(
   dueDate: string,
   title?: string,
   resultFields: Task['resultFields'] = {},
+  uniqueTaskConfig?: UniqueResourceTaskConfig,
 ): Task {
+  const resolvedTaskType = uniqueTaskConfig?.taskType?.trim() || null;
+  const uniqueFields = resolvedTaskType
+    ? buildUniqueResourceTaskInputFields(resolvedTaskType, title, uniqueTaskConfig?.inputFields)
+    : {};
+
   return {
     id: uuidv4(),
     templateRef: templateKey,
+    isUnique: resolvedTaskType ? true : undefined,
     title: title ?? null,
+    taskType: resolvedTaskType,
     completionState: 'pending',
     completedAt: null,
-    resultFields: buildResourceTaskFields(resourceTaskId, dueDate, resultFields),
+    resultFields: buildResourceTaskFields(resourceTaskId, dueDate, {
+      ...uniqueFields,
+      ...resultFields,
+    }),
     attachmentRef: null,
     resourceRef: resourceId,
     location: null,
@@ -822,6 +876,7 @@ function _genAccountGTD(resource: AccountResource, referenceDate: string): Task[
         next.date,
         task.name,
         { label: task.name } as Task['resultFields'],
+        { taskType: task.taskType ?? 'CHECK' },
       ),
     );
   }
@@ -916,6 +971,7 @@ function _genInventoryGTD(resource: InventoryResource, referenceDate: string): T
           next.date,
           resolveTaskTemplateName(recurringTask.taskTemplateRef),
           { label: resolveTaskTemplateName(recurringTask.taskTemplateRef) } as Task['resultFields'],
+          { taskType: recurringTask.taskType ?? 'CHECK' },
         ),
       );
     }
@@ -1044,6 +1100,7 @@ function _genHomeGTD(resource: HomeResource, referenceDate: string): Task[] {
         next.date,
         chore.name,
         { label: chore.name } as Task['resultFields'],
+        { taskType: chore.taskType ?? 'CHECK' },
       ),
     );
   }
@@ -1121,6 +1178,10 @@ function _genVehicleGTD(resource: VehicleResource, referenceDate: string): Task[
         next.date,
         task.name,
         { label: task.name } as Task['resultFields'],
+        {
+          taskType: task.taskType ?? 'CHECK',
+          inputFields: task.inputFields,
+        },
       ),
     );
   }

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import { normalizeCircuitInputFields, type CircuitInputFields, type CircuitStep, type CircuitStepType, type LogInputFields } from '../../../../../../types/taskTemplate';
+import { normalizeCircuitInputFields, type CircuitInputFields, type CircuitStep, type CircuitStepType } from '../../../../../../types/taskTemplate';
 import type {
   ResourceRecurrenceRule,
   RecurrenceDayOfWeek,
@@ -36,11 +36,13 @@ interface TaskDraft {
   name: string;
   kind?: 'maintenance' | 'mileage-log';
   taskType?: VehicleMaintenanceTask['taskType'];
-  inputFields?: CircuitInputFields | LogInputFields;
+  inputFields?: VehicleMaintenanceTask['inputFields'];
   recurrenceMode: 'recurring' | 'never';
   recurrence: ResourceRecurrenceRule;
   reminderLeadDays: number;
 }
+
+const RESOURCE_TASK_TYPE_OPTIONS = ['CHECK', 'COUNTER', 'DURATION', 'TIMER', 'RATING', 'TEXT'] as const;
 
 const CIRCUIT_STEP_TYPES: CircuitStepType[] = ['CHECK', 'CHOICE', 'COUNTER', 'DURATION', 'TIMER', 'RATING', 'TEXT', 'SCAN'];
 
@@ -85,7 +87,8 @@ function makeMileageLogTask(): TaskDraft {
     icon: 'vehicle',
     name: 'Mileage Log',
     kind: 'mileage-log',
-    taskType: 'LOG',
+    taskType: 'COUNTER',
+    inputFields: { target: 1, unit: 'miles', step: 1 },
     recurrenceMode: 'never',
     recurrence: makeDefaultRecurrenceRule(),
     reminderLeadDays: -1,
@@ -222,7 +225,7 @@ export function VehicleForm({ existing, onSaved, onCancel }: VehicleFormProps) {
       icon: task.icon ?? '',
       name: task.name,
       kind: task.kind ?? 'maintenance',
-      taskType: task.taskType,
+      taskType: task.taskType ?? (task.kind === 'mileage-log' ? 'COUNTER' : 'CHECK'),
       inputFields: task.taskType === 'CIRCUIT'
         ? normalizeCircuitInputFields(task.inputFields as CircuitInputFields)
         : task.inputFields,
@@ -252,6 +255,7 @@ export function VehicleForm({ existing, onSaved, onCancel }: VehicleFormProps) {
         icon: '',
         name: '',
         kind: 'maintenance',
+        taskType: 'CHECK',
         recurrenceMode: 'never',
         recurrence: makeDefaultRecurrenceRule(),
         reminderLeadDays: 14,
@@ -383,7 +387,7 @@ export function VehicleForm({ existing, onSaved, onCancel }: VehicleFormProps) {
         icon: task.icon.trim(),
         name: task.name.trim(),
         kind: task.kind ?? 'maintenance',
-        taskType: task.taskType,
+        taskType: task.taskType ?? (task.kind === 'mileage-log' ? 'COUNTER' : 'CHECK'),
         inputFields: task.taskType === 'CIRCUIT'
           ? normalizeCircuitInputFields(task.inputFields as CircuitInputFields | undefined)
           : task.inputFields,
@@ -398,7 +402,8 @@ export function VehicleForm({ existing, onSaved, onCancel }: VehicleFormProps) {
         icon: 'vehicle',
         name: 'Mileage Log',
         kind: 'mileage-log',
-        taskType: 'LOG',
+        taskType: 'COUNTER',
+        inputFields: { target: 1, unit: 'miles', step: 1 },
         recurrenceMode: 'never',
         recurrence: makeDefaultRecurrenceRule(),
         reminderLeadDays: -1,
@@ -666,6 +671,25 @@ export function VehicleForm({ existing, onSaved, onCancel }: VehicleFormProps) {
                           maxLength={80}
                           className="flex-1 rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 focus:border-purple-500 focus:outline-none dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
                         />
+                      )}
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Task type</label>
+                      {task.taskType === 'CIRCUIT' ? (
+                        <div className="rounded-md border border-gray-200 bg-gray-100 px-2 py-1.5 text-sm text-gray-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300">
+                          CIRCUIT
+                        </div>
+                      ) : (
+                        <select
+                          value={task.taskType ?? 'CHECK'}
+                          onChange={(event) => updateTaskPatch(task.id, { taskType: event.target.value })}
+                          className={SMALL_INPUT_CLS}
+                        >
+                          {RESOURCE_TASK_TYPE_OPTIONS.map((taskType) => (
+                            <option key={taskType} value={taskType}>{taskType}</option>
+                          ))}
+                        </select>
                       )}
                     </div>
 

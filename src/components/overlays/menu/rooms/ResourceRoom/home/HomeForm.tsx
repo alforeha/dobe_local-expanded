@@ -34,11 +34,14 @@ interface ChoreDraft {
   id: string;
   icon: string;
   name: string;
+  taskType: string;
   recurrence: ResourceRecurrenceRule;
   recurrenceMode: 'recurring' | 'never';
   reminderLeadDays: number;
   assignedTo: string;
 }
+
+const RESOURCE_TASK_TYPE_OPTIONS = ['CHECK', 'COUNTER', 'DURATION', 'TIMER', 'RATING', 'TEXT'] as const;
 
 const DOW_LABELS: { key: RecurrenceDayOfWeek; label: string }[] = [
   { key: 'sun', label: 'Su' },
@@ -159,6 +162,7 @@ export function HomeForm({ existing, onSaved, onCancel }: HomeFormProps) {
       id: chore.id,
       icon: chore.icon ?? '',
       name: chore.name,
+      taskType: chore.taskType ?? 'CHECK',
       recurrence: toRecurrenceRule(chore.recurrence),
       recurrenceMode: normalizeRecurrenceMode(chore.recurrenceMode),
       reminderLeadDays: chore.reminderLeadDays ?? 0,
@@ -190,6 +194,7 @@ export function HomeForm({ existing, onSaved, onCancel }: HomeFormProps) {
           id: chore.id,
           icon: chore.icon ?? '',
           name: chore.name,
+          taskType: chore.taskType ?? 'CHECK',
           recurrence: toRecurrenceRule(chore.recurrence),
           recurrenceMode: normalizeRecurrenceMode(chore.recurrenceMode),
           reminderLeadDays: chore.reminderLeadDays ?? 0,
@@ -213,6 +218,7 @@ export function HomeForm({ existing, onSaved, onCancel }: HomeFormProps) {
       id: nextId,
       icon: '',
       name: '',
+      taskType: 'CHECK',
       recurrence: makeDefaultRecurrenceRule(),
       recurrenceMode: 'never',
       reminderLeadDays: 0,
@@ -264,6 +270,7 @@ export function HomeForm({ existing, onSaved, onCancel }: HomeFormProps) {
         id: chore.id,
         icon: chore.icon.trim(),
         name: chore.name.trim(),
+        taskType: chore.taskType || 'CHECK',
         recurrenceMode: normalizeRecurrenceMode(chore.recurrenceMode),
         recurrence: chore.recurrence,
         reminderLeadDays: normalizeRecurrenceMode(chore.recurrenceMode) === 'recurring' ? chore.reminderLeadDays : -1,
@@ -430,6 +437,19 @@ export function HomeForm({ existing, onSaved, onCancel }: HomeFormProps) {
                     <div className="flex items-center gap-2">
                       <IconPicker value={chore.icon || 'home'} onChange={(value) => updateChore(chore.id, 'icon', value)} align="left" />
                       <input type="text" value={chore.name} onChange={(event) => updateChore(chore.id, 'name', event.target.value)} placeholder="Chore name" className="flex-1 rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100" />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Task type</label>
+                      <select
+                        value={chore.taskType}
+                        onChange={(event) => updateChore(chore.id, 'taskType', event.target.value)}
+                        className={SMALL_INPUT_CLS}
+                      >
+                        {RESOURCE_TASK_TYPE_OPTIONS.map((taskType) => (
+                          <option key={taskType} value={taskType}>{taskType}</option>
+                        ))}
+                      </select>
                     </div>
 
                     <div className="flex items-center gap-2">

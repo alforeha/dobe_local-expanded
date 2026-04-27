@@ -2,11 +2,12 @@ import { useEffect, useMemo, useState } from 'react';
 import { useScheduleStore } from '../../../stores/useScheduleStore';
 import { completeTask, uncompleteTask, removeTaskFromEvent } from '../../../engine/eventExecution';
 import { starterTaskTemplates } from '../../../coach/StarterQuestLibrary';
-import type { TaskType, InputFields } from '../../../types/taskTemplate';
+import type { TaskType, InputFields, TaskTemplate } from '../../../types/taskTemplate';
 import { TaskTypeInputRenderer } from './TaskTypeInputRenderer';
 import { getOffsetNow } from '../../../utils/dateUtils';
 import { getTaskCooldownState } from '../../../utils/taskCooldown';
 import { resolveTaskDisplayName } from '../../../utils/resolveTaskDisplayName';
+import type { Task } from '../../../types/task';
 
 interface TaskBlockProps {
   taskId: string | null;
@@ -41,6 +42,30 @@ function getSubmitLabel(taskType: TaskType): string {
   }
 }
 
+function buildUniqueTaskTemplate(task: Task | null): TaskTemplate | null {
+  if (!task?.isUnique || !task.taskType) return null;
+
+  return {
+    name: task.title ?? 'Unique task',
+    description: '',
+    icon: 'task',
+    taskType: task.taskType as TaskType,
+    inputFields: task.resultFields as InputFields,
+    xpAward: {
+      health: 0,
+      strength: 0,
+      agility: 0,
+      defense: 0,
+      charisma: 0,
+      wisdom: 0,
+    },
+    cooldown: null,
+    media: null,
+    items: [],
+    secondaryTag: task.secondaryTag ?? null,
+  };
+}
+
 export function TaskBlock({ taskId, eventId, onTaskComplete, onPreviewResultChange, className }: TaskBlockProps) {
   const [nowMs, setNowMs] = useState(() => getOffsetNow().getTime());
   const [resultState, setResultState] = useState<{ taskId: string | null; result: Partial<InputFields> }>({
@@ -52,12 +77,11 @@ export function TaskBlock({ taskId, eventId, onTaskComplete, onPreviewResultChan
   const tasks = useScheduleStore((s) => s.tasks);
   const taskTemplates = useScheduleStore((s) => s.taskTemplates);
   const task = taskId ? tasks[taskId] : null;
+  const resolvedTemplate = task?.templateRef
+    ? taskTemplates[task.templateRef] ?? starterTaskTemplates.find((t) => t.id === task.templateRef) ?? null
+    : null;
   const template = task
-    ? (task.templateRef
-       ? taskTemplates[task.templateRef] ??
-         starterTaskTemplates.find((t) => t.id === task.templateRef) ??
-         null
-       : null)
+    ? (resolvedTemplate ?? buildUniqueTaskTemplate(task))
     : null;
   const taskType: TaskType = (task?.isUnique && task.taskType ? task.taskType as TaskType : template?.taskType) ?? 'CHECK';
   const taskDisplayName = task ? resolveTaskDisplayName(task, taskTemplates, starterTaskTemplates) : 'Unknown task';
