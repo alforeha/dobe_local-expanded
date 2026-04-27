@@ -32,10 +32,8 @@ function isIntermittentOnDate(
   rule: ResourceRecurrenceRule | undefined,
   dateISO: string,
 ): boolean {
-  void recurrenceMode;
-  void rule;
-  void dateISO;
-  return false;
+  if (normalizeRecurrenceMode(recurrenceMode) !== 'never') return false;
+  return rule?.seedDate === dateISO;
 }
 
 function isRuleOnDate(rule: ResourceRecurrenceRule, dateISO: string): boolean {
@@ -127,7 +125,11 @@ export function getResourceIndicatorsForDate(dateISO: string, resources: Resourc
       if (resource.serviceNextDate === dateISO) indicators.push(makeIndicator(resource, 'vehicle', 'Service due'));
       if (resource.insuranceExpiry === dateISO) indicators.push(makeIndicator(resource, 'document', 'Insurance expiry'));
       for (const task of resource.maintenanceTasks ?? []) {
-        if (isIntermittentOnDate(task.recurrenceMode, task.recurrence, dateISO)) {
+        if (normalizeRecurrenceMode(task.recurrenceMode) === 'recurring') {
+          if (isRuleOnDate(task.recurrence, dateISO)) {
+            indicators.push(makeIndicator(resource, task.icon || 'vehicle', task.name || 'Intermittent task'));
+          }
+        } else if (isIntermittentOnDate(task.recurrenceMode, task.recurrence, dateISO)) {
           indicators.push(makeIndicator(resource, task.icon || 'vehicle', task.name || 'Intermittent task'));
         }
       }
@@ -138,7 +140,11 @@ export function getResourceIndicatorsForDate(dateISO: string, resources: Resourc
         indicators.push(makeIndicator(resource, 'account', 'Due date'));
       }
       for (const task of resource.accountTasks ?? []) {
-        if (isIntermittentOnDate(task.recurrenceMode, task.recurrence, dateISO)) {
+        if (normalizeRecurrenceMode(task.recurrenceMode) === 'recurring') {
+          if (isRuleOnDate(task.recurrence, dateISO)) {
+            indicators.push(makeIndicator(resource, task.icon || 'account', task.name || 'Intermittent task'));
+          }
+        } else if (isIntermittentOnDate(task.recurrenceMode, task.recurrence, dateISO)) {
           indicators.push(makeIndicator(resource, task.icon || 'account', task.name || 'Intermittent task'));
         }
       }

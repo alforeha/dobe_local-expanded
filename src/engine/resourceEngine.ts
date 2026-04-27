@@ -807,8 +807,9 @@ function _genAccountGTD(resource: AccountResource, referenceDate: string): Task[
       clearPendingResourceTasks(templateKey, resource.id);
       continue;
     }
+    const leadDays = task.reminderLeadDays ?? 0;
     const next = computeNextOccurrence(task.recurrence, referenceDate);
-    if (next.days < 0 || next.days > task.reminderLeadDays) {
+    if (next.days < 0 || next.days > leadDays) {
       clearPendingResourceTasks(templateKey, resource.id);
       continue;
     }
@@ -1105,8 +1106,9 @@ function _genVehicleGTD(resource: VehicleResource, referenceDate: string): Task[
       clearPendingResourceTasks(templateKey, resource.id);
       continue;
     }
+    const leadDays = task.reminderLeadDays ?? 0;
     const next = computeNextOccurrence(task.recurrence, referenceDate);
-    if (next.days < 0 || next.days > task.reminderLeadDays) {
+    if (next.days < 0 || next.days > leadDays) {
       clearPendingResourceTasks(templateKey, resource.id);
       continue;
     }
