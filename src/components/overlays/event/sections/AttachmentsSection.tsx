@@ -38,8 +38,9 @@ export function AttachmentsSection({ event, eventId, isEditMode, addRequestNonce
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [isBusy, setIsBusy] = useState(false);
   const isNativePlatform = useMemo(() => Capacitor.isNativePlatform(), []);
+  const attachments = Array.isArray(event.attachments) ? event.attachments : [];
 
-  const canAddAttachment = event.attachments.length < EVENT_MAX_ATTACHMENTS;
+  const canAddAttachment = attachments.length < EVENT_MAX_ATTACHMENTS;
 
   const commitAttachment = useCallback(async (
     data: {
@@ -179,13 +180,13 @@ export function AttachmentsSection({ event, eventId, isEditMode, addRequestNonce
           onChange={handleFileChange}
         />
 
-        {event.attachments.length === 0 ? (
+        {attachments.length === 0 ? (
           <div className="rounded-xl border border-dashed border-gray-300 px-4 py-6 text-sm text-gray-500 dark:border-gray-700 dark:text-gray-400">
             No attachments added
           </div>
         ) : (
           <div className="flex flex-col gap-2">
-            {event.attachments.map((attachment) => {
+            {attachments.map((attachment) => {
               const isImage = isImageAttachment(attachment.mimeType);
 
               return (

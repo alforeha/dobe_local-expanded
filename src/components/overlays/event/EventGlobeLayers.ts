@@ -151,7 +151,9 @@ export function useEventGlobeLayers(event: Event | undefined, previewResults: Re
       }
     }
 
-    for (const attachment of event.attachments) {
+    const attachmentsForEvent = Array.isArray(event.attachments) ? event.attachments : [];
+
+    for (const attachment of attachmentsForEvent) {
       if (attachment.type !== 'photo') continue;
       if (!attachment.location) continue;
       if (typeof attachment.location.latitude !== 'number' || typeof attachment.location.longitude !== 'number') continue;
