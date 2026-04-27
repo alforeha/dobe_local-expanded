@@ -235,14 +235,11 @@ export function WeekDayBlock({ date, weather, onDaySelect }: WeekDayBlockProps) 
             });
           }
         }
-      } else if (pe.dieDate && pe.seedDate <= dateIso && pe.dieDate >= dateIso) {
-        const startsToday = pe.seedDate === dateIso;
-        const endsToday = pe.dieDate === dateIso;
+      } else if (dueToday) {
         dayEvents.push({
           ...pe,
           startTime: pe.startTime,
           endTime: pe.endTime,
-          multiDayLabel: startsToday ? 'continues' : endsToday ? `started ${pe.seedDate}` : undefined,
         });
       }
     });

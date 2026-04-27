@@ -38,6 +38,7 @@ interface ColorBlock {
 interface PositionedColorBlock extends ColorBlock {
   colIndex: number;
   colCount: number;
+  colSpan: number;
 }
 
 function computeExplorerBlockLayout(blocks: ColorBlock[]): PositionedColorBlock[] {
@@ -101,12 +102,32 @@ function computeExplorerBlockLayout(blocks: ColorBlock[]): PositionedColorBlock[
       for (const index of members) colCountOf[index] = colEnds.length;
     }
 
+    const spanOf = new Array(parsed.length).fill(1);
+    for (const members of clusterIds) {
+      const totalCols = colCountOf[members[0]];
+      for (const index of members) {
+        let span = 1;
+        for (let column = colOf[index] + 1; column < totalCols; column++) {
+          const blocked = members.some(
+            (candidateIndex) => candidateIndex !== index &&
+              colOf[candidateIndex] === column &&
+              parsed[candidateIndex].startMin < parsed[index].endMin &&
+              parsed[index].startMin < parsed[candidateIndex].endMin,
+          );
+          if (blocked) break;
+          span++;
+        }
+        spanOf[index] = span;
+      }
+    }
+
     parsed.forEach(({ block }, index) => {
       positioned.push({
         ...block,
         day,
         colIndex: colOf[index],
         colCount: colCountOf[index],
+        colSpan: spanOf[index],
       });
     });
   }
@@ -297,7 +318,7 @@ export function ExplorerWeekRow({ weekStart, weather, onSelect }: ExplorerWeekRo
           topPx,
           heightPx,
           leftPercent: (block.colIndex / block.colCount) * 100,
-          widthPercent: (1 / block.colCount) * 100,
+          widthPercent: (block.colSpan / block.colCount) * 100,
         });
       byDay.set(block.day, dayBlocks);
     }

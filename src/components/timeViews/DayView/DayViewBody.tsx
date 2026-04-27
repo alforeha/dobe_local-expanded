@@ -378,6 +378,7 @@ export function DayViewBody({ date, onEventOpen, onEditPlanned }: DayViewBodyPro
     const ev = e as Event;
     if (ev.eventType === 'quickActions') continue;
     const dateISO = format(date, 'iso');
+    if (ev.startDate > dateISO || ev.endDate < dateISO) continue;
     const startsToday = ev.startDate === dateISO;
     const endsToday = ev.endDate === dateISO;
     const isMultiDay = ev.startDate !== ev.endDate;
