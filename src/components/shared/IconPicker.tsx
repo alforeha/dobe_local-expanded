@@ -11,7 +11,11 @@ interface IconPickerProps {
 
 export function IconPicker({ value, onChange, label, align = 'center' }: IconPickerProps) {
   const [open, setOpen] = useState(false);
+  const [openUpward, setOpenUpward] = useState(false);
+  const [alignRight, setAlignRight] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const pickerRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     function handlePointerDown(event: MouseEvent) {
@@ -24,13 +28,32 @@ export function IconPicker({ value, onChange, label, align = 'center' }: IconPic
     return () => document.removeEventListener('mousedown', handlePointerDown);
   }, []);
 
+  useEffect(() => {
+    if (!open || !triggerRef.current) {
+      return;
+    }
+
+    const pickerHeight = pickerRef.current?.offsetHeight ?? 300;
+    const pickerWidth = pickerRef.current?.offsetWidth ?? 280;
+    const triggerRect = triggerRef.current.getBoundingClientRect();
+    const spaceBelow = window.innerHeight - triggerRect.bottom;
+    const spaceRight = window.innerWidth - triggerRect.left;
+
+    setOpenUpward(spaceBelow < pickerHeight);
+    setAlignRight(spaceRight < pickerWidth);
+  }, [open]);
+
   const normalised = value?.toLowerCase?.() ?? '';
   const entries = Object.entries(ICON_MAP);
-  const popoverClassName = align === 'left'
-    ? 'absolute left-0 top-full z-20 mt-2 w-[22rem] max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-gray-200 bg-white p-2 shadow-xl dark:border-gray-600 dark:bg-gray-800'
-    : align === 'right'
-      ? 'absolute right-0 top-full z-20 mt-2 w-[22rem] max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-gray-200 bg-white p-2 shadow-xl dark:border-gray-600 dark:bg-gray-800'
-      : 'absolute left-0 top-full z-20 mt-2 w-[22rem] max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-gray-200 bg-white p-2 shadow-xl sm:left-1/2 sm:-translate-x-1/2 dark:border-gray-600 dark:bg-gray-800';
+  const verticalClassName = openUpward ? 'bottom-full top-auto mb-2' : 'top-full mt-2';
+  const horizontalClassName = alignRight
+    ? 'right-0 left-auto'
+    : align === 'left'
+      ? 'left-0'
+      : align === 'right'
+        ? 'right-0'
+        : 'left-0 sm:left-1/2 sm:-translate-x-1/2';
+  const popoverClassName = `absolute ${horizontalClassName} ${verticalClassName} z-20 w-[22rem] max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-gray-200 bg-white p-2 shadow-xl dark:border-gray-600 dark:bg-gray-800`;
 
   return (
     <div ref={rootRef} className="flex flex-col gap-2">
@@ -40,6 +63,7 @@ export function IconPicker({ value, onChange, label, align = 'center' }: IconPic
 
       <div className="relative flex flex-col items-center">
         <button
+          ref={triggerRef}
           type="button"
           onClick={() => setOpen((current) => !current)}
           aria-label={open ? 'Close icon picker' : 'Choose icon'}
@@ -49,7 +73,7 @@ export function IconPicker({ value, onChange, label, align = 'center' }: IconPic
         </button>
 
         {open && (
-          <div className={popoverClassName}>
+          <div ref={pickerRef} className={popoverClassName}>
             <div className="max-h-[min(26rem,calc(100dvh-8rem))] overflow-y-auto pr-1">
               <div className="grid grid-cols-6 gap-1.5">
               {entries.map(([key]) => {
