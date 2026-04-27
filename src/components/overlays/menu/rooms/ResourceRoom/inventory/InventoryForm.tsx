@@ -18,6 +18,7 @@ import { makeDefaultRecurrenceRule, normalizeRecurrenceMode, toRecurrenceRule } 
 import { useResourceStore } from '../../../../../../stores/useResourceStore';
 import { useUserStore } from '../../../../../../stores/useUserStore';
 import { generateScheduledTasks, generateGTDItems } from '../../../../../../engine/resourceEngine';
+import { findHomeRoomReference, getHomeRoomReferences } from '../../../../../../utils/homeRooms';
 import { taskTemplateLibrary } from '../../../../../../coach';
 import {
   CUSTOM_ITEM_TEMPLATE_PREFIX,
@@ -396,7 +397,7 @@ export function InventoryForm({
     [resources],
   );
   const homeRoomOptions = useMemo(
-    () => homeResources.flatMap((home) => (home.rooms ?? []).map((room) => ({
+    () => homeResources.flatMap((home) => getHomeRoomReferences(home).map((room) => ({
       value: `${home.id}::${room.id}`,
       label: `${home.name} - ${room.name}`,
       resourceId: home.id,
@@ -602,7 +603,7 @@ export function InventoryForm({
   function describeContainerLink(link: InventoryContainerLink): string {
     if (link.targetKind === 'home-room') {
       const home = resources[link.targetResourceId];
-      const room = home?.type === 'home' ? (home.rooms ?? []).find((entry) => entry.id === link.targetRoomId) : null;
+      const room = home?.type === 'home' ? findHomeRoomReference(home, link.targetRoomId) : null;
       return room ? `${home.name} - ${room.name}` : 'Linked room';
     }
     if (link.targetKind === 'vehicle') {
@@ -626,7 +627,7 @@ export function InventoryForm({
       .map((container) => ({
         id: container.id,
         itemTemplateRef: container.itemTemplateRef,
-        quantity: container.quantity === '' ? 0 : container.quantity,
+          quantity: container.quantity === '' ? undefined : container.quantity,
         threshold: container.threshold === '' ? undefined : container.threshold,
         unit: container.unit.trim() || undefined,
         recurringTasks: container.recurringTasks.length > 0 ? container.recurringTasks : undefined,
@@ -1168,10 +1169,9 @@ export function InventoryForm({
               const summaryLines: Array<{ text: string; icon?: string }> = templateKind === 'consumable'
                 ? [{
                     text: [
-                      container.quantity !== '' ? `Qty ${container.quantity}` : null,
                       container.threshold !== '' ? `Min ${container.threshold}` : null,
                       container.unit.trim() ? container.unit.trim() : null,
-                    ].filter(Boolean).join(' · ') || 'Consumable item',
+                    ].filter(Boolean).join(' · ') || 'Consumable settings',
                   }]
                 : (container.recurringTasks ?? []).length > 0
                   ? container.recurringTasks.map((task) => {
@@ -1255,14 +1255,7 @@ export function InventoryForm({
 
                       {!hasSelectedItem ? null : templateKind === 'consumable' ? (
                         <>
-                          <div className="grid grid-cols-3 gap-2">
-                            <NumberInput
-                              label="Qty"
-                              value={container.quantity}
-                              onChange={(value) => updateContainer(container.id, 'quantity', value)}
-                              placeholder="1"
-                              min={0}
-                            />
+                          <div className="grid grid-cols-2 gap-2">
                             <NumberInput
                               label="Min on hand"
                               value={container.threshold}
@@ -1279,7 +1272,7 @@ export function InventoryForm({
                             />
                           </div>
                           <p className="text-xs text-gray-500 dark:text-gray-400">
-                            Replenishment tasks will trigger when quantity reaches the minimum on hand.
+                            Quantity is managed from Home placements. Configure the minimum on hand and unit here for replenishment logic.
                           </p>
                         </>
                       ) : templateKind === 'facility' ? (

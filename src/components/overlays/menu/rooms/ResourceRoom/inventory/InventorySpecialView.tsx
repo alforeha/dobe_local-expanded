@@ -22,6 +22,7 @@ import {
   mergeInventoryItemTemplates,
   resolveInventoryItemTemplate,
 } from '../../../../../../utils/inventoryItems';
+import { findHomeRoomReference, getHomeRoomReferences } from '../../../../../../utils/homeRooms';
 import {
   CUSTOM_ITEM_TEMPLATE_PREFIX,
   getItemTaskTemplateMeta,
@@ -322,7 +323,7 @@ export function InventorySpecialView({ resource, onAddContainer, onEditContainer
     }
 
     const home = resources[link.targetResourceId] as HomeResource | undefined;
-    const room = home?.rooms?.find((entry) => entry.id === link.targetRoomId);
+    const room = home ? findHomeRoomReference(home, link.targetRoomId) : null;
     if (home?.name && room?.name) return `${home.name} - ${room.name}`;
     return room?.name ?? home?.name ?? 'Home room';
   }
@@ -348,7 +349,7 @@ export function InventorySpecialView({ resource, onAddContainer, onEditContainer
       return;
     }
     const home = homeResources.find((entry) => entry.id === homeId);
-    const firstRoomId = home?.rooms?.[0]?.id;
+    const firstRoomId = home ? getHomeRoomReferences(home)[0]?.id : undefined;
     updateContainerLocation(container.id, {
       id: getLocationLink(container)?.id ?? crypto.randomUUID(),
       relationship: 'location',
@@ -794,7 +795,7 @@ export function InventorySpecialView({ resource, onAddContainer, onEditContainer
                                       className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-2 text-sm text-gray-900 focus:border-blue-500 focus:outline-none dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100"
                                     >
                                       <option value="">No specific room</option>
-                                      {(selectedHome.rooms ?? []).map((room) => (
+                                        {getHomeRoomReferences(selectedHome).map((room) => (
                                         <option key={room.id} value={room.id}>{room.name}</option>
                                       ))}
                                     </select>

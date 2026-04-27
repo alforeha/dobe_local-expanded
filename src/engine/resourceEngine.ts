@@ -961,8 +961,7 @@ export function generateDocTasks_stub(): void {
 
 /** W23: Monthly home maintenance check PlannedEvent. */
 function _genHomeSchedule(_resource: HomeResource): PlannedEvent[] {
-  const plannedEvents = _collectFacilityRecurringPlannedEvents(_resource, _resource.id);
-  return plannedEvents;
+  return [];
 }
 
 function _genInventorySchedule(resource: InventoryResource): PlannedEvent[] {
@@ -971,15 +970,11 @@ function _genInventorySchedule(resource: InventoryResource): PlannedEvent[] {
 }
 
 function _collectFacilityRecurringPlannedEvents(
-  source: HomeResource | ItemInstance[],
+  source: ItemInstance[],
   resourceId: string,
 ): PlannedEvent[] {
   const scheduleStore = useScheduleStore.getState();
-  const items = Array.isArray(source)
-    ? source
-    : (source.rooms ?? []).flatMap((room) =>
-        room.containers.flatMap((container) => container.items),
-      );
+  const items = source;
   const created: PlannedEvent[] = [];
 
   for (const item of items) {
@@ -1023,42 +1018,10 @@ function _collectFacilityRecurringPlannedEvents(
   return created;
 }
 
-function _buildLowStockTasks(
-  items: ItemInstance[],
-  resourceId: string,
-  containerName: string,
-  referenceDate: string,
-  roomName?: string,
-): Task[] {
-  const templateKey = 'task-res-inventory-replenish';
-  return items
-    .filter((item) => item.threshold != null && item.quantity != null && item.quantity <= item.threshold)
-    .map((item) => {
-      const itemName = findItemTemplate(item.itemTemplateRef)?.name ?? item.itemTemplateRef;
-      const locationName = roomName ? `${containerName} (${roomName})` : containerName;
-      const label = `Restock ${itemName} in ${locationName}`;
-      return buildPendingTask(
-        templateKey,
-        resourceId,
-        buildResourceTaskFields(
-          `resource-task:${resourceId}:home-container-low-stock:${item.id}`,
-          referenceDate,
-          {
-            itemName,
-            label,
-          } as Task['resultFields'],
-        ),
-        label,
-      );
-    });
-}
-
 function _genHomeContainerGTD(resource: HomeResource, referenceDate: string): Task[] {
-  return (resource.rooms ?? []).flatMap((room) =>
-    room.containers.flatMap((container) =>
-      _buildLowStockTasks(container.items, resource.id, container.name, referenceDate, room.name),
-    ),
-  );
+  void resource;
+  void referenceDate;
+  return [];
 }
 
 function _genHomeGTD(resource: HomeResource, referenceDate: string): Task[] {

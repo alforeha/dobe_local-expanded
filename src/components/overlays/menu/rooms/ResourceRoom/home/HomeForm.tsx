@@ -2,20 +2,15 @@ import { useState } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import {
   type ContactResource,
-  type HomeContainer,
+  type FloorPlanSegmentKind,
   type HomeResource,
-  type HomeRoom,
   type HomeStory,
   type HomeChore,
-  type ItemInstance,
-  type ItemRecurringTask,
   type Resource,
   type ResourceNote,
   type ResourceRecurrenceRule,
   type RecurrenceDayOfWeek,
   isContact,
-  isInventory,
-  type InventoryContainer,
   makeDefaultRecurrenceRule,
   normalizeRecurrenceMode,
   toRecurrenceRule,
@@ -23,12 +18,6 @@ import {
 import { useResourceStore } from '../../../../../../stores/useResourceStore';
 import { useUserStore } from '../../../../../../stores/useUserStore';
 import { generateScheduledTasks, generateGTDItems } from '../../../../../../engine/resourceEngine';
-import {
-  getItemTemplateByRef,
-  itemLibrary,
-  makeCustomItemTemplateRef,
-  type ItemKind,
-} from '../../../../../../coach/ItemLibrary';
 import { IconDisplay } from '../../../../../shared/IconDisplay';
 import { TextInput } from '../../../../../shared/inputs/TextInput';
 import { IconPicker } from '../../../../../shared/IconPicker';
@@ -39,33 +28,6 @@ interface HomeFormProps {
   existing?: HomeResource;
   onSaved: () => void;
   onCancel: () => void;
-}
-
-interface ItemDraft {
-  id: string;
-  itemTemplateRef: string;
-  customName: string;
-  customIcon: string;
-  kind: ItemKind;
-  quantity: number | '';
-  threshold: number | '';
-  unit: string;
-  recurringTasks: ItemRecurringTask[];
-}
-
-interface ContainerDraft {
-  id: string;
-  name: string;
-  icon: string;
-  items: ItemDraft[];
-}
-
-interface RoomDraft {
-  id: string;
-  icon: string;
-  name: string;
-  assignedTo: string[];
-  containers: ContainerDraft[];
 }
 
 interface ChoreDraft {
@@ -137,19 +99,11 @@ function describeReminder(leadDays: number): string {
   return `${leadDays} days before`;
 }
 
-function describeRoomAssignment(room: RoomDraft, contacts: ContactResource[]): string | null {
-  if (contacts.length === 0) return null;
-  if (room.assignedTo.length === 0) return 'Any member';
-  const assigned = contacts.find((contact) => contact.id === room.assignedTo[0]);
-  return assigned?.name ?? 'Any member';
-}
-
 function buildHomeFormSnapshot(input: {
   iconKey: string;
   displayName: string;
   address: string;
   notes: ResourceNote[];
-  rooms: RoomDraft[];
   stories: HomeStory[];
   chores: ChoreDraft[];
 }): string {
@@ -182,94 +136,24 @@ function getAssignableContactIds(homeId: string | undefined, resources: Record<s
   return [...ids];
 }
 
-function itemDraftFromInstance(item: ItemInstance): ItemDraft {
-  const template = getItemTemplateByRef(item.itemTemplateRef);
-  return {
-    id: item.id,
-    itemTemplateRef: template?.isCustom ? '__custom__' : item.itemTemplateRef,
-    customName: template?.isCustom ? template.name : '',
-    customIcon: template?.isCustom ? template.icon : '',
-    kind: template?.kind ?? 'consumable',
-    quantity: item.quantity ?? '',
-    threshold: item.threshold ?? '',
-    unit: item.unit ?? '',
-    recurringTasks: item.recurringTasks ?? [],
-  };
-}
-
-function buildItemInstance(item: ItemDraft): ItemInstance | null {
-  const itemTemplateRef =
-    item.itemTemplateRef === '__custom__'
-      ? makeCustomItemTemplateRef(item.customName, item.kind, item.customIcon || 'resource-task')
-      : item.itemTemplateRef;
-  const template = getItemTemplateByRef(itemTemplateRef);
-  if (!template || !itemTemplateRef) return null;
-
-  return {
-    id: item.id,
-    itemTemplateRef,
-    quantity: template.kind === 'consumable' ? (item.quantity === '' ? 0 : item.quantity) : undefined,
-    threshold: template.kind === 'consumable' ? (item.threshold === '' ? undefined : item.threshold) : undefined,
-    unit: template.kind === 'consumable' ? (item.unit.trim() || undefined) : undefined,
-    recurringTasks: template.kind === 'facility' ? item.recurringTasks : undefined,
-  };
-}
-
-function buildContainer(container: ContainerDraft): HomeContainer | null {
-  if (!container.name.trim()) return null;
-  return {
-    id: container.id,
-    name: container.name.trim(),
-    icon: container.icon.trim(),
-    items: container.items.map(buildItemInstance).filter((item): item is ItemInstance => Boolean(item)),
-  };
-}
-
-function makeNewItemDraft(): ItemDraft {
-  return {
-    id: uuidv4(),
-    itemTemplateRef: '',
-    customName: '',
-    customIcon: '',
-    kind: 'consumable',
-    quantity: 1,
-    threshold: '',
-    unit: '',
-    recurringTasks: [],
-  };
-}
-
-function buildRecurringTasks(itemTemplateRef: string): ItemRecurringTask[] {
-  return (getItemTemplateByRef(itemTemplateRef)?.builtInTasks ?? []).map((task) => ({
-    id: uuidv4(),
-    taskTemplateRef: task.taskTemplateRef,
-    recurrenceMode: 'never',
-    recurrence: makeDefaultRecurrenceRule(),
-    reminderLeadDays: 7,
-  }));
-}
-
 export function HomeForm({ existing, onSaved, onCancel }: HomeFormProps) {
+  const [draftHomeId] = useState(() => existing?.id ?? uuidv4());
   const [iconKey, setIconKey] = useState(existing?.icon ?? 'home');
   const [displayName, setDisplayName] = useState(existing?.name ?? '');
   const [address, setAddress] = useState(existing?.address ?? '');
   const [notes, setNotes] = useState<ResourceNote[]>(existing?.notes ?? []);
-  const [rooms, setRooms] = useState<RoomDraft[]>(
-    existing?.rooms?.map((room) => ({
-      id: room.id,
-      icon: room.icon ?? '',
-      name: room.name,
-      assignedTo: room.assignedTo ?? [],
-      containers: room.containers.map((container) => ({
-        id: container.id,
-        name: container.name,
-        icon: container.icon,
-        items: container.items.map(itemDraftFromInstance),
+  const [stories, setStories] = useState<HomeStory[]>(
+    (existing?.stories ?? []).map((story) => ({
+      ...story,
+      placedItems: story.placedItems ?? [],
+      photos: story.photos ?? [],
+      rooms: story.rooms.map((room) => ({
+        ...room,
+        placedItems: room.placedItems ?? [],
+        photos: room.photos ?? [],
       })),
-    })) ?? [],
+    })),
   );
-  const [expandedRoomId, setExpandedRoomId] = useState<string | null>(null);
-  const [stories, setStories] = useState<HomeStory[]>(existing?.stories ?? []);
   const [chores, setChores] = useState<ChoreDraft[]>(
     existing?.chores?.map((chore) => ({
       id: chore.id,
@@ -290,27 +174,10 @@ export function HomeForm({ existing, onSaved, onCancel }: HomeFormProps) {
   const currentExisting = existing ? allResources[existing.id] as HomeResource | undefined : undefined;
 
   const allContacts = Object.values(allResources).filter(isContact);
-  const homeId = existing?.id;
+  const homeId = draftHomeId;
   const assignableContactIds = getAssignableContactIds(homeId, allResources);
-
-  const inventoryContainersByRoom: Record<string, { container: InventoryContainer; inventoryName: string }[]> = {};
-  if (homeId) {
-    for (const entry of Object.values(allResources)) {
-      if (!isInventory(entry)) continue;
-      for (const container of entry.containers ?? []) {
-        for (const link of container.links ?? []) {
-          if (link.targetKind === 'home-room' && link.targetResourceId === homeId) {
-            const roomId = link.targetRoomId ?? '';
-            if (!inventoryContainersByRoom[roomId]) inventoryContainersByRoom[roomId] = [];
-            inventoryContainersByRoom[roomId].push({ container, inventoryName: entry.name });
-          }
-        }
-      }
-    }
-  }
   const memberContacts = allContacts.filter((contact) => assignableContactIds.includes(contact.id));
   const canSave = displayName.trim().length > 0;
-  const selectableItems = itemLibrary.filter((item) => item.resourceType === 'inventory' || item.resourceType === 'home');
   const [initialSnapshot] = useState(() =>
     buildHomeFormSnapshot({
       iconKey: existing?.icon ?? 'home',
@@ -318,19 +185,6 @@ export function HomeForm({ existing, onSaved, onCancel }: HomeFormProps) {
       address: existing?.address ?? '',
       notes: existing?.notes ?? [],
       stories: existing?.stories ?? [],
-      rooms:
-        existing?.rooms?.map((room) => ({
-          id: room.id,
-          icon: room.icon ?? '',
-          name: room.name,
-          assignedTo: room.assignedTo ?? [],
-          containers: room.containers.map((container) => ({
-            id: container.id,
-            name: container.name,
-            icon: container.icon,
-            items: container.items.map(itemDraftFromInstance),
-          })),
-        })) ?? [],
       chores:
         existing?.chores?.map((chore) => ({
           id: chore.id,
@@ -350,173 +204,8 @@ export function HomeForm({ existing, onSaved, onCancel }: HomeFormProps) {
       address,
       notes,
       stories,
-      rooms,
       chores,
     }) !== initialSnapshot;
-
-  function addRoom() {
-    const nextId = uuidv4();
-    setRooms((prev) => [...prev, { id: nextId, icon: '', name: '', assignedTo: [], containers: [] }]);
-    setExpandedRoomId(nextId);
-  }
-
-  function updateRoom(roomId: string, field: 'name' | 'icon', value: string) {
-    setRooms((prev) => prev.map((room) => (room.id === roomId ? { ...room, [field]: value } : room)));
-  }
-
-  function updateRoomAssignment(roomId: string, value: string) {
-    setRooms((prev) =>
-      prev.map((room) =>
-        room.id !== roomId
-          ? room
-          : {
-              ...room,
-              assignedTo: value === 'all' ? [] : [value],
-            },
-      ),
-    );
-  }
-
-  function removeRoom(roomId: string) {
-    setRooms((prev) => prev.filter((room) => room.id !== roomId));
-    setExpandedRoomId((prev) => (prev === roomId ? null : prev));
-  }
-
-  function updateContainer(roomId: string, containerId: string, field: 'name' | 'icon', value: string) {
-    setRooms((prev) =>
-      prev.map((room) =>
-        room.id !== roomId
-          ? room
-          : {
-              ...room,
-              containers: room.containers.map((container) =>
-                container.id === containerId ? { ...container, [field]: value } : container,
-              ),
-            },
-      ),
-    );
-  }
-
-  function removeContainer(roomId: string, containerId: string) {
-    setRooms((prev) =>
-      prev.map((room) =>
-        room.id !== roomId ? room : { ...room, containers: room.containers.filter((container) => container.id !== containerId) },
-      ),
-    );
-  }
-
-  function addContainerItem(roomId: string, containerId: string) {
-    setRooms((prev) =>
-      prev.map((room) =>
-        room.id !== roomId
-          ? room
-          : {
-              ...room,
-              containers: room.containers.map((container) =>
-                container.id !== containerId ? container : { ...container, items: [...container.items, makeNewItemDraft()] },
-              ),
-            },
-      ),
-    );
-  }
-
-  function updateContainerItem(
-    roomId: string,
-    containerId: string,
-    itemId: string,
-    field: keyof ItemDraft,
-    value: string | number | '' | ItemRecurringTask[],
-  ) {
-    setRooms((prev) =>
-      prev.map((room) =>
-        room.id !== roomId
-          ? room
-          : {
-              ...room,
-              containers: room.containers.map((container) =>
-                container.id !== containerId
-                  ? container
-                  : {
-                      ...container,
-                      items: container.items.map((item) => {
-                        if (item.id !== itemId) return item;
-                        if (field === 'itemTemplateRef') {
-                          const nextRef = String(value);
-                          if (nextRef === '__custom__') {
-                            return { ...item, itemTemplateRef: nextRef, recurringTasks: [], kind: 'consumable', quantity: 1 };
-                          }
-                          const template = getItemTemplateByRef(nextRef);
-                          return {
-                            ...item,
-                            itemTemplateRef: nextRef,
-                            customName: '',
-                            customIcon: '',
-                            kind: template?.kind ?? 'consumable',
-                            recurringTasks: template?.kind === 'facility' ? buildRecurringTasks(nextRef) : [],
-                            quantity: template?.kind === 'consumable' ? (item.quantity === '' ? 1 : item.quantity) : '',
-                            threshold: template?.kind === 'consumable' ? item.threshold : '',
-                            unit: template?.kind === 'consumable' ? item.unit : '',
-                          };
-                        }
-                        return { ...item, [field]: value };
-                      }),
-                    },
-              ),
-            },
-      ),
-    );
-  }
-
-  function removeContainerItem(roomId: string, containerId: string, itemId: string) {
-    setRooms((prev) =>
-      prev.map((room) =>
-        room.id !== roomId
-          ? room
-          : {
-              ...room,
-              containers: room.containers.map((container) =>
-                container.id !== containerId ? container : { ...container, items: container.items.filter((item) => item.id !== itemId) },
-              ),
-            },
-      ),
-    );
-  }
-
-  function updateRecurringTask(
-    roomId: string,
-    containerId: string,
-    itemId: string,
-    recurringTaskId: string,
-    field: keyof ItemRecurringTask,
-    value: string | ResourceRecurrenceRule,
-  ) {
-    setRooms((prev) =>
-      prev.map((room) =>
-        room.id !== roomId
-          ? room
-          : {
-              ...room,
-              containers: room.containers.map((container) =>
-                container.id !== containerId
-                  ? container
-                  : {
-                      ...container,
-                      items: container.items.map((item) =>
-                        item.id !== itemId
-                          ? item
-                          : {
-                              ...item,
-                              recurringTasks: item.recurringTasks.map((task) =>
-                                task.id === recurringTaskId ? { ...task, [field]: value } : task,
-                              ),
-                            },
-                      ),
-                    },
-              ),
-            },
-      ),
-    );
-  }
 
   function addChore() {
     const nextId = uuidv4();
@@ -566,18 +255,8 @@ export function HomeForm({ existing, onSaved, onCancel }: HomeFormProps) {
   function handleSave() {
     if (!canSave) return;
     const now = new Date().toISOString();
-    const homeId = existing?.id ?? uuidv4();
+    const homeId = draftHomeId;
     const createdAt = existing?.createdAt ?? now;
-
-    const finalRooms: HomeRoom[] = rooms
-      .filter((room) => room.name.trim())
-      .map((room) => ({
-        id: room.id,
-        icon: room.icon.trim(),
-        name: room.name.trim(),
-        assignedTo: room.assignedTo,
-        containers: room.containers.map(buildContainer).filter((container): container is HomeContainer => Boolean(container)),
-      }));
 
     const finalChores: HomeChore[] = chores
       .filter((chore) => chore.name.trim())
@@ -595,6 +274,14 @@ export function HomeForm({ existing, onSaved, onCancel }: HomeFormProps) {
       .map((story, index) => ({
         ...story,
         name: story.name.trim() || `Story ${index + 1}`,
+        outlineOrigin: story.outlineOrigin ? { ...story.outlineOrigin } : undefined,
+        outlineSegments: story.outlineSegments?.map((segment) => ({
+          direction: segment.direction,
+          distance: Math.max(1, Number(segment.distance) || 1),
+	          kind: (segment.kind === 'door' ? 'door' : 'wall') as FloorPlanSegmentKind,
+        })),
+        placedItems: story.placedItems ?? [],
+        photos: (story.photos ?? []).filter(Boolean),
         rooms: story.rooms
           .filter((room) => room.name.trim() && room.segments.length > 0)
           .map((room) => ({
@@ -605,8 +292,10 @@ export function HomeForm({ existing, onSaved, onCancel }: HomeFormProps) {
             segments: room.segments.map((segment) => ({
               direction: segment.direction,
               distance: Math.max(1, Number(segment.distance) || 1),
+	              kind: (segment.kind === 'door' ? 'door' : 'wall') as FloorPlanSegmentKind,
             })),
             placedItems: room.placedItems ?? [],
+            photos: (room.photos ?? []).filter(Boolean),
           })),
       }))
       .filter((story) => story.name.trim() || story.rooms.length > 0);
@@ -626,7 +315,6 @@ export function HomeForm({ existing, onSaved, onCancel }: HomeFormProps) {
       updatedAt: now,
       address: address.trim() || undefined,
       members: memberIds.length > 0 ? memberIds : undefined,
-      rooms: finalRooms.length > 0 ? finalRooms : undefined,
       stories: finalStories.length > 0 ? finalStories : undefined,
       chores: finalChores.length > 0 ? finalChores : undefined,
       notes,
@@ -694,188 +382,7 @@ export function HomeForm({ existing, onSaved, onCancel }: HomeFormProps) {
               {stories.length} stor{stories.length === 1 ? 'y' : 'ies'} · {stories.reduce((sum, story) => sum + story.rooms.length, 0)} rooms
             </span>
           </div>
-          <HomeLayout stories={stories} onChange={setStories} editable />
-        </div>
-
-        <div className="flex flex-col gap-2">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Rooms</span>
-            <button type="button" onClick={addRoom} className="text-xs font-medium text-blue-500 hover:text-blue-600">+ Add room</button>
-          </div>
-          {rooms.length === 0 && <p className="text-xs italic text-gray-400">No rooms added yet.</p>}
-          {rooms.map((room) => {
-            const isExpanded = expandedRoomId === room.id;
-            const hasAssignableMembers = memberContacts.length > 0;
-            const assignmentSummary = describeRoomAssignment(room, memberContacts);
-            const roomSummary = hasAssignableMembers
-              ? (assignmentSummary ? `Assigned to ${assignmentSummary}` : '')
-              : '';
-
-            return (
-              <div key={room.id} className="rounded-lg bg-gray-50 px-3 py-3 dark:bg-gray-700">
-                <button
-                  type="button"
-                  onClick={() => setExpandedRoomId((prev) => (prev === room.id ? null : room.id))}
-                  className="flex w-full items-center gap-3 text-left"
-                >
-                  <span className="flex h-9 w-9 items-center justify-center rounded-md bg-white dark:bg-gray-800">
-                    <IconDisplay iconKey={room.icon?.trim() || 'home'} size={20} className="h-5 w-5 object-contain" alt="" />
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-sm font-medium text-gray-800 dark:text-gray-100">
-                      {room.name.trim() || 'Untitled room'}
-                    </div>
-                    {roomSummary ? (
-                      <div className="truncate text-xs text-gray-500 dark:text-gray-400">
-                        {roomSummary}
-                      </div>
-                    ) : null}
-                  </div>
-                  {(inventoryContainersByRoom[room.id] ?? []).length > 0 && (
-                    <div className="flex items-center gap-1 shrink-0">
-                      {(inventoryContainersByRoom[room.id] ?? []).slice(0, 3).map(({ container }) => (
-                        <span
-                          key={container.id}
-                          title={container.name}
-                          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-white p-1 dark:bg-gray-800"
-                        >
-                          <IconDisplay iconKey={container.icon || 'resource-inventory'} size={12} className="block max-h-full max-w-full object-contain" alt="" />
-                        </span>
-                      ))}
-                      {(inventoryContainersByRoom[room.id] ?? []).length > 3 && (
-                        <span className="text-[11px] font-medium text-gray-400">
-                          +{(inventoryContainersByRoom[room.id] ?? []).length - 3}
-                        </span>
-                      )}
-                    </div>
-                  )}
-                  <span className="text-xs font-medium text-blue-500">{isExpanded ? 'Close' : 'Edit'}</span>
-                </button>
-
-                {isExpanded ? (
-                  <div className="mt-3 space-y-3 border-t border-gray-200 pt-3 dark:border-gray-600">
-                    <div className="flex items-center gap-2">
-                      <IconPicker value={room.icon || 'home'} onChange={(value) => updateRoom(room.id, 'icon', value)} align="left" />
-                      <input type="text" value={room.name} onChange={(event) => updateRoom(room.id, 'name', event.target.value)} placeholder="Room name" className="flex-1 rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 focus:border-purple-500 focus:outline-none dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100" />
-                    </div>
-
-                    {hasAssignableMembers ? (
-                      <div className="flex items-center gap-2">
-                        <span className="shrink-0 text-xs font-medium text-gray-500 dark:text-gray-400">Assign room to:</span>
-                        <select
-                          value={room.assignedTo[0] ?? 'all'}
-                          onChange={(event) => updateRoomAssignment(room.id, event.target.value)}
-                          className="ml-auto w-40 rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
-                        >
-                          <option value="all">Any member</option>
-                          {memberContacts.map((contact) => <option key={contact.id} value={contact.id}>{contact.name}</option>)}
-                        </select>
-                      </div>
-                    ) : null}
-
-                    <div className="space-y-2 rounded-lg border border-dashed border-gray-200 px-3 py-3 dark:border-gray-600">
-                      {(() => {
-                        const placed = inventoryContainersByRoom[room.id] ?? [];
-                        const hasAny = room.containers.length > 0 || placed.length > 0;
-                        return (
-                          <>
-                            {hasAny && (
-                              <div className="flex items-center justify-between">
-                                <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Containers</span>
-                              </div>
-                            )}
-                            {placed.map(({ container }) => (
-                              <div key={container.id} className="flex items-center gap-2 rounded-lg bg-white px-2.5 py-2 opacity-60 dark:bg-gray-800">
-                                {container.icon ? (
-                                  <IconDisplay iconKey={container.icon} size={14} className="h-3.5 w-3.5 shrink-0 object-contain" alt="" />
-                                ) : null}
-                                <span className="flex-1 truncate text-sm text-gray-700 dark:text-gray-300">{container.name}</span>
-                                <span className="shrink-0 text-xs text-gray-400">{container.items.length} item{container.items.length === 1 ? '' : 's'}</span>
-                              </div>
-                            ))}
-                          </>
-                        );
-                      })()}
-                      {room.containers.map((container) => (
-                          <div key={container.id} className="space-y-2 rounded-lg bg-white px-3 py-3 dark:bg-gray-800">
-                            <div className="flex items-center gap-2">
-                              <input type="text" value={container.icon} onChange={(event) => updateContainer(room.id, container.id, 'icon', event.target.value)} placeholder="Icon" className="w-14 rounded border border-gray-200 bg-white px-2 py-1 text-sm dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100" />
-                              <input type="text" value={container.name} onChange={(event) => updateContainer(room.id, container.id, 'name', event.target.value)} placeholder="Container name" className="flex-1 rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 focus:border-purple-500 focus:outline-none dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100" />
-                              <button type="button" onClick={() => removeContainer(room.id, container.id)} className="text-xs text-gray-400 hover:text-red-400">Remove</button>
-                            </div>
-
-                            <div className="space-y-2">
-                              <div className="flex items-center justify-between">
-                                <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Items</span>
-                                <button type="button" onClick={() => addContainerItem(room.id, container.id)} className="text-xs font-medium text-blue-500 hover:text-blue-600">+ Add item</button>
-                              </div>
-                              {container.items.map((item) => {
-                                const itemRef = item.itemTemplateRef === '__custom__' ? makeCustomItemTemplateRef(item.customName || 'Custom Item', item.kind, item.customIcon || 'resource-task') : item.itemTemplateRef;
-                                const template = getItemTemplateByRef(itemRef);
-                                const kind = item.itemTemplateRef === '__custom__' ? item.kind : template?.kind ?? 'consumable';
-                                return (
-                                  <div key={item.id} className="space-y-2 rounded-md border border-gray-200 px-2 py-2 dark:border-gray-700">
-                                    <div className="grid grid-cols-[1fr_auto] gap-2">
-                                      <select value={item.itemTemplateRef} onChange={(event) => updateContainerItem(room.id, container.id, item.id, 'itemTemplateRef', event.target.value)} className="rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100">
-                                        <option value="">Select item</option>
-                                        {selectableItems.map((option) => <option key={option.id} value={option.id}>{option.name} ({option.kind})</option>)}
-                                        <option value="__custom__">Custom item</option>
-                                      </select>
-                                      <button type="button" onClick={() => removeContainerItem(room.id, container.id, item.id)} className="text-xs text-gray-400 hover:text-red-400">Remove</button>
-                                    </div>
-
-                                    {item.itemTemplateRef === '__custom__' && (
-                                      <div className="grid grid-cols-3 gap-2">
-                                        <input type="text" value={item.customName} onChange={(event) => updateContainerItem(room.id, container.id, item.id, 'customName', event.target.value)} placeholder="Custom name" className="rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100" />
-                                        <input type="text" value={item.customIcon} onChange={(event) => updateContainerItem(room.id, container.id, item.id, 'customIcon', event.target.value)} placeholder="Icon" className="rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100" />
-                                        <select value={item.kind} onChange={(event) => updateContainerItem(room.id, container.id, item.id, 'kind', event.target.value)} className="rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100">
-                                          <option value="consumable">Consumable</option>
-                                          <option value="facility">Facility</option>
-                                        </select>
-                                      </div>
-                                    )}
-
-                                    {kind === 'consumable' ? (
-                                      <div className="grid grid-cols-3 gap-2">
-                                        <input type="number" value={item.quantity} onChange={(event) => updateContainerItem(room.id, container.id, item.id, 'quantity', event.target.value === '' ? '' : Number(event.target.value))} placeholder="Qty" className="rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100" />
-                                        <input type="number" value={item.threshold} onChange={(event) => updateContainerItem(room.id, container.id, item.id, 'threshold', event.target.value === '' ? '' : Number(event.target.value))} placeholder="Threshold" className="rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100" />
-                                        <input type="text" value={item.unit} onChange={(event) => updateContainerItem(room.id, container.id, item.id, 'unit', event.target.value)} placeholder="Unit" className="rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100" />
-                                      </div>
-                                    ) : (
-                                      <div className="space-y-2">
-                                        <div className="text-xs font-medium text-gray-500 dark:text-gray-400">Recurring tasks</div>
-                                        {(item.recurringTasks ?? []).length === 0 ? <p className="text-xs italic text-gray-400">No recurring tasks configured.</p> : item.recurringTasks.map((task) => (
-                                          <div key={task.id} className="grid grid-cols-2 gap-2">
-                                            <input type="text" value={task.taskTemplateRef} onChange={(event) => updateRecurringTask(room.id, container.id, item.id, task.id, 'taskTemplateRef', event.target.value)} className="rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100" />
-                                            <select value={task.recurrence.frequency} onChange={(event) => updateRecurringTask(room.id, container.id, item.id, task.id, 'recurrence', { ...task.recurrence, frequency: event.target.value as ResourceRecurrenceRule['frequency'], days: [] })} className="rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100">
-                                              <option value="daily">Daily</option>
-                                              <option value="weekly">Weekly</option>
-                                              <option value="monthly">Monthly</option>
-                                              <option value="custom">Custom</option>
-                                            </select>
-                                          </div>
-                                        ))}
-                                      </div>
-                                    )}
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        ))}
-                    </div>
-
-                    <div className="flex items-center justify-between pt-1">
-                      <button type="button" onClick={() => removeRoom(room.id)} className="text-xs text-gray-400 hover:text-red-400">Remove</button>
-                      <button type="button" onClick={() => setExpandedRoomId(null)} className="rounded-md bg-blue-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-600">
-                        Save
-                      </button>
-                    </div>
-                  </div>
-                ) : null}
-              </div>
-            );
-          })}
+          <HomeLayout stories={stories} onChange={setStories} editable homeId={draftHomeId} />
         </div>
 
         <div className="flex flex-col gap-2">

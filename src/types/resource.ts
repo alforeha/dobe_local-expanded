@@ -63,9 +63,12 @@ export interface HomeRoom {
 
 export type SegmentDirection = 'up' | 'down' | 'left' | 'right';
 
+export type FloorPlanSegmentKind = 'wall' | 'door';
+
 export interface FloorPlanSegment {
   direction: SegmentDirection;
   distance: number;
+  kind?: FloorPlanSegmentKind;
 }
 
 export interface PlacedInstance {
@@ -87,11 +90,16 @@ export interface FloorPlanRoom {
   segments: FloorPlanSegment[];
   origin: { x: number; y: number };
   placedItems: PlacedInstance[];
+  photos?: string[];
 }
 
 export interface HomeStory {
   id: string;
   name: string;
+  outlineOrigin?: { x: number; y: number };
+  outlineSegments?: FloorPlanSegment[];
+  placedItems: PlacedInstance[];
+  photos?: string[];
   rooms: FloorPlanRoom[];
 }
 

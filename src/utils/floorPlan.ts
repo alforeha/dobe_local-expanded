@@ -5,6 +5,14 @@ export interface FloorPlanPoint {
 	y: number;
 }
 
+export function pointsMatch(a: FloorPlanPoint, b: FloorPlanPoint): boolean {
+  return a.x === b.x && a.y === b.y;
+}
+
+export function getPointDistance(a: FloorPlanPoint, b: FloorPlanPoint): number {
+  return Math.hypot(b.x - a.x, b.y - a.y);
+}
+
 export function segmentsToPoints(
   origin: { x: number; y: number },
   segments: FloorPlanSegment[],
@@ -62,6 +70,7 @@ export function closeFloorPlanSegments(
     closed.push({
       direction: end.x > origin.x ? 'left' : 'right',
       distance: Math.abs(origin.x - end.x),
+      kind: 'wall',
     });
   }
 
@@ -69,6 +78,7 @@ export function closeFloorPlanSegments(
     closed.push({
       direction: end.y > origin.y ? 'up' : 'down',
       distance: Math.abs(origin.y - end.y),
+      kind: 'wall',
     });
   }
 

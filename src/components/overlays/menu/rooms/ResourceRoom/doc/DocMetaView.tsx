@@ -12,6 +12,7 @@ import { resolveTaskDisplayName } from '../../../../../../utils/resolveTaskDispl
 import { getUserInventoryItemTemplates } from '../../../../../../utils/inventoryItems';
 import { IconDisplay } from '../../../../../shared/IconDisplay';
 import { ResourceMetaTabs } from '../shared/ResourceMetaTabs';
+import { getHomeRoomReferences } from '../../../../../../utils/homeRooms';
 
 interface DocMetaViewProps {
   resource: DocResource;
@@ -126,9 +127,9 @@ export function DocMetaView({ resource }: DocMetaViewProps) {
           </div>
         ) : null}
 
-        {linkedHome && (linkedHome.rooms ?? []).length > 0 ? (
+        {linkedHome && getHomeRoomReferences(linkedHome).length > 0 ? (
           <div className="space-y-1">
-            {(linkedHome.rooms ?? []).map((room) => {
+            {getHomeRoomReferences(linkedHome).map((room) => {
               const matchingAreas = (resource.layoutAreas ?? []).filter((area) => area.roomId === room.id);
               return (
                 <div key={room.id} className="rounded bg-gray-50 px-2 py-1.5 dark:bg-gray-700">

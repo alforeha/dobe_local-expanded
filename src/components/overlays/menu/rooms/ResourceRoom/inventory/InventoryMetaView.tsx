@@ -11,6 +11,7 @@ import {
   mergeInventoryItemTemplates,
   resolveInventoryItemTemplate,
 } from '../../../../../../utils/inventoryItems';
+import { findHomeRoomReference } from '../../../../../../utils/homeRooms';
 import { CUSTOM_ITEM_TEMPLATE_PREFIX, getItemTemplateByRef } from '../../../../../../coach/ItemLibrary';
 
 interface InventoryMetaViewProps {
@@ -104,7 +105,7 @@ export function InventoryMetaView({ resource }: InventoryMetaViewProps) {
     }
 
     const home = resources[link.targetResourceId] as HomeResource | undefined;
-    const room = home?.rooms?.find((entry) => entry.id === link.targetRoomId);
+    const room = home ? findHomeRoomReference(home, link.targetRoomId) : null;
     if (home?.name && room?.name) return `${home.name} - ${room.name}`;
     return room?.name ?? home?.name ?? 'Home room';
   }

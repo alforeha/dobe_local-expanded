@@ -1,7 +1,6 @@
 // HomeMetaView - read-only display of HomeResource.
 
 import { normalizeRecurrenceMode, type HomeChore, type HomeResource } from '../../../../../../types/resource';
-import { getItemTemplateByRef } from '../../../../../../coach/ItemLibrary';
 import { useResourceStore } from '../../../../../../stores/useResourceStore';
 import { IconDisplay } from '../../../../../shared/IconDisplay';
 import { ResourceMetaTabs } from '../shared/ResourceMetaTabs';
@@ -48,7 +47,6 @@ export function HomeMetaView({ resource }: HomeMetaViewProps) {
     memberContacts.length > 0 ||
     linkedResources.length > 0 ||
     (resource.stories?.length ?? 0) > 0 ||
-    (resource.rooms?.length ?? 0) > 0 ||
     (resource.chores?.length ?? 0) > 0 ||
     (resource.notes?.length ?? 0) > 0;
 
@@ -105,28 +103,6 @@ export function HomeMetaView({ resource }: HomeMetaViewProps) {
           </div>
         </div>
       )}
-
-      {resource.rooms && resource.rooms.length > 0 && (
-        <div className="flex gap-2">
-          <span className="text-gray-400 w-16 shrink-0">Rooms</span>
-          <div className="flex flex-col gap-1">
-            {resource.rooms.map((room) => (
-              <div key={room.id} className="flex flex-col gap-1 rounded bg-green-50 px-1.5 py-1 dark:bg-green-900/20">
-                <span className="inline-flex items-center gap-1 text-green-700 dark:text-green-300">
-                  {room.icon ? <IconDisplay iconKey={room.icon} size={14} className="h-3.5 w-3.5 object-contain" alt="" /> : null}
-                  <span>{room.name}</span>
-                </span>
-                {room.containers.length > 0 && (
-                  <span className="text-gray-500 dark:text-gray-400">
-                    {room.containers.map((container) => `${container.name} (${container.items.map((item) => getItemTemplateByRef(item.itemTemplateRef)?.name ?? item.itemTemplateRef).join(', ') || 'empty'})`).join(' · ')}
-                  </span>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
       {resource.chores && resource.chores.length > 0 && (
         <div className="flex gap-2">
           <span className="text-gray-400 w-16 shrink-0">Chores</span>
