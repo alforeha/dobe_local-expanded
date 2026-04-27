@@ -42,6 +42,8 @@ interface HomeFloorPlanProps {
 
 const VIEWBOX_WIDTH = 800;
 const VIEWBOX_HEIGHT = 600;
+const VERTEX_VISIBLE_RADIUS = 9;
+const VERTEX_HIT_RADIUS = 20;
 const INPUT_CLS = 'rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 focus:border-purple-500 focus:outline-none dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100';
 const STORY_SCOPE_ID = '__story__';
 
@@ -449,6 +451,7 @@ export function HomeFloorPlan({
 	const selectedRoomSummary = roomSummaries.find((entry) => entry.room.id === selectedRoom?.id) ?? null;
 	const selectedEditingSegment = selectedSegmentIndex != null ? editingSegmentLines[selectedSegmentIndex] ?? null : null;
 	const effectiveExpandedRoomId = !editingRoom && !editingStoryOutline ? (selectedRoomId ?? null) : expandedRoomId;
+	const editingRoomId = editingRoom?.id ?? null;
 
 	useEffect(() => {
 		const resetId = window.setTimeout(() => {
@@ -554,13 +557,12 @@ export function HomeFloorPlan({
 	}, [expandedPlacedContainerId, outsidePlacedEntries, selectedPlacementId, selectedRoomSummary]);
 
 	useEffect(() => {
-		if (!editingRoom) {
+		if (!editingRoomId) {
 			const resetId = window.setTimeout(() => {
 				setIsPlacingStartPoint(false);
 				setStartPointAnchorIndex(null);
 			}, 0);
 			return () => window.clearTimeout(resetId);
-			return;
 		}
 
 		if (editingMode === 'create') {
@@ -571,7 +573,6 @@ export function HomeFloorPlan({
 				setStartPointDistance('24');
 			}, 0);
 			return () => window.clearTimeout(resetId);
-			return;
 		}
 
 		const resetId = window.setTimeout(() => {
@@ -579,7 +580,7 @@ export function HomeFloorPlan({
 			setStartPointAnchorIndex(null);
 		}, 0);
 		return () => window.clearTimeout(resetId);
-	}, [editingMode, editingRoom, editingRoom?.id]);
+	}, [editingMode, editingRoomId]);
 
 	useEffect(() => {
 		let frameId = 0;
@@ -667,6 +668,19 @@ export function HomeFloorPlan({
 			origin: { ...startPointPreview },
 		});
 		setIsPlacingStartPoint(false);
+	}
+
+	function selectStartPointAnchor(index: number, event: { stopPropagation: () => void }) {
+		event.stopPropagation();
+		setStartPointAnchorIndex(index);
+	}
+
+	function beginOriginDrag(event: { stopPropagation: () => void }) {
+		if (!editable || (!editingRoom && !editingStoryOutline)) return;
+		if (editingRoom && !isPlacingStartPoint) {
+			event.stopPropagation();
+			setInteraction({ type: 'drag-origin' });
+		}
 	}
 
 	function reopenStartPointEditor() {
@@ -1495,20 +1509,27 @@ export function HomeFloorPlan({
 										{editingRoom && isPlacingStartPoint ? startPointAnchors.map((anchor, index) => {
 											const isSelectedAnchor = startPointAnchorIndex === index;
 											return (
-												<circle
-													key={anchor.key}
-													cx={anchor.point.x}
-													cy={anchor.point.y}
-													r={isSelectedAnchor ? 8 : 4.5}
-													fill={isSelectedAnchor ? '#ccfbf1' : '#ffffff'}
-													stroke={isSelectedAnchor ? '#0f766e' : '#64748b'}
-													strokeWidth="2"
-													style={{ cursor: 'pointer' }}
-													onPointerDown={(event) => {
-														event.stopPropagation();
-														setStartPointAnchorIndex(index);
-													}}
-												/>
+												<g key={anchor.key}>
+													<circle
+														cx={anchor.point.x}
+														cy={anchor.point.y}
+														r={VERTEX_VISIBLE_RADIUS}
+														fill={isSelectedAnchor ? '#ccfbf1' : '#ffffff'}
+														stroke={isSelectedAnchor ? '#0f766e' : '#64748b'}
+														strokeWidth="2"
+														style={{ pointerEvents: 'none' }}
+													/>
+													<circle
+														cx={anchor.point.x}
+														cy={anchor.point.y}
+														r={VERTEX_HIT_RADIUS}
+														fill="transparent"
+														pointerEvents="all"
+														style={{ cursor: 'pointer' }}
+														onPointerDown={(event) => selectStartPointAnchor(index, event)}
+														onTouchStart={(event) => selectStartPointAnchor(index, event)}
+													/>
+												</g>
 											);
 										}) : null}
 									</g>
@@ -1680,16 +1701,19 @@ export function HomeFloorPlan({
 											);
 										}) : null}
 										{isEditingThisRoom ? (
-											<g
-												onPointerDown={(event) => {
-													if (!editable || (!editingRoom && !editingStoryOutline)) return;
-													if (editingRoom && room.id !== editingRoom.id) return;
-													event.stopPropagation();
-													setInteraction({ type: 'drag-origin' });
-												}}
-											>
-												<circle cx={room.origin.x} cy={room.origin.y} r="8" fill="#ffffff" stroke="#2563eb" strokeWidth="2" />
-												<circle cx={room.origin.x} cy={room.origin.y} r="2.5" fill="#2563eb" />
+											<g>
+												<circle cx={room.origin.x} cy={room.origin.y} r={VERTEX_VISIBLE_RADIUS} fill="#ffffff" stroke="#2563eb" strokeWidth="2" style={{ pointerEvents: 'none' }} />
+												<circle cx={room.origin.x} cy={room.origin.y} r="2.5" fill="#2563eb" style={{ pointerEvents: 'none' }} />
+												<circle
+													cx={room.origin.x}
+													cy={room.origin.y}
+													r={VERTEX_HIT_RADIUS}
+													fill="transparent"
+													pointerEvents="all"
+													style={{ cursor: 'grab' }}
+													onPointerDown={beginOriginDrag}
+													onTouchStart={beginOriginDrag}
+												/>
 											</g>
 										) : null}
 									</g>
