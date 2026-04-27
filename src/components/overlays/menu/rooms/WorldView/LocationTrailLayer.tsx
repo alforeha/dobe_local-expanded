@@ -62,7 +62,9 @@ export function LocationTrailLayer({ map, events, filters }: LocationTrailLayerP
     const trailColor = getTrailColor();
 
     for (const event of events) {
-      for (const taskId of event.tasks) {
+      const tasksForEvent = Array.isArray(event.tasks) ? event.tasks : [];
+
+      for (const taskId of tasksForEvent) {
         const task = tasks[taskId];
         if (!task || resolveTaskType(task, templates) !== 'LOCATION_TRAIL') continue;
 

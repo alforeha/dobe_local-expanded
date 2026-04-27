@@ -103,7 +103,9 @@ export function useEventGlobeLayers(event: Event | undefined, previewResults: Re
       });
     }
 
-    for (const taskId of event.tasks) {
+    const tasksForEvent = Array.isArray(event.tasks) ? event.tasks : [];
+
+    for (const taskId of tasksForEvent) {
       const task = tasks[taskId];
       const taskType = resolveEventTaskType(task, templates);
       if (!task || !taskType) continue;
