@@ -9,6 +9,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { PlannedEvent, Event, EventAttachment, QuickActionsEvent, Task, TaskTemplate } from '../types';
 import { isTemplateQuestLocked } from '../utils/isTemplateQuestLocked';
+import { isOneOffEvent } from '../utils/isOneOffEvent';
 import { v4 as uuidv4 } from 'uuid';
 
 // ── STATE ─────────────────────────────────────────────────────────────────────
@@ -227,6 +228,57 @@ function normalizeEventRecord<T extends Event | QuickActionsEvent>(
   return { events: next, changed };
 }
 
+function normalizeLegacyMaterializedEventDates<T extends Event | QuickActionsEvent>(
+  events: Record<string, T> | undefined,
+  plannedEvents: Record<string, PlannedEvent> | undefined,
+): { events: Record<string, T>; changed: boolean } {
+  const next: Record<string, T> = {};
+  let changed = false;
+
+  for (const [id, event] of Object.entries(events ?? {})) {
+    if (event.eventType === 'quickActions' || !event.plannedEventRef) {
+      next[id] = event;
+      continue;
+    }
+
+    const plannedEvent = plannedEvents?.[event.plannedEventRef];
+    if (!plannedEvent || isOneOffEvent(plannedEvent)) {
+      next[id] = event;
+      continue;
+    }
+
+    const isOvernight =
+      plannedEvent.isOvernight === true ||
+      event.endTime < event.startTime;
+    const expectedEndDate = isOvernight
+      ? toNextIsoDate(event.startDate)
+      : event.startDate;
+
+    if (event.endDate === expectedEndDate) {
+      next[id] = event;
+      continue;
+    }
+
+    next[id] = {
+      ...event,
+      endDate: expectedEndDate,
+    } as T;
+    changed = true;
+  }
+
+  return { events: changed ? next : (events ?? {}), changed };
+}
+
+function toNextIsoDate(dateISO: string): string {
+  const date = new Date(`${dateISO}T00:00:00`);
+  date.setDate(date.getDate() + 1);
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, '0'),
+    String(date.getDate()).padStart(2, '0'),
+  ].join('-');
+}
+
 // ── STORE ─────────────────────────────────────────────────────────────────────
 
 export const useScheduleStore = create<ScheduleState & ScheduleActions>()(
@@ -381,21 +433,39 @@ export const useScheduleStore = create<ScheduleState & ScheduleActions>()(
       name: 'cdb-schedule',
       merge: (persistedState, currentState) => {
         const persisted = (persistedState as Partial<ScheduleState & ScheduleActions>) ?? {};
+        const mergedPlannedEvents =
+          (persisted.plannedEvents as Record<string, PlannedEvent> | undefined) ??
+          currentState.plannedEvents;
         const stripped = stripLibraryTaskTemplates(
           (persisted.taskTemplates as Record<string, TaskTemplate> | undefined) ?? currentState.taskTemplates,
         );
-        const normalizedActive = normalizeEventRecord(
+        const normalizedActiveBase = normalizeEventRecord(
           (persisted.activeEvents as Record<string, Event | QuickActionsEvent> | undefined) ??
             currentState.activeEvents,
         );
-        const normalizedHistory = normalizeEventRecord(
+        const normalizedHistoryBase = normalizeEventRecord(
           (persisted.historyEvents as Record<string, Event | QuickActionsEvent> | undefined) ??
             currentState.historyEvents,
         );
+        const normalizedActive = normalizeLegacyMaterializedEventDates(
+          normalizedActiveBase.events,
+          mergedPlannedEvents,
+        );
+        const normalizedHistory = normalizeLegacyMaterializedEventDates(
+          normalizedHistoryBase.events,
+          mergedPlannedEvents,
+        );
 
-        if (stripped.changed || normalizedActive.changed || normalizedHistory.changed) {
+        if (
+          stripped.changed ||
+          normalizedActiveBase.changed ||
+          normalizedHistoryBase.changed ||
+          normalizedActive.changed ||
+          normalizedHistory.changed
+        ) {
           persistCleanedScheduleState({
             ...persisted,
+            plannedEvents: mergedPlannedEvents,
             activeEvents: normalizedActive.events,
             historyEvents: normalizedHistory.events,
             taskTemplates: stripped.taskTemplates,
@@ -405,6 +475,7 @@ export const useScheduleStore = create<ScheduleState & ScheduleActions>()(
         return {
           ...currentState,
           ...persisted,
+          plannedEvents: mergedPlannedEvents,
           activeEvents: normalizedActive.events,
           historyEvents: normalizedHistory.events,
           taskTemplates: stripped.taskTemplates,

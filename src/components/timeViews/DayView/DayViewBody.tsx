@@ -411,32 +411,6 @@ export function DayViewBody({ date, onEventOpen, onEditPlanned }: DayViewBodyPro
     const yesterdayIsDieDate = planned.dieDate === previousDate;
     const coveredPlannedRefs = coveredPlannedRefsByDate.get(dateISO);
 
-    // True multi-day one-off event (not overnight)
-    const isTrueMultiDay =
-      planned.dieDate && planned.dieDate !== planned.seedDate &&
-      !isOvernight &&
-      planned.seedDate !== planned.dieDate &&
-      planned.seedDate <= dateISO && planned.dieDate >= dateISO;
-
-    if (isTrueMultiDay) {
-      const startsToday = planned.seedDate === dateISO;
-      const endsToday = planned.dieDate === dateISO;
-      const startTime = planned.seedDate < dateISO ? '00:00' : planned.startTime;
-      const endTime = planned.dieDate && planned.dieDate > dateISO ? '23:59' : planned.endTime;
-      if (startsToday) {
-        dayEvents.push({ ...planned, startTime, endTime });
-        continuesOverride.set(planned.id, '23:59');
-        labelOverride.set(planned.id, '↓ continues');
-      } else if (endsToday) {
-        dayEvents.push({ ...planned, id: `${planned.id}--continued`, startTime: '00:00', endTime: planned.endTime });
-        labelOverride.set(`${planned.id}--continued`, `↑ started ${planned.seedDate}`);
-      } else {
-        dayEvents.push({ ...planned, id: `${planned.id}--spanning`, startTime: '00:00', endTime: '23:59' });
-        labelOverride.set(`${planned.id}--spanning`, '⬛ all day');
-      }
-      continue;
-    }
-
     if (isOvernight) {
       // Deduplicate morning and evening blocks separately
       // Check for materialized morning and evening blocks

@@ -337,34 +337,6 @@ function projectPlannedBlocksForDay(
 ): ColorBlock[] {
   const dateISO = format(day, 'iso');
   const isOvernight = parseMinutes(planned.endTime) < parseMinutes(planned.startTime);
-  // True multi-day one-off event (not overnight)
-  const isTrueMultiDay =
-    planned.dieDate && planned.dieDate !== planned.seedDate &&
-    !isOvernight &&
-    planned.seedDate !== planned.dieDate &&
-    planned.seedDate <= dateISO && planned.dieDate >= dateISO;
-
-  if (isTrueMultiDay) {
-    const startsToday = planned.seedDate === dateISO;
-    const endsToday = planned.dieDate === dateISO;
-    const startTime = planned.seedDate < dateISO ? '00:00' : planned.startTime;
-    // Fix: check for null before comparing planned.dieDate > dateISO
-    const endTime = planned.dieDate && planned.dieDate > dateISO ? '23:59' : planned.endTime;
-    const markerKey: ColorBlock['markerKey'] = startsToday
-      ? 'night'
-      : (planned.dieDate && endsToday)
-        ? 'morning'
-        : 'rainbow';
-
-    return [{
-      id: `planned-${planned.id}:${dateISO}`,
-      color: planned.color,
-      day: dayIndex,
-      startTime,
-      endTime,
-      markerKey,
-    }];
-  }
 
   // Overnight routines and recurrences
   const previousDate = format(new Date(day.getFullYear(), day.getMonth(), day.getDate() - 1), 'iso');
