@@ -16,6 +16,7 @@ import type { Task } from '../../../../../../types/task';
 import { IconDisplay } from '../../../../../shared/IconDisplay';
 import { IconPicker } from '../../../../../shared/IconPicker';
 import { TextInput } from '../../../../../shared/inputs/TextInput';
+import { AddItemPanel } from './AddItemPanel';
 import { taskTemplateLibrary } from '../../../../../../coach';
 import {
   getUserInventoryItemTemplates,
@@ -28,6 +29,7 @@ import {
   getItemTaskTemplateMeta,
   getItemTemplateByRef,
   makeCustomItemTemplateRef,
+  type ItemCategory,
   type ItemKind,
 } from '../../../../../../coach/ItemLibrary';
 
@@ -85,10 +87,13 @@ export function InventorySpecialView({ resource, onAddContainer, onEditContainer
   const [activeTab, setActiveTab] = useState<TabKey>('items');
   const [expandedItemId, setExpandedItemId] = useState<string | null>(null);
   const [expandedContainerId, setExpandedContainerId] = useState<string | null>(null);
+  const [showAddItemPanel, setShowAddItemPanel] = useState(false);
   const [showItemComposer, setShowItemComposer] = useState(false);
   const [draftItemName, setDraftItemName] = useState('');
   const [draftItemIcon, setDraftItemIcon] = useState('inventory');
   const [draftItemKind, setDraftItemKind] = useState<ItemKind>('consumable');
+  const [draftItemCategory, setDraftItemCategory] = useState<ItemCategory>('workspace');
+  const [draftItemDescription, setDraftItemDescription] = useState('Custom inventory item');
   const [draftTaskTemplates, setDraftTaskTemplates] = useState<InventoryCustomTaskTemplate[]>([]);
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
 
@@ -165,23 +170,22 @@ export function InventorySpecialView({ resource, onAddContainer, onEditContainer
     setDraftItemName('');
     setDraftItemIcon('inventory');
     setDraftItemKind('consumable');
+    setDraftItemCategory('workspace');
+    setDraftItemDescription('Custom inventory item');
     setDraftTaskTemplates([]);
     setEditingItemId(null);
     setShowItemComposer(false);
   }
 
-  function openItemComposer(itemId?: string) {
-    if (!itemId) {
-      resetItemComposer();
-      setShowItemComposer(true);
-      return;
-    }
-
+  function openItemComposer(itemId: string) {
     const item = itemEntries.find((entry) => entry.id === itemId);
     if (!item) return;
+    const resolved = resolveInventoryItemTemplate(item.id, itemEntries);
     setDraftItemName(item.name);
     setDraftItemIcon(item.icon || 'inventory');
     setDraftItemKind(item.kind ?? 'consumable');
+    setDraftItemCategory((resolved?.category ?? 'workspace') as ItemCategory);
+    setDraftItemDescription(resolved?.description ?? 'Custom inventory item');
     setDraftTaskTemplates(item.customTaskTemplates ?? []);
     setEditingItemId(itemId);
     setShowItemComposer(true);
@@ -208,6 +212,9 @@ export function InventorySpecialView({ resource, onAddContainer, onEditContainer
       name: draftItemName.trim(),
       icon: draftItemIcon || 'inventory',
       kind: draftItemKind,
+      category: draftItemCategory,
+      description: draftItemDescription.trim() || 'Custom inventory item',
+      isCustom: true,
       customTaskTemplates: draftItemKind === 'facility'
         ? draftTaskTemplates.filter((taskTemplate) => taskTemplate.name.trim().length > 0)
         : [],
@@ -405,7 +412,7 @@ export function InventorySpecialView({ resource, onAddContainer, onEditContainer
         {activeTab === 'items' ? (
           <button
             type="button"
-            onClick={() => openItemComposer()}
+            onClick={() => setShowAddItemPanel(true)}
             className="rounded-full bg-blue-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-600"
           >
             Add Item
@@ -515,7 +522,8 @@ export function InventorySpecialView({ resource, onAddContainer, onEditContainer
             <div className="space-y-2">
               {itemEntries.map((item) => {
                 const builtInTemplate = getItemTemplateByRef(item.id);
-                const description = builtInTemplate?.description ?? (item.id.startsWith(CUSTOM_ITEM_TEMPLATE_PREFIX) ? 'Custom inventory item' : '');
+                const resolvedItem = resolveInventoryItemTemplate(item.id, itemEntries);
+                const description = builtInTemplate?.description ?? resolvedItem?.description ?? (item.id.startsWith(CUSTOM_ITEM_TEMPLATE_PREFIX) ? 'Custom inventory item' : '');
                 const usage = itemUsage.get(item.id) ?? { looseItems: [], containerRefs: [] };
                 const totalInstances = usage.looseItems.length + usage.containerRefs.length;
                 const lowCount = [...usage.looseItems, ...usage.containerRefs.map((entry) => entry.item)].filter((entry) => entry.threshold != null && entry.quantity != null && entry.quantity <= entry.threshold).length;
@@ -860,6 +868,17 @@ export function InventorySpecialView({ resource, onAddContainer, onEditContainer
           )
         )}
       </div>
+
+      {showAddItemPanel ? (
+        <AddItemPanel
+          resource={resource}
+          onClose={() => setShowAddItemPanel(false)}
+          onItemAdded={(itemTemplateRef) => {
+            setActiveTab('items');
+            setExpandedItemId(itemTemplateRef);
+          }}
+        />
+      ) : null}
     </section>
   );
 }

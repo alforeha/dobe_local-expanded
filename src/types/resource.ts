@@ -166,6 +166,9 @@ export interface InventoryItemTemplate {
   name: string;
   icon: string;
   kind?: 'consumable' | 'facility';
+  category?: string;
+  description?: string;
+  isCustom?: boolean;
   customTaskTemplates?: InventoryCustomTaskTemplate[];
 }
 
