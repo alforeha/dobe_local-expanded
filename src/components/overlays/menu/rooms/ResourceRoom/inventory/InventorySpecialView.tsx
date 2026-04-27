@@ -96,7 +96,7 @@ export function InventorySpecialView({ resource, onAddContainer, onEditContainer
     () => mergeInventoryItemTemplates(getUserInventoryItemTemplates(user), resource.itemTemplates),
     [resource.itemTemplates, user],
   );
-  const containerEntries = resource.containers ?? [];
+  const containerEntries = useMemo(() => resource.containers ?? [], [resource.containers]);
   const homeResources = useMemo(
     () => Object.values(resources).filter((entry): entry is HomeResource => entry.type === 'home'),
     [resources],

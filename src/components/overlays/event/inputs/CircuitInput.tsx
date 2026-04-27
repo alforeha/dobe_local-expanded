@@ -199,17 +199,18 @@ export function CircuitInput({ inputFields, task, onComplete }: CircuitInputProp
   useEffect(() => {
     if (!resting) return;
     const id = window.setInterval(() => {
-      setRestSeconds((prev) => Math.max(0, prev - 1));
+      setRestSeconds((prev) => {
+        const next = Math.max(0, prev - 1);
+        if (next === 0 && pendingNextRound !== null) {
+          setCurrentRound(pendingNextRound);
+          setCurrentStepIndex(0);
+          setPendingNextRound(null);
+        }
+        return next;
+      });
     }, 1000);
     return () => window.clearInterval(id);
-  }, [resting]);
-
-  useEffect(() => {
-    if (restSeconds !== 0 || pendingNextRound === null) return;
-    setCurrentRound(pendingNextRound);
-    setCurrentStepIndex(0);
-    setPendingNextRound(null);
-  }, [pendingNextRound, restSeconds]);
+  }, [pendingNextRound, resting]);
 
   function saveCurrentStepResult(result: Partial<InputFields>) {
     if (!currentStepKey) return;

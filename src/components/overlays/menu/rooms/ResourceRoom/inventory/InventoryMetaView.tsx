@@ -68,7 +68,7 @@ export function InventoryMetaView({ resource }: InventoryMetaViewProps) {
     getUserInventoryItemTemplates(user),
     resource.itemTemplates,
   );
-  const containerEntries = resource.containers ?? [];
+  const containerEntries = useMemo(() => resource.containers ?? [], [resource.containers]);
 
   const itemUsage = useMemo(() => {
     const usage = new Map<string, { looseCount: number; containerCount: number }>();

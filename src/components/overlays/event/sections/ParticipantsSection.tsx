@@ -24,15 +24,11 @@ export function ParticipantsSection({ event, isEditMode, addRequestNonce }: Part
       .sort((left, right) => (left.displayName || left.name).localeCompare(right.displayName || right.name));
   }, [event.coAttendees, resources]);
 
-  useEffect(() => {
-    if (availableContacts.length === 0) {
-      setSelectedContactId('');
-      return;
-    }
-
-    if (!availableContacts.some((contact) => contact.id === selectedContactId)) {
-      setSelectedContactId(availableContacts[0]?.id ?? '');
-    }
+  const effectiveSelectedContactId = useMemo(() => {
+    if (availableContacts.length === 0) return '';
+    return availableContacts.some((contact) => contact.id === selectedContactId)
+      ? selectedContactId
+      : (availableContacts[0]?.id ?? '');
   }, [availableContacts, selectedContactId]);
 
   useEffect(() => {
@@ -41,7 +37,7 @@ export function ParticipantsSection({ event, isEditMode, addRequestNonce }: Part
   }, [addRequestNonce, isEditMode]);
 
   const handleAddParticipant = () => {
-    const selectedContact = availableContacts.find((contact) => contact.id === selectedContactId);
+    const selectedContact = availableContacts.find((contact) => contact.id === effectiveSelectedContactId);
     if (!selectedContact) return;
 
     updateEvent(event.id, {
@@ -106,7 +102,7 @@ export function ParticipantsSection({ event, isEditMode, addRequestNonce }: Part
               <div className="flex flex-col gap-2 sm:flex-row">
                 <select
                   ref={addSelectRef}
-                  value={selectedContactId}
+                  value={effectiveSelectedContactId}
                   onChange={(event) => setSelectedContactId(event.target.value)}
                   className="flex-1 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-purple-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
                 >
@@ -120,7 +116,7 @@ export function ParticipantsSection({ event, isEditMode, addRequestNonce }: Part
                 <button
                   type="button"
                   onClick={handleAddParticipant}
-                  disabled={!selectedContactId}
+                  disabled={!effectiveSelectedContactId}
                   className="rounded-lg bg-purple-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-purple-700 disabled:opacity-50"
                 >
                   Add participant

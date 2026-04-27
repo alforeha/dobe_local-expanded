@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import type { FloorPlanRoom, FloorPlanSegment, HomeStory } from '../../../../../../types/resource';
 import { closeFloorPlanSegments, getPointsBounds, segmentsToPoints } from '../../../../../../utils/floorPlan';
@@ -106,27 +106,10 @@ export function HomeLayout({ stories, onChange, editable = false, homeId }: Home
 	const [editingStoryOutline, setEditingStoryOutline] = useState<StoryOutlineDraft | null>(null);
 	const [deleteDialog, setDeleteDialog] = useState<DeleteDialogState>(null);
 
-	useEffect(() => {
-		if (!stories.some((story) => story.id === activeStoryId)) {
-			setActiveStoryId(stories[0]?.id ?? null);
-		}
-	}, [activeStoryId, stories]);
-
-	useEffect(() => {
-		const activeStory = stories.find((story) => story.id === activeStoryId) ?? stories[0] ?? null;
-		if (!activeStory) {
-			setSelectedRoomId(null);
-			setEditingRoom(null);
-			setEditingMode(null);
-			setEditingStoryOutline(null);
-			return;
-		}
-		if (selectedRoomId !== null && !activeStory.rooms.some((room) => room.id === selectedRoomId)) {
-			setSelectedRoomId(activeStory.rooms[0]?.id ?? null);
-		}
-	}, [activeStoryId, selectedRoomId, stories]);
-
 	const activeStory = stories.find((story) => story.id === activeStoryId) ?? stories[0] ?? null;
+	const effectiveSelectedRoomId = selectedRoomId !== null && activeStory?.rooms.some((room) => room.id === selectedRoomId)
+		? selectedRoomId
+		: activeStory?.rooms[0]?.id ?? null;
 
 	function commit(nextStories: HomeStory[]) {
 		onChange?.(nextStories);
@@ -375,7 +358,7 @@ export function HomeLayout({ stories, onChange, editable = false, homeId }: Home
 			{activeStory ? (
 				<HomeFloorPlan
 					story={cloneStory(activeStory)}
-					selectedRoomId={selectedRoomId}
+					selectedRoomId={effectiveSelectedRoomId}
 					onSelectRoom={setSelectedRoomId}
 					homeId={homeId}
 					editable={editable}

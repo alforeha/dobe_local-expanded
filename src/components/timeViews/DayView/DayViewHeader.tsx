@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { IconDisplay } from '../../shared/IconDisplay';
 import { useResourceStore } from '../../../stores/useResourceStore';
 import { useAppDate } from '../../../utils/useAppDate';
@@ -40,16 +40,12 @@ export function DayViewHeader({ date, weather, hasLocation, weatherLoading, onWe
   const resourceIndicators = getResourceIndicatorsForDate(dateISO, resources);
   const visibleIndicators = resourceIndicators.length > 5 ? resourceIndicators.slice(0, 4) : resourceIndicators.slice(0, 5);
   const hiddenCount = Math.max(0, resourceIndicators.length - visibleIndicators.length);
-  const activeIndicator = visibleIndicators.find((indicator) => `${indicator.resourceId}:${indicator.label}` === openIndicatorKey) ?? null;
+  const activeIndicator = visibleIndicators.find((indicator) => `${dateISO}:${indicator.resourceId}:${indicator.label}` === openIndicatorKey) ?? null;
 
   const showWeatherButton = Boolean(weather) || (isToday && !weatherLoading);
 
-  useEffect(() => {
-    setOpenIndicatorKey(null);
-  }, [dateISO]);
-
   function indicatorKey(indicator: ResourceIndicator): string {
-    return `${indicator.resourceId}:${indicator.label}`;
+    return `${dateISO}:${indicator.resourceId}:${indicator.label}`;
   }
 
   return (

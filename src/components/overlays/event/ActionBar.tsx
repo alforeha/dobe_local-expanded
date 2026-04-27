@@ -41,29 +41,24 @@ export function ActionBar({ eventId: _eventId, activeSection, onSectionChange, i
   const dropdownRef = useRef<HTMLDivElement | null>(null);
   const dropdownButtonRef = useRef<HTMLButtonElement | null>(null);
 
+  const closeDropdown = () => {
+    setIsDropdownOpen(false);
+    setConfirmDelete(false);
+  };
+
   useEffect(() => {
-    if (!isDropdownOpen) {
-      setConfirmDelete(false);
-      return undefined;
-    }
+    if (!isDropdownOpen) return undefined;
 
     const handlePointerDown = (event: MouseEvent) => {
       const target = event.target as Node;
       if (!dropdownRef.current?.contains(target) && !dropdownButtonRef.current?.contains(target)) {
-        setIsDropdownOpen(false);
+        closeDropdown();
       }
     };
 
     document.addEventListener('mousedown', handlePointerDown);
     return () => document.removeEventListener('mousedown', handlePointerDown);
   }, [isDropdownOpen]);
-
-  useEffect(() => {
-    if (isGlobeViewOpen) {
-      setIsDropdownOpen(false);
-      setConfirmDelete(false);
-    }
-  }, [isGlobeViewOpen]);
 
   useLayoutEffect(() => {
     if (!isDropdownOpen || !dropdownButtonRef.current) return;
@@ -94,12 +89,12 @@ export function ActionBar({ eventId: _eventId, activeSection, onSectionChange, i
     }
 
     onDeleteEvent?.();
-    setIsDropdownOpen(false);
+    closeDropdown();
   };
 
   const handleSectionSelect = (section: ActionBarSection) => {
     onSectionChange(section);
-    setIsDropdownOpen(false);
+    closeDropdown();
   };
 
   const handleAddClick = () => {
@@ -112,7 +107,22 @@ export function ActionBar({ eventId: _eventId, activeSection, onSectionChange, i
     } else {
       onEnterEdit();
     }
-    setIsDropdownOpen(false);
+    closeDropdown();
+  };
+
+  const handleDropdownToggle = () => {
+    setIsDropdownOpen((open) => {
+      const nextOpen = !open;
+      if (!nextOpen) {
+        setConfirmDelete(false);
+      }
+      return nextOpen;
+    });
+  };
+
+  const handleGlobeToggle = () => {
+    closeDropdown();
+    onToggleGlobeView?.();
   };
 
   return (
@@ -135,7 +145,7 @@ export function ActionBar({ eventId: _eventId, activeSection, onSectionChange, i
               type="button"
               aria-label={isGlobeViewOpen ? 'Close globe view' : 'Open globe view'}
               aria-pressed={isGlobeViewOpen}
-              onClick={onToggleGlobeView}
+              onClick={handleGlobeToggle}
               className={`action-bar-globe-button${isGlobeViewOpen ? ' is-active' : ''}`}
             >
               <span aria-hidden="true">🌍</span>
@@ -149,7 +159,7 @@ export function ActionBar({ eventId: _eventId, activeSection, onSectionChange, i
                 type="button"
                 aria-haspopup="menu"
                 aria-expanded={isDropdownOpen}
-                onClick={() => setIsDropdownOpen((open) => !open)}
+                onClick={handleDropdownToggle}
                 className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
               >
                 {sectionLabels[activeSection]}

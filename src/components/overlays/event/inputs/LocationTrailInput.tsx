@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { deleteWaypoint, insertWaypoint, updateWaypoint } from '../../../../engine/eventExecution';
@@ -109,9 +109,10 @@ export function LocationTrailInput({ eventId, inputFields, task, onComplete, onR
   const rootRef = useRef<HTMLDivElement | null>(null);
   const dragMarkerRef = useRef<L.Marker | null>(null);
 
-  const persistedWaypoints = Array.isArray((task.resultFields as Partial<LocationTrailInputFields>).waypoints)
-    ? ((task.resultFields as Partial<LocationTrailInputFields>).waypoints ?? [])
-    : [];
+  const persistedWaypoints = useMemo(() => {
+    const taskWaypoints = (task.resultFields as Partial<LocationTrailInputFields>).waypoints;
+    return Array.isArray(taskWaypoints) ? (taskWaypoints ?? []) : [];
+  }, [task.resultFields]);
   const visibleWaypoints = isComplete ? persistedWaypoints : waypoints;
   const renderedWaypoints = useMemo(() => {
     if (!isComplete || selectedWaypointIndex === null || !pendingWaypointPosition || !mapPlacementMode) {
@@ -412,7 +413,7 @@ export function LocationTrailInput({ eventId, inputFields, task, onComplete, onR
     };
   }, [eventId, isComplete, mapPlacementMode, selectedWaypointIndex]);
 
-  const collectPoint = () => {
+  const collectPoint = useCallback(() => {
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         const wp: Waypoint = {
@@ -428,12 +429,11 @@ export function LocationTrailInput({ eventId, inputFields, task, onComplete, onR
       },
       { timeout: 5000 },
     );
-  };
+  }, []);
 
   // Interval-based tracking
   useEffect(() => {
     if (phase !== 'tracking') return;
-    // Immediate first point
     collectPoint();
     const intervalMs = (captureInterval ?? 30) * 1000;
     intervalRef.current = window.setInterval(collectPoint, intervalMs);
@@ -443,8 +443,7 @@ export function LocationTrailInput({ eventId, inputFields, task, onComplete, onR
         intervalRef.current = null;
       }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [phase]);
+  }, [captureInterval, collectPoint, phase]);
 
   const handleStart = () => {
     if (!navigator.geolocation) {

@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { IconDisplay } from '../../shared/IconDisplay';
 import { PopupShell } from '../../shared/popups/PopupShell';
 import { LocationManager } from '../../weather/LocationManager';
@@ -33,27 +33,37 @@ export function DayWeatherPopup({
   const [locationManagerOpen, setLocationManagerOpen] = useState(false);
 
   const locationPreferences = useSystemStore((s) => s.settings?.locationPreferences);
-  const locations = locationPreferences?.locations ?? [];
+  const locations = useMemo(() => locationPreferences?.locations ?? [], [locationPreferences]);
   const activeLocationId = locationPreferences?.activeLocationId ?? null;
 
   // viewLocationId is local to this popup — switching it does NOT change activeLocationId
   const [viewLocationId, setViewLocationId] = useState<string | null>(activeLocationId);
-  const viewLocation = locations.find((l) => l.id === viewLocationId) ?? locations.find((l) => l.id === activeLocationId) ?? locations[0];
+  const activeLocation = useMemo(
+    () => locations.find((location) => location.id === activeLocationId) ?? null,
+    [activeLocationId, locations],
+  );
+  const viewLocation = useMemo(
+    () => locations.find((location) => location.id === viewLocationId) ?? activeLocation ?? locations[0],
+    [activeLocation, locations, viewLocationId],
+  );
+  const isViewingActiveLocation = Boolean(
+    viewLocation
+    && (viewLocation.id === activeLocationId
+      || (activeLocation && viewLocation.lat === activeLocation.lat && viewLocation.lng === activeLocation.lng)),
+  );
 
   // Fetch weather for the view location when it differs from the active location
   const [altWeather, setAltWeather] = useState<WeatherDay[] | null>(null);
   const [altLoading, setAltLoading] = useState(false);
 
   useEffect(() => {
-    if (!viewLocation) return;
-    // If this is the active location, use the weather passed in from the parent
-    const activeLocation = locations.find((l) => l.id === activeLocationId);
-    if (viewLocation.id === activeLocationId || (activeLocation && viewLocation.lat === activeLocation.lat && viewLocation.lng === activeLocation.lng)) {
-      setAltWeather(null);
-      return;
-    }
+    if (!viewLocation || isViewingActiveLocation) return;
     let cancelled = false;
-    setAltLoading(true);
+    const loadingFrame = window.requestAnimationFrame(() => {
+      if (!cancelled) {
+        setAltLoading(true);
+      }
+    });
     fetchWeatherForecast(viewLocation.lat, viewLocation.lng, 16)
       .then((forecast) => {
         if (!cancelled) {
@@ -67,10 +77,13 @@ export function DayWeatherPopup({
           setAltLoading(false);
         }
       });
-    return () => { cancelled = true; };
-  }, [viewLocation, activeLocationId, locations]);
+    return () => {
+      cancelled = true;
+      window.cancelAnimationFrame(loadingFrame);
+    };
+  }, [isViewingActiveLocation, viewLocation]);
 
-  const displayWeather = altWeather !== null ? altWeather : weather;
+  const displayWeather = isViewingActiveLocation || altWeather === null ? weather : altWeather;
 
   const currentDateISO = format(currentDate, 'iso');
   const sortedWeather = useMemo(

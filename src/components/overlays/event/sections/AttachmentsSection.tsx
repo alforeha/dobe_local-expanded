@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { EVENT_MAX_ATTACHMENTS } from '../../../../storage/storageBudget';
 import { addAttachment, removeAttachment } from '../../../../engine';
@@ -41,18 +41,7 @@ export function AttachmentsSection({ event, eventId, isEditMode, addRequestNonce
 
   const canAddAttachment = event.attachments.length < EVENT_MAX_ATTACHMENTS;
 
-  useEffect(() => {
-    if (addRequestNonce === 0 || isBusy || !canAddAttachment) return;
-
-    if (isNativePlatform) {
-      void handleNativePhoto('gallery');
-      return;
-    }
-
-    fileInputRef.current?.click();
-  }, [addRequestNonce, canAddAttachment, isBusy, isNativePlatform]);
-
-  const commitAttachment = async (
+  const commitAttachment = useCallback(async (
     data: {
       uri: string;
       mimeType: string;
@@ -84,7 +73,7 @@ export function AttachmentsSection({ event, eventId, isEditMode, addRequestNonce
     );
 
     setStatusMessage(attachmentId ? 'Attachment added.' : `Attachment limit reached (${EVENT_MAX_ATTACHMENTS}).`);
-  };
+  }, [canAddAttachment, eventId]);
 
   const handleFileChange = async (eventValue: React.ChangeEvent<HTMLInputElement>) => {
     const file = eventValue.target.files?.[0];
@@ -110,7 +99,7 @@ export function AttachmentsSection({ event, eventId, isEditMode, addRequestNonce
     }
   };
 
-  async function handleNativePhoto(source: 'camera' | 'gallery') {
+  const handleNativePhoto = useCallback(async (source: 'camera' | 'gallery') => {
     if (!isNativePlatform) {
       fileInputRef.current?.click();
       return;
@@ -155,7 +144,18 @@ export function AttachmentsSection({ event, eventId, isEditMode, addRequestNonce
     } finally {
       setIsBusy(false);
     }
-  }
+  }, [commitAttachment, isNativePlatform]);
+
+  useEffect(() => {
+    if (addRequestNonce === 0 || isBusy || !canAddAttachment) return;
+
+    if (isNativePlatform) {
+      void handleNativePhoto('gallery');
+      return;
+    }
+
+    fileInputRef.current?.click();
+  }, [addRequestNonce, canAddAttachment, handleNativePhoto, isBusy, isNativePlatform]);
 
   const handleRemoveAttachment = (attachmentId: string) => {
     removeAttachment(attachmentId, eventId);

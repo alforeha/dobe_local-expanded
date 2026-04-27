@@ -1,15 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { taskTemplateLibrary } from '../../../coach';
-import { starterTaskTemplates } from '../../../coach/StarterQuestLibrary';
 import { useAutoLocationPreferences } from '../../../hooks/useAutoLocationPreferences';
-import { useScheduleStore } from '../../../stores/useScheduleStore';
-import type { Event, EventAttachment, Task } from '../../../types';
-import type { EventLocation } from '../../../types/plannedEvent';
-import type { InputFields, LocationPointInputFields, LocationTrailInputFields, TaskTemplate, TaskType, Waypoint } from '../../../types/taskTemplate';
-import { resolveTaskDisplayName } from '../../../utils/resolveTaskDisplayName';
-import { resolveTaskTemplate } from '../../../utils/resolveTaskTemplate';
+import type { Event } from '../../../types';
+import type { EventAttachment } from '../../../types';
+import type { EventGlobeLayerDefinition } from './EventGlobeLayers';
 import './EventGlobeView.css';
 
 export interface EventGlobeViewProps {
@@ -26,47 +21,6 @@ export interface EventGlobeLayerControlsProps {
   onToggleLayer: (layerKey: string) => void;
 }
 
-interface GlobePoint {
-  lat: number;
-  lng: number;
-}
-
-interface BaseLayerDefinition {
-  key: string;
-  label: string;
-  points: GlobePoint[];
-}
-
-interface EventLocationLayerDefinition extends BaseLayerDefinition {
-  kind: 'event-location';
-  location: EventLocation;
-}
-
-interface TrailLayerDefinition extends BaseLayerDefinition {
-  kind: 'trail';
-  task: Task;
-  taskName: string;
-  waypoints: Waypoint[];
-}
-
-interface PointLayerDefinition extends BaseLayerDefinition {
-  kind: 'point';
-  taskName: string;
-  point: GlobePoint;
-  timestamp?: string;
-}
-
-interface PhotoLayerDefinition extends BaseLayerDefinition {
-  kind: 'photo';
-  attachment: EventAttachment;
-}
-
-export type EventGlobeLayerDefinition =
-  | EventLocationLayerDefinition
-  | TrailLayerDefinition
-  | PointLayerDefinition
-  | PhotoLayerDefinition;
-
 const WORLD_CENTER: L.LatLngExpression = [20, 0];
 const WORLD_ZOOM = 2;
 const LOCAL_ZOOM = 13;
@@ -82,32 +36,6 @@ function escapeHtml(value: string): string {
 
 function formatCoordinates(latitude: number, longitude: number): string {
   return `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`;
-}
-
-function buildTemplateRecord(scheduleTemplates: Record<string, TaskTemplate>): Record<string, TaskTemplate> {
-  const templates: Record<string, TaskTemplate> = {};
-
-  for (const template of taskTemplateLibrary) {
-    if (template.id) templates[template.id] = template;
-  }
-
-  for (const template of starterTaskTemplates) {
-    if (template.id) templates[template.id] = template;
-  }
-
-  for (const [id, template] of Object.entries(scheduleTemplates)) {
-    templates[id] = template;
-  }
-
-  return templates;
-}
-
-function resolveEventTaskType(task: Task | undefined, templates: Record<string, TaskTemplate>): TaskType | null {
-  if (!task) return null;
-  if (task.isUnique === true) return (task.taskType as TaskType | null) ?? null;
-  if (!task.templateRef) return null;
-
-  return resolveTaskTemplate(task.templateRef, templates, starterTaskTemplates, taskTemplateLibrary)?.taskType ?? null;
 }
 
 function getTrailColor(source: HTMLElement | null): string {
@@ -201,122 +129,6 @@ function buildLayerPopup(layer: EventGlobeLayerDefinition): string {
       ${imageMarkup}
     </div>
   `;
-}
-
-export function useEventGlobeLayers(event: Event | undefined, previewResults: Record<string, Partial<InputFields>> = {}) {
-  const [layerVisibility, setLayerVisibility] = useState<Record<string, boolean>>({});
-  const tasks = useScheduleStore((state) => state.tasks);
-  const scheduleTemplates = useScheduleStore((state) => state.taskTemplates);
-  const templates = useMemo(() => buildTemplateRecord(scheduleTemplates), [scheduleTemplates]);
-
-  const layerDefinitions = useMemo<EventGlobeLayerDefinition[]>(() => {
-    if (!event) return [];
-
-    const layers: EventGlobeLayerDefinition[] = [];
-
-    if (event.location) {
-      layers.push({
-        key: 'event-location',
-        kind: 'event-location',
-        label: 'Event Location',
-        location: event.location,
-        points: [{ lat: event.location.latitude, lng: event.location.longitude }],
-      });
-    }
-
-    for (const taskId of event.tasks) {
-      const task = tasks[taskId];
-      const taskType = resolveEventTaskType(task, templates);
-      if (!task || !taskType) continue;
-
-      const taskName = resolveTaskDisplayName(task, scheduleTemplates, starterTaskTemplates);
-      const hasPreviewResults = Object.keys(previewResults[task.id] ?? {}).length > 0;
-      const effectiveResultFields = ((task.completionState !== 'complete' && hasPreviewResults)
-        ? previewResults[task.id]
-        : task.resultFields ?? {}) as Partial<InputFields>;
-
-      if (taskType === 'LOCATION_TRAIL') {
-        const resultFields = effectiveResultFields as Partial<LocationTrailInputFields>;
-        const waypoints = (resultFields.waypoints ?? []).filter(
-          (waypoint): waypoint is Waypoint => typeof waypoint.lat === 'number' && typeof waypoint.lng === 'number',
-        );
-
-        if (waypoints.length > 0) {
-          layers.push({
-            key: task.id,
-            kind: 'trail',
-            label: taskName,
-            task,
-            taskName,
-            waypoints,
-            points: waypoints.map((waypoint) => ({ lat: waypoint.lat, lng: waypoint.lng })),
-          });
-        }
-      }
-
-      if (taskType === 'LOCATION_POINT') {
-        const resultFields = effectiveResultFields as Partial<LocationPointInputFields>;
-        if (typeof resultFields.lat === 'number' && typeof resultFields.lng === 'number') {
-          layers.push({
-            key: task.id,
-            kind: 'point',
-            label: taskName,
-            taskName,
-            point: { lat: resultFields.lat, lng: resultFields.lng },
-            timestamp: resultFields.timestamp,
-            points: [{ lat: resultFields.lat, lng: resultFields.lng }],
-          });
-        }
-      }
-    }
-
-    for (const attachment of event.attachments) {
-      if (attachment.type !== 'photo') continue;
-      if (!attachment.location) continue;
-      if (typeof attachment.location.latitude !== 'number' || typeof attachment.location.longitude !== 'number') continue;
-
-      layers.push({
-        key: attachment.id,
-        kind: 'photo',
-        label: getAttachmentLabel(attachment),
-        attachment,
-        points: [{ lat: attachment.location.latitude, lng: attachment.location.longitude }],
-      });
-    }
-
-    return layers;
-  }, [event, previewResults, scheduleTemplates, tasks, templates]);
-
-  useEffect(() => {
-    setLayerVisibility((current) => {
-      const next: Record<string, boolean> = {};
-      let changed = false;
-
-      for (const layer of layerDefinitions) {
-        next[layer.key] = current[layer.key] ?? true;
-        if (next[layer.key] !== current[layer.key]) {
-          changed = true;
-        }
-      }
-
-      if (Object.keys(current).length !== layerDefinitions.length) {
-        changed = true;
-      }
-
-      return changed ? next : current;
-    });
-  }, [layerDefinitions]);
-
-  return {
-    layerDefinitions,
-    layerVisibility,
-    toggleLayer: (layerKey: string) => {
-      setLayerVisibility((current) => ({
-        ...current,
-        [layerKey]: !(current[layerKey] ?? true),
-      }));
-    },
-  };
 }
 
 export function EventGlobeLayerControls({ layerDefinitions, layerVisibility, onToggleLayer }: EventGlobeLayerControlsProps) {

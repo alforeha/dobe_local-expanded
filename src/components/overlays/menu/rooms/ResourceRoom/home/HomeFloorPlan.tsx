@@ -233,11 +233,13 @@ export function HomeFloorPlan({
 		}
 		return nextRooms;
 	}, [editingMode, editingRoom, story.rooms]);
-	const storyOutline = editingStoryOutline
-		? { origin: editingStoryOutline.origin, segments: editingStoryOutline.segments }
-		: story.outlineOrigin && story.outlineSegments
-			? { origin: story.outlineOrigin, segments: story.outlineSegments }
-			: null;
+	const storyOutline = useMemo(() => (
+		editingStoryOutline
+			? { origin: editingStoryOutline.origin, segments: editingStoryOutline.segments }
+			: story.outlineOrigin && story.outlineSegments
+				? { origin: story.outlineOrigin, segments: story.outlineSegments }
+				: null
+	), [editingStoryOutline, story.outlineOrigin, story.outlineSegments]);
 	const storyOutlinePoints = useMemo(
 		() => (storyOutline ? segmentsToPoints(storyOutline.origin, storyOutline.segments) : []),
 		[storyOutline],
@@ -446,12 +448,16 @@ export function HomeFloorPlan({
 	const containerFocusSummary = roomSummaries.find((entry) => entry.room.id === editingContainersRoomId) ?? null;
 	const selectedRoomSummary = roomSummaries.find((entry) => entry.room.id === selectedRoom?.id) ?? null;
 	const selectedEditingSegment = selectedSegmentIndex != null ? editingSegmentLines[selectedSegmentIndex] ?? null : null;
+	const effectiveExpandedRoomId = !editingRoom && !editingStoryOutline ? (selectedRoomId ?? null) : expandedRoomId;
 
 	useEffect(() => {
-		setSelectedSegmentIndex(null);
-		setSelectedOutlineSegmentIndex(null);
-		setRoomEditMode('add-point');
-		setOutlineEditMode('add-point');
+		const resetId = window.setTimeout(() => {
+			setSelectedSegmentIndex(null);
+			setSelectedOutlineSegmentIndex(null);
+			setRoomEditMode('add-point');
+			setOutlineEditMode('add-point');
+		}, 0);
+		return () => window.clearTimeout(resetId);
 	}, [editingMode, editingRoom?.id, editingStoryOutline, isPlacingStartPoint]);
 	const roomEditorPanel = editable && editingRoom ? (
 		<div className="relative z-20 border-b border-gray-200 bg-gray-50/80 px-3 py-3 dark:border-gray-700 dark:bg-gray-950/40">
@@ -509,19 +515,21 @@ export function HomeFloorPlan({
 		}
 
 		return combineBounds(boundsList);
-	}, [canvasRooms, containerFocusSummary, currentPoint, isPlacingStartPoint, previewPoint, selectedRoomSummary, showPointPreview, startPointAnchor, startPointPreview, storyOutlinePoints]);
+	}, [canvasRooms, containerFocusSummary, currentPoint, editingRoom, editingStoryOutline, isPlacingStartPoint, previewPoint, selectedRoomSummary, showPointPreview, startPointAnchor, startPointPreview, storyOutlinePoints]);
 
 	useEffect(() => {
 		if (!editingContainersRoomId) return;
 		if (editingContainersRoomId === STORY_SCOPE_ID) return;
 		if (editingContainersRoomId !== selectedRoomId) {
-			setEditingContainersRoomId(null);
+			const resetId = window.setTimeout(() => setEditingContainersRoomId(null), 0);
+			return () => window.clearTimeout(resetId);
 		}
 	}, [editingContainersRoomId, selectedRoomId]);
 
 	useEffect(() => {
 		if (!expandedPlacedContainerId) {
-			setSelectedPlacementId(null);
+			const resetId = window.setTimeout(() => setSelectedPlacementId(null), 0);
+			return () => window.clearTimeout(resetId);
 			return;
 		}
 
@@ -531,59 +539,57 @@ export function HomeFloorPlan({
 		);
 
 		if (!hasExpandedPlacement) {
-			setExpandedPlacedContainerId(null);
-			setSelectedPlacementId(null);
+			const resetId = window.setTimeout(() => {
+				setExpandedPlacedContainerId(null);
+				setSelectedPlacementId(null);
+			}, 0);
+			return () => window.clearTimeout(resetId);
 			return;
 		}
 
 		if (selectedPlacementId !== expandedPlacedContainerId) {
-			setSelectedPlacementId(expandedPlacedContainerId);
+			const syncId = window.setTimeout(() => setSelectedPlacementId(expandedPlacedContainerId), 0);
+			return () => window.clearTimeout(syncId);
 		}
 	}, [expandedPlacedContainerId, outsidePlacedEntries, selectedPlacementId, selectedRoomSummary]);
 
 	useEffect(() => {
-		if (!expandedPlacedContainerId) return;
-
-		const hasExpandedPlacement = Boolean(
-			selectedRoomSummary?.placedEntries.some((entry) => entry.placement.id === expandedPlacedContainerId)
-			|| outsidePlacedEntries.some((entry) => entry.placement.id === expandedPlacedContainerId),
-		);
-
-		if (!hasExpandedPlacement) {
-			setExpandedPlacedContainerId(null);
-		}
-	}, [expandedPlacedContainerId, outsidePlacedEntries, selectedRoomSummary]);
-
-	useEffect(() => {
-		if (!editingRoom && !editingStoryOutline) {
-			setExpandedRoomId(selectedRoomId ?? null);
-		}
-	}, [editingRoom, editingStoryOutline, selectedRoomId, story.rooms]);
-
-	useEffect(() => {
 		if (!editingRoom) {
-			setIsPlacingStartPoint(false);
-			setStartPointAnchorIndex(null);
+			const resetId = window.setTimeout(() => {
+				setIsPlacingStartPoint(false);
+				setStartPointAnchorIndex(null);
+			}, 0);
+			return () => window.clearTimeout(resetId);
 			return;
 		}
 
 		if (editingMode === 'create') {
-			setIsPlacingStartPoint(true);
-			setStartPointAnchorIndex(null);
-			setStartPointDirection('right');
-			setStartPointDistance('24');
+			const resetId = window.setTimeout(() => {
+				setIsPlacingStartPoint(true);
+				setStartPointAnchorIndex(null);
+				setStartPointDirection('right');
+				setStartPointDistance('24');
+			}, 0);
+			return () => window.clearTimeout(resetId);
 			return;
 		}
 
-		setIsPlacingStartPoint(false);
-		setStartPointAnchorIndex(null);
-	}, [editingMode, editingRoom?.id]);
+		const resetId = window.setTimeout(() => {
+			setIsPlacingStartPoint(false);
+			setStartPointAnchorIndex(null);
+		}, 0);
+		return () => window.clearTimeout(resetId);
+	}, [editingMode, editingRoom, editingRoom?.id]);
 
 	useEffect(() => {
+		let frameId = 0;
+
 		if (!viewportBounds) {
-			setZoom((current) => (current === 1 ? current : 1));
-			setPan((current) => (current.x === 0 && current.y === 0 ? current : { x: 0, y: 0 }));
-			return;
+			frameId = window.requestAnimationFrame(() => {
+				setZoom((current) => (current === 1 ? current : 1));
+				setPan((current) => (current.x === 0 && current.y === 0 ? current : { x: 0, y: 0 }));
+			});
+			return () => window.cancelAnimationFrame(frameId);
 		}
 
 		const horizontalMargin = 72;
@@ -600,12 +606,15 @@ export function HomeFloorPlan({
 			y: VIEWBOX_HEIGHT / 2 - centerY * nextZoom,
 		};
 
-		setZoom((current) => (Math.abs(current - nextZoom) < 0.0001 ? current : nextZoom));
-		setPan((current) => (
-			Math.abs(current.x - nextPan.x) < 0.0001 && Math.abs(current.y - nextPan.y) < 0.0001
-				? current
-				: nextPan
-		));
+		frameId = window.requestAnimationFrame(() => {
+			setZoom((current) => (Math.abs(current - nextZoom) < 0.0001 ? current : nextZoom));
+			setPan((current) => (
+				Math.abs(current.x - nextPan.x) < 0.0001 && Math.abs(current.y - nextPan.y) < 0.0001
+					? current
+					: nextPan
+			));
+		});
+		return () => window.cancelAnimationFrame(frameId);
 	}, [viewportBounds]);
 
 	function appendSegment() {
@@ -1903,7 +1912,7 @@ export function HomeFloorPlan({
 							<div className="px-1 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Rooms</div>
 							<div className="space-y-2">
 								{visibleRoomSummaries.map(({ room, bounds, placedContainerEntries, placedLooseItemEntries }) => {
-									const isExpanded = expandedRoomId === room.id;
+									const isExpanded = effectiveExpandedRoomId === room.id;
 									const isSelected = selectedRoom?.id === room.id;
 									const isContainerFocus = editingContainersRoomId === room.id;
 									const draftContainer = draftContainerByRoom[room.id] ?? { name: '', icon: 'inventory' };

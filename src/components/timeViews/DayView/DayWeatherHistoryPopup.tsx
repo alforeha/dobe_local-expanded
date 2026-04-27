@@ -97,7 +97,7 @@ export function DayWeatherHistoryPopup({ date, onClose }: DayWeatherHistoryPopup
     return isQuickActionsEvent(ev) ? ev : null;
   }, [activeEvents, historyEvents, qaId]);
 
-  const locations = locationPreferences?.locations ?? [];
+  const locations = useMemo(() => locationPreferences?.locations ?? [], [locationPreferences]);
   const activeLocationId = locationPreferences?.activeLocationId ?? null;
 
   // Build display list: prefer locationSnapshots (multi-location), fall back to

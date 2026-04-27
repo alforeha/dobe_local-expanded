@@ -79,7 +79,10 @@ export function TaskBlock({ taskId, eventId, onTaskComplete, onPreviewResultChan
     : task;
 
   const isComplete = task?.completionState === 'complete' && !canRepeatAfterCooldown;
-  const currentResult = resultState.taskId === taskId ? resultState.result : {};
+  const currentResult = useMemo(
+    () => (resultState.taskId === taskId ? resultState.result : {}),
+    [resultState.result, resultState.taskId, taskId],
+  );
   const confirmDelete = confirmDeleteTaskId === taskId;
 
   useEffect(() => {
