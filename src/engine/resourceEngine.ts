@@ -979,10 +979,11 @@ function _genInventoryGTD(resource: InventoryResource, referenceDate: string): T
 
   for (const container of resource.containers ?? []) {
     const carryTask = container.carryTask;
+    if (container.kind !== 'bag') continue;
     if (!carryTask) continue;
     if (normalizeRecurrenceMode(carryTask.recurrenceMode) === 'never') continue;
 
-    const reminderLeadDays = carryTask.reminderLeadDays ?? 7;
+    const reminderLeadDays = carryTask.reminderLeadDays ?? 0;
     if (reminderLeadDays === -1) continue;
 
     const next = computeNextOccurrence(carryTask.recurrence, referenceDate);
@@ -998,6 +999,7 @@ function _genInventoryGTD(resource: InventoryResource, referenceDate: string): T
         next.date,
         label,
         { label } as Task['resultFields'],
+        { taskType: carryTask.taskType ?? 'CHECK' },
       ),
     );
   }

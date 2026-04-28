@@ -134,10 +134,12 @@ export interface InventoryContainer {
   id: string;
   name: string;
   icon: string;
+  kind?: 'container' | 'bag';
   items: ItemInstance[];
   carryTask?: {
     id: string;
     name: string;
+    taskType?: string;
     recurrenceMode?: 'recurring' | 'never';
     recurrence: ResourceRecurrenceRule;
     reminderLeadDays?: number;

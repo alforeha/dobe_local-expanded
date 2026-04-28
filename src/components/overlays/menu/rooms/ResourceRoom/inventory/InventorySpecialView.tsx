@@ -17,6 +17,7 @@ import { IconDisplay } from '../../../../../shared/IconDisplay';
 import { IconPicker } from '../../../../../shared/IconPicker';
 import { TextInput } from '../../../../../shared/inputs/TextInput';
 import { AddItemPanel } from './AddItemPanel';
+import { AddBagPanel } from './AddBagPanel';
 import { taskTemplateLibrary } from '../../../../../../coach';
 import {
   getUserInventoryItemTemplates,
@@ -39,7 +40,7 @@ interface InventorySpecialViewProps {
   onEditContainer: (resource: InventoryResource, containerId: string) => void;
 }
 
-type TabKey = 'items' | 'containers';
+type TabKey = 'items' | 'containers' | 'bags';
 
 const DAY_LABELS: Record<string, string> = {
   sun: 'Su',
@@ -92,6 +93,7 @@ export function InventorySpecialView({ resource, onAddContainer, onEditContainer
   const [expandedItemId, setExpandedItemId] = useState<string | null>(null);
   const [expandedContainerId, setExpandedContainerId] = useState<string | null>(null);
   const [showAddItemPanel, setShowAddItemPanel] = useState(false);
+  const [showAddBagPanel, setShowAddBagPanel] = useState(false);
   const [showItemComposer, setShowItemComposer] = useState(false);
   const [draftItemName, setDraftItemName] = useState('');
   const [draftItemIcon, setDraftItemIcon] = useState('inventory');
@@ -106,6 +108,14 @@ export function InventorySpecialView({ resource, onAddContainer, onEditContainer
     [resource.itemTemplates, user],
   );
   const containerEntries = useMemo(() => resource.containers ?? [], [resource.containers]);
+  const regularContainerEntries = useMemo(
+    () => containerEntries.filter((container) => (container.kind ?? 'container') === 'container'),
+    [containerEntries],
+  );
+  const bagEntries = useMemo(
+    () => containerEntries.filter((container) => container.kind === 'bag'),
+    [containerEntries],
+  );
   const homeResources = useMemo(
     () => Object.values(resources).filter((entry): entry is HomeResource => entry.type === 'home'),
     [resources],
@@ -208,6 +218,36 @@ export function InventorySpecialView({ resource, onAddContainer, onEditContainer
           ...home,
           updatedAt: now,
           stories: nextStories,
+        });
+      }
+    }
+  }
+
+  function cleanupVehiclePlacements(containerId: string) {
+    const now = new Date().toISOString();
+    for (const vehicle of vehicleResources) {
+      if (!vehicle.layout) continue;
+      let changed = false;
+      const nextAreas = vehicle.layout.areas.map((area) => {
+        const nextContainerIds = area.containerIds.filter((entry) => entry !== containerId);
+        if (nextContainerIds.length !== area.containerIds.length) {
+          changed = true;
+          return {
+            ...area,
+            containerIds: nextContainerIds,
+          };
+        }
+        return area;
+      });
+
+      if (changed) {
+        setResource({
+          ...vehicle,
+          updatedAt: now,
+          layout: {
+            ...vehicle.layout,
+            areas: nextAreas,
+          },
         });
       }
     }
@@ -342,6 +382,7 @@ export function InventorySpecialView({ resource, onAddContainer, onEditContainer
     });
 
     cleanupHomePlacements((placement) => placement.kind === 'container' && placement.refId === containerId);
+    cleanupVehiclePlacements(containerId);
     setExpandedContainerId((prev) => (prev === containerId ? null : prev));
   }
 
@@ -476,7 +517,10 @@ export function InventorySpecialView({ resource, onAddContainer, onEditContainer
             Items ({itemEntries.length})
           </button>
           <button type="button" onClick={() => setActiveTab('containers')} className={tabButtonClass('containers')}>
-            Containers ({containerEntries.length})
+            Containers ({regularContainerEntries.length})
+          </button>
+          <button type="button" onClick={() => setActiveTab('bags')} className={tabButtonClass('bags')}>
+            Bags ({bagEntries.length})
           </button>
         </div>
 
@@ -487,6 +531,14 @@ export function InventorySpecialView({ resource, onAddContainer, onEditContainer
             className="rounded-full bg-blue-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-600"
           >
             Add Item
+          </button>
+        ) : activeTab === 'bags' ? (
+          <button
+            type="button"
+            onClick={() => setShowAddBagPanel(true)}
+            className="rounded-full bg-blue-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-600"
+          >
+            Add Bag
           </button>
         ) : (
           <button
@@ -724,14 +776,14 @@ export function InventorySpecialView({ resource, onAddContainer, onEditContainer
               })}
             </div>
           )
-        ) : (
-          containerEntries.length === 0 ? (
+        ) : activeTab === 'containers' ? (
+          regularContainerEntries.length === 0 ? (
             <div className="flex h-full items-center justify-center rounded-2xl border border-dashed border-gray-200 bg-gray-50/70 px-4 text-sm text-gray-400 dark:border-gray-700 dark:bg-gray-900/30">
               No containers added yet.
             </div>
           ) : (
             <div className="space-y-2">
-              {containerEntries.map((container) => {
+              {regularContainerEntries.map((container) => {
                 const locationLink = getLocationLink(container);
                 const lowItems = container.items.filter((item) => {
                   const itemName = resolveInventoryItemTemplate(item.itemTemplateRef, itemEntries)?.name ?? item.itemTemplateRef;
@@ -756,11 +808,6 @@ export function InventorySpecialView({ resource, onAddContainer, onEditContainer
                           <span className={`truncate text-sm font-semibold ${lowItems.length > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-gray-800 dark:text-gray-100'}`}>
                             {container.name}
                           </span>
-                          {container.carryTask ? (
-                            <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">
-                              Carry task
-                            </span>
-                          ) : null}
                         </div>
                         <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
                           <span>{container.items.length} item{container.items.length === 1 ? '' : 's'}</span>
@@ -901,24 +948,6 @@ export function InventorySpecialView({ resource, onAddContainer, onEditContainer
                                 </div>
                               </div>
                             </div>
-
-                            <div className="rounded-xl bg-white px-3 py-3 dark:bg-gray-800">
-                              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-500 dark:text-gray-400">Carry Task</p>
-                              <div className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                                {container.carryTask ? (
-                                  <div className="space-y-1">
-                                    <div className="font-medium text-gray-700 dark:text-gray-200">{container.carryTask.name}</div>
-                                    <div>
-                                      {(container.carryTask.recurrenceMode ?? 'never') === 'recurring'
-                                        ? `${describeTaskRecurrence(container.carryTask.recurrence)} · ${describeReminder(container.carryTask.reminderLeadDays ?? 7)}`
-                                        : 'Intermittent icon on seed date'}
-                                    </div>
-                                  </div>
-                                ) : (
-                                  <p className="italic">No carry task configured.</p>
-                                )}
-                              </div>
-                            </div>
                           </div>
                         </div>
 
@@ -945,6 +974,111 @@ export function InventorySpecialView({ resource, onAddContainer, onEditContainer
               })}
             </div>
           )
+        ) : (
+          bagEntries.length === 0 ? (
+            <div className="flex h-full items-center justify-center rounded-2xl border border-dashed border-gray-200 bg-gray-50/70 px-4 text-sm text-gray-400 dark:border-gray-700 dark:bg-gray-900/30">
+              No bags added yet.
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {bagEntries.map((bag) => {
+                const locationLink = getLocationLink(bag);
+                const expanded = expandedContainerId === bag.id;
+                const bagQuantity = itemQuantityTotal(bag.items);
+
+                return (
+                  <article key={bag.id} className="rounded-2xl border border-gray-200 bg-gray-50/80 dark:border-gray-700 dark:bg-gray-900/40">
+                    <button
+                      type="button"
+                      onClick={() => setExpandedContainerId((prev) => (prev === bag.id ? null : bag.id))}
+                      className="flex w-full items-center gap-3 px-3 py-3 text-left"
+                    >
+                      <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white dark:bg-gray-800">
+                        <IconDisplay iconKey={bag.icon || 'inventory'} size={24} className="h-6 w-6 object-contain" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-sm font-semibold text-gray-800 dark:text-gray-100">{bag.name}</div>
+                        <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+                          <span>{bagQuantity} item{bagQuantity === 1 ? '' : 's'}</span>
+                          <span>
+                            {bag.carryTask
+                              ? ((bag.carryTask.recurrenceMode ?? 'never') === 'recurring'
+                                ? `${describeTaskRecurrence(bag.carryTask.recurrence)} · ${describeReminder(bag.carryTask.reminderLeadDays ?? 0)}`
+                                : 'Intermittent · seed date icon')
+                              : 'Carry task required'}
+                          </span>
+                        </div>
+                      </div>
+                      <span className="text-xs font-medium text-gray-400">{expanded ? 'Hide' : 'Open'}</span>
+                    </button>
+
+                    {expanded ? (
+                      <div className="space-y-3 border-t border-gray-200 px-3 py-3 dark:border-gray-700">
+                        <div className="grid gap-3 lg:grid-cols-[minmax(0,1.2fr)_minmax(280px,0.8fr)]">
+                          <div className="rounded-xl bg-white px-3 py-3 dark:bg-gray-800">
+                            <div className="flex items-center justify-between gap-3">
+                              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-500 dark:text-gray-400">Items</p>
+                              <span className="text-xs text-gray-400 dark:text-gray-500">{bagQuantity}</span>
+                            </div>
+                            <div className="mt-2 space-y-2">
+                              {bag.items.length === 0 ? (
+                                <p className="text-xs italic text-gray-400">No items in bag.</p>
+                              ) : bag.items.map((item) => {
+                                const resolved = resolveInventoryItemTemplate(item.itemTemplateRef, itemEntries);
+                                return (
+                                  <div key={item.id} className="rounded-lg bg-gray-50 px-2.5 py-2 text-xs text-gray-500 dark:bg-gray-900/60 dark:text-gray-400">
+                                    <div className="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-200">
+                                      {resolved?.icon ? <IconDisplay iconKey={resolved.icon} size={14} className="h-3.5 w-3.5 shrink-0 object-contain" /> : null}
+                                      <span>{resolved?.name ?? item.itemTemplateRef}</span>
+                                    </div>
+                                    <div className="mt-1">
+                                      {item.quantity ?? 0}{item.unit?.trim() ? ` ${item.unit.trim()}` : ''}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+
+                          <div className="space-y-3">
+                            <div className="rounded-xl bg-white px-3 py-3 dark:bg-gray-800">
+                              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-500 dark:text-gray-400">{`Carry ${bag.name} Task`}</p>
+                              <div className="mt-2 space-y-1 text-xs text-gray-500 dark:text-gray-400">
+                                <div className="font-medium text-gray-700 dark:text-gray-200">{bag.carryTask?.name ?? `Carry ${bag.name}`}</div>
+                                <div>Type: {bag.carryTask?.taskType ?? 'CHECK'}</div>
+                                <div>
+                                  {(bag.carryTask?.recurrenceMode ?? 'never') === 'recurring'
+                                    ? `${describeTaskRecurrence(bag.carryTask!.recurrence)} · ${describeReminder(bag.carryTask?.reminderLeadDays ?? 0)}`
+                                    : `Intermittent · Seed date ${bag.carryTask?.recurrence.seedDate ?? 'not set'}`}
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="rounded-xl bg-white px-3 py-3 dark:bg-gray-800">
+                              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-500 dark:text-gray-400">Placement</p>
+                              <div className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                                {locationLink ? `Placed in ${describeContainerLocation(locationLink)}` : 'Unplaced'}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex justify-end gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveContainer(bag.id)}
+                            className="rounded-full bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-100 dark:bg-red-900/20 dark:text-red-300"
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </div>
+                    ) : null}
+                  </article>
+                );
+              })}
+            </div>
+          )
         )}
       </div>
 
@@ -955,6 +1089,16 @@ export function InventorySpecialView({ resource, onAddContainer, onEditContainer
           onItemAdded={(itemTemplateRef) => {
             setActiveTab('items');
             setExpandedItemId(itemTemplateRef);
+          }}
+        />
+      ) : null}
+      {showAddBagPanel ? (
+        <AddBagPanel
+          resource={resource}
+          onClose={() => setShowAddBagPanel(false)}
+          onBagAdded={(bagId) => {
+            setActiveTab('bags');
+            setExpandedContainerId(bagId);
           }}
         />
       ) : null}

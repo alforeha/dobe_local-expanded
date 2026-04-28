@@ -165,8 +165,13 @@ export function getResourceIndicatorsForDate(dateISO: string, resources: Resourc
       }
 
       for (const container of resource.containers ?? []) {
-        if (isIntermittentOnDate(container.carryTask?.recurrenceMode, container.carryTask?.recurrence, dateISO)) {
-          indicators.push(makeIndicator(resource, container.icon || 'inventory', container.carryTask?.name || `Carry ${container.name}`));
+        if (container.kind !== 'bag' || !container.carryTask) continue;
+        if (normalizeRecurrenceMode(container.carryTask.recurrenceMode) === 'recurring') {
+          if (isRuleOnDate(container.carryTask.recurrence, dateISO, true)) {
+            indicators.push(makeIndicator(resource, container.icon || 'inventory', container.carryTask.name || `Carry ${container.name}`));
+          }
+        } else if (isIntermittentOnDate(container.carryTask.recurrenceMode, container.carryTask.recurrence, dateISO)) {
+          indicators.push(makeIndicator(resource, container.icon || 'inventory', container.carryTask.name || `Carry ${container.name}`));
         }
       }
     }
