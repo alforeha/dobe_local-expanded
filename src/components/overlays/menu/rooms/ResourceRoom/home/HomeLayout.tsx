@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import type { FloorPlanRoom, FloorPlanSegment, HomeStory } from '../../../../../../types/resource';
+import type { FloorPlanRoom, FloorPlanSegment, HomeStory, InventoryResource } from '../../../../../../types/resource';
+import { useResourceStore } from '../../../../../../stores/useResourceStore';
 import { closeFloorPlanSegments, getPointsBounds, segmentsToPoints } from '../../../../../../utils/floorPlan';
 import { PopupShell } from '../../../../../shared/popups/PopupShell';
 import { HomeFloorPlan } from './HomeFloorPlan';
@@ -105,6 +106,8 @@ export function HomeLayout({ stories, onChange, editable = false, homeId }: Home
 	const [editingMode, setEditingMode] = useState<'create' | 'update' | null>(null);
 	const [editingStoryOutline, setEditingStoryOutline] = useState<StoryOutlineDraft | null>(null);
 	const [deleteDialog, setDeleteDialog] = useState<DeleteDialogState>(null);
+	const resources = useResourceStore((state) => state.resources);
+	const setResource = useResourceStore((state) => state.setResource);
 
 	const activeStory = stories.find((story) => story.id === activeStoryId) ?? stories[0] ?? null;
 	const effectiveSelectedRoomId = selectedRoomId !== null && activeStory?.rooms.some((room) => room.id === selectedRoomId)
@@ -153,6 +156,36 @@ export function HomeLayout({ stories, onChange, editable = false, homeId }: Home
 					rooms: story.rooms.filter((room) => room.id !== roomId),
 				}
 		)));
+		const now = new Date().toISOString();
+		for (const inventory of Object.values(resources).filter((entry): entry is InventoryResource => entry.type === 'inventory')) {
+			let changed = false;
+			const nextContainers = inventory.containers?.map((container) => {
+				let containerChanged = false;
+				const nextLinks = container.links?.map((link) => {
+					if (link.targetRoomId !== roomId) return link;
+					if (homeId && link.targetResourceId !== homeId) return link;
+					containerChanged = true;
+					return {
+						...link,
+						targetResourceId: undefined,
+						targetRoomId: undefined,
+					};
+				});
+				if (!containerChanged) return container;
+				changed = true;
+				return {
+					...container,
+					links: nextLinks,
+				};
+			});
+			if (changed) {
+				setResource({
+					...inventory,
+					updatedAt: now,
+					containers: nextContainers,
+				});
+			}
+		}
 		setSelectedRoomId((current) => (current === roomId ? null : current));
 		if (editingRoom?.id === roomId) {
 			setEditingRoom(null);

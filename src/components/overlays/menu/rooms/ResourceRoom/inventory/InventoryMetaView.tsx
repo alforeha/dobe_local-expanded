@@ -95,10 +95,11 @@ export function InventoryMetaView({ resource }: InventoryMetaViewProps) {
   );
 
   function getLocationLink(container: InventoryContainer) {
-    return container.links?.find((link) => link.relationship === 'location');
+    return container.links?.find((link) => link.relationship === 'location' && Boolean(link.targetResourceId));
   }
 
   function describeContainerLocation(link: InventoryContainerLink) {
+    if (!link.targetResourceId) return 'Unplaced';
     if (link.targetKind === 'vehicle') {
       const vehicle = resources[link.targetResourceId] as VehicleResource | undefined;
       return vehicle?.name ?? 'Vehicle';

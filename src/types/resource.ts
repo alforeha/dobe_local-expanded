@@ -75,6 +75,7 @@ export interface PlacedInstance {
   id: string;
   kind: 'item' | 'container';
   refId: string;
+  quantity?: number;
   width: number;
   depth: number;
   x: number;
@@ -149,7 +150,7 @@ export interface InventoryContainer {
 export interface InventoryContainerLink {
   id: string;
   targetKind: 'home-room' | 'vehicle';
-  targetResourceId: string;
+  targetResourceId?: string;
   targetRoomId?: string;
   targetAreaId?: string;
   relationship: 'location';

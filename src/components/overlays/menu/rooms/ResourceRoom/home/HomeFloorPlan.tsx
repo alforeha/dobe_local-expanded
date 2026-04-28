@@ -47,6 +47,10 @@ const VERTEX_HIT_RADIUS = 20;
 const INPUT_CLS = 'rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 focus:border-purple-500 focus:outline-none dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100';
 const STORY_SCOPE_ID = '__story__';
 
+function getPlacedInstanceQuantity(placement: Pick<PlacedInstance, 'quantity'>) {
+	return placement.quantity ?? 1;
+}
+
 type OutlineEditMode = 'add-point' | 'select-segment';
 type RoomEditMode = 'add-point' | 'select-segment';
 
@@ -377,8 +381,9 @@ export function HomeFloorPlan({
 				room,
 				bounds,
 				placedContainerEntries,
-					placedLooseItemEntries,
-					placedEntries: [...placedContainerEntries, ...placedLooseItemEntries],
+				placedLooseItemEntries,
+				placedEntries: [...placedContainerEntries, ...placedLooseItemEntries],
+				placedLooseItemCount: placedLooseItemEntries.reduce((sum, entry) => sum + getPlacedInstanceQuantity(entry.placement), 0),
 			};
 		});
 	}, [inventoryResources, story.rooms, userItemTemplates]);
@@ -443,6 +448,10 @@ export function HomeFloorPlan({
 		() => [...outsidePlacedContainerEntries, ...outsidePlacedLooseItemEntries],
 		[outsidePlacedContainerEntries, outsidePlacedLooseItemEntries],
 	);
+	const outsidePlacedLooseItemCount = useMemo(
+		() => outsidePlacedLooseItemEntries.reduce((sum, entry) => sum + getPlacedInstanceQuantity(entry.placement), 0),
+		[outsidePlacedLooseItemEntries],
+	);
 	const visibleRoomSummaries = useMemo(() => {
 		if (!selectedRoomId) return roomSummaries;
 		return roomSummaries.filter((entry) => entry.room.id === selectedRoomId);
@@ -453,6 +462,56 @@ export function HomeFloorPlan({
 	const effectiveExpandedRoomId = !editingRoom && !editingStoryOutline ? (selectedRoomId ?? null) : expandedRoomId;
 	const activeEditablePlacementId = editingPlacedContainerId ?? selectedPlacementId;
 	const editingRoomId = editingRoom?.id ?? null;
+	const selectedPlacementDetails = (() => {
+		if (!selectedPlacementId) return null;
+
+		for (const summary of roomSummaries) {
+			for (const entry of summary.placedContainerEntries) {
+				if (entry.placement.id === selectedPlacementId) {
+					return {
+						roomId: summary.room.id,
+						placementId: entry.placement.id,
+						name: entry.containerName,
+						kindLabel: 'Container',
+					};
+				}
+			}
+			for (const entry of summary.placedLooseItemEntries) {
+				if (entry.placement.id === selectedPlacementId) {
+					return {
+						roomId: summary.room.id,
+						placementId: entry.placement.id,
+						name: entry.itemName,
+						kindLabel: 'Item',
+					};
+				}
+			}
+		}
+
+		for (const entry of outsidePlacedContainerEntries) {
+			if (entry.placement.id === selectedPlacementId) {
+				return {
+					roomId: null,
+					placementId: entry.placement.id,
+					name: entry.containerName,
+					kindLabel: 'Container',
+				};
+			}
+		}
+
+		for (const entry of outsidePlacedLooseItemEntries) {
+			if (entry.placement.id === selectedPlacementId) {
+				return {
+					roomId: null,
+					placementId: entry.placement.id,
+					name: entry.itemName,
+					kindLabel: 'Item',
+				};
+			}
+		}
+
+		return null;
+	})();
 
 	useEffect(() => {
 		const resetId = window.setTimeout(() => {
@@ -758,6 +817,25 @@ export function HomeFloorPlan({
 		);
 	}
 
+	function removePlacedItem(roomId: string | null, placementId: string) {
+		if (roomId === null) {
+			if (!onUpdateStoryPlacedItems) return;
+			onUpdateStoryPlacedItems(story.placedItems.filter((entry) => entry.id !== placementId));
+		} else {
+			const room = story.rooms.find((entry) => entry.id === roomId);
+			if (!room || !onUpdateRoomPlacedItems) return;
+			onUpdateRoomPlacedItems(
+				roomId,
+				room.placedItems.filter((entry) => entry.id !== placementId),
+			);
+		}
+
+		setExpandedPlacedContainerId((current) => current === placementId ? null : current);
+		setEditingPlacedContainerId((current) => current === placementId ? null : current);
+		setAddingItemContainerId((current) => current === placementId ? null : current);
+		setSelectedPlacementId((current) => current === placementId ? null : current);
+	}
+
 	function getPreferredInventory(now: string) {
 		const preferredInventory =
 			inventoryResources.find((entry) => homeId && entry.linkedHomeId === homeId) ??
@@ -1013,6 +1091,7 @@ export function HomeFloorPlan({
 				id: nextPlacementId,
 				kind: 'item',
 				refId: nextItemId,
+				quantity,
 				width: defaultSize,
 				depth: defaultSize,
 				x: Math.round(bounds.minX + bounds.width / 2),
@@ -1123,6 +1202,7 @@ export function HomeFloorPlan({
 				id: nextPlacementId,
 				kind: 'item',
 				refId: nextItemId,
+				quantity,
 				width: defaultSize,
 				depth: defaultSize,
 				x: Math.round(bounds.minX + bounds.width / 2),
@@ -1339,7 +1419,7 @@ export function HomeFloorPlan({
 						<div>
 							<div className="text-sm font-semibold text-gray-800 dark:text-gray-100">Outside rooms</div>
 							<div className="text-xs text-gray-500 dark:text-gray-400">
-								{outsidePlacedContainerEntries.length} container{outsidePlacedContainerEntries.length === 1 ? '' : 's'} and {outsidePlacedLooseItemEntries.length} item{outsidePlacedLooseItemEntries.length === 1 ? '' : 's'} on the story canvas{(story.photos?.length ?? 0) > 0 ? ` · ${story.photos?.length ?? 0} photo${(story.photos?.length ?? 0) === 1 ? '' : 's'}` : ''}.
+								{outsidePlacedContainerEntries.length} container{outsidePlacedContainerEntries.length === 1 ? '' : 's'} and {outsidePlacedLooseItemCount} item{outsidePlacedLooseItemCount === 1 ? '' : 's'} on the story canvas{(story.photos?.length ?? 0) > 0 ? ` · ${story.photos?.length ?? 0} photo${(story.photos?.length ?? 0) === 1 ? '' : 's'}` : ''}.
 							</div>
 						</div>
 						<span className="text-base font-semibold text-blue-600 dark:text-blue-300">{isOutsideRoomsExpanded ? '↑' : '↓'}</span>
@@ -1387,6 +1467,23 @@ export function HomeFloorPlan({
 				{roomEditorPanel}
 
 				<div className="relative">
+					{selectedPlacementDetails ? (
+						<div className="pointer-events-none absolute right-3 top-3 z-20">
+							<div className="pointer-events-auto min-w-[12rem] rounded-2xl bg-white/95 px-3 py-3 shadow-lg ring-1 ring-black/10 backdrop-blur dark:bg-gray-900/95 dark:ring-white/10">
+								<div className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">{selectedPlacementDetails.kindLabel}</div>
+								<div className="mt-1 text-sm font-semibold text-gray-800 dark:text-gray-100">{selectedPlacementDetails.name}</div>
+								<div className="mt-3 flex justify-end">
+									<button
+										type="button"
+										onClick={() => removePlacedItem(selectedPlacementDetails.roomId, selectedPlacementDetails.placementId)}
+										className="rounded-full bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-100 dark:bg-red-900/20 dark:text-red-300"
+									>
+										Remove from room
+									</button>
+								</div>
+							</div>
+						</div>
+					) : null}
 					<svg
 						ref={svgRef}
 						viewBox={`0 0 ${VIEWBOX_WIDTH} ${VIEWBOX_HEIGHT}`}
@@ -1980,7 +2077,7 @@ export function HomeFloorPlan({
 						<div className="mx-auto w-full max-w-4xl space-y-2">
 							<div className="px-1 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Rooms</div>
 							<div className="space-y-2">
-								{visibleRoomSummaries.map(({ room, bounds, placedContainerEntries, placedLooseItemEntries }) => {
+								{visibleRoomSummaries.map(({ room, bounds, placedContainerEntries, placedLooseItemEntries, placedLooseItemCount }) => {
 									const isExpanded = effectiveExpandedRoomId === room.id;
 									const isSelected = selectedRoom?.id === room.id;
 									const isContainerFocus = editingContainersRoomId === room.id;
@@ -2012,7 +2109,7 @@ export function HomeFloorPlan({
 													<IconDisplay iconKey={room.icon || 'home'} size={16} className="h-4 w-4 object-contain" alt="" />
 													<div>
 														<div className="text-sm font-semibold text-gray-800 dark:text-gray-100">{room.name}</div>
-														<div className="text-[11px] text-gray-500 dark:text-gray-400">{placedContainerEntries.length} container{placedContainerEntries.length === 1 ? '' : 's'} · {placedLooseItemEntries.length} item{placedLooseItemEntries.length === 1 ? '' : 's'}{(room.photos?.length ?? 0) > 0 ? ` · ${room.photos?.length ?? 0} photo${(room.photos?.length ?? 0) === 1 ? '' : 's'}` : ''}</div>
+														<div className="text-[11px] text-gray-500 dark:text-gray-400">{placedContainerEntries.length} container{placedContainerEntries.length === 1 ? '' : 's'} · {placedLooseItemCount} item{placedLooseItemCount === 1 ? '' : 's'}{(room.photos?.length ?? 0) > 0 ? ` · ${room.photos?.length ?? 0} photo${(room.photos?.length ?? 0) === 1 ? '' : 's'}` : ''}</div>
 													</div>
 												</div>
 												<span className="text-base font-semibold text-blue-600 dark:text-blue-300">{isExpanded ? '↑' : '↓'}</span>

@@ -72,7 +72,7 @@ function getLinkedTargets(resource: Resource, resources: Record<string, Resource
   if (isInventory(resource)) {
     for (const container of resource.containers ?? []) {
       for (const link of container.links ?? []) {
-        if (link.targetKind === 'vehicle') {
+        if (link.targetKind === 'vehicle' && link.targetResourceId) {
           targetIds.add(link.targetResourceId);
         }
       }

@@ -55,10 +55,10 @@ function getVisibleInheritedLinks(resource: Resource, resources: Record<string, 
   if (isInventory(resource)) {
     const fromContainers = (resource.containers ?? []).flatMap((container) =>
       (container.links ?? [])
-        .filter((link) => link.targetKind === 'vehicle')
+        .filter((link) => link.targetKind === 'vehicle' && Boolean(link.targetResourceId))
         .map((link) => ({
           id: `derived:${container.id}:${link.id}`,
-          targetResourceId: link.targetResourceId,
+          targetResourceId: link.targetResourceId!,
           relationship: 'location',
           createdAt: link.createdAt,
           inherited: true,
@@ -173,7 +173,7 @@ export function ResourceMetaTabs({ resource, details }: ResourceMetaTabsProps) {
     ...(currentResource.links ?? []).map((link): ResourceLink & { inherited: boolean; displayName?: string; displayIcon?: string } => ({ ...link, inherited: Boolean(link.isMirrored) })),
     ...incomingInheritedLinks,
   ]
-    .map((link) => ({ link, target: resources[link.targetResourceId] }))
+    .map((link) => ({ link, target: link.targetResourceId ? resources[link.targetResourceId] : undefined }))
     .filter((entry) => Boolean(entry.target))
     .sort((left, right) =>
       (left.target?.name ?? '').localeCompare(right.target?.name ?? '', undefined, { sensitivity: 'base' }),

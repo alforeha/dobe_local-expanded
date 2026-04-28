@@ -602,11 +602,13 @@ export function InventoryForm({
 
   function describeContainerLink(link: InventoryContainerLink): string {
     if (link.targetKind === 'home-room') {
+      if (!link.targetResourceId) return 'Linked room';
       const home = resources[link.targetResourceId];
       const room = home?.type === 'home' ? findHomeRoomReference(home, link.targetRoomId) : null;
       return room ? `${home.name} - ${room.name}` : 'Linked room';
     }
     if (link.targetKind === 'vehicle') {
+      if (!link.targetResourceId) return 'Linked vehicle';
       const vehicle = resources[link.targetResourceId];
       return vehicle?.type === 'vehicle' ? vehicle.name : 'Linked vehicle';
     }

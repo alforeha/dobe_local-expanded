@@ -76,6 +76,10 @@ function describeReminder(reminderLeadDays?: number) {
   return `${reminderLeadDays} days before`;
 }
 
+function itemQuantityTotal(items: ItemInstance[]) {
+  return items.reduce((sum, item) => sum + (item.quantity ?? 1), 0);
+}
+
 export function InventorySpecialView({ resource, onAddContainer, onEditContainer }: InventorySpecialViewProps) {
   const scheduleTasks = useScheduleStore((s) => s.tasks) as Record<string, Task>;
   const resources = useResourceStore((s) => s.resources);
@@ -166,6 +170,49 @@ export function InventorySpecialView({ resource, onAddContainer, onEditContainer
     return usage;
   }, [containerEntries, resource.items]);
 
+  function cleanupHomePlacements(match: (placement: { kind: 'item' | 'container'; refId: string }) => boolean) {
+    const now = new Date().toISOString();
+    for (const home of homeResources) {
+      let changed = false;
+      const nextStories = home.stories?.map((story) => {
+        const nextStoryPlacedItems = story.placedItems.filter((placement) => !match(placement));
+        const nextRooms = story.rooms.map((room) => {
+          const nextPlacedItems = room.placedItems.filter((placement) => !match(placement));
+          if (nextPlacedItems.length !== room.placedItems.length) {
+            changed = true;
+            return {
+              ...room,
+              placedItems: nextPlacedItems,
+            };
+          }
+          return room;
+        });
+
+        if (nextStoryPlacedItems.length !== story.placedItems.length) {
+          changed = true;
+        }
+
+        if (changed) {
+          return {
+            ...story,
+            placedItems: nextStoryPlacedItems,
+            rooms: nextRooms,
+          };
+        }
+
+        return story;
+      });
+
+      if (changed) {
+        setResource({
+          ...home,
+          updatedAt: now,
+          stories: nextStories,
+        });
+      }
+    }
+  }
+
   function resetItemComposer() {
     setDraftItemName('');
     setDraftItemIcon('inventory');
@@ -255,6 +302,7 @@ export function InventorySpecialView({ resource, onAddContainer, onEditContainer
 
   function handleRemoveItem(itemId: string) {
     if (!user) return;
+    const removedItemIds = new Set(resource.items.filter((item) => item.itemTemplateRef === itemId).map((item) => item.id));
     const nextTemplates = (user.lists.inventoryItemTemplates ?? []).filter((item) => item.id !== itemId);
     setUser({
       ...user,
@@ -263,16 +311,38 @@ export function InventorySpecialView({ resource, onAddContainer, onEditContainer
         inventoryItemTemplates: nextTemplates,
       },
     });
+    const now = new Date().toISOString();
     setResource({
       ...resource,
-      updatedAt: new Date().toISOString(),
+      updatedAt: now,
       items: resource.items.filter((item) => item.itemTemplateRef !== itemId),
       containers: containerEntries.map((container) => ({
         ...container,
         items: container.items.filter((item) => item.itemTemplateRef !== itemId),
       })),
     });
+    cleanupHomePlacements((placement) =>
+      placement.kind === 'item' && (placement.refId === itemId || removedItemIds.has(placement.refId)),
+    );
     setExpandedItemId((prev) => (prev === itemId ? null : prev));
+  }
+
+  function handleRemoveContainer(containerId: string) {
+    const container = containerEntries.find((entry) => entry.id === containerId);
+    if (!container) return;
+
+    const now = new Date().toISOString();
+    const removedItemIds = new Set(container.items.map((item) => item.id));
+
+    setResource({
+      ...resource,
+      updatedAt: now,
+      containers: containerEntries.filter((entry) => entry.id !== containerId),
+      items: resource.items.filter((item) => !removedItemIds.has(item.id)),
+    });
+
+    cleanupHomePlacements((placement) => placement.kind === 'container' && placement.refId === containerId);
+    setExpandedContainerId((prev) => (prev === containerId ? null : prev));
   }
 
   function humanizeTaskRef(taskRef: string) {
@@ -320,10 +390,11 @@ export function InventorySpecialView({ resource, onAddContainer, onEditContainer
   }
 
   function getLocationLink(container: InventoryContainer) {
-    return container.links?.find((link) => link.relationship === 'location');
+    return container.links?.find((link) => link.relationship === 'location' && Boolean(link.targetResourceId));
   }
 
   function describeContainerLocation(link: InventoryContainerLink) {
+    if (!link.targetResourceId) return 'Unplaced';
     if (link.targetKind === 'vehicle') {
       const vehicle = resources[link.targetResourceId] as VehicleResource | undefined;
       return vehicle?.name ?? 'Vehicle';
@@ -525,7 +596,8 @@ export function InventorySpecialView({ resource, onAddContainer, onEditContainer
                 const resolvedItem = resolveInventoryItemTemplate(item.id, itemEntries);
                 const description = builtInTemplate?.description ?? resolvedItem?.description ?? (item.id.startsWith(CUSTOM_ITEM_TEMPLATE_PREFIX) ? 'Custom inventory item' : '');
                 const usage = itemUsage.get(item.id) ?? { looseItems: [], containerRefs: [] };
-                const totalInstances = usage.looseItems.length + usage.containerRefs.length;
+                const totalPlacements = usage.looseItems.length + usage.containerRefs.length;
+                const totalQuantity = itemQuantityTotal(usage.looseItems) + itemQuantityTotal(usage.containerRefs.map((entry) => entry.item));
                 const lowCount = [...usage.looseItems, ...usage.containerRefs.map((entry) => entry.item)].filter((entry) => entry.threshold != null && entry.quantity != null && entry.quantity <= entry.threshold).length;
                 const taskRefs = [
                   ...(builtInTemplate?.builtInTasks?.map((task) => task.taskTemplateRef) ?? []),
@@ -562,7 +634,7 @@ export function InventorySpecialView({ resource, onAddContainer, onEditContainer
                           ) : null}
                         </div>
                         <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                          {totalInstances === 0 ? 'Not currently placed in inventory' : `${totalInstances} inventory entry${totalInstances === 1 ? '' : 'ies'}`}
+                          {totalQuantity === 0 ? 'Not currently placed in inventory' : `${totalQuantity} total on hand across ${totalPlacements} placement${totalPlacements === 1 ? '' : 's'}`}
                         </div>
                       </div>
                       <span className="text-xs font-medium text-gray-400">{expanded ? 'Hide' : 'Open'}</span>
@@ -857,6 +929,13 @@ export function InventorySpecialView({ resource, onAddContainer, onEditContainer
                             className="rounded-full bg-blue-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-600"
                           >
                             Edit Container
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveContainer(container.id)}
+                            className="rounded-full bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-100 dark:bg-red-900/20 dark:text-red-300"
+                          >
+                            Delete
                           </button>
                         </div>
                       </div>

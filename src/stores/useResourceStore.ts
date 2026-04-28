@@ -7,6 +7,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { v4 as uuidv4 } from 'uuid';
+import { useUserStore } from './useUserStore';
 import type {
   AccountResource,
   ContactResource,
@@ -135,7 +136,7 @@ function pruneDeletedReferences(resource: Resource, deletedIds: Set<string>): Re
         links: nextLinks?.length ? nextLinks : undefined,
         containers: resource.containers?.map((container) => ({
           ...container,
-          links: container.links?.filter((link) => !deletedIds.has(link.targetResourceId)),
+          links: container.links?.filter((link) => !link.targetResourceId || !deletedIds.has(link.targetResourceId)),
         })),
         linkedHomeId: resource.linkedHomeId && deletedIds.has(resource.linkedHomeId) ? undefined : resource.linkedHomeId,
       };
@@ -147,6 +148,151 @@ function pruneDeletedReferences(resource: Resource, deletedIds: Set<string>): Re
         linkedResourceRefs: resource.linkedResourceRefs?.filter((id) => !deletedIds.has(id)),
       };
   }
+}
+
+function getHomeRoomIds(home: HomeResource): Set<string> {
+  const roomIds = new Set<string>();
+  for (const story of home.stories ?? []) {
+    for (const room of story.rooms) {
+      roomIds.add(room.id);
+    }
+  }
+  for (const room of home.rooms ?? []) {
+    roomIds.add(room.id);
+  }
+  return roomIds;
+}
+
+function sanitizeResources(resources: Record<string, Resource>): Record<string, Resource> {
+  let changed = false;
+  const nextResources: Record<string, Resource> = {};
+  const userInventoryTemplateIds = new Set(useUserStore.getState().user?.lists.inventoryItemTemplates?.map((item) => item.id) ?? []);
+  const inventoryItemIds = new Set<string>();
+  const inventoryContainerIds = new Set<string>();
+
+  for (const resource of Object.values(resources)) {
+    if (!isInventory(resource)) continue;
+    for (const item of resource.items) inventoryItemIds.add(item.id);
+    for (const container of resource.containers ?? []) inventoryContainerIds.add(container.id);
+  }
+
+  for (const [resourceId, resource] of Object.entries(resources)) {
+    if (isInventory(resource)) {
+      let resourceChanged = false;
+      const nextContainers = resource.containers?.map((container) => {
+        let containerChanged = false;
+        const nextLinks = container.links?.map((link) => {
+          if (link.relationship !== 'location') return link;
+          if (!link.targetResourceId) return link;
+
+          const target = resources[link.targetResourceId];
+          if (!target) {
+            containerChanged = true;
+            return {
+              ...link,
+              targetResourceId: undefined,
+              targetRoomId: undefined,
+            };
+          }
+
+          if (link.targetKind === 'home-room') {
+            if (!isHome(target)) {
+              containerChanged = true;
+              return {
+                ...link,
+                targetResourceId: undefined,
+                targetRoomId: undefined,
+              };
+            }
+
+            if (link.targetRoomId && !getHomeRoomIds(target).has(link.targetRoomId)) {
+              containerChanged = true;
+              return {
+                ...link,
+                targetRoomId: undefined,
+              };
+            }
+          }
+
+          if (link.targetKind === 'vehicle' && !isVehicle(target)) {
+            containerChanged = true;
+            return {
+              ...link,
+              targetResourceId: undefined,
+              targetRoomId: undefined,
+            };
+          }
+
+          return link;
+        });
+
+        if (!containerChanged) return container;
+        resourceChanged = true;
+        return {
+          ...container,
+          links: nextLinks,
+        };
+      });
+
+      if (resourceChanged) {
+        changed = true;
+        nextResources[resourceId] = {
+          ...resource,
+          containers: nextContainers,
+        };
+        continue;
+      }
+
+      nextResources[resourceId] = resource;
+      continue;
+    }
+
+    if (isHome(resource)) {
+      let resourceChanged = false;
+      const nextStories = resource.stories?.map((story) => {
+        let storyChanged = false;
+        const nextRooms = story.rooms.map((room) => {
+          const nextPlacedItems = room.placedItems.filter((placement) => {
+            if (placement.kind === 'item') {
+              return inventoryItemIds.has(placement.refId) || userInventoryTemplateIds.has(placement.refId);
+            }
+            if (placement.kind === 'container') {
+              return inventoryContainerIds.has(placement.refId);
+            }
+            return true;
+          });
+          if (nextPlacedItems.length !== room.placedItems.length) {
+            storyChanged = true;
+            return {
+              ...room,
+              placedItems: nextPlacedItems,
+            };
+          }
+          return room;
+        });
+
+        if (!storyChanged) return story;
+        resourceChanged = true;
+        return {
+          ...story,
+          rooms: nextRooms,
+        };
+      });
+
+      if (resourceChanged) {
+        changed = true;
+        nextResources[resourceId] = {
+          ...resource,
+          stories: nextStories,
+        };
+        continue;
+      }
+    }
+
+    nextResources[resourceId] = resource;
+  }
+
+  return changed ? nextResources : resources;
 }
 
 // ── STORE ─────────────────────────────────────────────────────────────────────
@@ -357,6 +503,15 @@ export const useResourceStore = create<ResourceState & ResourceActions>()(
 
       reset: () => set(initialState),
     }),
-    { name: 'cdb-resources' },
+    {
+      name: 'cdb-resources',
+      onRehydrateStorage: () => (state) => {
+        if (!state) return;
+        const sanitizedResources = sanitizeResources(state.resources);
+        if (sanitizedResources !== state.resources) {
+          state.resources = sanitizedResources;
+        }
+      },
+    },
   ),
 );
