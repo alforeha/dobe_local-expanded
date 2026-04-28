@@ -451,6 +451,7 @@ export function HomeFloorPlan({
 	const selectedRoomSummary = roomSummaries.find((entry) => entry.room.id === selectedRoom?.id) ?? null;
 	const selectedEditingSegment = selectedSegmentIndex != null ? editingSegmentLines[selectedSegmentIndex] ?? null : null;
 	const effectiveExpandedRoomId = !editingRoom && !editingStoryOutline ? (selectedRoomId ?? null) : expandedRoomId;
+	const activeEditablePlacementId = editingPlacedContainerId ?? selectedPlacementId;
 	const editingRoomId = editingRoom?.id ?? null;
 
 	useEffect(() => {
@@ -1032,6 +1033,7 @@ export function HomeFloorPlan({
 	function createContainerForStory(bounds: { minX: number; minY: number; width: number; height: number }) {
 		const draft = draftContainerByRoom[STORY_SCOPE_ID] ?? { name: '', icon: 'inventory' };
 		if (!draft.name.trim() || !onUpdateStoryPlacedItems) return;
+		const latestStoryPlacedItems = story.placedItems ?? [];
 
 		const now = new Date().toISOString();
 		const nextContainerId = uuidv4();
@@ -1068,7 +1070,7 @@ export function HomeFloorPlan({
 
 		const nextPlacementId = uuidv4();
 		onUpdateStoryPlacedItems([
-			...story.placedItems,
+			...latestStoryPlacedItems,
 			{
 				id: nextPlacementId,
 				kind: 'container',
@@ -1391,6 +1393,11 @@ export function HomeFloorPlan({
 						className="aspect-[4/3] h-auto w-full touch-none bg-slate-50 dark:bg-slate-950"
 						onPointerDown={(event) => {
 							if (event.target === event.currentTarget) {
+								if (editingContainersRoomId === STORY_SCOPE_ID && activeEditablePlacementId) {
+									const nextPoint = getWorldPoint(event);
+									updatePlacedItem(null, activeEditablePlacementId, { x: nextPoint.x, y: nextPoint.y });
+									return;
+								}
 								if (!editingRoom) onSelectRoom(null);
 							}
 						}}
@@ -1403,7 +1410,20 @@ export function HomeFloorPlan({
 								<path d="M 40 0 L 0 0 0 40" fill="none" stroke="rgba(148,163,184,0.18)" strokeWidth="1" />
 							</pattern>
 						</defs>
-						<rect width={VIEWBOX_WIDTH} height={VIEWBOX_HEIGHT} fill={`url(#floor-grid-${story.id})`} />
+						<rect
+							width={VIEWBOX_WIDTH}
+							height={VIEWBOX_HEIGHT}
+							fill={`url(#floor-grid-${story.id})`}
+							onPointerDown={(event) => {
+								event.stopPropagation();
+								if (editingContainersRoomId === STORY_SCOPE_ID && activeEditablePlacementId) {
+									const nextPoint = getWorldPoint(event);
+									updatePlacedItem(null, activeEditablePlacementId, { x: nextPoint.x, y: nextPoint.y });
+									return;
+								}
+								if (!editingRoom) onSelectRoom(null);
+							}}
+						/>
 						<g transform={`translate(${pan.x} ${pan.y}) scale(${zoom})`}>
 							{isPlacingStartPoint && startPointAnchor && startPointPreview ? (
 								<g>
@@ -1495,47 +1515,14 @@ export function HomeFloorPlan({
 												</g>
 											);
 										})}
-										{isEditingStoryOutline ? outlinePoints.map((point, index) => (
-											<circle
-												key={`story-outline-${index}-${point.x}-${point.y}`}
-												cx={point.x}
-												cy={point.y}
-												r={index === 0 ? 7 : 4.5}
-												fill="#ffffff"
-												stroke="#64748b"
-												strokeWidth="2"
-											/>
-										)) : null}
-										{editingRoom && isPlacingStartPoint ? startPointAnchors.map((anchor, index) => {
-											const isSelectedAnchor = startPointAnchorIndex === index;
-											return (
-												<g key={anchor.key}>
-													<circle
-														cx={anchor.point.x}
-														cy={anchor.point.y}
-														r={VERTEX_VISIBLE_RADIUS}
-														fill={isSelectedAnchor ? '#ccfbf1' : '#ffffff'}
-														stroke={isSelectedAnchor ? '#0f766e' : '#64748b'}
-														strokeWidth="2"
-														style={{ pointerEvents: 'none' }}
-													/>
-													<circle
-														cx={anchor.point.x}
-														cy={anchor.point.y}
-														r={VERTEX_HIT_RADIUS}
-														fill="transparent"
-														pointerEvents="all"
-														style={{ cursor: 'pointer' }}
-														onPointerDown={(event) => selectStartPointAnchor(index, event)}
-														onTouchStart={(event) => selectStartPointAnchor(index, event)}
-													/>
-												</g>
-											);
-										}) : null}
 									</g>
 								);
 							})() : null}
-							{story.placedItems.map((entry) => {
+							{[...story.placedItems].sort((left, right) => {
+								const leftRank = left.id === selectedPlacementId ? 1 : 0;
+								const rightRank = right.id === selectedPlacementId ? 1 : 0;
+								return leftRank - rightRank;
+							}).map((entry) => {
 								const footprint = getRotatedRectPoints({ x: entry.x, y: entry.y }, entry.width, entry.depth, entry.rotation).map((point) => `${point.x},${point.y}`).join(' ');
 								const isPlacementSelected = selectedPlacementId === entry.id;
 								const isPlacementEditable = editingPlacedContainerId === entry.id;
@@ -1594,9 +1581,9 @@ export function HomeFloorPlan({
 												stroke="none"
 												onPointerDown={(event) => {
 													event.stopPropagation();
-													if (editingContainersRoomId === room.id && selectedPlacementId) {
+														if (editingContainersRoomId === room.id && activeEditablePlacementId) {
 														const nextPoint = getWorldPoint(event);
-														updatePlacedItem(room.id, selectedPlacementId, { x: nextPoint.x, y: nextPoint.y });
+															updatePlacedItem(room.id, activeEditablePlacementId, { x: nextPoint.x, y: nextPoint.y });
 														return;
 													}
 													if (!editingRoom) onSelectRoom(room.id);
@@ -1610,9 +1597,9 @@ export function HomeFloorPlan({
 											const strokeWidth = isDoor ? (isSelected || isEditingThisRoom ? 5 : 4) : (isSelected || isEditingThisRoom ? 3.5 : 2.5);
 											const handleSegmentPointerDown = (event: React.PointerEvent<SVGLineElement>) => {
 												event.stopPropagation();
-												if (editingContainersRoomId === room.id && selectedPlacementId) {
+												if (editingContainersRoomId === room.id && activeEditablePlacementId) {
 													const nextPoint = getWorldPoint(event);
-													updatePlacedItem(room.id, selectedPlacementId, { x: nextPoint.x, y: nextPoint.y });
+													updatePlacedItem(room.id, activeEditablePlacementId, { x: nextPoint.x, y: nextPoint.y });
 													return;
 												}
 												onSelectRoom(room.id);
@@ -1626,99 +1613,157 @@ export function HomeFloorPlan({
 												</g>
 											);
 										})}
-										{room.placedItems.map((entry) => {
-											const footprint = getRotatedRectPoints({ x: entry.x, y: entry.y }, entry.width, entry.depth, entry.rotation).map((point) => `${point.x},${point.y}`).join(' ');
-											const isPlacementSelected = selectedPlacementId === entry.id;
-											const isPlacementEditable = editingPlacedContainerId === entry.id;
-											const visualRecord = entry.kind === 'container'
-												? { icon: findInventoryContainerRecord(entry.refId)?.container.icon ?? 'inventory', fill: 'rgba(15,23,42,0.12)' }
-												: { icon: findInventoryItemRecord(entry.refId)?.resolvedItem?.icon ?? 'inventory', fill: 'rgba(59,130,246,0.10)' };
-											const resolvedIcon = resolveIcon(visualRecord.icon);
-											const iconSize = Math.max(10, Math.min(entry.width, entry.depth) * 0.62);
-
-											return (
-												<g key={entry.id}>
-													<polygon
-														points={footprint}
-														fill={isPlacementEditable ? 'rgba(16,185,129,0.24)' : visualRecord.fill}
-														stroke={isPlacementSelected ? '#059669' : isPlacementEditable ? '#10b981' : '#475569'}
-														strokeWidth={isPlacementSelected ? 3 : 2}
-														style={isPlacementEditable ? { cursor: 'grab' } : undefined}
-														onPointerDown={(event) => {
-															event.stopPropagation();
-															onSelectRoom(room.id);
-															setSelectedPlacementId(entry.id);
-															if (!isPlacementEditable) return;
-															const point = getWorldPoint(event);
-															setInteraction({ type: 'drag-container', roomId: room.id, placementId: entry.id, offsetX: point.x - entry.x, offsetY: point.y - entry.y });
-														}}
-													/>
-													<g transform={`translate(${entry.x} ${entry.y}) rotate(${entry.rotation})`} style={{ pointerEvents: 'none' }}>
-														{isImageIcon(resolvedIcon) ? (
-															<image
-																href={resolvedIcon}
-																x={-iconSize / 2}
-																y={-iconSize / 2}
-																width={iconSize}
-																height={iconSize}
-																preserveAspectRatio="xMidYMid meet"
-																opacity={isPlacementSelected ? 1 : 0.82}
-															/>
-														) : (
-															<text
-																x={0}
-																y={0}
-																textAnchor="middle"
-																dominantBaseline="central"
-																fontSize={iconSize}
-																opacity={isPlacementSelected ? 1 : 0.9}
-															>
-																{resolvedIcon}
-															</text>
-														)}
-													</g>
-												</g>
-											);
-										})}
 										{isEditingThisRoom && points.length >= 3 && !pointsMatch(finalPoint, points[0]) ? (
 											<>
 												<line x1={finalPoint.x} y1={finalPoint.y} x2={points[0].x} y2={points[0].y} stroke={room.color ?? '#84cc16'} strokeWidth="2" strokeDasharray="6 5" />
-												<text x={midpoint(finalPoint, points[0]).x} y={midpoint(finalPoint, points[0]).y - 8} textAnchor="middle" className="select-none fill-slate-700 text-[11px] font-semibold">
+												<text x={midpoint(finalPoint, points[0]).x} y={midpoint(finalPoint, points[0]).y - 8} textAnchor="middle" pointerEvents="none" className="select-none fill-slate-700 text-[11px] font-semibold">
 													{formatDistance(getPointDistance(finalPoint, points[0]))}
 												</text>
 											</>
 										) : null}
-										<text x={bounds.minX + bounds.width / 2} y={bounds.minY + bounds.height / 2} textAnchor="middle" dominantBaseline="middle" className="select-none fill-slate-900 text-[14px] font-semibold">
+											<text x={bounds.minX + bounds.width / 2} y={bounds.minY + bounds.height / 2} textAnchor="middle" dominantBaseline="middle" pointerEvents="none" className="select-none fill-slate-900 text-[14px] font-semibold">
 											{room.name || 'New room'}
 										</text>
 										{isEditingThisRoom ? points.slice(1).map((point, index) => {
 											const start = points[index];
 											const labelPoint = midpoint(start, point);
 											return (
-												<text key={`${room.id}-dim-${index}`} x={labelPoint.x} y={labelPoint.y - 8} textAnchor="middle" className="select-none fill-slate-700 text-[11px] font-semibold">
+													<text key={`${room.id}-dim-${index}`} x={labelPoint.x} y={labelPoint.y - 8} textAnchor="middle" pointerEvents="none" className="select-none fill-slate-700 text-[11px] font-semibold">
 													{formatDistance(getPointDistance(start, point))}
 												</text>
 											);
 										}) : null}
-										{isEditingThisRoom ? (
-											<g>
-												<circle cx={room.origin.x} cy={room.origin.y} r={VERTEX_VISIBLE_RADIUS} fill="#ffffff" stroke="#2563eb" strokeWidth="2" style={{ pointerEvents: 'none' }} />
-												<circle cx={room.origin.x} cy={room.origin.y} r="2.5" fill="#2563eb" style={{ pointerEvents: 'none' }} />
-												<circle
-													cx={room.origin.x}
-													cy={room.origin.y}
-													r={VERTEX_HIT_RADIUS}
-													fill="transparent"
-													pointerEvents="all"
-													style={{ cursor: 'grab' }}
-													onPointerDown={beginOriginDrag}
-													onTouchStart={beginOriginDrag}
-												/>
-											</g>
-										) : null}
+											{[...room.placedItems].sort((left, right) => {
+												const leftRank = left.id === selectedPlacementId ? 1 : 0;
+												const rightRank = right.id === selectedPlacementId ? 1 : 0;
+												return leftRank - rightRank;
+											}).map((entry) => {
+												const footprint = getRotatedRectPoints({ x: entry.x, y: entry.y }, entry.width, entry.depth, entry.rotation).map((point) => `${point.x},${point.y}`).join(' ');
+												const isPlacementSelected = selectedPlacementId === entry.id;
+												const isPlacementEditable = editingPlacedContainerId === entry.id;
+												const visualRecord = entry.kind === 'container'
+													? { icon: findInventoryContainerRecord(entry.refId)?.container.icon ?? 'inventory', fill: 'rgba(15,23,42,0.12)' }
+													: { icon: findInventoryItemRecord(entry.refId)?.resolvedItem?.icon ?? 'inventory', fill: 'rgba(59,130,246,0.10)' };
+												const resolvedIcon = resolveIcon(visualRecord.icon);
+												const iconSize = Math.max(10, Math.min(entry.width, entry.depth) * 0.62);
+
+												return (
+													<g key={entry.id}>
+														<polygon
+															points={footprint}
+															fill={isPlacementEditable ? 'rgba(16,185,129,0.24)' : visualRecord.fill}
+															stroke={isPlacementSelected ? '#059669' : isPlacementEditable ? '#10b981' : '#475569'}
+															strokeWidth={isPlacementSelected ? 3 : 2}
+															style={isPlacementEditable ? { cursor: 'grab' } : undefined}
+															onPointerDown={(event) => {
+																event.stopPropagation();
+																onSelectRoom(room.id);
+																setSelectedPlacementId(entry.id);
+																if (!isPlacementEditable) return;
+																const point = getWorldPoint(event);
+																setInteraction({ type: 'drag-container', roomId: room.id, placementId: entry.id, offsetX: point.x - entry.x, offsetY: point.y - entry.y });
+															}}
+														/>
+														<g transform={`translate(${entry.x} ${entry.y}) rotate(${entry.rotation})`} style={{ pointerEvents: 'none' }}>
+															{isImageIcon(resolvedIcon) ? (
+																<image
+																	href={resolvedIcon}
+																	x={-iconSize / 2}
+																	y={-iconSize / 2}
+																	width={iconSize}
+																	height={iconSize}
+																	preserveAspectRatio="xMidYMid meet"
+																	opacity={isPlacementSelected ? 1 : 0.82}
+																/>
+															) : (
+																<text
+																	x={0}
+																	y={0}
+																	textAnchor="middle"
+																	dominantBaseline="central"
+																	fontSize={iconSize}
+																	opacity={isPlacementSelected ? 1 : 0.9}
+																>
+																	{resolvedIcon}
+																</text>
+															)}
+														</g>
+													</g>
+												);
+											})}
 									</g>
 								);
 							})}
+								{isEditingStoryOutline ? (
+									<g>
+										{storyOutlinePoints.map((point, index) => (
+											<g key={`story-outline-${index}-${point.x}-${point.y}`}>
+												<circle
+													cx={point.x}
+													cy={point.y}
+													r={index === 0 ? 7 : 4.5}
+													fill="#ffffff"
+													stroke="#64748b"
+													strokeWidth="2"
+													style={{ pointerEvents: 'none' }}
+												/>
+												<circle
+													cx={point.x}
+													cy={point.y}
+													r={VERTEX_HIT_RADIUS}
+													fill="transparent"
+													pointerEvents="all"
+												/>
+											</g>
+										))}
+									</g>
+								) : null}
+								{editingRoom && isPlacingStartPoint ? (
+									<g>
+										{startPointAnchors.map((anchor, index) => {
+											const isSelectedAnchor = startPointAnchorIndex === index;
+											return (
+												<g key={anchor.key}>
+													<circle
+														cx={anchor.point.x}
+														cy={anchor.point.y}
+														r={VERTEX_VISIBLE_RADIUS}
+														fill={isSelectedAnchor ? '#ccfbf1' : '#ffffff'}
+														stroke={isSelectedAnchor ? '#0f766e' : '#64748b'}
+														strokeWidth="2"
+														style={{ pointerEvents: 'none' }}
+													/>
+													<circle
+														cx={anchor.point.x}
+														cy={anchor.point.y}
+														r={VERTEX_HIT_RADIUS}
+														fill="transparent"
+														pointerEvents="all"
+														style={{ cursor: 'pointer' }}
+														onPointerDown={(event) => selectStartPointAnchor(index, event)}
+														onTouchStart={(event) => selectStartPointAnchor(index, event)}
+													/>
+												</g>
+											);
+										})}
+									</g>
+								) : null}
+								{editingRoom && !isPlacingStartPoint ? (
+									<g>
+										<circle cx={editingRoom.origin.x} cy={editingRoom.origin.y} r={VERTEX_VISIBLE_RADIUS} fill="#ffffff" stroke="#2563eb" strokeWidth="2" style={{ pointerEvents: 'none' }} />
+										<circle cx={editingRoom.origin.x} cy={editingRoom.origin.y} r="2.5" fill="#2563eb" style={{ pointerEvents: 'none' }} />
+										<circle
+											cx={editingRoom.origin.x}
+											cy={editingRoom.origin.y}
+											r={VERTEX_HIT_RADIUS}
+											fill="transparent"
+											pointerEvents="all"
+											style={{ cursor: 'grab' }}
+											onPointerDown={beginOriginDrag}
+											onTouchStart={beginOriginDrag}
+										/>
+									</g>
+								) : null}
 						</g>
 					</svg>
 

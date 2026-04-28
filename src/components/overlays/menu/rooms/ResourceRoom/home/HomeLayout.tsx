@@ -109,7 +109,7 @@ export function HomeLayout({ stories, onChange, editable = false, homeId }: Home
 	const activeStory = stories.find((story) => story.id === activeStoryId) ?? stories[0] ?? null;
 	const effectiveSelectedRoomId = selectedRoomId !== null && activeStory?.rooms.some((room) => room.id === selectedRoomId)
 		? selectedRoomId
-		: activeStory?.rooms[0]?.id ?? null;
+		: null;
 
 	function commit(nextStories: HomeStory[]) {
 		onChange?.(nextStories);
