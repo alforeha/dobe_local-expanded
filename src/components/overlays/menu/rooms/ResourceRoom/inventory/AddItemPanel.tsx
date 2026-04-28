@@ -37,8 +37,10 @@ const TAB_LABELS: Array<{ id: AddItemTab; label: string }> = [
 
 interface AddItemPanelProps {
   resource: InventoryResource;
+  containerId?: string;
   onClose: () => void;
   onItemAdded?: (itemTemplateRef: string) => void;
+  onItemInstanceAdded?: (item: ItemInstance) => void;
 }
 
 function buildTaskTemplates(itemTemplateRef: string): ItemRecurringTask[] {
@@ -84,7 +86,7 @@ function normalizeCustomTemplate(template: InventoryItemTemplate): InventoryItem
   };
 }
 
-export function AddItemPanel({ resource, onClose, onItemAdded }: AddItemPanelProps) {
+export function AddItemPanel({ resource, containerId, onClose, onItemAdded, onItemInstanceAdded }: AddItemPanelProps) {
   const [activeTab, setActiveTab] = useState<AddItemTab>('library');
   const [searchQuery, setSearchQuery] = useState('');
   const [draftIcon, setDraftIcon] = useState('inventory');
@@ -143,16 +145,28 @@ export function AddItemPanel({ resource, onClose, onItemAdded }: AddItemPanelPro
       ?? getItemTemplateByRef(normalizedTemplate.id)?.kind
       ?? normalizedTemplate.kind
       ?? 'consumable';
-    const nextResource: InventoryResource = {
-      ...resource,
-      updatedAt: new Date().toISOString(),
-      items: [
-        ...resource.items,
-        buildLooseItemInstance(normalizedTemplate.id, itemKind),
-      ],
-    };
+    const nextItem = buildLooseItemInstance(normalizedTemplate.id, itemKind);
+    if (onItemInstanceAdded) {
+      onItemInstanceAdded(nextItem);
+    } else {
+      const nextResource: InventoryResource = {
+        ...resource,
+        updatedAt: new Date().toISOString(),
+        items: containerId ? resource.items : [...resource.items, nextItem],
+        containers: containerId
+          ? (resource.containers ?? []).map((container) => (
+              container.id === containerId
+                ? {
+                    ...container,
+                    items: [...container.items, nextItem],
+                  }
+                : container
+            ))
+          : resource.containers,
+      };
 
-    setResource(nextResource);
+      setResource(nextResource);
+    }
     setUser({
       ...user,
       lists: {

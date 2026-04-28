@@ -27,15 +27,6 @@ function isChoreOnDate(chore: HomeChore, dateISO: string): boolean {
   return isRuleOnDate(chore.recurrence, dateISO);
 }
 
-function isIntermittentOnDate(
-  recurrenceMode: 'recurring' | 'never' | undefined,
-  rule: ResourceRecurrenceRule | undefined,
-  dateISO: string,
-): boolean {
-  if (normalizeRecurrenceMode(recurrenceMode) !== 'never') return false;
-  return rule?.seedDate === dateISO;
-}
-
 function isRuleOnDate(rule: ResourceRecurrenceRule, dateISO: string, excludeSeedDate = false): boolean {
   if (!rule?.seedDate) return false;
   if (rule.seedDate > dateISO) return false;
@@ -116,9 +107,6 @@ export function getResourceIndicatorsForDate(dateISO: string, resources: Resourc
         if (isChoreOnDate(chore, dateISO)) {
           indicators.push(makeIndicator(resource, chore.icon || 'chore', chore.name || 'Chore due'));
         }
-        if (isIntermittentOnDate(chore.recurrenceMode, chore.recurrence, dateISO)) {
-          indicators.push(makeIndicator(resource, chore.icon || 'chore', chore.name || 'Intermittent task'));
-        }
       }
     }
 
@@ -130,8 +118,6 @@ export function getResourceIndicatorsForDate(dateISO: string, resources: Resourc
           if (isRuleOnDate(task.recurrence, dateISO, true)) {
             indicators.push(makeIndicator(resource, task.icon || 'vehicle', task.name || 'Intermittent task'));
           }
-        } else if (isIntermittentOnDate(task.recurrenceMode, task.recurrence, dateISO)) {
-          indicators.push(makeIndicator(resource, task.icon || 'vehicle', task.name || 'Intermittent task'));
         }
       }
     }
@@ -145,8 +131,6 @@ export function getResourceIndicatorsForDate(dateISO: string, resources: Resourc
           if (isRuleOnDate(task.recurrence, dateISO, true)) {
             indicators.push(makeIndicator(resource, task.icon || 'account', task.name || 'Intermittent task'));
           }
-        } else if (isIntermittentOnDate(task.recurrenceMode, task.recurrence, dateISO)) {
-          indicators.push(makeIndicator(resource, task.icon || 'account', task.name || 'Intermittent task'));
         }
       }
     }
@@ -158,19 +142,15 @@ export function getResourceIndicatorsForDate(dateISO: string, resources: Resourc
 
       for (const item of itemSource) {
         for (const task of item.recurringTasks ?? []) {
-          if (isIntermittentOnDate(task.recurrenceMode, task.recurrence, dateISO)) {
-            indicators.push(makeIndicator(resource, 'task', task.taskTemplateRef || 'Intermittent task'));
+          if (normalizeRecurrenceMode(task.recurrenceMode) === 'recurring' && isRuleOnDate(task.recurrence, dateISO, true)) {
+            indicators.push(makeIndicator(resource, 'task', task.taskTemplateRef || 'Task due'));
           }
         }
       }
 
       for (const container of resource.containers ?? []) {
         if (container.kind !== 'bag' || !container.carryTask) continue;
-        if (normalizeRecurrenceMode(container.carryTask.recurrenceMode) === 'recurring') {
-          if (isRuleOnDate(container.carryTask.recurrence, dateISO, true)) {
-            indicators.push(makeIndicator(resource, container.icon || 'inventory', container.carryTask.name || `Carry ${container.name}`));
-          }
-        } else if (isIntermittentOnDate(container.carryTask.recurrenceMode, container.carryTask.recurrence, dateISO)) {
+        if (normalizeRecurrenceMode(container.carryTask.recurrenceMode) === 'recurring' && isRuleOnDate(container.carryTask.recurrence, dateISO, true)) {
           indicators.push(makeIndicator(resource, container.icon || 'inventory', container.carryTask.name || `Carry ${container.name}`));
         }
       }

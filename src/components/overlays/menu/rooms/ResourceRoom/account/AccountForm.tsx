@@ -811,7 +811,11 @@ export function AccountForm({ existing, onSaved, onCancel }: AccountFormProps) {
                         />
                       </div>
                     </div>
-                  ) : null}
+                  ) : (
+                    <div className="rounded-md border border-dashed border-gray-200 bg-white px-3 py-3 text-xs text-gray-500 dark:border-gray-600 dark:bg-gray-800/70 dark:text-gray-300">
+                      Intermittent task. No date or reminder settings are needed.
+                    </div>
+                  )}
 
                   {normalizeRecurrenceMode(task.recurrenceMode) === 'recurring' ? (
                     <div className="flex items-center gap-2">
