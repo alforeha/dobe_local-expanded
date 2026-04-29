@@ -21,6 +21,11 @@ export interface ItemTemplate {
   icon: string;
   description: string;
   kind: ItemKind;
+  dimensions?: {
+    width: number;
+    depth: number;
+    height: number;
+  };
   resourceType: ResourceType;
   category: ItemCategory;
   rarity: ItemRarity;

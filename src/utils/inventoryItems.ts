@@ -35,6 +35,7 @@ export function resolveInventoryItemTemplate(
       name: userTemplate.name || builtIn.name,
       icon: userTemplate.icon || builtIn.icon,
       kind: userTemplate.kind ?? builtIn.kind,
+      dimensions: userTemplate.dimensions ?? builtIn.dimensions,
       source: 'library',
     };
   }
@@ -46,6 +47,7 @@ export function resolveInventoryItemTemplate(
       icon: userTemplate.icon,
       description: userTemplate.description || 'Custom inventory item',
       kind: userTemplate.kind ?? 'consumable',
+      dimensions: userTemplate.dimensions,
       resourceType: 'inventory',
       category: (userTemplate.category as ItemTemplate['category'] | undefined) ?? 'workspace',
       rarity: 'common',

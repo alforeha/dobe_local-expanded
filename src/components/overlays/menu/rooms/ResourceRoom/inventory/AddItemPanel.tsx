@@ -70,11 +70,16 @@ function buildTaskTemplates(itemTemplateRef: string): ItemRecurringTask[] {
   }));
 }
 
-function buildLooseItemInstance(templateRef: string, kind: ItemKind): ItemInstance {
+function buildLooseItemInstance(
+  templateRef: string,
+  kind: ItemKind,
+  dimensions?: ItemInstance['dimensions'],
+): ItemInstance {
   return {
     id: uuidv4(),
     itemTemplateRef: templateRef,
     quantity: kind === 'consumable' ? 1 : undefined,
+    dimensions,
     recurringTasks: kind === 'facility' ? buildTaskTemplates(templateRef) : undefined,
   };
 }
@@ -145,7 +150,11 @@ export function AddItemPanel({ resource, containerId, onClose, onItemAdded, onIt
       ?? getItemTemplateByRef(normalizedTemplate.id)?.kind
       ?? normalizedTemplate.kind
       ?? 'consumable';
-    const nextItem = buildLooseItemInstance(normalizedTemplate.id, itemKind);
+    const nextItem = buildLooseItemInstance(
+      normalizedTemplate.id,
+      itemKind,
+      normalizedTemplate.dimensions ?? getItemTemplateByRef(normalizedTemplate.id)?.dimensions,
+    );
     if (onItemInstanceAdded) {
       onItemInstanceAdded(nextItem);
     } else {

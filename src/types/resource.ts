@@ -120,6 +120,17 @@ export interface ItemInstance {
   quantity?: number;
   threshold?: number;
   unit?: string;
+  dimensions?: {
+    width: number;
+    depth: number;
+    height: number;
+  };
+  placedInBag?: {
+    axis?: 'width-depth' | 'width-height' | 'depth-height';
+    x: number;
+    y: number;
+    rotation: number;
+  };
   recurringTasks?: ItemRecurringTask[];
 }
 
@@ -135,6 +146,28 @@ export interface InventoryContainer {
   name: string;
   icon: string;
   kind?: 'container' | 'bag';
+  dimensions?: {
+    width: number;
+    depth: number;
+    height: number;
+  };
+  layoutGrid?: {
+    xAxis: 'width-depth' | 'width-height' | 'depth-height';
+    columns?: number;
+    rows?: number;
+    widthDepth?: {
+      columns: number;
+      rows: number;
+    };
+    widthHeight?: {
+      columns: number;
+      rows: number;
+    };
+    depthHeight?: {
+      columns: number;
+      rows: number;
+    };
+  };
   items: ItemInstance[];
   carryTask?: {
     id: string;
@@ -170,6 +203,11 @@ export interface InventoryItemTemplate {
   name: string;
   icon: string;
   kind?: 'consumable' | 'facility';
+  dimensions?: {
+    width: number;
+    depth: number;
+    height: number;
+  };
   category?: string;
   description?: string;
   isCustom?: boolean;
