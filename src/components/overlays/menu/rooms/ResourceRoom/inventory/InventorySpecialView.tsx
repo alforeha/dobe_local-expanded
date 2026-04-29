@@ -4,8 +4,10 @@ import type {
   InventoryContainer,
   InventoryContainerLink,
   InventoryCustomTaskTemplate,
+  InventoryItemTemplate,
   InventoryResource,
   ItemInstance,
+  PlacedInstance,
   VehicleResource,
 } from '../../../../../../types/resource';
 import { isDoc } from '../../../../../../types/resource';
@@ -13,6 +15,7 @@ import { useScheduleStore } from '../../../../../../stores/useScheduleStore';
 import { useResourceStore } from '../../../../../../stores/useResourceStore';
 import { useUserStore } from '../../../../../../stores/useUserStore';
 import type { Task } from '../../../../../../types/task';
+import type { TaskType } from '../../../../../../types/taskTemplate';
 import { IconDisplay } from '../../../../../shared/IconDisplay';
 import { IconPicker } from '../../../../../shared/IconPicker';
 import { TextInput } from '../../../../../shared/inputs/TextInput';
@@ -40,6 +43,40 @@ interface InventorySpecialViewProps {
 }
 
 type TabKey = 'items' | 'containers' | 'bags';
+type ItemFilter = 'all' | 'placed' | 'unplaced';
+type EditableTaskType = Extract<TaskType, 'CHECK' | 'COUNTER' | 'DURATION' | 'TIMER' | 'RATING' | 'TEXT'>;
+type InventoryEditableTaskTemplate = InventoryCustomTaskTemplate & { taskType?: EditableTaskType };
+
+const ITEM_FILTER_OPTIONS: Array<{ id: ItemFilter; label: string }> = [
+  { id: 'all', label: 'All' },
+  { id: 'placed', label: 'Placed' },
+  { id: 'unplaced', label: 'Unplaced' },
+];
+
+type ItemPlacementTarget =
+  | { kind: 'inventory-item'; inventoryResourceId: string; itemId: string }
+  | { kind: 'inventory-container-item'; inventoryResourceId: string; containerId: string; itemId: string }
+  | { kind: 'home-placement'; homeId: string; roomId?: string; placementId: string }
+  | { kind: 'home-room-container-item'; homeId: string; roomId: string; containerId: string; itemId: string };
+
+interface ItemPlacementRecord {
+  key: string;
+  locationPath: string;
+  quantity: number;
+  segments: Array<{ key: string; icon: string; label: string }>;
+  target: ItemPlacementTarget;
+}
+
+interface ItemRowSummary {
+  template: InventoryItemTemplate;
+  resolved: ReturnType<typeof resolveInventoryItemTemplate>;
+  builtInTemplate: ReturnType<typeof getItemTemplateByRef>;
+  placements: ItemPlacementRecord[];
+  totalOnHand: number;
+  kind: ItemKind;
+  description: string;
+  isUserManaged: boolean;
+}
 
 const DAY_LABELS: Record<string, string> = {
   sun: 'Su',
@@ -80,6 +117,11 @@ function itemQuantityTotal(items: ItemInstance[]) {
   return items.reduce((sum, item) => sum + (item.quantity ?? 1), 0);
 }
 
+function formatTaskTypeLabel(taskType?: string | null) {
+  if (!taskType) return 'CHECK';
+  return taskType.replaceAll('_', ' ');
+}
+
 export function InventorySpecialView({ resource }: InventorySpecialViewProps) {
   const scheduleTasks = useScheduleStore((s) => s.tasks) as Record<string, Task>;
   const resources = useResourceStore((s) => s.resources);
@@ -103,12 +145,17 @@ export function InventorySpecialView({ resource }: InventorySpecialViewProps) {
   const [draftItemKind, setDraftItemKind] = useState<ItemKind>('consumable');
   const [draftItemCategory, setDraftItemCategory] = useState<ItemCategory>('workspace');
   const [draftItemDescription, setDraftItemDescription] = useState('Custom inventory item');
-  const [draftTaskTemplates, setDraftTaskTemplates] = useState<InventoryCustomTaskTemplate[]>([]);
+  const [draftItemWidth, setDraftItemWidth] = useState('0');
+  const [draftItemDepth, setDraftItemDepth] = useState('0');
+  const [draftTaskTemplates, setDraftTaskTemplates] = useState<InventoryEditableTaskTemplate[]>([]);
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
+  const [itemFilter, setItemFilter] = useState<ItemFilter>('all');
+  const [editingItemDetailsId, setEditingItemDetailsId] = useState<string | null>(null);
 
+  const userTemplates = useMemo(() => getUserInventoryItemTemplates(user), [user]);
   const itemEntries = useMemo(
-    () => mergeInventoryItemTemplates(getUserInventoryItemTemplates(user), resource.itemTemplates),
-    [resource.itemTemplates, user],
+    () => mergeInventoryItemTemplates(userTemplates, resource.itemTemplates),
+    [resource.itemTemplates, userTemplates],
   );
   const containerEntries = useMemo(() => resource.containers ?? [], [resource.containers]);
   const regularContainerEntries = useMemo(
@@ -135,6 +182,10 @@ export function InventorySpecialView({ resource }: InventorySpecialViewProps) {
     () => Object.values(resources).filter((entry): entry is VehicleResource => entry.type === 'vehicle'),
     [resources],
   );
+  const inventoryResources = useMemo(
+    () => Object.values(resources).filter((entry): entry is InventoryResource => entry.type === 'inventory'),
+    [resources],
+  );
 
   const itemIdsWithDoc = useMemo(() => {
     const ids = new Set<string>();
@@ -157,39 +208,223 @@ export function InventorySpecialView({ resource }: InventorySpecialViewProps) {
       .filter((itemName): itemName is string => Boolean(itemName)),
   );
 
-  const itemUsage = useMemo(() => {
-    const usage = new Map<
-      string,
-      {
-        looseItems: ItemInstance[];
-        containerRefs: Array<{ containerId: string; containerName: string; item: ItemInstance }>;
-      }
-    >();
+  const itemPlacementsByTemplateId = useMemo(() => {
+    const placements = new Map<string, ItemPlacementRecord[]>();
+    const inventoryItemRecords = new Map<string, { templateId: string; record: Omit<ItemPlacementRecord, 'key'> }>();
+    const containerItemsByContainerId = new Map<string, Array<{ templateId: string; record: Omit<ItemPlacementRecord, 'key'> }>>();
+    const placedInventoryItemIds = new Set<string>();
 
-    const ensureUsage = (itemTemplateRef: string) => {
-      const current = usage.get(itemTemplateRef);
-      if (current) return current;
-      const created = { looseItems: [], containerRefs: [] };
-      usage.set(itemTemplateRef, created);
-      return created;
+    const appendPlacement = (templateId: string, placement: Omit<ItemPlacementRecord, 'key'>, keySeed: string) => {
+      const current = placements.get(templateId) ?? [];
+      current.push({ ...placement, key: `${templateId}:${keySeed}:${current.length}` });
+      placements.set(templateId, current);
     };
 
-    for (const item of resource.items) {
-      ensureUsage(item.itemTemplateRef).looseItems.push(item);
-    }
-
-    for (const container of containerEntries) {
-      for (const item of container.items) {
-        ensureUsage(item.itemTemplateRef).containerRefs.push({
-          containerId: container.id,
-          containerName: container.name,
-          item,
+    for (const inventoryResource of inventoryResources) {
+      for (const item of inventoryResource.items ?? []) {
+        inventoryItemRecords.set(item.id, {
+          templateId: item.itemTemplateRef,
+          record: {
+            locationPath: inventoryResource.name,
+            quantity: item.quantity ?? 1,
+            segments: [
+              { key: `${inventoryResource.id}:inventory`, icon: inventoryResource.icon || 'inventory', label: inventoryResource.name },
+            ],
+            target: {
+              kind: 'inventory-item',
+              inventoryResourceId: inventoryResource.id,
+              itemId: item.id,
+            },
+          },
         });
+      }
+
+      for (const container of inventoryResource.containers ?? []) {
+        containerItemsByContainerId.set(
+          container.id,
+          container.items.map((item) => ({
+            templateId: item.itemTemplateRef,
+            record: {
+              locationPath: `${inventoryResource.name} / ${container.name}`,
+              quantity: item.quantity ?? 1,
+              segments: [
+                { key: `${inventoryResource.id}:inventory`, icon: inventoryResource.icon || 'inventory', label: inventoryResource.name },
+                { key: `${container.id}:container`, icon: container.icon || 'inventory', label: container.name },
+              ],
+              target: {
+                kind: 'inventory-container-item',
+                inventoryResourceId: inventoryResource.id,
+                containerId: container.id,
+                itemId: item.id,
+              },
+            },
+          })),
+        );
+        for (const item of container.items) {
+          inventoryItemRecords.set(item.id, {
+            templateId: item.itemTemplateRef,
+            record: {
+              locationPath: `${inventoryResource.name} / ${container.name}`,
+              quantity: item.quantity ?? 1,
+              segments: [
+                { key: `${inventoryResource.id}:inventory`, icon: inventoryResource.icon || 'inventory', label: inventoryResource.name },
+                { key: `${container.id}:container`, icon: container.icon || 'inventory', label: container.name },
+              ],
+              target: {
+                kind: 'inventory-container-item',
+                inventoryResourceId: inventoryResource.id,
+                containerId: container.id,
+                itemId: item.id,
+              },
+            },
+          });
+        }
       }
     }
 
-    return usage;
-  }, [containerEntries, resource.items]);
+    const collectHomePlacements = (home: HomeResource, room: NonNullable<HomeResource['stories']>[number]['rooms'][number] | null, placedItems: PlacedInstance[]) => {
+      if (room) {
+        for (const container of room.dedicatedContainers ?? []) {
+          containerItemsByContainerId.set(
+            container.id,
+            container.items.map((item: ItemInstance) => ({
+              templateId: item.itemTemplateRef,
+              record: {
+                locationPath: `${home.name} / ${room.name} / ${container.name}`,
+                quantity: item.quantity ?? 1,
+                segments: [
+                  { key: `${home.id}:home`, icon: home.icon || 'home', label: home.name },
+                  { key: `${room.id}:room`, icon: room.icon || 'home-room', label: room.name },
+                  { key: `${container.id}:container`, icon: container.icon || 'inventory', label: container.name },
+                ],
+                target: {
+                  kind: 'home-room-container-item',
+                  homeId: home.id,
+                  roomId: room.id,
+                  containerId: container.id,
+                  itemId: item.id,
+                },
+              },
+            })),
+          );
+        }
+      }
+
+      for (const placement of placedItems ?? []) {
+        const locationBase = room ? `${home.name} / ${room.name}` : home.name;
+        const baseSegments = room
+          ? [
+              { key: `${home.id}:home`, icon: home.icon || 'home', label: home.name },
+              { key: `${room.id}:room`, icon: room.icon || 'home-room', label: room.name },
+            ]
+          : [
+              { key: `${home.id}:home`, icon: home.icon || 'home', label: home.name },
+            ];
+        if (placement.kind === 'container') {
+          const containerItems = containerItemsByContainerId.get(placement.refId) ?? [];
+          for (const containerItem of containerItems) {
+            if (containerItem.record.target.kind === 'inventory-container-item') {
+              placedInventoryItemIds.add(containerItem.record.target.itemId);
+            }
+            appendPlacement(
+              containerItem.templateId,
+              {
+                ...containerItem.record,
+                locationPath: `${locationBase} / ${containerItem.record.locationPath.split(' / ').slice(-1)[0]}`,
+                segments: [...baseSegments, ...containerItem.record.segments.slice(-1)],
+              },
+              placement.id,
+            );
+          }
+          continue;
+        }
+
+        const inventoryItemRecord = inventoryItemRecords.get(placement.refId);
+        if (inventoryItemRecord) {
+          placedInventoryItemIds.add(placement.refId);
+          appendPlacement(
+            inventoryItemRecord.templateId,
+            {
+              locationPath: locationBase,
+              quantity: placement.quantity ?? inventoryItemRecord.record.quantity,
+              segments: baseSegments,
+              target: {
+                kind: 'home-placement',
+                homeId: home.id,
+                roomId: room?.id,
+                placementId: placement.id,
+              },
+            },
+            placement.id,
+          );
+          continue;
+        }
+
+        appendPlacement(
+          placement.refId,
+          {
+            locationPath: locationBase,
+            quantity: placement.quantity ?? 1,
+            segments: baseSegments,
+            target: {
+              kind: 'home-placement',
+              homeId: home.id,
+              roomId: room?.id,
+              placementId: placement.id,
+            },
+          },
+          placement.id,
+        );
+      }
+    };
+
+    for (const home of homeResources) {
+      for (const story of home.stories ?? []) {
+        collectHomePlacements(home, null, story.placedItems ?? []);
+        for (const room of story.rooms) {
+          collectHomePlacements(home, room, room.placedItems ?? []);
+        }
+      }
+    }
+
+    for (const [itemId, inventoryRecord] of inventoryItemRecords) {
+      if (placedInventoryItemIds.has(itemId)) continue;
+      appendPlacement(inventoryRecord.templateId, inventoryRecord.record, itemId);
+    }
+
+    for (const [templateId, templatePlacements] of placements) {
+      templatePlacements.sort((left, right) => left.locationPath.localeCompare(right.locationPath));
+      placements.set(templateId, templatePlacements);
+    }
+
+    return placements;
+  }, [homeResources, inventoryResources]);
+
+  const itemRows = useMemo(() => {
+    return itemEntries
+      .map((template) => {
+        const builtInTemplate = getItemTemplateByRef(template.id);
+        const resolved = resolveInventoryItemTemplate(template.id, itemEntries);
+        const placements = itemPlacementsByTemplateId.get(template.id) ?? [];
+        const kind = (resolved?.kind ?? template.kind ?? 'consumable') as ItemKind;
+        return {
+          template,
+          resolved,
+          builtInTemplate,
+          placements,
+          totalOnHand: placements.reduce((sum, placement) => sum + (placement.quantity ?? 1), 0),
+          kind,
+          description: builtInTemplate?.description ?? resolved?.description ?? (template.id.startsWith(CUSTOM_ITEM_TEMPLATE_PREFIX) ? 'Custom inventory item' : ''),
+          isUserManaged: userTemplates.some((entry) => entry.id === template.id),
+        } satisfies ItemRowSummary;
+      })
+      .filter((row) => itemFilter === 'all' || (itemFilter === 'placed' ? row.placements.length > 0 : row.placements.length === 0));
+  }, [itemEntries, itemFilter, itemPlacementsByTemplateId, userTemplates]);
+
+  const visibleItemRows = useMemo(
+    () => (expandedItemId ? itemRows.filter((row) => row.template.id === expandedItemId) : itemRows),
+    [expandedItemId, itemRows],
+  );
 
   function cleanupHomePlacements(match: (placement: { kind: 'item' | 'container'; refId: string }) => boolean) {
     const now = new Date().toISOString();
@@ -270,6 +505,8 @@ export function InventorySpecialView({ resource }: InventorySpecialViewProps) {
     setDraftItemKind('consumable');
     setDraftItemCategory('workspace');
     setDraftItemDescription('Custom inventory item');
+    setDraftItemWidth('0');
+    setDraftItemDepth('0');
     setDraftTaskTemplates([]);
     setEditingItemId(null);
     setShowItemComposer(false);
@@ -284,17 +521,25 @@ export function InventorySpecialView({ resource }: InventorySpecialViewProps) {
     setDraftItemKind(item.kind ?? 'consumable');
     setDraftItemCategory((resolved?.category ?? 'workspace') as ItemCategory);
     setDraftItemDescription(resolved?.description ?? 'Custom inventory item');
-    setDraftTaskTemplates(item.customTaskTemplates ?? []);
+    setDraftItemWidth(String(item.dimensions?.width ?? resolved?.dimensions?.width ?? 0));
+    setDraftItemDepth(String(item.dimensions?.depth ?? resolved?.dimensions?.depth ?? 0));
+    setDraftTaskTemplates(
+      ((item.customTaskTemplates ?? []) as InventoryEditableTaskTemplate[]).map((taskTemplate) => ({
+        ...taskTemplate,
+        taskType: 'CHECK',
+      })),
+    );
     setEditingItemId(itemId);
     setShowItemComposer(true);
     setExpandedItemId(itemId);
+    setEditingItemDetailsId(null);
   }
 
   function addDraftTaskTemplate() {
-    setDraftTaskTemplates((prev) => [...prev, { id: crypto.randomUUID(), name: '', icon: 'task' }]);
+    setDraftTaskTemplates((prev) => [...prev, { id: crypto.randomUUID(), name: '', icon: 'task', taskType: 'CHECK' }]);
   }
 
-  function updateDraftTaskTemplate(id: string, patch: Partial<InventoryCustomTaskTemplate>) {
+  function updateDraftTaskTemplate(id: string, patch: Partial<InventoryEditableTaskTemplate>) {
     setDraftTaskTemplates((prev) => prev.map((taskTemplate) => (taskTemplate.id === id ? { ...taskTemplate, ...patch } : taskTemplate)));
   }
 
@@ -313,8 +558,20 @@ export function InventorySpecialView({ resource }: InventorySpecialViewProps) {
       category: draftItemCategory,
       description: draftItemDescription.trim() || 'Custom inventory item',
       isCustom: true,
+      dimensions: draftItemKind === 'facility'
+        ? {
+            width: Math.max(0, Number(draftItemWidth) || 0),
+            depth: Math.max(0, Number(draftItemDepth) || 0),
+            height: 0,
+          }
+        : undefined,
       customTaskTemplates: draftItemKind === 'facility'
-        ? draftTaskTemplates.filter((taskTemplate) => taskTemplate.name.trim().length > 0)
+        ? (draftTaskTemplates
+            .filter((taskTemplate) => taskTemplate.name.trim().length > 0)
+            .map((taskTemplate) => ({
+              ...taskTemplate,
+              taskType: 'CHECK',
+            })) as InventoryCustomTaskTemplate[])
         : [],
     };
 
@@ -351,31 +608,79 @@ export function InventorySpecialView({ resource }: InventorySpecialViewProps) {
     resetItemComposer();
   }
 
-  function handleRemoveItem(itemId: string) {
-    if (!user) return;
-    const removedItemIds = new Set(resource.items.filter((item) => item.itemTemplateRef === itemId).map((item) => item.id));
-    const nextTemplates = (user.lists.inventoryItemTemplates ?? []).filter((item) => item.id !== itemId);
-    setUser({
-      ...user,
-      lists: {
-        ...user.lists,
-        inventoryItemTemplates: nextTemplates,
-      },
-    });
-    const now = new Date().toISOString();
+  function updateHomePlacementQuantity(homeId: string, roomId: string | undefined, placementId: string, quantity: number) {
+    const home = resources[homeId];
+    if (!home || home.type !== 'home') return;
     setResource({
-      ...resource,
-      updatedAt: now,
-      items: resource.items.filter((item) => item.itemTemplateRef !== itemId),
-      containers: containerEntries.map((container) => ({
-        ...container,
-        items: container.items.filter((item) => item.itemTemplateRef !== itemId),
+      ...home,
+      updatedAt: new Date().toISOString(),
+      stories: (home.stories ?? []).map((story) => ({
+        ...story,
+        placedItems: roomId
+          ? story.placedItems
+          : story.placedItems.map((placement) => placement.id === placementId ? { ...placement, quantity } : placement),
+        rooms: story.rooms.map((room) => room.id !== roomId ? room : {
+          ...room,
+          placedItems: room.placedItems.map((placement) => placement.id === placementId ? { ...placement, quantity } : placement),
+        }),
       })),
     });
-    cleanupHomePlacements((placement) =>
-      placement.kind === 'item' && (placement.refId === itemId || removedItemIds.has(placement.refId)),
-    );
-    setExpandedItemId((prev) => (prev === itemId ? null : prev));
+  }
+
+  function updateHomeContainerItemQuantity(homeId: string, roomId: string, containerId: string, itemId: string, quantity: number) {
+    const home = resources[homeId];
+    if (!home || home.type !== 'home') return;
+    setResource({
+      ...home,
+      updatedAt: new Date().toISOString(),
+      stories: (home.stories ?? []).map((story) => ({
+        ...story,
+        rooms: story.rooms.map((room) => room.id !== roomId ? room : {
+          ...room,
+          dedicatedContainers: (room.dedicatedContainers ?? []).map((container) => container.id !== containerId ? container : {
+            ...container,
+            items: container.items.map((item) => item.id === itemId ? { ...item, quantity } : item),
+          }),
+        }),
+      })),
+    });
+  }
+
+  function updateInventoryPlacementQuantity(target: Extract<ItemPlacementTarget, { kind: 'inventory-item' | 'inventory-container-item' }>, quantity: number) {
+    const inventoryResource = resources[target.inventoryResourceId];
+    if (!inventoryResource || inventoryResource.type !== 'inventory') return;
+    setResource({
+      ...inventoryResource,
+      updatedAt: new Date().toISOString(),
+      items: target.kind === 'inventory-item'
+        ? inventoryResource.items.map((item) => item.id === target.itemId ? { ...item, quantity } : item)
+        : inventoryResource.items,
+      containers: (inventoryResource.containers ?? []).map((container) => {
+        if (target.kind !== 'inventory-container-item' || container.id !== target.containerId) return container;
+        return {
+          ...container,
+          items: container.items.map((item) => item.id === target.itemId ? { ...item, quantity } : item),
+        };
+      }),
+    });
+  }
+
+  function handleUpdatePlacementQuantity(placement: ItemPlacementRecord, rawValue: string) {
+    const quantity = Math.max(0, Number(rawValue) || 0);
+    switch (placement.target.kind) {
+      case 'inventory-item':
+      case 'inventory-container-item':
+        updateInventoryPlacementQuantity(placement.target, quantity);
+        break;
+      case 'home-placement':
+        updateHomePlacementQuantity(placement.target.homeId, placement.target.roomId, placement.target.placementId, quantity);
+        break;
+      case 'home-room-container-item':
+        updateHomeContainerItemQuantity(placement.target.homeId, placement.target.roomId, placement.target.containerId, placement.target.itemId, quantity);
+        break;
+      default:
+        break;
+    }
   }
 
   function handleRemoveContainer(containerId: string) {
@@ -440,11 +745,12 @@ export function InventorySpecialView({ resource }: InventorySpecialViewProps) {
   function resolveTaskDisplay(taskTemplateRef: string, itemTemplateRef?: string) {
     if (itemTemplateRef) {
       const customTemplate = itemEntries.find((item) => item.id === itemTemplateRef);
-      const customTask = customTemplate?.customTaskTemplates?.find((taskTemplate) => taskTemplate.name === taskTemplateRef);
+      const customTask = (customTemplate?.customTaskTemplates as InventoryEditableTaskTemplate[] | undefined)?.find((taskTemplate) => taskTemplate.name === taskTemplateRef);
       if (customTask) {
         return {
           name: customTask.name,
           icon: customTask.icon || 'task',
+          taskType: customTask.taskType ?? 'CHECK',
         };
       }
     }
@@ -454,6 +760,7 @@ export function InventorySpecialView({ resource }: InventorySpecialViewProps) {
       return {
         name: coachTaskTemplate.name,
         icon: coachTaskTemplate.icon || 'task',
+        taskType: coachTaskTemplate.taskType,
       };
     }
 
@@ -462,12 +769,14 @@ export function InventorySpecialView({ resource }: InventorySpecialViewProps) {
       return {
         name: itemTaskTemplate.name,
         icon: itemTaskTemplate.icon || 'task',
+        taskType: 'CHECK',
       };
     }
 
     return {
       name: humanizeTaskRef(taskTemplateRef),
       icon: 'task',
+      taskType: 'CHECK',
     };
   }
 
@@ -601,6 +910,7 @@ export function InventorySpecialView({ resource }: InventorySpecialViewProps) {
         )}
       </div>
 
+      <div className="min-h-0 flex-1 overflow-y-auto pr-1">
       {activeTab === 'items' && showItemComposer ? (
         <section className="mb-4 rounded-2xl border border-gray-200 bg-gray-50/80 p-3 dark:border-gray-700 dark:bg-gray-900/40">
           <div className="grid grid-cols-[auto_1fr] items-end gap-3">
@@ -630,35 +940,74 @@ export function InventorySpecialView({ resource }: InventorySpecialViewProps) {
           </div>
 
           {draftItemKind === 'facility' ? (
-            <div className="mt-4 rounded-xl border border-gray-200 bg-white px-3 py-3 dark:border-gray-700 dark:bg-gray-800">
-              <div className="flex items-center justify-between gap-3">
-                <p className="text-xs font-medium text-gray-500 dark:text-gray-400">Custom task templates</p>
-                <button type="button" onClick={addDraftTaskTemplate} className="text-xs font-medium text-blue-500 hover:text-blue-600">
-                  + Add task
-                </button>
+            <div className="mt-4 space-y-4 rounded-xl border border-gray-200 bg-white px-3 py-3 dark:border-gray-700 dark:bg-gray-800">
+              <div>
+                <p className="text-xs font-medium text-gray-500 dark:text-gray-400">Dimensions</p>
+                <div className="mt-2 grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] sm:items-end">
+                  <label className="space-y-1">
+                    <span className="text-[11px] font-medium text-gray-600 dark:text-gray-300">W</span>
+                    <input
+                      type="number"
+                      min={0}
+                      value={draftItemWidth}
+                      onChange={(event) => setDraftItemWidth(event.target.value)}
+                      className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-2 text-sm text-gray-900 focus:border-blue-500 focus:outline-none dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100"
+                    />
+                  </label>
+                  <label className="space-y-1">
+                    <span className="text-[11px] font-medium text-gray-600 dark:text-gray-300">D</span>
+                    <input
+                      type="number"
+                      min={0}
+                      value={draftItemDepth}
+                      onChange={(event) => setDraftItemDepth(event.target.value)}
+                      className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-2 text-sm text-gray-900 focus:border-blue-500 focus:outline-none dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100"
+                    />
+                  </label>
+                </div>
               </div>
-              <div className="mt-2 space-y-2">
-                {draftTaskTemplates.length === 0 ? (
-                  <p className="text-xs italic text-gray-400">No custom tasks added yet.</p>
-                ) : draftTaskTemplates.map((taskTemplate) => (
-                  <div key={taskTemplate.id} className="grid grid-cols-[auto_1fr_auto] items-end gap-2 rounded-lg bg-gray-50 px-3 py-3 dark:bg-gray-900/60">
-                    <IconPicker
-                      value={taskTemplate.icon || 'task'}
-                      onChange={(value) => updateDraftTaskTemplate(taskTemplate.id, { icon: value })}
-                      align="left"
-                    />
-                    <TextInput
-                      label="Task name"
-                      value={taskTemplate.name}
-                      onChange={(value) => updateDraftTaskTemplate(taskTemplate.id, { name: value })}
-                      placeholder="e.g. Wipe down"
-                      maxLength={80}
-                    />
-                    <button type="button" onClick={() => removeDraftTaskTemplate(taskTemplate.id)} className="mb-1 text-xs text-gray-400 hover:text-red-400">
-                      Remove
-                    </button>
-                  </div>
-                ))}
+
+              <div>
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-xs font-medium text-gray-500 dark:text-gray-400">Custom task templates</p>
+                  <button type="button" onClick={addDraftTaskTemplate} className="text-xs font-medium text-blue-500 hover:text-blue-600">
+                    + Add task
+                  </button>
+                </div>
+                <div className="mt-2 space-y-2">
+                  {draftTaskTemplates.length === 0 ? (
+                    <p className="text-xs italic text-gray-400">No custom tasks added yet.</p>
+                  ) : draftTaskTemplates.map((taskTemplate) => (
+                    <div key={taskTemplate.id} className="rounded-lg bg-gray-50 px-3 py-3 dark:bg-gray-900/60">
+                      <div className="flex flex-col gap-3">
+                        <div className="flex min-w-0 items-start gap-3">
+                          <div className="shrink-0">
+                          <IconPicker
+                            value={taskTemplate.icon || 'task'}
+                            onChange={(value) => updateDraftTaskTemplate(taskTemplate.id, { icon: value })}
+                            align="left"
+                          />
+                          </div>
+                          <div className="min-w-0 flex-1 space-y-1">
+                            <TextInput
+                              label="Task name"
+                              value={taskTemplate.name}
+                              onChange={(value) => updateDraftTaskTemplate(taskTemplate.id, { name: value, taskType: 'CHECK' })}
+                              placeholder="e.g. Wipe down"
+                              maxLength={80}
+                            />
+                            <div className="text-[11px] font-medium uppercase tracking-[0.12em] text-gray-400 dark:text-gray-500">CHECK</div>
+                          </div>
+                        </div>
+                        <div>
+                          <button type="button" onClick={() => removeDraftTaskTemplate(taskTemplate.id)} className="text-xs text-gray-400 hover:text-red-400">
+                            Remove
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
           ) : null}
@@ -685,28 +1034,42 @@ export function InventorySpecialView({ resource }: InventorySpecialViewProps) {
         </section>
       ) : null}
 
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <div>
         {activeTab === 'items' ? (
-          itemEntries.length === 0 ? (
+          showItemComposer ? null : itemEntries.length === 0 ? (
             <div className="flex h-full items-center justify-center rounded-2xl border border-dashed border-gray-200 bg-gray-50/70 px-4 text-sm text-gray-400 dark:border-gray-700 dark:bg-gray-900/30">
               No items added yet.
             </div>
           ) : (
             <div className="space-y-2">
-              {itemEntries.map((item) => {
-                const builtInTemplate = getItemTemplateByRef(item.id);
-                const resolvedItem = resolveInventoryItemTemplate(item.id, itemEntries);
-                const description = builtInTemplate?.description ?? resolvedItem?.description ?? (item.id.startsWith(CUSTOM_ITEM_TEMPLATE_PREFIX) ? 'Custom inventory item' : '');
-                const usage = itemUsage.get(item.id) ?? { looseItems: [], containerRefs: [] };
-                const totalPlacements = usage.looseItems.length + usage.containerRefs.length;
-                const totalQuantity = itemQuantityTotal(usage.looseItems) + itemQuantityTotal(usage.containerRefs.map((entry) => entry.item));
-                const lowCount = [...usage.looseItems, ...usage.containerRefs.map((entry) => entry.item)].filter((entry) => entry.threshold != null && entry.quantity != null && entry.quantity <= entry.threshold).length;
+              {activeTab === 'items' ? (
+                <div className="mb-3 flex flex-wrap gap-2">
+                  {ITEM_FILTER_OPTIONS.map((option) => (
+                    <button
+                      key={option.id}
+                      type="button"
+                      onClick={() => setItemFilter(option.id)}
+                      className={itemFilter === option.id
+                        ? 'rounded-full bg-slate-800 px-3 py-1.5 text-xs font-semibold text-white dark:bg-slate-100 dark:text-slate-900'
+                        : 'rounded-full bg-gray-100 px-3 py-1.5 text-xs font-semibold text-gray-600 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600'}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+              {visibleItemRows.map((row) => {
+                const item = row.template;
                 const taskRefs = [
-                  ...(builtInTemplate?.builtInTasks?.map((task) => task.taskTemplateRef) ?? []),
-                  ...(builtInTemplate?.associatedTaskTemplateRef ? [builtInTemplate.associatedTaskTemplateRef] : []),
-                  ...((item.customTaskTemplates ?? []).map((taskTemplate) => taskTemplate.name)),
+                  ...(row.builtInTemplate?.builtInTasks?.map((task) => task.taskTemplateRef) ?? []),
+                  ...(row.builtInTemplate?.associatedTaskTemplateRef ? [row.builtInTemplate.associatedTaskTemplateRef] : []),
                 ];
+                const customTasks = (item.customTaskTemplates ?? []) as InventoryEditableTaskTemplate[];
                 const expanded = expandedItemId === item.id;
+                const editingDetails = editingItemDetailsId === item.id;
+                const placementSummary = row.placements.length > 0
+                  ? `${row.placements.length} placement${row.placements.length === 1 ? '' : 's'}`
+                  : 'Unplaced';
 
                 return (
                   <article key={item.id} className="rounded-2xl border border-gray-200 bg-gray-50/80 dark:border-gray-700 dark:bg-gray-900/40">
@@ -727,16 +1090,11 @@ export function InventorySpecialView({ resource }: InventorySpecialViewProps) {
                         <div className="flex items-center gap-2">
                           <span className="truncate text-sm font-semibold text-gray-800 dark:text-gray-100">{item.name}</span>
                           <span className="rounded-full bg-white px-2 py-0.5 text-[11px] font-medium text-gray-500 dark:bg-gray-800 dark:text-gray-300">
-                            {item.kind ?? 'consumable'}
+                            {row.kind}
                           </span>
-                          {lowCount > 0 ? (
-                            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
-                              {lowCount} low
-                            </span>
-                          ) : null}
                         </div>
                         <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                          {totalQuantity === 0 ? 'Not currently placed in inventory' : `${totalQuantity} total on hand across ${totalPlacements} placement${totalPlacements === 1 ? '' : 's'}`}
+                          {placementSummary}
                         </div>
                       </div>
                       <span className="text-xs font-medium text-gray-400">{expanded ? 'Hide' : 'Open'}</span>
@@ -744,80 +1102,127 @@ export function InventorySpecialView({ resource }: InventorySpecialViewProps) {
 
                     {expanded ? (
                       <div className="space-y-3 border-t border-gray-200 px-3 py-3 dark:border-gray-700">
-                        {description ? <p className="text-xs text-gray-500 dark:text-gray-400">{description}</p> : null}
+                        {row.description ? <p className="text-xs text-gray-500 dark:text-gray-400">{row.description}</p> : null}
 
-                        {taskRefs.length > 0 ? (
-                          <div className="rounded-xl bg-white px-3 py-3 dark:bg-gray-800">
-                            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-500 dark:text-gray-400">Task Templates</p>
-                            <div className="mt-2 space-y-1.5">
-                              {taskRefs.map((taskTemplateRef) => {
-                                const taskDisplay = resolveTaskDisplay(taskTemplateRef, item.id);
-                                return (
-                                  <div key={`${item.id}-${taskTemplateRef}`} className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200">
-                                    <IconDisplay iconKey={taskDisplay.icon} size={14} className="h-3.5 w-3.5 shrink-0 object-contain" />
-                                    <span>{taskDisplay.name}</span>
-                                  </div>
-                                );
-                              })}
+                        {row.kind === 'facility' ? (
+                          <>
+                            <div className="rounded-xl bg-white px-3 py-3 dark:bg-gray-800">
+                              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-500 dark:text-gray-400">Dimensions</p>
+                              <div className="mt-3 rounded-lg bg-gray-50 px-3 py-2 text-sm text-gray-700 dark:bg-gray-900/60 dark:text-gray-200">
+                                W {row.template.dimensions?.width ?? row.resolved?.dimensions?.width ?? 0} · D {row.template.dimensions?.depth ?? row.resolved?.dimensions?.depth ?? 0}
+                              </div>
                             </div>
-                          </div>
-                        ) : null}
 
-                        <div className="grid gap-3 md:grid-cols-2">
-                          <div className="rounded-xl bg-white px-3 py-3 dark:bg-gray-800">
-                            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-500 dark:text-gray-400">Loose Inventory</p>
-                            <div className="mt-2 space-y-2 text-xs text-gray-500 dark:text-gray-400">
-                              {usage.looseItems.length === 0 ? (
-                                <p className="italic">No loose entries.</p>
-                              ) : usage.looseItems.map((entry) => (
-                                <div key={entry.id} className="rounded-lg bg-gray-50 px-2.5 py-2 dark:bg-gray-900/60">
-                                  <div className="font-medium text-gray-700 dark:text-gray-200">
-                                    {entry.quantity ?? 0}{entry.unit?.trim() ? ` ${entry.unit.trim()}` : ''} on hand
+                            <div className="rounded-xl bg-white px-3 py-3 dark:bg-gray-800">
+                              <div className="flex items-center justify-between gap-3">
+                                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-500 dark:text-gray-400">Tasks</p>
+                              </div>
+                              <div className="mt-2 space-y-2">
+                                {taskRefs.length === 0 && customTasks.length === 0 ? (
+                                  <p className="text-xs italic text-gray-400">No tasks.</p>
+                                ) : null}
+                                {taskRefs.map((taskTemplateRef) => {
+                                  const taskDisplay = resolveTaskDisplay(taskTemplateRef, item.id);
+                                  return (
+                                    <div key={`${item.id}-${taskTemplateRef}`} className="flex items-center justify-between gap-3 rounded-lg bg-gray-50 px-3 py-2 text-sm dark:bg-gray-900/60">
+                                      <span className="font-medium text-gray-700 dark:text-gray-200">{taskDisplay.name}</span>
+                                      <span className="text-[11px] text-gray-500 dark:text-gray-400">{formatTaskTypeLabel(taskDisplay.taskType)}</span>
+                                    </div>
+                                  );
+                                })}
+                                {customTasks.map((taskTemplate) => (
+                                  <div key={taskTemplate.id} className="flex items-center justify-between gap-3 rounded-lg bg-gray-50 px-3 py-2 text-sm dark:bg-gray-900/60">
+                                    <div className="min-w-0 flex items-center gap-2">
+                                      <IconDisplay iconKey={taskTemplate.icon || 'task'} size={16} className="h-4 w-4 shrink-0 object-contain" />
+                                      <div className="min-w-0">
+                                        <div className="font-medium text-gray-700 dark:text-gray-200">{taskTemplate.name}</div>
+                                        <div className="text-[11px] text-gray-500 dark:text-gray-400">{formatTaskTypeLabel(taskTemplate.taskType)}</div>
+                                      </div>
+                                    </div>
                                   </div>
-                                  {entry.threshold != null ? <div>Threshold: {entry.threshold}</div> : null}
+                                ))}
+                              </div>
+                            </div>
+
+                            <div className="rounded-xl bg-white px-3 py-3 dark:bg-gray-800">
+                              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-500 dark:text-gray-400">Placements</p>
+                              <div className="mt-2 space-y-2 text-sm text-gray-600 dark:text-gray-300">
+                                {row.placements.length === 0 ? (
+                                  <p className="text-xs italic text-gray-400">Unplaced</p>
+                                ) : row.placements.map((placement) => (
+                                  <div key={placement.key} className="flex items-center gap-3 rounded-lg bg-gray-50 px-3 py-2 dark:bg-gray-900/60">
+                                    <div className="flex shrink-0 items-center gap-1.5">
+                                      {placement.segments.map((segment) => (
+                                        <span key={segment.key} title={segment.label} className="flex h-7 w-7 items-center justify-center rounded-full bg-white ring-1 ring-black/5 dark:bg-gray-800">
+                                          <IconDisplay iconKey={segment.icon} size={14} className="h-3.5 w-3.5 object-contain" />
+                                        </span>
+                                      ))}
+                                    </div>
+                                    <div className="min-w-0 flex-1 text-sm text-gray-700 dark:text-gray-200">{placement.locationPath}</div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          </>
+                        ) : (
+                          <div className="rounded-xl bg-white px-3 py-3 dark:bg-gray-800">
+                            <div className="flex items-center justify-between gap-3">
+                              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-500 dark:text-gray-400">Placements</p>
+                              <span className="text-xs text-gray-500 dark:text-gray-400">Total on hand: {row.totalOnHand}</span>
+                            </div>
+                            <div className="mt-2 space-y-2">
+                              {row.placements.length === 0 ? (
+                                <p className="text-xs italic text-gray-400">Unplaced - quantity managed when placed.</p>
+                              ) : row.placements.map((placement) => (
+                                <div key={placement.key} className="grid gap-2 rounded-lg bg-gray-50 px-3 py-2 dark:bg-gray-900/60 sm:grid-cols-[auto_minmax(0,1fr)_6rem] sm:items-center">
+                                  <div className="flex shrink-0 items-center gap-1.5">
+                                    {placement.segments.map((segment) => (
+                                      <span key={segment.key} title={segment.label} className="flex h-7 w-7 items-center justify-center rounded-full bg-white ring-1 ring-black/5 dark:bg-gray-800">
+                                        <IconDisplay iconKey={segment.icon} size={14} className="h-3.5 w-3.5 object-contain" />
+                                      </span>
+                                    ))}
+                                  </div>
+                                  <div className="text-sm text-gray-700 dark:text-gray-200">{placement.locationPath}</div>
+                                  {editingDetails ? (
+                                    <input
+                                      type="number"
+                                      min={0}
+                                      value={placement.quantity}
+                                      onChange={(event) => handleUpdatePlacementQuantity(placement, event.target.value)}
+                                      className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-2 text-sm text-gray-900 focus:border-blue-500 focus:outline-none dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100"
+                                    />
+                                  ) : (
+                                    <div className="rounded-lg bg-white px-2.5 py-2 text-center text-sm text-gray-700 ring-1 ring-black/5 dark:bg-gray-800 dark:text-gray-200">{placement.quantity}</div>
+                                  )}
                                 </div>
                               ))}
                             </div>
                           </div>
-
-                          <div className="rounded-xl bg-white px-3 py-3 dark:bg-gray-800">
-                            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-500 dark:text-gray-400">Containers</p>
-                            <div className="mt-2 space-y-2 text-xs text-gray-500 dark:text-gray-400">
-                              {usage.containerRefs.length === 0 ? (
-                                <p className="italic">Not stored in any container.</p>
-                              ) : usage.containerRefs.map((entry) => (
-                                <div key={entry.item.id} className="rounded-lg bg-gray-50 px-2.5 py-2 dark:bg-gray-900/60">
-                                  <div className="font-medium text-gray-700 dark:text-gray-200">{entry.containerName}</div>
-                                  <div>
-                                    {entry.item.quantity ?? 0}{entry.item.unit?.trim() ? ` ${entry.item.unit.trim()}` : ''} on hand
-                                  </div>
-                                  {entry.item.threshold != null ? <div>Threshold: {entry.item.threshold}</div> : null}
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        </div>
+                        )}
 
                         <div className="flex justify-end gap-2">
-                          <button
-                            type="button"
-                            onClick={() => openItemComposer(item.id)}
-                            className={`rounded-full px-3 py-1.5 text-xs font-semibold ${
-                              item.id.startsWith(CUSTOM_ITEM_TEMPLATE_PREFIX)
-                                ? 'bg-blue-500 text-white hover:bg-blue-600'
-                                : 'bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-300'
-                            }`}
-                            disabled={!item.id.startsWith(CUSTOM_ITEM_TEMPLATE_PREFIX)}
-                          >
-                            {item.id.startsWith(CUSTOM_ITEM_TEMPLATE_PREFIX) ? 'Edit' : 'Built-in'}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveItem(item.id)}
-                            className="rounded-full bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-100 dark:bg-red-900/20 dark:text-red-300"
-                          >
-                            Remove
-                          </button>
+                          {item.id.startsWith(CUSTOM_ITEM_TEMPLATE_PREFIX) ? (
+                            <button
+                              type="button"
+                              onClick={() => openItemComposer(item.id)}
+                              className="rounded-full bg-blue-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-600"
+                            >
+                              Edit Template
+                            </button>
+                          ) : null}
+                          {row.kind === 'consumable' ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditingItemDetailsId((current) => current === item.id ? null : item.id);
+                              }}
+                              className={editingDetails
+                                ? 'rounded-full bg-gray-100 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200'
+                                : 'rounded-full bg-slate-800 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-900 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white'}
+                            >
+                              {editingDetails ? 'Done Editing' : 'Edit Details'}
+                            </button>
+                          ) : null}
                         </div>
                       </div>
                     ) : null}
@@ -1170,6 +1575,7 @@ export function InventorySpecialView({ resource }: InventorySpecialViewProps) {
             </div>
           )
         )}
+      </div>
       </div>
 
       {showAddItemPanel ? (

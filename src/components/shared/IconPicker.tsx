@@ -11,8 +11,7 @@ interface IconPickerProps {
 
 export function IconPicker({ value, onChange, label, align = 'center' }: IconPickerProps) {
   const [open, setOpen] = useState(false);
-  const [openUpward, setOpenUpward] = useState(false);
-  const [alignRight, setAlignRight] = useState(false);
+  const [popoverPosition, setPopoverPosition] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
   const rootRef = useRef<HTMLDivElement | null>(null);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const pickerRef = useRef<HTMLDivElement | null>(null);
@@ -33,27 +32,48 @@ export function IconPicker({ value, onChange, label, align = 'center' }: IconPic
       return;
     }
 
-    const pickerHeight = pickerRef.current?.offsetHeight ?? 300;
-    const pickerWidth = pickerRef.current?.offsetWidth ?? 280;
-    const triggerRect = triggerRef.current.getBoundingClientRect();
-    const spaceBelow = window.innerHeight - triggerRect.bottom;
-    const spaceRight = window.innerWidth - triggerRect.left;
+    function updatePopoverPosition() {
+      if (!triggerRef.current) return;
 
-    setOpenUpward(spaceBelow < pickerHeight);
-    setAlignRight(spaceRight < pickerWidth);
+      const pickerHeight = pickerRef.current?.offsetHeight ?? 300;
+      const pickerWidth = pickerRef.current?.offsetWidth ?? 352;
+      const triggerRect = triggerRef.current.getBoundingClientRect();
+      const spaceBelow = window.innerHeight - triggerRect.bottom;
+      const shouldOpenUpward = spaceBelow < pickerHeight && triggerRect.top > spaceBelow;
+      const shouldAlignRight = window.innerWidth - triggerRect.left < pickerWidth;
+
+      const top = shouldOpenUpward
+        ? Math.max(8, triggerRect.top - pickerHeight - 8)
+        : Math.min(window.innerHeight - pickerHeight - 8, triggerRect.bottom + 8);
+
+      let left = triggerRect.left;
+      if (shouldAlignRight) {
+        left = triggerRect.right - pickerWidth;
+      } else if (align === 'center') {
+        left = triggerRect.left + (triggerRect.width / 2) - (pickerWidth / 2);
+      } else if (align === 'right') {
+        left = triggerRect.right - pickerWidth;
+      }
+
+      setPopoverPosition({
+        top,
+        left: Math.min(Math.max(8, left), window.innerWidth - pickerWidth - 8),
+      });
+    }
+
+    updatePopoverPosition();
+    window.addEventListener('resize', updatePopoverPosition);
+    window.addEventListener('scroll', updatePopoverPosition, true);
+
+    return () => {
+      window.removeEventListener('resize', updatePopoverPosition);
+      window.removeEventListener('scroll', updatePopoverPosition, true);
+    };
   }, [open]);
 
   const normalised = value?.toLowerCase?.() ?? '';
   const entries = Object.entries(ICON_MAP);
-  const verticalClassName = openUpward ? 'bottom-full top-auto mb-2' : 'top-full mt-2';
-  const horizontalClassName = alignRight
-    ? 'right-0 left-auto'
-    : align === 'left'
-      ? 'left-0'
-      : align === 'right'
-        ? 'right-0'
-        : 'left-0 sm:left-1/2 sm:-translate-x-1/2';
-  const popoverClassName = `absolute ${horizontalClassName} ${verticalClassName} z-20 w-[22rem] max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-gray-200 bg-white p-2 shadow-xl dark:border-gray-600 dark:bg-gray-800`;
+  const popoverClassName = 'fixed z-[120] w-[22rem] max-w-[calc(100vw-1rem)] overflow-hidden rounded-xl border border-gray-200 bg-white p-2 shadow-xl dark:border-gray-600 dark:bg-gray-800';
 
   return (
     <div ref={rootRef} className="flex flex-col gap-2">
@@ -73,7 +93,11 @@ export function IconPicker({ value, onChange, label, align = 'center' }: IconPic
         </button>
 
         {open && (
-          <div ref={pickerRef} className={popoverClassName}>
+          <div
+            ref={pickerRef}
+            className={popoverClassName}
+            style={{ top: popoverPosition.top, left: popoverPosition.left }}
+          >
             <div className="max-h-[min(26rem,calc(100dvh-8rem))] overflow-y-auto pr-1">
               <div className="grid grid-cols-6 gap-1.5">
               {entries.map(([key]) => {
