@@ -11,9 +11,10 @@ interface MenuOverlayContentProps {
   activeRoom: MenuRoom;
   onNavigate: (room: MenuRoom) => void;
   onGoToDay: (dateIso: string) => void;
+  onResourceOverlayActiveChange?: (active: boolean) => void;
 }
 
-export function MenuOverlayContent({ activeRoom, onNavigate, onGoToDay }: MenuOverlayContentProps) {
+export function MenuOverlayContent({ activeRoom, onNavigate, onGoToDay, onResourceOverlayActiveChange }: MenuOverlayContentProps) {
   return (
     <div className="flex-1 overflow-hidden bg-white dark:bg-gray-900">
       {activeRoom === 'world' && <WorldView onGoToDay={onGoToDay} />}
@@ -22,7 +23,7 @@ export function MenuOverlayContent({ activeRoom, onNavigate, onGoToDay }: MenuOv
         <TaskRoom onGoToResource={(_id, _type) => onNavigate('resource')} />
       )}
       {activeRoom === 'schedule' && <ScheduleRoom />}
-      {activeRoom === 'resource' && <ResourceRoom />}
+      {activeRoom === 'resource' && <ResourceRoom onOverlayActiveChange={onResourceOverlayActiveChange} />}
       {activeRoom === 'quickaction' && <QuickActionRoom />}
     </div>
   );

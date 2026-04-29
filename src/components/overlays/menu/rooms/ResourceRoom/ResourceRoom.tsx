@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { useResourceStore } from '../../../../../stores/useResourceStore';
 import { useUserStore } from '../../../../../stores/useUserStore';
@@ -35,7 +35,11 @@ const TYPE_TO_ADD_STEP: Record<ResourceType, AddStep> = {
   doc:       'doc-form',
 };
 
-export function ResourceRoom() {
+interface ResourceRoomProps {
+  onOverlayActiveChange?: (active: boolean) => void;
+}
+
+export function ResourceRoom({ onOverlayActiveChange }: ResourceRoomProps) {
   const menuResourceTarget = useSystemStore((s) => s.menuResourceTarget);
   const clearMenuResourceTarget = useSystemStore((s) => s.clearMenuResourceTarget);
   const [activeType, setActiveType] = useState<ResourceType>(menuResourceTarget?.resourceType ?? 'contact');
@@ -50,10 +54,21 @@ export function ResourceRoom() {
   const user = useUserStore((s) => s.user);
   const setUser = useUserStore((s) => s.setUser);
   const filtered = Object.values(resources).filter((r) => r.type === activeType);
+  const overlayActive = useMemo(
+    () => editingResource !== null || addStep !== 'closed',
+    [addStep, editingResource],
+  );
 
   useEffect(() => {
     autoCompleteSystemTask('task-sys-explore-resources');
   }, []);
+
+  useEffect(() => {
+    onOverlayActiveChange?.(overlayActive);
+    return () => {
+      onOverlayActiveChange?.(false);
+    };
+  }, [onOverlayActiveChange, overlayActive]);
 
   useEffect(() => {
     if (!menuResourceTarget) return;
