@@ -46,6 +46,11 @@ type CategorySection = ItemCategory | 'user-created' | 'room-created';
 interface PlacementDetail {
   key: string;
   locationName: string;
+  segments: Array<{
+    key: string;
+    icon: string;
+    name: string;
+  }>;
   quantity: number;
 }
 
@@ -140,8 +145,20 @@ export function AddItemPanel({ resource, onClose, onItemInstanceAdded }: AddItem
 
   const placementDetailsByTemplateId = useMemo(() => {
     const details = new Map<string, PlacementDetail[]>();
-    const inventoryItemRecords = new Map<string, { templateId: string; locationName: string; quantity: number }>();
+    const inventoryItemRecords = new Map<string, {
+      templateId: string;
+      locationName: string;
+      quantity: number;
+      segments: PlacementDetail['segments'];
+    }>();
     const placedInventoryItemIds = new Set<string>();
+    const roomContainerItemsByContainerId = new Map<string, Array<{
+      itemId: string;
+      templateId: string;
+      quantity: number;
+      locationName: string;
+      segments: PlacementDetail['segments'];
+    }>>();
     const inventoryResources = Object.values(resources).filter((entry): entry is InventoryResource => entry.type === 'inventory');
     const homeResources = Object.values(resources).filter((entry): entry is HomeResource => entry.type === 'home');
 
@@ -152,16 +169,40 @@ export function AddItemPanel({ resource, onClose, onItemInstanceAdded }: AddItem
       details.set(templateId, current);
     };
 
-    const recordInventoryPlacement = (locationName: string, itemId: string, itemTemplateRef: string, quantity?: number) => {
+    const recordInventoryPlacement = (
+      locationName: string,
+      itemId: string,
+      itemTemplateRef: string,
+      quantity: number | undefined,
+      segments: PlacementDetail['segments'],
+    ) => {
       inventoryItemRecords.set(itemId, {
         templateId: itemTemplateRef,
         locationName,
         quantity: quantity ?? 1,
+        segments,
       });
     };
 
-    const recordHomePlacements = (placements: PlacedInstance[], locationName: string) => {
+    const recordHomePlacements = (
+      placements: PlacedInstance[],
+      locationName: string,
+      baseSegments: PlacementDetail['segments'],
+    ) => {
       for (const placement of placements) {
+        if (placement.kind === 'container') {
+          const containerItems = roomContainerItemsByContainerId.get(placement.refId) ?? [];
+          for (const item of containerItems) {
+            appendPlacement(item.templateId, {
+              key: `${locationName}:${placement.id}:${item.itemId}`,
+              locationName,
+              segments: item.segments,
+              quantity: item.quantity,
+            });
+          }
+          continue;
+        }
+
         if (placement.kind !== 'item') continue;
 
         const inventoryRecord = inventoryItemRecords.get(placement.refId);
@@ -170,6 +211,7 @@ export function AddItemPanel({ resource, onClose, onItemInstanceAdded }: AddItem
           appendPlacement(inventoryRecord.templateId, {
             key: `${locationName}:${placement.id}`,
             locationName,
+            segments: baseSegments,
             quantity: placement.quantity ?? inventoryRecord.quantity,
           });
           continue;
@@ -178,6 +220,7 @@ export function AddItemPanel({ resource, onClose, onItemInstanceAdded }: AddItem
         appendPlacement(placement.refId, {
           key: `${locationName}:${placement.id}`,
           locationName,
+          segments: baseSegments,
           quantity: placement.quantity ?? 1,
         });
       }
@@ -185,21 +228,63 @@ export function AddItemPanel({ resource, onClose, onItemInstanceAdded }: AddItem
 
     for (const inventoryResource of inventoryResources) {
       for (const item of inventoryResource.items) {
-        recordInventoryPlacement(inventoryResource.name, item.id, item.itemTemplateRef, item.quantity);
+        recordInventoryPlacement(
+          inventoryResource.name,
+          item.id,
+          item.itemTemplateRef,
+          item.quantity,
+          [{ key: `${inventoryResource.id}:inventory`, icon: inventoryResource.icon || 'inventory', name: inventoryResource.name }],
+        );
       }
 
       for (const container of inventoryResource.containers ?? []) {
         for (const item of container.items) {
-          recordInventoryPlacement(inventoryResource.name, item.id, item.itemTemplateRef, item.quantity);
+          recordInventoryPlacement(
+            inventoryResource.name,
+            item.id,
+            item.itemTemplateRef,
+            item.quantity,
+            [
+              { key: `${inventoryResource.id}:inventory`, icon: inventoryResource.icon || 'inventory', name: inventoryResource.name },
+              { key: `${container.id}:container`, icon: container.icon || 'inventory', name: container.name },
+            ],
+          );
         }
       }
     }
 
     for (const home of homeResources) {
       for (const story of home.stories ?? []) {
-        recordHomePlacements(story.placedItems ?? [], home.name);
+        recordHomePlacements(
+          story.placedItems ?? [],
+          home.name,
+          [{ key: `${home.id}:home`, icon: home.icon || 'home', name: home.name }],
+        );
         for (const room of story.rooms) {
-          recordHomePlacements(room.placedItems ?? [], `${home.name} - ${room.name}`);
+          for (const container of room.dedicatedContainers ?? []) {
+            roomContainerItemsByContainerId.set(
+              container.id,
+              container.items.map((item) => ({
+                itemId: item.id,
+                templateId: item.itemTemplateRef,
+                quantity: item.quantity ?? 1,
+                locationName: `${home.name} - ${room.name}`,
+                segments: [
+                  { key: `${home.id}:home`, icon: home.icon || 'home', name: home.name },
+                  { key: `${room.id}:room`, icon: room.icon || 'home-room', name: room.name },
+                  { key: `${container.id}:container`, icon: container.icon || 'inventory', name: container.name },
+                ],
+              })),
+            );
+          }
+          recordHomePlacements(
+            room.placedItems ?? [],
+            `${home.name} - ${room.name}`,
+            [
+              { key: `${home.id}:home`, icon: home.icon || 'home', name: home.name },
+              { key: `${room.id}:room`, icon: room.icon || 'home-room', name: room.name },
+            ],
+          );
         }
       }
     }
@@ -209,6 +294,7 @@ export function AddItemPanel({ resource, onClose, onItemInstanceAdded }: AddItem
       appendPlacement(record.templateId, {
         key: `inventory:${itemId}`,
         locationName: record.locationName,
+        segments: record.segments,
         quantity: record.quantity,
       });
     }
@@ -528,7 +614,15 @@ export function AddItemPanel({ resource, onClose, onItemInstanceAdded }: AddItem
             <div className="space-y-2">
               {item.placements.map((placement) => (
                 <div key={placement.key} className="flex items-center justify-between gap-3 rounded-lg bg-white px-2.5 py-2 dark:bg-gray-800">
-                  <span className="min-w-0 truncate font-medium text-gray-700 dark:text-gray-200">{placement.locationName}</span>
+                  <span className="inline-flex min-w-0 items-center gap-1.5 rounded-full bg-gray-100 px-2 py-1 text-[11px] font-medium text-gray-700 dark:bg-gray-700 dark:text-gray-200">
+                    {placement.segments.map((segment, index) => (
+                      <span key={segment.key} className="inline-flex min-w-0 items-center gap-1.5">
+                        {index > 0 ? <span className="text-gray-400 dark:text-gray-500">/</span> : null}
+                        <IconDisplay iconKey={segment.icon || 'inventory'} size={12} className="h-3 w-3 shrink-0 object-contain" />
+                        <span className="truncate">{segment.name}</span>
+                      </span>
+                    ))}
+                  </span>
                   <span className="shrink-0 text-gray-500 dark:text-gray-400">Qty {placement.quantity}</span>
                 </div>
               ))}
