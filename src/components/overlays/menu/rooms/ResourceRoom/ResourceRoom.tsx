@@ -177,11 +177,6 @@ export function ResourceRoom() {
           setEditingInventoryContainerId(null);
           setEditingResource(resource);
         }}
-        onEditInventoryContainers={(resource, containerId = null) => {
-          setInventoryEditMode('container');
-          setEditingInventoryContainerId(containerId);
-          setEditingResource(resource);
-        }}
         expandedResourceId={expandedResourceId}
       />
     </div>

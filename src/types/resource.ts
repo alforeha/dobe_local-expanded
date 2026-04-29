@@ -131,6 +131,11 @@ export interface ItemInstance {
     y: number;
     rotation: number;
   };
+  placedInContainer?: Record<string, {
+    x: number;
+    y: number;
+    rotation: number;
+  }>;
   recurringTasks?: ItemRecurringTask[];
 }
 

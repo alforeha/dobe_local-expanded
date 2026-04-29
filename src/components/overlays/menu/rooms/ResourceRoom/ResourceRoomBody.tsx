@@ -6,14 +6,12 @@ import { InventorySpecialView } from './inventory/InventorySpecialView';
 interface ResourceRoomBodyProps {
   resources: Resource[];
   onEdit: (resource: Resource) => void;
-  onEditInventoryContainers: (resource: Resource, containerId?: string | null) => void;
   expandedResourceId?: string | null;
 }
 
 export function ResourceRoomBody({
   resources,
   onEdit,
-  onEditInventoryContainers,
   expandedResourceId = null,
 }: ResourceRoomBodyProps) {
   if (resources.length === 0) {
@@ -29,8 +27,6 @@ export function ResourceRoomBody({
           <InventorySpecialView
             key={resource.id}
             resource={resource}
-            onAddContainer={onEditInventoryContainers}
-            onEditContainer={onEditInventoryContainers}
           />
         ))}
       </div>

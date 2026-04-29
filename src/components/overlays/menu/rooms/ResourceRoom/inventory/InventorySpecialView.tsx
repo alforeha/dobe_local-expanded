@@ -18,6 +18,7 @@ import { IconPicker } from '../../../../../shared/IconPicker';
 import { TextInput } from '../../../../../shared/inputs/TextInput';
 import { AddItemPanel } from './AddItemPanel';
 import { AddBagPanel } from './AddBagPanel';
+import { AddContainerPanel } from './AddContainerPanel';
 import { taskTemplateLibrary } from '../../../../../../coach';
 import {
   getUserInventoryItemTemplates,
@@ -36,8 +37,6 @@ import {
 
 interface InventorySpecialViewProps {
   resource: InventoryResource;
-  onAddContainer: (resource: InventoryResource) => void;
-  onEditContainer: (resource: InventoryResource, containerId: string) => void;
 }
 
 type TabKey = 'items' | 'containers' | 'bags';
@@ -81,7 +80,7 @@ function itemQuantityTotal(items: ItemInstance[]) {
   return items.reduce((sum, item) => sum + (item.quantity ?? 1), 0);
 }
 
-export function InventorySpecialView({ resource, onAddContainer, onEditContainer }: InventorySpecialViewProps) {
+export function InventorySpecialView({ resource }: InventorySpecialViewProps) {
   const scheduleTasks = useScheduleStore((s) => s.tasks) as Record<string, Task>;
   const resources = useResourceStore((s) => s.resources);
   const setResource = useResourceStore((s) => s.setResource);
@@ -96,6 +95,8 @@ export function InventorySpecialView({ resource, onAddContainer, onEditContainer
   const [addItemContainerId, setAddItemContainerId] = useState<string | null>(null);
   const [showAddBagPanel, setShowAddBagPanel] = useState(false);
   const [editingBagId, setEditingBagId] = useState<string | null>(null);
+  const [showAddContainerPanel, setShowAddContainerPanel] = useState(false);
+  const [editingContainerId, setEditingContainerId] = useState<string | null>(null);
   const [showItemComposer, setShowItemComposer] = useState(false);
   const [draftItemName, setDraftItemName] = useState('');
   const [draftItemIcon, setDraftItemIcon] = useState('inventory');
@@ -121,6 +122,10 @@ export function InventorySpecialView({ resource, onAddContainer, onEditContainer
   const editingBag = useMemo(
     () => (editingBagId ? containerEntries.find((container) => container.id === editingBagId) ?? null : null),
     [containerEntries, editingBagId],
+  );
+  const editingContainer = useMemo(
+    () => (editingContainerId ? regularContainerEntries.find((entry) => entry.id === editingContainerId) ?? null : null),
+    [editingContainerId, regularContainerEntries],
   );
   const homeResources = useMemo(
     () => Object.values(resources).filter((entry): entry is HomeResource => entry.type === 'home'),
@@ -585,7 +590,10 @@ export function InventorySpecialView({ resource, onAddContainer, onEditContainer
         ) : (
           <button
             type="button"
-            onClick={() => onAddContainer(resource)}
+            onClick={() => {
+              setEditingContainerId(null);
+              setShowAddContainerPanel(true);
+            }}
             className="rounded-full bg-blue-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-600"
           >
             Add Container
@@ -996,7 +1004,10 @@ export function InventorySpecialView({ resource, onAddContainer, onEditContainer
                         <div className="flex justify-end gap-2">
                           <button
                             type="button"
-                            onClick={() => onEditContainer(resource, container.id)}
+                            onClick={() => {
+                              setEditingContainerId(container.id);
+                              setShowAddContainerPanel(true);
+                            }}
                             className="rounded-full bg-blue-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-600"
                           >
                             Edit Container
@@ -1179,6 +1190,22 @@ export function InventorySpecialView({ resource, onAddContainer, onEditContainer
             }
             setAddItemContainerId(null);
             setShowAddItemPanel(false);
+          }}
+        />
+      ) : null}
+      {showAddContainerPanel ? (
+        <AddContainerPanel
+          resource={resource}
+          container={editingContainer}
+          onClose={() => {
+            setShowAddContainerPanel(false);
+            setEditingContainerId(null);
+          }}
+          onContainerSaved={(containerId) => {
+            setActiveTab('containers');
+            setExpandedContainerId(containerId);
+            setEditingContainerId(null);
+            setShowAddContainerPanel(false);
           }}
         />
       ) : null}
