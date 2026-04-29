@@ -207,6 +207,7 @@ export function InventorySpecialView({ resource }: InventorySpecialViewProps) {
   const [draftItemWidth, setDraftItemWidth] = useState('0');
   const [draftItemDepth, setDraftItemDepth] = useState('0');
   const [draftTaskTemplates, setDraftTaskTemplates] = useState<InventoryEditableTaskTemplate[]>([]);
+  const [selectedDraftTaskTemplateId, setSelectedDraftTaskTemplateId] = useState<string | null>(null);
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [itemPlacementFilter, setItemPlacementFilter] = useState<ItemPlacementFilterValue>('all');
   const [itemKindFilter, setItemKindFilter] = useState<ItemKindFilterValue>('all');
@@ -578,6 +579,10 @@ export function InventorySpecialView({ resource }: InventorySpecialViewProps) {
     () => editingItemId ? (itemPlacementsByTemplateId.get(editingItemId)?.length ?? 0) : 0,
     [editingItemId, itemPlacementsByTemplateId],
   );
+  const selectedDraftTaskTemplate = useMemo(
+    () => draftTaskTemplates.find((taskTemplate) => taskTemplate.id === selectedDraftTaskTemplateId) ?? null,
+    [draftTaskTemplates, selectedDraftTaskTemplateId],
+  );
 
   const groupedVisibleItemRows = useMemo<ItemRowGroup[]>(() => {
     if (itemCategoryFilter !== 'all') {
@@ -693,6 +698,7 @@ export function InventorySpecialView({ resource }: InventorySpecialViewProps) {
     setDraftItemWidth('0');
     setDraftItemDepth('0');
     setDraftTaskTemplates([]);
+    setSelectedDraftTaskTemplateId(null);
     setEditingItemId(null);
     setShowItemComposer(false);
   }
@@ -712,8 +718,18 @@ export function InventorySpecialView({ resource }: InventorySpecialViewProps) {
       ((item.customTaskTemplates ?? []) as InventoryEditableTaskTemplate[]).map((taskTemplate) => ({
         ...taskTemplate,
         taskType: taskTemplate.taskType ?? 'CHECK',
+        inputFields: (taskTemplate.taskType ?? 'CHECK') === 'CONSUME'
+          ? {
+              label: taskTemplate.name,
+              entries: ((taskTemplate.inputFields as ConsumeInputFields | undefined)?.entries ?? []).map((entry) => ({
+                itemTemplateRef: entry.itemTemplateRef,
+                quantity: Math.max(1, entry.quantity || 1),
+              })),
+            }
+          : { label: taskTemplate.name },
       })),
     );
+    setSelectedDraftTaskTemplateId(item.customTaskTemplates?.[0]?.id ?? null);
     setEditingItemId(itemId);
     setShowItemComposer(true);
     setExpandedItemId(itemId);
@@ -721,15 +737,89 @@ export function InventorySpecialView({ resource }: InventorySpecialViewProps) {
   }
 
   function addDraftTaskTemplate() {
-    setDraftTaskTemplates((prev) => [...prev, { id: crypto.randomUUID(), name: '', icon: 'task', taskType: 'CHECK' }]);
+    const nextId = crypto.randomUUID();
+    setDraftTaskTemplates((prev) => [...prev, {
+      id: nextId,
+      name: '',
+      icon: 'task',
+      taskType: 'CHECK',
+      inputFields: { label: '' },
+    }]);
+    setSelectedDraftTaskTemplateId(nextId);
   }
 
   function updateDraftTaskTemplate(id: string, patch: Partial<InventoryEditableTaskTemplate>) {
-    setDraftTaskTemplates((prev) => prev.map((taskTemplate) => (taskTemplate.id === id ? { ...taskTemplate, ...patch } : taskTemplate)));
+    setDraftTaskTemplates((prev) => prev.map((taskTemplate) => {
+      if (taskTemplate.id !== id) return taskTemplate;
+
+      const nextTaskTemplate = { ...taskTemplate, ...patch };
+      const taskType = nextTaskTemplate.taskType ?? 'CHECK';
+      if (taskType === 'CONSUME') {
+        return {
+          ...nextTaskTemplate,
+          inputFields: {
+            label: nextTaskTemplate.name,
+            entries: ((nextTaskTemplate.inputFields as ConsumeInputFields | undefined)?.entries ?? []),
+          },
+        };
+      }
+
+      return {
+        ...nextTaskTemplate,
+        inputFields: {
+          label: nextTaskTemplate.name,
+        },
+      };
+    }));
   }
 
   function removeDraftTaskTemplate(id: string) {
-    setDraftTaskTemplates((prev) => prev.filter((taskTemplate) => taskTemplate.id !== id));
+    setDraftTaskTemplates((prev) => {
+      const next = prev.filter((taskTemplate) => taskTemplate.id !== id);
+      setSelectedDraftTaskTemplateId((current) => current === id ? (next[0]?.id ?? null) : current);
+      return next;
+    });
+  }
+
+  function addDraftTaskConsumeEntry(taskTemplateId: string) {
+    const taskTemplate = draftTaskTemplates.find((entry) => entry.id === taskTemplateId);
+    const consumeFields = (taskTemplate?.inputFields as ConsumeInputFields | undefined) ?? { label: taskTemplate?.name ?? '', entries: [] };
+    updateDraftTaskTemplate(taskTemplateId, {
+      inputFields: {
+        label: taskTemplate?.name ?? '',
+        entries: [
+          ...consumeFields.entries,
+          {
+            itemTemplateRef: '',
+            quantity: 1,
+          },
+        ],
+      },
+    });
+  }
+
+  function updateDraftTaskConsumeEntry(taskTemplateId: string, entryIndex: number, patch: Partial<ConsumeEntry>) {
+    const taskTemplate = draftTaskTemplates.find((entry) => entry.id === taskTemplateId);
+    const consumeFields = (taskTemplate?.inputFields as ConsumeInputFields | undefined) ?? { label: taskTemplate?.name ?? '', entries: [] };
+    updateDraftTaskTemplate(taskTemplateId, {
+      inputFields: {
+        label: taskTemplate?.name ?? '',
+        entries: consumeFields.entries.map((entry, index) => (
+          index === entryIndex ? { ...entry, ...patch } : entry
+        )),
+      },
+    });
+  }
+
+  function removeDraftTaskConsumeEntry(taskTemplateId: string, entryIndex: number) {
+    const taskTemplate = draftTaskTemplates.find((entry) => entry.id === taskTemplateId);
+    const consumeFields = (taskTemplate?.inputFields as ConsumeInputFields | undefined) ?? { label: taskTemplate?.name ?? '', entries: [] };
+    updateDraftTaskTemplate(taskTemplateId, {
+      inputFields: {
+        label: taskTemplate?.name ?? '',
+        entries: consumeFields.entries.filter((_, index) => index !== entryIndex),
+      },
+    });
   }
 
   function handleSaveOrUpdateItem() {
@@ -756,6 +846,19 @@ export function InventorySpecialView({ resource }: InventorySpecialViewProps) {
             .map((taskTemplate) => ({
               ...taskTemplate,
               taskType: taskTemplate.taskType ?? 'CHECK',
+              inputFields: (taskTemplate.taskType ?? 'CHECK') === 'CONSUME'
+                ? {
+                    label: taskTemplate.name.trim(),
+                    entries: ((taskTemplate.inputFields as ConsumeInputFields | undefined)?.entries ?? [])
+                      .filter((entry) => entry.itemTemplateRef.trim().length > 0)
+                      .map((entry) => ({
+                        itemTemplateRef: entry.itemTemplateRef,
+                        quantity: Math.max(1, Math.floor(entry.quantity || 1)),
+                      })),
+                  }
+                : {
+                    label: taskTemplate.name.trim(),
+                  },
             })) as InventoryCustomTaskTemplate[])
         : [],
     };
@@ -1367,46 +1470,137 @@ export function InventorySpecialView({ resource }: InventorySpecialViewProps) {
                   {draftTaskTemplates.length === 0 ? (
                     <p className="text-xs italic text-gray-400">No custom tasks added yet.</p>
                   ) : draftTaskTemplates.map((taskTemplate) => (
-                    <div key={taskTemplate.id} className="rounded-lg bg-gray-50 px-3 py-3 dark:bg-gray-900/60">
-                      <div className="flex flex-col gap-3">
-                        <div className="flex min-w-0 items-start gap-3">
-                          <div className="shrink-0">
-                          <IconPicker
-                            value={taskTemplate.icon || 'task'}
-                            onChange={(value) => updateDraftTaskTemplate(taskTemplate.id, { icon: value })}
-                            align="left"
-                          />
-                          </div>
-                          <div className="min-w-0 flex-1 space-y-1">
-                            <TextInput
-                              label="Task name"
-                              value={taskTemplate.name}
-                              onChange={(value) => updateDraftTaskTemplate(taskTemplate.id, { name: value })}
-                              placeholder="e.g. Wipe down"
-                              maxLength={80}
-                            />
-                            <label className="space-y-1 block">
-                              <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-gray-400 dark:text-gray-500">Task Type</span>
-                              <select
-                                value={taskTemplate.taskType ?? 'CHECK'}
-                                onChange={(event) => updateDraftTaskTemplate(taskTemplate.id, { taskType: event.target.value as EditableTaskType })}
-                                className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-2 text-sm text-gray-900 focus:border-blue-500 focus:outline-none dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100"
-                              >
-                                <option value="CHECK">CHECK</option>
-                                <option value="CONSUME">CONSUME</option>
-                              </select>
-                            </label>
-                          </div>
-                        </div>
-                        <div>
-                          <button type="button" onClick={() => removeDraftTaskTemplate(taskTemplate.id)} className="text-xs text-gray-400 hover:text-red-400">
-                            Remove
-                          </button>
-                        </div>
+                    <button
+                      key={taskTemplate.id}
+                      type="button"
+                      onClick={() => setSelectedDraftTaskTemplateId(taskTemplate.id)}
+                      className={`flex w-full items-center justify-between gap-3 rounded-lg px-3 py-3 text-left transition-colors ${
+                        selectedDraftTaskTemplateId === taskTemplate.id
+                          ? 'bg-blue-50 ring-1 ring-blue-200 dark:bg-blue-900/20 dark:ring-blue-700/50'
+                          : 'bg-gray-50 hover:bg-gray-100 dark:bg-gray-900/60 dark:hover:bg-gray-900/80'
+                      }`}
+                    >
+                      <div className="flex min-w-0 items-center gap-3">
+                        <IconDisplay iconKey={taskTemplate.icon || 'task'} size={18} className="h-4.5 w-4.5 shrink-0 object-contain" />
+                        <span className="truncate text-sm font-medium text-gray-800 dark:text-gray-100">{taskTemplate.name.trim() || 'Untitled task'}</span>
                       </div>
-                    </div>
+                      <span className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold ${
+                        (taskTemplate.taskType ?? 'CHECK') === 'CONSUME'
+                          ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
+                          : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'
+                      }`}>
+                        {taskTemplate.taskType ?? 'CHECK'}
+                      </span>
+                    </button>
                   ))}
                 </div>
+
+                {selectedDraftTaskTemplate ? (
+                  <div className="mt-3 space-y-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-3 dark:border-gray-700 dark:bg-gray-900/60">
+                    <div className="flex min-w-0 items-start gap-3">
+                      <div className="shrink-0">
+                        <IconPicker
+                          value={selectedDraftTaskTemplate.icon || 'task'}
+                          onChange={(value) => updateDraftTaskTemplate(selectedDraftTaskTemplate.id, { icon: value })}
+                          align="left"
+                        />
+                      </div>
+                      <div className="min-w-0 flex-1 space-y-3">
+                        <TextInput
+                          label="Task name"
+                          value={selectedDraftTaskTemplate.name}
+                          onChange={(value) => updateDraftTaskTemplate(selectedDraftTaskTemplate.id, { name: value })}
+                          placeholder="e.g. Wipe down"
+                          maxLength={80}
+                        />
+                        <label className="space-y-1 block">
+                          <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-gray-400 dark:text-gray-500">Task Type</span>
+                          <select
+                            value={selectedDraftTaskTemplate.taskType ?? 'CHECK'}
+                            onChange={(event) => updateDraftTaskTemplate(selectedDraftTaskTemplate.id, { taskType: event.target.value as EditableTaskType })}
+                            className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-2 text-sm text-gray-900 focus:border-blue-500 focus:outline-none dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100"
+                          >
+                            <option value="CHECK">CHECK</option>
+                            <option value="CONSUME">CONSUME</option>
+                          </select>
+                        </label>
+                      </div>
+                    </div>
+
+                    {(selectedDraftTaskTemplate.taskType ?? 'CHECK') === 'CONSUME' ? (
+                      <div className="space-y-3 rounded-lg border border-gray-200 bg-white px-3 py-3 dark:border-gray-600 dark:bg-gray-800">
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="text-xs font-medium text-gray-500 dark:text-gray-400">Consume entries</div>
+                          <button
+                            type="button"
+                            onClick={() => addDraftTaskConsumeEntry(selectedDraftTaskTemplate.id)}
+                            className="text-xs font-medium text-blue-500 hover:text-blue-600"
+                          >
+                            + Add entry
+                          </button>
+                        </div>
+
+                        {(((selectedDraftTaskTemplate.inputFields as ConsumeInputFields | undefined)?.entries) ?? []).length === 0 ? (
+                          <div className="rounded-lg border border-dashed border-gray-300 px-3 py-3 text-sm text-gray-500 dark:border-gray-600 dark:text-gray-400">
+                            No consume entries yet.
+                          </div>
+                        ) : (
+                          <div className="space-y-2">
+                            {(((selectedDraftTaskTemplate.inputFields as ConsumeInputFields | undefined)?.entries) ?? []).map((entry, index) => (
+                              <div key={`${selectedDraftTaskTemplate.id}-consume-${index}`} className="grid gap-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-3 dark:border-gray-700 dark:bg-gray-900/40 sm:grid-cols-[minmax(0,1fr)_7rem_auto] sm:items-end">
+                                <label className="space-y-1 block">
+                                  <span className="block text-xs font-medium text-gray-500 dark:text-gray-400">Item</span>
+                                  <select
+                                    value={entry.itemTemplateRef}
+                                    onChange={(event) => updateDraftTaskConsumeEntry(selectedDraftTaskTemplate.id, index, { itemTemplateRef: event.target.value })}
+                                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100"
+                                  >
+                                    <option value="">Select item</option>
+                                    {availableConsumeTemplates.map((template) => (
+                                      <option key={template.id} value={template.id}>{template.name}</option>
+                                    ))}
+                                  </select>
+                                </label>
+
+                                <label className="space-y-1 block">
+                                  <span className="block text-xs font-medium text-gray-500 dark:text-gray-400">Quantity</span>
+                                  <input
+                                    type="number"
+                                    min={1}
+                                    value={entry.quantity}
+                                    onChange={(event) => updateDraftTaskConsumeEntry(selectedDraftTaskTemplate.id, index, { quantity: Math.max(1, Number(event.target.value) || 1) })}
+                                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100"
+                                  />
+                                </label>
+
+                                <button
+                                  type="button"
+                                  onClick={() => removeDraftTaskConsumeEntry(selectedDraftTaskTemplate.id, index)}
+                                  className="rounded-full bg-red-50 px-2.5 py-1 text-[11px] font-semibold text-red-600 hover:bg-red-100 dark:bg-red-900/20 dark:text-red-300"
+                                >
+                                  Remove
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ) : null}
+
+                    <div className="flex justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedDraftTaskTemplateId(null)}
+                        className="rounded-full bg-blue-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-600"
+                      >
+                        Set
+                      </button>
+                      <button type="button" onClick={() => removeDraftTaskTemplate(selectedDraftTaskTemplate.id)} className="rounded-full bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-100 dark:bg-red-900/20 dark:text-red-300">
+                        Remove Task
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
               </div>
             </div>
           ) : null}
