@@ -640,7 +640,6 @@ export function AddItemPanel({
       {
         itemTemplateRef: '',
         quantity: 1,
-        action: 'consume',
       },
     ]));
     setOpenConsumeEntryPickerIndex((current) => current ?? draftConsumeEntries.length);
@@ -676,7 +675,6 @@ export function AddItemPanel({
           .map((entry) => ({
             itemTemplateRef: entry.itemTemplateRef,
             quantity: Math.max(1, Math.floor(entry.quantity || 1)),
-            action: entry.action,
           }))
       : [];
 
@@ -1236,7 +1234,7 @@ export function AddItemPanel({
                                   </div>
                                 </div>
 
-                                <div className="grid gap-3 sm:grid-cols-[minmax(0,8rem)_minmax(0,1fr)] sm:items-end">
+                                <div className="grid gap-3 sm:grid-cols-[minmax(0,8rem)_auto] sm:items-end">
                                   <label className="space-y-1 block">
                                     <span className="block text-xs font-medium text-gray-500 dark:text-gray-400">Quantity</span>
                                     <input
@@ -1247,26 +1245,6 @@ export function AddItemPanel({
                                       className="w-full min-w-0 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-purple-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
                                     />
                                   </label>
-
-                                  <div className="space-y-1 min-w-0">
-                                    <span className="block text-xs font-medium text-gray-500 dark:text-gray-400">Action</span>
-                                    <div className="flex flex-wrap rounded-lg bg-gray-100 p-1 dark:bg-gray-900/60">
-                                      {(['consume', 'replenish'] as const).map((action) => (
-                                        <button
-                                          key={action}
-                                          type="button"
-                                          onClick={() => updateDraftConsumeEntry(index, { action })}
-                                          className={`min-w-[8rem] flex-1 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
-                                            entry.action === action
-                                              ? 'bg-purple-600 text-white'
-                                              : 'text-gray-500 hover:text-gray-700 dark:text-gray-300 dark:hover:text-gray-100'
-                                          }`}
-                                        >
-                                          {action === 'consume' ? 'Consume' : 'Replenish'}
-                                        </button>
-                                      ))}
-                                    </div>
-                                  </div>
                                 </div>
 
                                 <div className="flex justify-end">

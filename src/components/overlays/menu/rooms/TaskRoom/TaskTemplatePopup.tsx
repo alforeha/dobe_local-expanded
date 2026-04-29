@@ -809,7 +809,6 @@ export function TaskTemplatePopup({
               {
                 itemTemplateRef: '',
                 quantity: 1,
-                action: 'consume',
               },
             ],
           });
@@ -853,7 +852,7 @@ export function TaskTemplatePopup({
                 </p>
               ) : null}
               {entries.map((entry, index) => (
-                <div key={`consume-entry-${index}`} className="grid grid-cols-[minmax(0,1fr)_7rem_9rem_auto] items-end gap-2 rounded-xl border border-gray-200 bg-white px-3 py-3 dark:border-gray-700 dark:bg-gray-900/40">
+                <div key={`consume-entry-${index}`} className="grid grid-cols-[minmax(0,1fr)_7rem_auto] items-end gap-2 rounded-xl border border-gray-200 bg-white px-3 py-3 dark:border-gray-700 dark:bg-gray-900/40">
                   <div>
                     <label className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">Item</label>
                     <select
@@ -879,26 +878,6 @@ export function TaskTemplatePopup({
                       className={inputClassName(readOnly)}
                     />
                   </div>
-                  <div>
-                    <label className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">Action</label>
-                    <div className="flex rounded-xl bg-gray-100 p-1 dark:bg-gray-800">
-                      {(['consume', 'replenish'] as const).map((action) => (
-                        <button
-                          key={action}
-                          type="button"
-                          onClick={() => !readOnly && updateConsumeEntry(index, { action })}
-                          disabled={readOnly}
-                          className={`flex-1 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
-                            entry.action === action
-                              ? 'bg-blue-500 text-white'
-                              : 'text-gray-500 hover:text-gray-700 dark:text-gray-300 dark:hover:text-gray-100'
-                          }`}
-                        >
-                          {action === 'consume' ? 'Consume' : 'Replenish'}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
                   {!readOnly ? (
                     <button
                       type="button"
@@ -915,7 +894,6 @@ export function TaskTemplatePopup({
         );
       }
 
-      default:
         return null;
     }
   }

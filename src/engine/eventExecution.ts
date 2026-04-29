@@ -76,8 +76,7 @@ function isConsumeEntry(value: unknown): value is ConsumeEntry {
 
   const candidate = value as Partial<ConsumeEntry>;
   return typeof candidate.itemTemplateRef === 'string'
-    && typeof candidate.quantity === 'number'
-    && (candidate.action === 'consume' || candidate.action === 'replenish');
+    && typeof candidate.quantity === 'number';
 }
 
 function normaliseConsumeEntries(entries: unknown): ConsumeEntry[] {
@@ -88,7 +87,6 @@ function normaliseConsumeEntries(entries: unknown): ConsumeEntry[] {
     .map((entry) => ({
       itemTemplateRef: entry.itemTemplateRef.trim(),
       quantity: Math.max(1, Math.floor(entry.quantity)),
-      action: entry.action,
     }))
     .filter((entry) => entry.itemTemplateRef.length > 0);
 }
@@ -256,49 +254,34 @@ function applyConsumeTaskEffects(entries: ConsumeEntry[]): void {
     if (targets.length === 0) continue;
 
     const getCurrentResources = () => ({ ...baseResources, ...workingResources });
-
-    if (entry.action === 'consume') {
-      let remaining = entry.quantity;
-      const sortedTargets = [...targets].sort((left, right) => left.getQuantity(getCurrentResources()) - right.getQuantity(getCurrentResources()));
-
-      for (const target of sortedTargets) {
-        if (remaining <= 0) break;
-        const mutableResource = getMutableResource(workingResources, baseResources, target.resourceId);
-        if (!mutableResource) continue;
-
-        const currentQuantity = target.getQuantity(workingResources);
-        if (currentQuantity <= 0) continue;
-
-        const consumed = Math.min(currentQuantity, remaining);
-        const nextQuantity = currentQuantity - consumed;
-        target.setQuantity(workingResources, nextQuantity);
-        touchedResourceIds.add(target.resourceId);
-        remaining -= consumed;
-
-        if (nextQuantity === 0) {
-          zeroQuantityReplenishTargets.set(
-            `${target.resourceId}::${target.locationLabel}::${entry.itemTemplateRef}`,
-            {
-              resourceId: target.resourceId,
-              locationLabel: target.locationLabel,
-              itemTemplateRef: entry.itemTemplateRef,
-            },
-          );
-        }
-      }
-      continue;
-    }
-
+    let remaining = entry.quantity;
     const sortedTargets = [...targets].sort((left, right) => left.getQuantity(getCurrentResources()) - right.getQuantity(getCurrentResources()));
-    const target = sortedTargets[0];
-    if (!target) continue;
 
-    const mutableResource = getMutableResource(workingResources, baseResources, target.resourceId);
-    if (!mutableResource) continue;
+    for (const target of sortedTargets) {
+      if (remaining <= 0) break;
+      const mutableResource = getMutableResource(workingResources, baseResources, target.resourceId);
+      if (!mutableResource) continue;
 
-    const currentQuantity = target.getQuantity(workingResources);
-    target.setQuantity(workingResources, currentQuantity + entry.quantity);
-    touchedResourceIds.add(target.resourceId);
+      const currentQuantity = target.getQuantity(workingResources);
+      if (currentQuantity <= 0) continue;
+
+      const consumed = Math.min(currentQuantity, remaining);
+      const nextQuantity = currentQuantity - consumed;
+      target.setQuantity(workingResources, nextQuantity);
+      touchedResourceIds.add(target.resourceId);
+      remaining -= consumed;
+
+      if (nextQuantity === 0) {
+        zeroQuantityReplenishTargets.set(
+          `${target.resourceId}::${target.locationLabel}::${entry.itemTemplateRef}`,
+          {
+            resourceId: target.resourceId,
+            locationLabel: target.locationLabel,
+            itemTemplateRef: entry.itemTemplateRef,
+          },
+        );
+      }
+    }
   }
 
   for (const resourceId of touchedResourceIds) {

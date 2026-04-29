@@ -32,7 +32,7 @@ import type {
 import { normalizeRecurrenceMode } from '../types/resource';
 import type { PlannedEvent } from '../types/plannedEvent';
 import type { Task } from '../types/task';
-import type { CircuitInputFields, ConsumeEntry, ConsumeInputFields, InputFields, TaskType } from '../types/taskTemplate';
+import type { CircuitInputFields, InputFields, TaskType } from '../types/taskTemplate';
 import type { XpAward } from '../types/taskTemplate';
 import type { StatGroupKey, User } from '../types/user';
 import { getAppDate, getAppNowISO, localISODate } from '../utils/dateUtils';
@@ -357,24 +357,15 @@ export function generateReplenishGTDItem(
     .find((task) => task?.completionState === 'pending' && task.attachmentRef === attachmentRef);
   if (existingPendingTask) return;
 
-  const entries: ConsumeEntry[] = [{
-    itemTemplateRef,
-    quantity: 1,
-    action: 'replenish',
-  }];
-
   const replenishTask: Task = {
     id: uuidv4(),
     templateRef: null,
     isUnique: true,
     title,
-    taskType: 'CONSUME',
+    taskType: 'CHECK',
     completionState: 'pending',
     completedAt: null,
-    resultFields: {
-      label: title,
-      entries,
-    } satisfies Partial<ConsumeInputFields>,
+    resultFields: { label: title },
     attachmentRef,
     resourceRef,
     location: null,

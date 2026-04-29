@@ -14,10 +14,6 @@ interface ConsumeInputProps {
   onResultChange?: (result: Partial<ConsumeInputFields>) => void;
 }
 
-function getEntryActionLabel(action: ConsumeInputFields['entries'][number]['action']): string {
-  return action === 'replenish' ? 'Replenish' : 'Consume';
-}
-
 export function ConsumeInput({ inputFields, task, onComplete, hideSubmit, onResultChange }: ConsumeInputProps) {
   const isComplete = task.completionState === 'complete';
   const user = useUserStore((state) => state.user);
@@ -65,19 +61,12 @@ export function ConsumeInput({ inputFields, task, onComplete, hideSubmit, onResu
             return (
               <div
                 key={`${entry.itemTemplateRef || 'unresolved'}:${index}`}
-                className="flex items-center justify-between gap-3 rounded-lg border border-gray-200 bg-white px-3 py-2 dark:border-gray-600 dark:bg-gray-800"
+                className="rounded-lg border border-gray-200 bg-white px-3 py-2 dark:border-gray-600 dark:bg-gray-800"
               >
-                <div className="min-w-0 flex-1">
+                <div className="min-w-0">
                   <div className="truncate text-sm font-medium text-gray-800 dark:text-gray-100">{itemName}</div>
                   <div className="text-xs text-gray-500 dark:text-gray-400">Quantity {entry.quantity}</div>
                 </div>
-                <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-medium ${
-                  entry.action === 'replenish'
-                    ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'
-                    : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
-                }`}>
-                  {getEntryActionLabel(entry.action)}
-                </span>
               </div>
             );
           })}

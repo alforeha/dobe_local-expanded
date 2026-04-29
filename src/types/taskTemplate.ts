@@ -270,7 +270,6 @@ export interface LogInputFields {
 export interface ConsumeEntry {
   itemTemplateRef: string;
   quantity: number;
-  action: 'consume' | 'replenish';
 }
 
 export interface ConsumeInputFields {

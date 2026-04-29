@@ -10,12 +10,13 @@ import type {
   PlacedInstance,
   VehicleResource,
 } from '../../../../../../types/resource';
+import { makeDefaultRecurrenceRule } from '../../../../../../types/resource';
 import { isDoc } from '../../../../../../types/resource';
 import { useScheduleStore } from '../../../../../../stores/useScheduleStore';
 import { useResourceStore } from '../../../../../../stores/useResourceStore';
 import { useUserStore } from '../../../../../../stores/useUserStore';
 import type { Task } from '../../../../../../types/task';
-import type { TaskType } from '../../../../../../types/taskTemplate';
+import type { CheckInputFields, ConsumeEntry, ConsumeInputFields, TaskTemplate, TaskType, XpAward } from '../../../../../../types/taskTemplate';
 import { IconDisplay } from '../../../../../shared/IconDisplay';
 import { IconPicker } from '../../../../../shared/IconPicker';
 import { TextInput } from '../../../../../shared/inputs/TextInput';
@@ -46,8 +47,21 @@ type TabKey = 'items' | 'containers' | 'bags';
 type ItemPlacementFilterValue = 'all' | 'placed' | 'unplaced';
 type ItemKindFilterValue = 'all' | ItemKind;
 type ItemCategoryFilterValue = 'all' | ItemCategory | 'user-created' | 'room-created';
-type EditableTaskType = Extract<TaskType, 'CHECK' | 'COUNTER' | 'DURATION' | 'TIMER' | 'RATING' | 'TEXT'>;
-type InventoryEditableTaskTemplate = InventoryCustomTaskTemplate & { taskType?: EditableTaskType };
+type EditableTaskType = Extract<TaskType, 'CHECK' | 'CONSUME'>;
+type PlacementTaskInputFields = CheckInputFields | ConsumeInputFields;
+type InventoryEditableTaskTemplate = InventoryCustomTaskTemplate & {
+  taskType?: EditableTaskType;
+  inputFields?: PlacementTaskInputFields;
+};
+
+interface PlacementTaskComposerState {
+  placementKey: string;
+  taskName: string;
+  taskType: EditableTaskType;
+  consumeEntries: ConsumeEntry[];
+  openConsumeEntryPickerIndex: number | null;
+  error: string;
+}
 
 const ITEM_PLACEMENT_FILTER_OPTIONS: Array<{ id: ItemPlacementFilterValue; label: string }> = [
   { id: 'all', label: 'All' },
@@ -149,8 +163,26 @@ function titleCaseCategory(category: ItemCategory | 'user-created' | 'room-creat
   return category.charAt(0).toUpperCase() + category.slice(1);
 }
 
+function makeZeroXpAward(): XpAward {
+  return {
+    health: 0,
+    strength: 0,
+    agility: 0,
+    defense: 0,
+    charisma: 0,
+    wisdom: 0,
+  };
+}
+
+function isUuidLike(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
 export function InventorySpecialView({ resource }: InventorySpecialViewProps) {
   const scheduleTasks = useScheduleStore((s) => s.tasks) as Record<string, Task>;
+  const scheduleTaskTemplates = useScheduleStore((s) => s.taskTemplates);
+  const setTaskTemplate = useScheduleStore((s) => s.setTaskTemplate);
+  const removeTaskTemplate = useScheduleStore((s) => s.removeTaskTemplate);
   const resources = useResourceStore((s) => s.resources);
   const setResource = useResourceStore((s) => s.setResource);
   const user = useUserStore((s) => s.user);
@@ -180,6 +212,7 @@ export function InventorySpecialView({ resource }: InventorySpecialViewProps) {
   const [itemKindFilter, setItemKindFilter] = useState<ItemKindFilterValue>('all');
   const [itemCategoryFilter, setItemCategoryFilter] = useState<ItemCategoryFilterValue>('all');
   const [editingItemDetailsId, setEditingItemDetailsId] = useState<string | null>(null);
+  const [placementTaskComposer, setPlacementTaskComposer] = useState<PlacementTaskComposerState | null>(null);
 
   const userTemplates = useMemo(() => getUserInventoryItemTemplates(user), [user]);
   const roomItemEntries = useMemo(() => {
@@ -530,9 +563,20 @@ export function InventorySpecialView({ resource }: InventorySpecialViewProps) {
       .filter((row) => itemCategoryFilter === 'all' || row.categoryKey === itemCategoryFilter);
   }, [itemCategoryFilter, itemEntries, itemKindFilter, itemPlacementFilter, itemPlacementsByTemplateId]);
 
+  const availableConsumeTemplates = useMemo(
+    () => itemEntries
+      .filter((template) => (template.kind ?? 'consumable') === 'consumable')
+      .filter((template) => (itemPlacementsByTemplateId.get(template.id)?.length ?? 0) > 0),
+    [itemEntries, itemPlacementsByTemplateId],
+  );
+
   const visibleItemRows = useMemo(
     () => (expandedItemId ? itemRows.filter((row) => row.template.id === expandedItemId) : itemRows),
     [expandedItemId, itemRows],
+  );
+  const editedItemPlacementCount = useMemo(
+    () => editingItemId ? (itemPlacementsByTemplateId.get(editingItemId)?.length ?? 0) : 0,
+    [editingItemId, itemPlacementsByTemplateId],
   );
 
   const groupedVisibleItemRows = useMemo<ItemRowGroup[]>(() => {
@@ -667,7 +711,7 @@ export function InventorySpecialView({ resource }: InventorySpecialViewProps) {
     setDraftTaskTemplates(
       ((item.customTaskTemplates ?? []) as InventoryEditableTaskTemplate[]).map((taskTemplate) => ({
         ...taskTemplate,
-        taskType: 'CHECK',
+        taskType: taskTemplate.taskType ?? 'CHECK',
       })),
     );
     setEditingItemId(itemId);
@@ -711,7 +755,7 @@ export function InventorySpecialView({ resource }: InventorySpecialViewProps) {
             .filter((taskTemplate) => taskTemplate.name.trim().length > 0)
             .map((taskTemplate) => ({
               ...taskTemplate,
-              taskType: 'CHECK',
+              taskType: taskTemplate.taskType ?? 'CHECK',
             })) as InventoryCustomTaskTemplate[])
         : [],
     };
@@ -743,6 +787,22 @@ export function InventorySpecialView({ resource }: InventorySpecialViewProps) {
       setExpandedItemId(nextItem.id);
     }
 
+    resetItemComposer();
+  }
+
+  function handleDeleteEditedItem() {
+    if (!user || !editingItemId || editedItemPlacementCount > 0) return;
+
+    const nextTemplates = (user.lists.inventoryItemTemplates ?? []).filter((item) => item.id !== editingItemId);
+    setUser({
+      ...user,
+      lists: {
+        ...user.lists,
+        inventoryItemTemplates: nextTemplates,
+      },
+    });
+
+    setExpandedItemId((current) => (current === editingItemId ? null : current));
     resetItemComposer();
   }
 
@@ -877,6 +937,15 @@ export function InventorySpecialView({ resource }: InventorySpecialViewProps) {
   }
 
   function resolveTaskDisplay(taskTemplateRef: string, itemTemplateRef?: string) {
+    const scheduleTemplate = scheduleTaskTemplates[taskTemplateRef];
+    if (scheduleTemplate) {
+      return {
+        name: scheduleTemplate.name,
+        icon: scheduleTemplate.icon || 'task',
+        taskType: scheduleTemplate.taskType,
+      };
+    }
+
     if (itemTemplateRef) {
       const customTemplate = itemEntries.find((item) => item.id === itemTemplateRef);
       const customTask = (customTemplate?.customTaskTemplates as InventoryEditableTaskTemplate[] | undefined)?.find((taskTemplate) => taskTemplate.name === taskTemplateRef);
@@ -912,6 +981,191 @@ export function InventorySpecialView({ resource }: InventorySpecialViewProps) {
       icon: 'task',
       taskType: 'CHECK',
     };
+  }
+
+  function findPlacedItem(homeId: string, roomId: string | undefined, placementId: string): PlacedInstance | null {
+    const home = resources[homeId];
+    if (!home || home.type !== 'home') return null;
+
+    for (const story of home.stories ?? []) {
+      if (!roomId) {
+        const placement = story.placedItems.find((entry) => entry.id === placementId);
+        if (placement) return placement;
+      }
+
+      const room = story.rooms.find((entry) => entry.id === roomId);
+      const placement = room?.placedItems.find((entry) => entry.id === placementId);
+      if (placement) return placement;
+    }
+
+    return null;
+  }
+
+  function updatePlacementRecurringTasks(homeId: string, roomId: string | undefined, placementId: string, updater: (tasks: NonNullable<PlacedInstance['recurringTasks']>) => NonNullable<PlacedInstance['recurringTasks']>) {
+    const home = resources[homeId];
+    if (!home || home.type !== 'home') return;
+
+    const nextStories = (home.stories ?? []).map((story) => {
+      if (!roomId) {
+        return {
+          ...story,
+          placedItems: story.placedItems.map((placement) => (
+            placement.id === placementId
+              ? { ...placement, recurringTasks: updater([...(placement.recurringTasks ?? [])]) }
+              : placement
+          )),
+          rooms: story.rooms,
+        };
+      }
+
+      return {
+        ...story,
+        placedItems: story.placedItems,
+        rooms: story.rooms.map((room) => (
+          room.id !== roomId
+            ? room
+            : {
+                ...room,
+                placedItems: room.placedItems.map((placement) => (
+                  placement.id === placementId
+                    ? { ...placement, recurringTasks: updater([...(placement.recurringTasks ?? [])]) }
+                    : placement
+                )),
+              }
+        )),
+      };
+    });
+
+    setResource({
+      ...home,
+      updatedAt: new Date().toISOString(),
+      stories: nextStories,
+    });
+  }
+
+  function openPlacementTaskComposer(placementKey: string) {
+    setPlacementTaskComposer({
+      placementKey,
+      taskName: '',
+      taskType: 'CHECK',
+      consumeEntries: [],
+      openConsumeEntryPickerIndex: null,
+      error: '',
+    });
+  }
+
+  function addPlacementConsumeEntry() {
+    setPlacementTaskComposer((current) => {
+      if (!current) return current;
+      return {
+        ...current,
+        consumeEntries: [
+          ...current.consumeEntries,
+          {
+            itemTemplateRef: '',
+            quantity: 1,
+          },
+        ],
+        openConsumeEntryPickerIndex: current.openConsumeEntryPickerIndex ?? current.consumeEntries.length,
+      };
+    });
+  }
+
+  function updatePlacementConsumeEntry(index: number, patch: Partial<ConsumeEntry>) {
+    setPlacementTaskComposer((current) => {
+      if (!current) return current;
+      return {
+        ...current,
+        consumeEntries: current.consumeEntries.map((entry, entryIndex) => (
+          entryIndex === index ? { ...entry, ...patch } : entry
+        )),
+      };
+    });
+  }
+
+  function removePlacementConsumeEntry(index: number) {
+    setPlacementTaskComposer((current) => {
+      if (!current) return current;
+      return {
+        ...current,
+        consumeEntries: current.consumeEntries.filter((_, entryIndex) => entryIndex !== index),
+        openConsumeEntryPickerIndex: current.openConsumeEntryPickerIndex == null
+          ? null
+          : current.openConsumeEntryPickerIndex === index
+            ? null
+            : current.openConsumeEntryPickerIndex > index
+              ? current.openConsumeEntryPickerIndex - 1
+              : current.openConsumeEntryPickerIndex,
+      };
+    });
+  }
+
+  function buildPlacementTaskTemplate(taskName: string, taskType: EditableTaskType, consumeEntries: ConsumeEntry[]): TaskTemplate {
+    return {
+      isCustom: true,
+      name: taskName,
+      description: 'Placed item recurring task',
+      icon: taskType === 'CONSUME' ? 'consume' : 'task',
+      taskType,
+      inputFields: taskType === 'CONSUME'
+        ? { label: taskName, entries: consumeEntries }
+        : { label: taskName },
+      xpAward: makeZeroXpAward(),
+      xpBonus: 5,
+      cooldown: null,
+      media: null,
+      items: [],
+      secondaryTag: 'home',
+    };
+  }
+
+  function handleSavePlacementTask(row: ItemRowSummary, placement: ItemPlacementRecord) {
+    if (placement.target.kind !== 'home-placement' || !placementTaskComposer || placementTaskComposer.placementKey !== placement.key) return;
+
+    const taskName = placementTaskComposer.taskName.trim();
+    if (!taskName) {
+      setPlacementTaskComposer((current) => current ? { ...current, error: 'Task name is required.' } : current);
+      return;
+    }
+
+    const normalizedEntries = placementTaskComposer.taskType === 'CONSUME'
+      ? placementTaskComposer.consumeEntries
+          .filter((entry) => entry.itemTemplateRef.trim().length > 0)
+          .map((entry) => ({
+            itemTemplateRef: entry.itemTemplateRef,
+            quantity: Math.max(1, Math.floor(entry.quantity || 1)),
+          }))
+      : [];
+
+    const templateRef = crypto.randomUUID();
+    setTaskTemplate(templateRef, buildPlacementTaskTemplate(taskName, placementTaskComposer.taskType, normalizedEntries));
+
+    updatePlacementRecurringTasks(placement.target.homeId, placement.target.roomId, placement.target.placementId, (tasks) => ([
+      ...tasks,
+      {
+        id: crypto.randomUUID(),
+        taskTemplateRef: templateRef,
+        taskType: placementTaskComposer.taskType,
+        recurrenceMode: 'never',
+        recurrence: makeDefaultRecurrenceRule(),
+        reminderLeadDays: 7,
+      },
+    ]));
+
+    void row;
+    setPlacementTaskComposer(null);
+  }
+
+  function handleRemovePlacementTask(placement: ItemPlacementRecord, taskId: string, taskTemplateRef: string) {
+    if (placement.target.kind !== 'home-placement') return;
+
+    updatePlacementRecurringTasks(placement.target.homeId, placement.target.roomId, placement.target.placementId, (tasks) => (
+      tasks.filter((task) => task.id !== taskId)
+    ));
+
+    if (isUuidLike(taskTemplateRef) && scheduleTaskTemplates[taskTemplateRef]?.isCustom) {
+      removeTaskTemplate(taskTemplateRef);
+    }
   }
 
   function getLocationLink(container: InventoryContainer) {
@@ -1127,11 +1381,21 @@ export function InventorySpecialView({ resource }: InventorySpecialViewProps) {
                             <TextInput
                               label="Task name"
                               value={taskTemplate.name}
-                              onChange={(value) => updateDraftTaskTemplate(taskTemplate.id, { name: value, taskType: 'CHECK' })}
+                              onChange={(value) => updateDraftTaskTemplate(taskTemplate.id, { name: value })}
                               placeholder="e.g. Wipe down"
                               maxLength={80}
                             />
-                            <div className="text-[11px] font-medium uppercase tracking-[0.12em] text-gray-400 dark:text-gray-500">CHECK</div>
+                            <label className="space-y-1 block">
+                              <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-gray-400 dark:text-gray-500">Task Type</span>
+                              <select
+                                value={taskTemplate.taskType ?? 'CHECK'}
+                                onChange={(event) => updateDraftTaskTemplate(taskTemplate.id, { taskType: event.target.value as EditableTaskType })}
+                                className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-2 text-sm text-gray-900 focus:border-blue-500 focus:outline-none dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100"
+                              >
+                                <option value="CHECK">CHECK</option>
+                                <option value="CONSUME">CONSUME</option>
+                              </select>
+                            </label>
                           </div>
                         </div>
                         <div>
@@ -1148,6 +1412,19 @@ export function InventorySpecialView({ resource }: InventorySpecialViewProps) {
           ) : null}
 
           <div className="mt-4 flex justify-end gap-2">
+            {editingItemId ? (
+              <button
+                type="button"
+                onClick={handleDeleteEditedItem}
+                disabled={editedItemPlacementCount > 0}
+                className={editedItemPlacementCount === 0
+                  ? 'rounded-full bg-red-50 px-4 py-2 text-sm font-semibold text-red-600 hover:bg-red-100 dark:bg-red-900/20 dark:text-red-300 dark:hover:bg-red-900/30'
+                  : 'rounded-full bg-gray-200 px-4 py-2 text-sm font-semibold text-gray-400 dark:bg-gray-700 dark:text-gray-500'}
+                title={editedItemPlacementCount > 0 ? 'Item cannot be deleted while placed somewhere.' : 'Delete item template'}
+              >
+                Delete Item
+              </button>
+            ) : null}
             <button
               type="button"
               onClick={resetItemComposer}
@@ -1221,16 +1498,19 @@ export function InventorySpecialView({ resource }: InventorySpecialViewProps) {
                   ) : null}
                   {group.rows.map((row) => {
                 const item = row.template;
-                const taskRefs = [
-                  ...(row.builtInTemplate?.builtInTasks?.map((task) => task.taskTemplateRef) ?? []),
-                  ...(row.builtInTemplate?.associatedTaskTemplateRef ? [row.builtInTemplate.associatedTaskTemplateRef] : []),
-                ];
-                const customTasks = (item.customTaskTemplates ?? []) as InventoryEditableTaskTemplate[];
                 const expanded = expandedItemId === item.id;
                 const editingDetails = editingItemDetailsId === item.id;
                 const placementSummary = row.placements.length > 0
                   ? `${row.placements.length} placement${row.placements.length === 1 ? '' : 's'}`
                   : 'Unplaced';
+                const builtInTaskRefs = [
+                  ...(row.builtInTemplate?.builtInTasks?.map((task) => task.taskTemplateRef) ?? []),
+                  ...(row.builtInTemplate?.associatedTaskTemplateRef ? [row.builtInTemplate.associatedTaskTemplateRef] : []),
+                ];
+                const builtInTaskRefSet = new Set(builtInTaskRefs);
+                const placedFacilityInstances = row.kind === 'facility'
+                  ? row.placements.filter((placement): placement is ItemPlacementRecord & { target: Extract<ItemPlacementTarget, { kind: 'home-placement' }> } => placement.target.kind === 'home-placement')
+                  : [];
 
                 return (
                   <article key={item.id} className="rounded-2xl border border-gray-200 bg-gray-50/80 dark:border-gray-700 dark:bg-gray-900/40">
@@ -1275,33 +1555,189 @@ export function InventorySpecialView({ resource }: InventorySpecialViewProps) {
                             </div>
 
                             <div className="rounded-xl bg-white px-3 py-3 dark:bg-gray-800">
-                              <div className="flex items-center justify-between gap-3">
-                                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-500 dark:text-gray-400">Tasks</p>
-                              </div>
-                              <div className="mt-2 space-y-2">
-                                {taskRefs.length === 0 && customTasks.length === 0 ? (
-                                  <p className="text-xs italic text-gray-400">No tasks.</p>
-                                ) : null}
-                                {taskRefs.map((taskTemplateRef) => {
-                                  const taskDisplay = resolveTaskDisplay(taskTemplateRef, item.id);
+                              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-500 dark:text-gray-400">Tasks</p>
+
+                              {!row.isUserManaged ? (
+                                <div className="mt-3 space-y-2">
+                                  <p className="text-xs font-medium text-gray-500 dark:text-gray-400">Built-in tasks</p>
+                                  {builtInTaskRefs.length === 0 ? (
+                                    <p className="text-xs italic text-gray-400">No built-in tasks.</p>
+                                  ) : builtInTaskRefs.map((taskTemplateRef) => {
+                                    const taskDisplay = resolveTaskDisplay(taskTemplateRef, item.id);
+                                    return (
+                                      <div key={`${item.id}-${taskTemplateRef}`} className="flex items-center justify-between gap-3 rounded-lg bg-gray-50 px-3 py-2 text-sm dark:bg-gray-900/60">
+                                        <span className="font-medium text-gray-700 dark:text-gray-200">{taskDisplay.name}</span>
+                                        <span className="rounded-full bg-white px-2.5 py-1 text-[11px] font-semibold text-gray-500 dark:bg-gray-800 dark:text-gray-300">
+                                          {formatTaskTypeLabel(taskDisplay.taskType)}
+                                        </span>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              ) : null}
+
+                              <div className="mt-3 space-y-3">
+                                {placedFacilityInstances.length === 0 ? (
+                                  <p className="text-xs italic text-gray-400">No placed instances yet.</p>
+                                ) : placedFacilityInstances.map((placement) => {
+                                  const placementInstance = findPlacedItem(placement.target.homeId, placement.target.roomId, placement.target.placementId);
+                                  const recurringTasks = (placementInstance?.recurringTasks ?? []).filter((task) => !builtInTaskRefSet.has(task.taskTemplateRef));
+                                  const isComposerOpen = placementTaskComposer?.placementKey === placement.key;
+
                                   return (
-                                    <div key={`${item.id}-${taskTemplateRef}`} className="flex items-center justify-between gap-3 rounded-lg bg-gray-50 px-3 py-2 text-sm dark:bg-gray-900/60">
-                                      <span className="font-medium text-gray-700 dark:text-gray-200">{taskDisplay.name}</span>
-                                      <span className="text-[11px] text-gray-500 dark:text-gray-400">{formatTaskTypeLabel(taskDisplay.taskType)}</span>
+                                    <div key={placement.key} className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-3 dark:border-gray-700 dark:bg-gray-900/60">
+                                      <div className="flex items-center justify-between gap-3">
+                                        <div className="min-w-0">
+                                          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400">Placement</p>
+                                          <div className="mt-1 text-sm font-medium text-gray-700 dark:text-gray-200">{placement.locationPath}</div>
+                                        </div>
+                                        <button
+                                          type="button"
+                                          onClick={() => isComposerOpen ? setPlacementTaskComposer(null) : openPlacementTaskComposer(placement.key)}
+                                          className="rounded-full bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-100 dark:bg-blue-900/30 dark:text-blue-200"
+                                        >
+                                          {isComposerOpen ? 'Cancel' : 'Add Task'}
+                                        </button>
+                                      </div>
+
+                                      <div className="mt-3 space-y-2">
+                                        {recurringTasks.length === 0 ? (
+                                          <p className="text-xs italic text-gray-400">No placement-specific tasks.</p>
+                                        ) : recurringTasks.map((task) => {
+                                          const taskDisplay = resolveTaskDisplay(task.taskTemplateRef, item.id);
+                                          return (
+                                            <div key={task.id} className="flex items-center justify-between gap-3 rounded-lg bg-white px-3 py-2 text-sm dark:bg-gray-800">
+                                              <span className="font-medium text-gray-700 dark:text-gray-200">{taskDisplay.name}</span>
+                                              <div className="flex items-center gap-2">
+                                                <span className="rounded-full bg-gray-100 px-2.5 py-1 text-[11px] font-semibold text-gray-600 dark:bg-gray-700 dark:text-gray-200">
+                                                  {formatTaskTypeLabel(task.taskType ?? taskDisplay.taskType)}
+                                                </span>
+                                                <button
+                                                  type="button"
+                                                  onClick={() => handleRemovePlacementTask(placement, task.id, task.taskTemplateRef)}
+                                                  className="rounded-full bg-red-50 px-2.5 py-1 text-[11px] font-semibold text-red-600 hover:bg-red-100 dark:bg-red-900/20 dark:text-red-300"
+                                                >
+                                                  Remove
+                                                </button>
+                                              </div>
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
+
+                                      {isComposerOpen ? (
+                                        <div className="mt-3 space-y-3 rounded-lg border border-gray-200 bg-white px-3 py-3 dark:border-gray-600 dark:bg-gray-800">
+                                          <label className="space-y-1 block">
+                                            <span className="block text-xs font-medium text-gray-500 dark:text-gray-400">Task name</span>
+                                            <input
+                                              type="text"
+                                              value={placementTaskComposer?.taskName ?? ''}
+                                              onChange={(event) => setPlacementTaskComposer((current) => current && current.placementKey === placement.key ? { ...current, taskName: event.target.value, error: '' } : current)}
+                                              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100"
+                                            />
+                                          </label>
+
+                                          <label className="space-y-1 block">
+                                            <span className="block text-xs font-medium text-gray-500 dark:text-gray-400">Task type</span>
+                                            <select
+                                              value={placementTaskComposer?.taskType ?? 'CHECK'}
+                                              onChange={(event) => setPlacementTaskComposer((current) => current && current.placementKey === placement.key ? {
+                                                ...current,
+                                                taskType: event.target.value as EditableTaskType,
+                                                consumeEntries: event.target.value === 'CONSUME' ? current.consumeEntries : [],
+                                                openConsumeEntryPickerIndex: null,
+                                                error: '',
+                                              } : current)}
+                                              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100"
+                                            >
+                                              <option value="CHECK">CHECK</option>
+                                              <option value="CONSUME">CONSUME</option>
+                                            </select>
+                                          </label>
+
+                                          {placementTaskComposer?.taskType === 'CONSUME' ? (
+                                            <div className="space-y-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-3 dark:border-gray-700 dark:bg-gray-900/40">
+                                              <div className="flex items-center justify-between gap-3">
+                                                <div className="text-xs font-medium text-gray-500 dark:text-gray-400">Consume entries</div>
+                                                <button
+                                                  type="button"
+                                                  onClick={addPlacementConsumeEntry}
+                                                  className="text-xs font-medium text-blue-500 hover:text-blue-600"
+                                                >
+                                                  + Add entry
+                                                </button>
+                                              </div>
+
+                                              {placementTaskComposer.consumeEntries.length === 0 ? (
+                                                <div className="rounded-lg border border-dashed border-gray-300 px-3 py-3 text-sm text-gray-500 dark:border-gray-600 dark:text-gray-400">
+                                                  No consume entries yet.
+                                                </div>
+                                              ) : (
+                                                <div className="space-y-2">
+                                                  {placementTaskComposer.consumeEntries.map((entry, index) => (
+                                                    <div key={`${placement.key}-consume-${index}`} className="grid gap-3 rounded-lg border border-gray-200 bg-white px-3 py-3 dark:border-gray-600 dark:bg-gray-800 sm:grid-cols-[minmax(0,1fr)_7rem_auto] sm:items-end">
+                                                      <label className="space-y-1 block">
+                                                        <span className="block text-xs font-medium text-gray-500 dark:text-gray-400">Item</span>
+                                                        <select
+                                                          value={entry.itemTemplateRef}
+                                                          onChange={(event) => updatePlacementConsumeEntry(index, { itemTemplateRef: event.target.value })}
+                                                          className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100"
+                                                        >
+                                                          <option value="">Select item</option>
+                                                          {availableConsumeTemplates.map((template) => (
+                                                            <option key={template.id} value={template.id}>{template.name}</option>
+                                                          ))}
+                                                        </select>
+                                                      </label>
+
+                                                      <label className="space-y-1 block">
+                                                        <span className="block text-xs font-medium text-gray-500 dark:text-gray-400">Quantity</span>
+                                                        <input
+                                                          type="number"
+                                                          min={1}
+                                                          value={entry.quantity}
+                                                          onChange={(event) => updatePlacementConsumeEntry(index, { quantity: Math.max(1, Number(event.target.value) || 1) })}
+                                                          className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100"
+                                                        />
+                                                      </label>
+
+                                                      <button
+                                                        type="button"
+                                                        onClick={() => removePlacementConsumeEntry(index)}
+                                                        className="rounded-full bg-red-50 px-2.5 py-1 text-[11px] font-semibold text-red-600 hover:bg-red-100 dark:bg-red-900/20 dark:text-red-300"
+                                                      >
+                                                        Remove
+                                                      </button>
+                                                    </div>
+                                                  ))}
+                                                </div>
+                                              )}
+                                            </div>
+                                          ) : null}
+
+                                          {placementTaskComposer?.error ? <p className="text-sm text-red-500">{placementTaskComposer.error}</p> : null}
+
+                                          <div className="flex justify-end gap-2">
+                                            <button
+                                              type="button"
+                                              onClick={() => setPlacementTaskComposer(null)}
+                                              className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700"
+                                            >
+                                              Cancel
+                                            </button>
+                                            <button
+                                              type="button"
+                                              onClick={() => handleSavePlacementTask(row, placement)}
+                                              className="rounded-lg bg-blue-500 px-3 py-2 text-sm font-medium text-white hover:bg-blue-600"
+                                            >
+                                              Save
+                                            </button>
+                                          </div>
+                                        </div>
+                                      ) : null}
                                     </div>
                                   );
                                 })}
-                                {customTasks.map((taskTemplate) => (
-                                  <div key={taskTemplate.id} className="flex items-center justify-between gap-3 rounded-lg bg-gray-50 px-3 py-2 text-sm dark:bg-gray-900/60">
-                                    <div className="min-w-0 flex items-center gap-2">
-                                      <IconDisplay iconKey={taskTemplate.icon || 'task'} size={16} className="h-4 w-4 shrink-0 object-contain" />
-                                      <div className="min-w-0">
-                                        <div className="font-medium text-gray-700 dark:text-gray-200">{taskTemplate.name}</div>
-                                        <div className="text-[11px] text-gray-500 dark:text-gray-400">{formatTaskTypeLabel(taskTemplate.taskType)}</div>
-                                      </div>
-                                    </div>
-                                  </div>
-                                ))}
                               </div>
                             </div>
 
