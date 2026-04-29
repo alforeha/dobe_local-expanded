@@ -79,6 +79,7 @@ export function AddContainerPanel({ resource, container, onClose, onContainerSav
   const [depthHeightGrid, setDepthHeightGrid] = useState<FaceGridDraft>(() => resolveFaceGrid(container?.layoutGrid, 'depth-height'));
   const [isLayoutEditorOpen, setIsLayoutEditorOpen] = useState(false);
   const [showAddItemPanel, setShowAddItemPanel] = useState(false);
+  const [pendingCanvasItemId, setPendingCanvasItemId] = useState<string | null>(null);
   const [error, setError] = useState('');
 
   const itemTemplates = useMemo(
@@ -170,7 +171,6 @@ export function AddContainerPanel({ resource, container, onClose, onContainerSav
         ? {
             ...item,
             placedInContainer: {
-              ...(item.placedInContainer ?? {}),
               [face]: {
                 x,
                 y,
@@ -185,11 +185,9 @@ export function AddContainerPanel({ resource, container, onClose, onContainerSav
   function removeItemPlacement(itemId: string, face: ContainerFace) {
     setItems((current) => current.map((item) => {
       if (item.id !== itemId || !item.placedInContainer?.[face]) return item;
-      const nextPlacement = { ...(item.placedInContainer ?? {}) };
-      delete nextPlacement[face];
       return {
         ...item,
-        placedInContainer: Object.keys(nextPlacement).length > 0 ? nextPlacement : undefined,
+        placedInContainer: undefined,
       };
     }));
   }
@@ -415,6 +413,13 @@ export function AddContainerPanel({ resource, container, onClose, onContainerSav
                     {option.label}
                   </button>
                 ))}
+                <button
+                  type="button"
+                  onClick={() => setShowAddItemPanel(true)}
+                  className="rounded-full bg-blue-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-600"
+                >
+                  Add Item
+                </button>
               </div>
             </div>
 
@@ -423,20 +428,16 @@ export function AddContainerPanel({ resource, container, onClose, onContainerSav
               activeFace={activeFace}
               items={items}
               isEditMode
+              pendingSelectedItemId={pendingCanvasItemId}
+              onPendingSelectedItemHandled={() => setPendingCanvasItemId(null)}
               onPlaceItem={updateItemPlacement}
+              onUpdateItemQuantity={updateItemQuantity}
               onRemoveItem={removeItemPlacement}
             />
 
             <div className="rounded-xl bg-white px-3 py-3 dark:bg-gray-800">
               <div className="flex items-center justify-between gap-3">
                 <div className="text-sm font-semibold text-gray-800 dark:text-gray-100">Items</div>
-                <button
-                  type="button"
-                  onClick={() => setShowAddItemPanel(true)}
-                  className="rounded-full bg-blue-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-600"
-                >
-                  Add Item
-                </button>
               </div>
 
               <div className="mt-3 space-y-2">
@@ -521,6 +522,7 @@ export function AddContainerPanel({ resource, container, onClose, onContainerSav
           onClose={() => setShowAddItemPanel(false)}
           onItemInstanceAdded={(item) => {
             setItems((current) => [...current, item]);
+            setPendingCanvasItemId(item.id);
             setShowAddItemPanel(false);
           }}
         />

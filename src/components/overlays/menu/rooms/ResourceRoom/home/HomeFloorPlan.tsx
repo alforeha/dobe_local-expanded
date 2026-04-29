@@ -7,9 +7,14 @@ import { isImageIcon, resolveIcon } from '../../../../../../constants/iconMap';
 import { ATTACHMENT_MAX_BYTES } from '../../../../../../storage/storageBudget';
 import { useResourceStore } from '../../../../../../stores/useResourceStore';
 import { useUserStore } from '../../../../../../stores/useUserStore';
-import type { FloorPlanRoom, FloorPlanSegment, FloorPlanSegmentKind, HomeStory, InventoryResource, ItemInstance, PlacedInstance, SegmentDirection } from '../../../../../../types/resource';
+import type { FloorPlanRoom, FloorPlanSegment, FloorPlanSegmentKind, HomeStory, InventoryContainer, InventoryItemTemplate, InventoryResource, ItemInstance, PlacedInstance, SegmentDirection } from '../../../../../../types/resource';
 import { getUserInventoryItemTemplates, mergeInventoryItemTemplates, resolveInventoryItemTemplate } from '../../../../../../utils/inventoryItems';
 import { getPointDistance, getPointsBounds, pointsMatch, segmentsToPoints } from '../../../../../../utils/floorPlan';
+import { AddItemPanel } from '../inventory/AddItemPanel';
+import { ContainerLayoutCanvas } from '../inventory/ContainerLayoutCanvas';
+import { RoomAddContainerPanel } from './RoomAddContainerPanel';
+import { RoomAddItemPanel } from './RoomAddItemPanel';
+import { PopupShell } from '../../../../../shared/popups/PopupShell';
 
 interface StoryOutlineDraft {
 	origin: { x: number; y: number };
@@ -34,6 +39,7 @@ interface HomeFloorPlanProps {
 	onStartEditRoom?: (room: FloorPlanRoom) => void;
 	onDeleteRoom?: (roomId: string) => void;
 	onUpdateRoomPlacedItems?: (roomId: string, placedItems: PlacedInstance[]) => void;
+	onUpdateRoom?: (roomId: string, updater: (room: FloorPlanRoom) => FloorPlanRoom) => void;
 	onUpdateStoryPlacedItems?: (placedItems: PlacedInstance[]) => void;
 	onUpdateRoomPhotos?: (roomId: string, photos: string[]) => void;
 	onUpdateStoryPhotos?: (photos: string[]) => void;
@@ -42,77 +48,127 @@ interface HomeFloorPlanProps {
 
 const VIEWBOX_WIDTH = 800;
 const VIEWBOX_HEIGHT = 600;
-const VERTEX_VISIBLE_RADIUS = 9;
-const VERTEX_HIT_RADIUS = 20;
-const INPUT_CLS = 'rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 focus:border-purple-500 focus:outline-none dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100';
-const STORY_SCOPE_ID = '__story__';
+	const VERTEX_VISIBLE_RADIUS = 9;
+	const VERTEX_HIT_RADIUS = 20;
+	const INPUT_CLS = 'rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 focus:border-purple-500 focus:outline-none dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100';
+	const STORY_SCOPE_ID = '__story__';
 
-function getPlacedInstanceQuantity(placement: Pick<PlacedInstance, 'quantity'>) {
-	return placement.quantity ?? 1;
-}
-
-type OutlineEditMode = 'add-point' | 'select-segment';
-type RoomEditMode = 'add-point' | 'select-segment';
-
-type InteractionState =
-	| { type: 'idle' }
-	| { type: 'drag-origin' }
-	| { type: 'drag-container'; roomId: string | null; placementId: string; offsetX: number; offsetY: number };
-
-function clampZoom(zoom: number) {
-	return Math.min(2.5, Math.max(0.45, zoom));
-}
-
-function combineBounds(boundsList: Array<{ minX: number; minY: number; maxX: number; maxY: number }>) {
-	if (boundsList.length === 0) return null;
-
-	let minX = boundsList[0].minX;
-	let minY = boundsList[0].minY;
-	let maxX = boundsList[0].maxX;
-	let maxY = boundsList[0].maxY;
-
-	for (const bounds of boundsList.slice(1)) {
-		minX = Math.min(minX, bounds.minX);
-		minY = Math.min(minY, bounds.minY);
-		maxX = Math.max(maxX, bounds.maxX);
-		maxY = Math.max(maxY, bounds.maxY);
+	function getPlacedInstanceQuantity(placement: Pick<PlacedInstance, 'quantity'>) {
+		return placement.quantity ?? 1;
 	}
 
-	return {
-		minX,
-		minY,
-		maxX,
-		maxY,
-		width: maxX - minX,
-		height: maxY - minY,
-	};
-}
+	type OutlineEditMode = 'add-point' | 'select-segment';
+	type RoomEditMode = 'add-point' | 'select-segment';
 
-function midpoint(left: { x: number; y: number }, right: { x: number; y: number }) {
-	return { x: (left.x + right.x) / 2, y: (left.y + right.y) / 2 };
-}
+	type InteractionState =
+		| { type: 'idle' }
+		| { type: 'drag-origin' }
+		| { type: 'drag-container'; roomId: string | null; placementId: string; offsetX: number; offsetY: number };
 
-function formatDistance(distance: number) {
-	return `${Math.round(distance)}`;
-}
+	type ContainerFace = 'width-depth' | 'width-height' | 'depth-height';
+	type FaceGridDraft = { columns: number; rows: number };
+	type FaceGridInputDraft = { columns: string; rows: string };
 
-function projectPoint(origin: { x: number; y: number }, direction: SegmentDirection, distance: number) {
-	switch (direction) {
-		case 'up':
-			return { x: origin.x, y: origin.y - distance };
-		case 'down':
-			return { x: origin.x, y: origin.y + distance };
-		case 'left':
-			return { x: origin.x - distance, y: origin.y };
-		case 'right':
-		default:
-			return { x: origin.x + distance, y: origin.y };
+	const CONTAINER_FACE_OPTIONS: Array<{ value: ContainerFace; label: string }> = [
+		{ value: 'width-depth', label: 'Top View' },
+		{ value: 'width-height', label: 'Front View' },
+		{ value: 'depth-height', label: 'Side View' },
+	];
+
+	function containerFaceLabel(face: ContainerFace) {
+		switch (face) {
+			case 'width-height':
+				return 'Front View';
+			case 'depth-height':
+				return 'Side View';
+			case 'width-depth':
+			default:
+				return 'Top View';
+		}
 	}
-}
 
-function getRotatedRectPoints(center: { x: number; y: number }, width: number, depth: number, rotation: number) {
-	const halfWidth = width / 2;
-	const halfDepth = depth / 2;
+	function clampGridCount(value: number) {
+		return Math.min(10, Math.max(1, value));
+	}
+
+	function resolveContainerFaceGrid(layoutGrid: InventoryContainer['layoutGrid'] | undefined, face: ContainerFace): FaceGridDraft {
+		const fallback = {
+			columns: clampGridCount(layoutGrid?.columns ?? 1),
+			rows: clampGridCount(layoutGrid?.rows ?? 1),
+		};
+
+		switch (face) {
+			case 'width-height':
+				return layoutGrid?.widthHeight ?? fallback;
+			case 'depth-height':
+				return layoutGrid?.depthHeight ?? fallback;
+			case 'width-depth':
+			default:
+				return layoutGrid?.widthDepth ?? fallback;
+		}
+	}
+
+	function normaliseFaceGridInput(draft: FaceGridInputDraft): FaceGridDraft {
+		return {
+			columns: clampGridCount(Number(draft.columns) || 1),
+			rows: clampGridCount(Number(draft.rows) || 1),
+		};
+	}
+
+	function clampZoom(zoom: number) {
+		return Math.min(2.5, Math.max(0.45, zoom));
+	}
+
+	function combineBounds(boundsList: Array<{ minX: number; minY: number; maxX: number; maxY: number }>) {
+		if (boundsList.length === 0) return null;
+
+		let minX = boundsList[0].minX;
+		let minY = boundsList[0].minY;
+		let maxX = boundsList[0].maxX;
+		let maxY = boundsList[0].maxY;
+
+		for (const bounds of boundsList.slice(1)) {
+			minX = Math.min(minX, bounds.minX);
+			minY = Math.min(minY, bounds.minY);
+			maxX = Math.max(maxX, bounds.maxX);
+			maxY = Math.max(maxY, bounds.maxY);
+		}
+
+		return {
+			minX,
+			minY,
+			maxX,
+			maxY,
+			width: maxX - minX,
+			height: maxY - minY,
+		};
+	}
+
+	function midpoint(left: { x: number; y: number }, right: { x: number; y: number }) {
+		return { x: (left.x + right.x) / 2, y: (left.y + right.y) / 2 };
+	}
+
+	function formatDistance(distance: number) {
+		return `${Math.round(distance)}`;
+	}
+
+	function projectPoint(origin: { x: number; y: number }, direction: SegmentDirection, distance: number) {
+		switch (direction) {
+			case 'up':
+				return { x: origin.x, y: origin.y - distance };
+			case 'down':
+				return { x: origin.x, y: origin.y + distance };
+			case 'left':
+				return { x: origin.x - distance, y: origin.y };
+			case 'right':
+			default:
+				return { x: origin.x + distance, y: origin.y };
+		}
+	}
+
+	function getRotatedRectPoints(center: { x: number; y: number }, width: number, depth: number, rotation: number) {
+		const halfWidth = width / 2;
+		const halfDepth = depth / 2;
 	const radians = rotation * (Math.PI / 180);
 	const cos = Math.cos(radians);
 	const sin = Math.sin(radians);
@@ -189,6 +245,7 @@ export function HomeFloorPlan({
 	onStartEditRoom,
 	onDeleteRoom,
 	onUpdateRoomPlacedItems,
+	onUpdateRoom,
 	onUpdateStoryPlacedItems,
 	onUpdateRoomPhotos,
 	onUpdateStoryPhotos,
@@ -223,6 +280,21 @@ export function HomeFloorPlan({
 	const [newItemQuantityByContainer, setNewItemQuantityByContainer] = useState<Record<string, string>>({});
 	const [photoStatusByScope, setPhotoStatusByScope] = useState<Record<string, string>>({});
 	const [photoUploadBusyByScope, setPhotoUploadBusyByScope] = useState<Record<string, boolean>>({});
+	const [roomAddItemRoomId, setRoomAddItemRoomId] = useState<string | null>(null);
+	const [roomAddContainerRoomId, setRoomAddContainerRoomId] = useState<string | null>(null);
+	const [viewingContainerPlacementId, setViewingContainerPlacementId] = useState<string | null>(null);
+	const [viewingContainerFace, setViewingContainerFace] = useState<ContainerFace>('width-depth');
+	const [showViewedContainerAddItemPanel, setShowViewedContainerAddItemPanel] = useState(false);
+	const [showViewedContainerLayoutPanel, setShowViewedContainerLayoutPanel] = useState(false);
+	const [pendingViewedContainerItemId, setPendingViewedContainerItemId] = useState<string | null>(null);
+	const [viewedLayoutWidth, setViewedLayoutWidth] = useState<number | ''>('');
+	const [viewedLayoutDepth, setViewedLayoutDepth] = useState<number | ''>('');
+	const [viewedLayoutHeight, setViewedLayoutHeight] = useState<number | ''>('');
+	const [viewedLayoutActiveFace, setViewedLayoutActiveFace] = useState<ContainerFace>('width-depth');
+	const [viewedLayoutWidthDepthGrid, setViewedLayoutWidthDepthGrid] = useState<FaceGridInputDraft>({ columns: '1', rows: '1' });
+	const [viewedLayoutWidthHeightGrid, setViewedLayoutWidthHeightGrid] = useState<FaceGridInputDraft>({ columns: '1', rows: '1' });
+	const [viewedLayoutDepthHeightGrid, setViewedLayoutDepthHeightGrid] = useState<FaceGridInputDraft>({ columns: '1', rows: '1' });
+	const [viewedLayoutError, setViewedLayoutError] = useState('');
 	const resources = useResourceStore((s) => s.resources);
 	const setResource = useResourceStore((s) => s.setResource);
 	const user = useUserStore((s) => s.user);
@@ -315,67 +387,119 @@ export function HomeFloorPlan({
 		() => mergeInventoryItemTemplates(userItemTemplates, ...inventoryResources.map((entry) => entry.itemTemplates)),
 		[inventoryResources, userItemTemplates],
 	);
+
+	function findRoomContainerRecord(room: FloorPlanRoom, containerId: string) {
+		const dedicatedContainer = room.dedicatedContainers?.find((candidate) => candidate.id === containerId);
+		if (dedicatedContainer) {
+			return {
+				source: 'room' as const,
+				container: dedicatedContainer,
+				inventoryName: `${room.name} room`,
+				itemTemplates: mergeInventoryItemTemplates(userItemTemplates, room.dedicatedItems),
+			};
+		}
+
+		for (const inventory of inventoryResources) {
+			const container = inventory.containers?.find((candidate) => candidate.id === containerId);
+			if (!container) continue;
+			return {
+				source: 'inventory' as const,
+				inventory,
+				container,
+				inventoryName: inventory.name,
+				itemTemplates: mergeInventoryItemTemplates(userItemTemplates, inventory.itemTemplates),
+			};
+		}
+
+		return null;
+	}
+
+	function resolvePlacedContainerEntry(room: FloorPlanRoom, placement: PlacedInstance) {
+		const record = findRoomContainerRecord(room, placement.refId);
+		if (!record) {
+			return {
+				placement,
+				container: null,
+				containerName: 'Unknown container',
+				containerIcon: 'inventory',
+				inventoryName: 'Unlinked inventory',
+				items: [],
+				source: 'missing' as const,
+			};
+		}
+
+		return {
+			placement,
+			container: record.container,
+			containerName: record.container.name,
+			containerIcon: record.container.icon,
+			inventoryName: record.inventoryName,
+			items: record.container.items.map((item) => ({
+				id: item.id,
+				name: resolveInventoryItemTemplate(item.itemTemplateRef, record.itemTemplates)?.name ?? item.itemTemplateRef,
+				quantity: item.quantity,
+				unit: item.unit,
+			})),
+			source: record.source,
+		};
+	}
+
+	function resolvePlacedItemEntry(room: FloorPlanRoom, placement: PlacedInstance) {
+		for (const inventory of inventoryResources) {
+			const item = inventory.items.find((candidate) => candidate.id === placement.refId);
+			if (!item) continue;
+			const resolvedItem = resolveInventoryItemTemplate(item.itemTemplateRef, mergeInventoryItemTemplates(userItemTemplates, inventory.itemTemplates));
+			return {
+				placement,
+				itemName: resolvedItem?.name ?? item.itemTemplateRef,
+				itemIcon: resolvedItem?.icon ?? 'inventory',
+				quantity: item.quantity,
+				unit: item.unit,
+				threshold: item.threshold,
+				inventoryName: inventory.name,
+				source: 'inventory' as const,
+			};
+		}
+
+		const roomTemplates = mergeInventoryItemTemplates(userItemTemplates, room.dedicatedItems);
+		const resolvedTemplate = resolveInventoryItemTemplate(placement.refId, roomTemplates);
+		if (resolvedTemplate) {
+			return {
+				placement,
+				itemName: resolvedTemplate.name,
+				itemIcon: resolvedTemplate.icon,
+				quantity: placement.quantity,
+				unit: undefined,
+				threshold: undefined,
+				inventoryName: room.dedicatedItems?.some((item) => item.id === placement.refId)
+					? `${room.name} room`
+					: resolvedTemplate.source === 'library'
+						? 'Library item'
+						: 'My item',
+				source: room.dedicatedItems?.some((item) => item.id === placement.refId) ? 'room' as const : resolvedTemplate.source,
+			};
+		}
+
+		return {
+			placement,
+			itemName: 'Unknown item',
+			itemIcon: 'inventory',
+			quantity: placement.quantity,
+			unit: undefined,
+			threshold: undefined,
+			inventoryName: 'Unlinked inventory',
+			source: 'missing' as const,
+		};
+	}
 	const roomSummaries = useMemo(() => {
 		return story.rooms.map((room) => {
 			const bounds = getPointsBounds(segmentsToPoints(room.origin, room.segments));
 			const placedContainerEntries = room.placedItems
 				.filter((entry) => entry.kind === 'container')
-				.map((entry) => {
-					for (const inventory of inventoryResources) {
-						const container = inventory.containers?.find((candidate) => candidate.id === entry.refId);
-						if (container) {
-							const itemTemplates = mergeInventoryItemTemplates(userItemTemplates, inventory.itemTemplates);
-							return {
-								placement: entry,
-								containerName: container.name,
-								containerIcon: container.icon,
-								inventoryName: inventory.name,
-								items: container.items.map((item) => ({
-									id: item.id,
-									name: resolveInventoryItemTemplate(item.itemTemplateRef, itemTemplates)?.name ?? item.itemTemplateRef,
-									quantity: item.quantity,
-									unit: item.unit,
-								})),
-							};
-						}
-					}
-
-					return {
-						placement: entry,
-						containerName: 'Unknown container',
-						containerIcon: 'inventory',
-						inventoryName: 'Unlinked inventory',
-						items: [],
-					};
-				});
+				.map((entry) => resolvePlacedContainerEntry(room, entry));
 				const placedLooseItemEntries = room.placedItems
 					.filter((entry) => entry.kind === 'item')
-					.map((entry) => {
-						for (const inventory of inventoryResources) {
-							const item = inventory.items.find((candidate) => candidate.id === entry.refId);
-							if (!item) continue;
-							const resolvedItem = resolveInventoryItemTemplate(item.itemTemplateRef, mergeInventoryItemTemplates(userItemTemplates, inventory.itemTemplates));
-							return {
-								placement: entry,
-								itemName: resolvedItem?.name ?? item.itemTemplateRef,
-								itemIcon: resolvedItem?.icon ?? 'inventory',
-								quantity: item.quantity,
-								unit: item.unit,
-								threshold: item.threshold,
-								inventoryName: inventory.name,
-							};
-						}
-
-						return {
-							placement: entry,
-							itemName: 'Unknown item',
-							itemIcon: 'inventory',
-							quantity: undefined,
-							unit: undefined,
-							threshold: undefined,
-							inventoryName: 'Unlinked inventory',
-						};
-					});
+					.map((entry) => resolvePlacedItemEntry(room, entry));
 
 			return {
 				room,
@@ -460,58 +584,29 @@ export function HomeFloorPlan({
 	const selectedRoomSummary = roomSummaries.find((entry) => entry.room.id === selectedRoom?.id) ?? null;
 	const selectedEditingSegment = selectedSegmentIndex != null ? editingSegmentLines[selectedSegmentIndex] ?? null : null;
 	const effectiveExpandedRoomId = !editingRoom && !editingStoryOutline ? (selectedRoomId ?? null) : expandedRoomId;
-	const activeEditablePlacementId = editingPlacedContainerId ?? selectedPlacementId;
+	const activeEditablePlacementId = selectedPlacementId;
 	const editingRoomId = editingRoom?.id ?? null;
-	const selectedPlacementDetails = (() => {
-		if (!selectedPlacementId) return null;
+	const roomAddItemSummary = roomAddItemRoomId ? roomSummaries.find((entry) => entry.room.id === roomAddItemRoomId) ?? null : null;
+	const roomAddContainerSummary = roomAddContainerRoomId ? roomSummaries.find((entry) => entry.room.id === roomAddContainerRoomId) ?? null : null;
+	const viewedContainerEntry = useMemo(() => {
+		if (!selectedRoomSummary || !viewingContainerPlacementId) return null;
+		return selectedRoomSummary.placedContainerEntries.find((entry) => entry.placement.id === viewingContainerPlacementId) ?? null;
+	}, [selectedRoomSummary, viewingContainerPlacementId]);
+	const viewedContainerRecord = useMemo(() => {
+		if (!selectedRoomSummary || !viewedContainerEntry?.container) return null;
+		return findRoomContainerRecord(selectedRoomSummary.room, viewedContainerEntry.container.id);
+	}, [selectedRoomSummary, viewedContainerEntry]);
 
-		for (const summary of roomSummaries) {
-			for (const entry of summary.placedContainerEntries) {
-				if (entry.placement.id === selectedPlacementId) {
-					return {
-						roomId: summary.room.id,
-						placementId: entry.placement.id,
-						name: entry.containerName,
-						kindLabel: 'Container',
-					};
-				}
-			}
-			for (const entry of summary.placedLooseItemEntries) {
-				if (entry.placement.id === selectedPlacementId) {
-					return {
-						roomId: summary.room.id,
-						placementId: entry.placement.id,
-						name: entry.itemName,
-						kindLabel: 'Item',
-					};
-				}
-			}
-		}
+	useEffect(() => {
+		if (!viewingContainerPlacementId || viewedContainerEntry) return;
+		const resetId = window.setTimeout(() => setViewingContainerPlacementId(null), 0);
+		return () => window.clearTimeout(resetId);
+	}, [viewedContainerEntry, viewingContainerPlacementId]);
 
-		for (const entry of outsidePlacedContainerEntries) {
-			if (entry.placement.id === selectedPlacementId) {
-				return {
-					roomId: null,
-					placementId: entry.placement.id,
-					name: entry.containerName,
-					kindLabel: 'Container',
-				};
-			}
-		}
-
-		for (const entry of outsidePlacedLooseItemEntries) {
-			if (entry.placement.id === selectedPlacementId) {
-				return {
-					roomId: null,
-					placementId: entry.placement.id,
-					name: entry.itemName,
-					kindLabel: 'Item',
-				};
-			}
-		}
-
-		return null;
-	})();
+	useEffect(() => {
+		if (viewedContainerEntry) return;
+		setShowViewedContainerLayoutPanel(false);
+	}, [viewedContainerEntry]);
 
 	useEffect(() => {
 		const resetId = window.setTimeout(() => {
@@ -817,6 +912,340 @@ export function HomeFloorPlan({
 		);
 	}
 
+	function updateRoom(roomId: string, updater: (room: FloorPlanRoom) => FloorPlanRoom) {
+		onUpdateRoom?.(roomId, updater);
+	}
+
+	function updateRoomContainer(roomId: string, containerId: string, updater: (container: InventoryContainer) => InventoryContainer) {
+		updateRoom(roomId, (room) => ({
+			...room,
+			dedicatedContainers: (room.dedicatedContainers ?? []).map((container) => (
+				container.id === containerId ? updater(container) : container
+			)),
+		}));
+	}
+
+	function appendPlacedItemToRoom(room: FloorPlanRoom, bounds: { minX: number; minY: number; width: number; height: number }, placement: Omit<PlacedInstance, 'id' | 'x' | 'y' | 'rotation'>) {
+		if (!onUpdateRoomPlacedItems) return;
+		const nextPlacementId = uuidv4();
+		onUpdateRoomPlacedItems(room.id, [
+			...room.placedItems,
+			{
+				...placement,
+				id: nextPlacementId,
+				x: Math.round(bounds.minX + bounds.width / 2),
+				y: Math.round(bounds.minY + bounds.height / 2),
+				rotation: 0,
+			},
+		]);
+		setSelectedPlacementId(nextPlacementId);
+		setViewingContainerPlacementId(placement.kind === 'container' ? nextPlacementId : null);
+	}
+
+	function addTemplateItemToRoom(room: FloorPlanRoom, bounds: { minX: number; minY: number; width: number; height: number }, itemTemplateRef: string) {
+		const resolvedItem = resolveInventoryItemTemplate(itemTemplateRef, mergeInventoryItemTemplates(userItemTemplates, room.dedicatedItems));
+		const defaultSize = resolvedItem?.kind === 'facility' ? 18 : 14;
+		appendPlacedItemToRoom(room, bounds, {
+			kind: 'item',
+			refId: itemTemplateRef,
+			quantity: undefined,
+			width: resolvedItem?.dimensions?.width ?? defaultSize,
+			depth: resolvedItem?.dimensions?.depth ?? defaultSize,
+		});
+		setRoomAddItemRoomId(null);
+	}
+
+	function createRoomItem(room: FloorPlanRoom, bounds: { minX: number; minY: number; width: number; height: number }, itemTemplate: InventoryItemTemplate) {
+		const nextPlacementId = uuidv4();
+		const width = itemTemplate.dimensions?.width ?? 14;
+		const depth = itemTemplate.dimensions?.depth ?? 14;
+		updateRoom(room.id, (current) => ({
+			...current,
+			dedicatedItems: [...(current.dedicatedItems ?? []), itemTemplate],
+			placedItems: [
+				...current.placedItems,
+				{
+					id: nextPlacementId,
+					kind: 'item',
+					refId: itemTemplate.id,
+					quantity: undefined,
+					width,
+					depth,
+					x: Math.round(bounds.minX + bounds.width / 2),
+					y: Math.round(bounds.minY + bounds.height / 2),
+					rotation: 0,
+				},
+			],
+		}));
+		setSelectedPlacementId(nextPlacementId);
+		setExpandedPlacedContainerId(nextPlacementId);
+		setViewingContainerPlacementId(null);
+		setRoomAddItemRoomId(null);
+	}
+
+	function addExistingContainerToRoom(room: FloorPlanRoom, bounds: { minX: number; minY: number; width: number; height: number }, containerId: string) {
+		const record = findInventoryContainerRecord(containerId);
+		appendPlacedItemToRoom(room, bounds, {
+			kind: 'container',
+			refId: containerId,
+			width: record?.container.dimensions?.width ?? 24,
+			depth: record?.container.dimensions?.depth ?? 24,
+		});
+		setRoomAddContainerRoomId(null);
+	}
+
+	function createRoomContainer(room: FloorPlanRoom, bounds: { minX: number; minY: number; width: number; height: number }, container: InventoryContainer) {
+		const nextPlacementId = uuidv4();
+		const width = container.dimensions?.width ?? 24;
+		const depth = container.dimensions?.depth ?? 24;
+		updateRoom(room.id, (current) => ({
+			...current,
+			dedicatedContainers: [...(current.dedicatedContainers ?? []), container],
+			placedItems: [
+				...current.placedItems,
+				{
+					id: nextPlacementId,
+					kind: 'container',
+					refId: container.id,
+					width,
+					depth,
+					x: Math.round(bounds.minX + bounds.width / 2),
+					y: Math.round(bounds.minY + bounds.height / 2),
+					rotation: 0,
+				},
+			],
+		}));
+		setSelectedPlacementId(nextPlacementId);
+		setExpandedPlacedContainerId(nextPlacementId);
+		setViewingContainerPlacementId(nextPlacementId);
+		setRoomAddContainerRoomId(null);
+	}
+
+	function updateContainerCanvasItemPlacement(itemId: string, face: ContainerFace, x: number, y: number, rotation: number) {
+		if (!selectedRoomSummary || !viewedContainerEntry?.container) return;
+		const apply = (container: InventoryContainer): InventoryContainer => ({
+			...container,
+			items: container.items.map((item) => (
+				item.id === itemId
+					? {
+						...item,
+						placedInContainer: {
+							[face]: { x, y, rotation },
+						},
+					}
+					: item
+			)),
+		});
+
+		if (viewedContainerEntry.source === 'inventory') {
+			updateInventoryContainer(viewedContainerEntry.container.id, apply);
+			return;
+		}
+
+		updateRoomContainer(selectedRoomSummary.room.id, viewedContainerEntry.container.id, apply);
+	}
+
+	function removeContainerCanvasItemPlacement(itemId: string, face: ContainerFace) {
+		if (!selectedRoomSummary || !viewedContainerEntry?.container) return;
+		const apply = (container: InventoryContainer): InventoryContainer => ({
+			...container,
+			items: container.items.map((item) => {
+				if (item.id !== itemId || !item.placedInContainer?.[face]) return item;
+				return {
+					...item,
+					placedInContainer: undefined,
+				};
+			}),
+		});
+
+		if (viewedContainerEntry.source === 'inventory') {
+			updateInventoryContainer(viewedContainerEntry.container.id, apply);
+			return;
+		}
+
+		updateRoomContainer(selectedRoomSummary.room.id, viewedContainerEntry.container.id, apply);
+	}
+
+	function updateViewedContainerItemQuantity(itemId: string, quantity: number) {
+		if (!selectedRoomSummary || !viewedContainerEntry?.container) return;
+		const apply = (container: InventoryContainer): InventoryContainer => ({
+			...container,
+			items: container.items.map((item) => (
+				item.id === itemId
+					? {
+						...item,
+						quantity: Math.max(0, quantity),
+					}
+					: item
+			)),
+		});
+
+		if (viewedContainerEntry.source === 'inventory') {
+			updateInventoryContainer(viewedContainerEntry.container.id, apply);
+			return;
+		}
+
+		updateRoomContainer(selectedRoomSummary.room.id, viewedContainerEntry.container.id, apply);
+	}
+
+	function openViewedContainerLayoutPanel() {
+		if (!viewedContainerEntry?.container) return;
+		const layoutGrid = viewedContainerEntry.container.layoutGrid;
+		setViewedLayoutWidth(viewedContainerEntry.container.dimensions?.width ?? '');
+		setViewedLayoutDepth(viewedContainerEntry.container.dimensions?.depth ?? '');
+		setViewedLayoutHeight(viewedContainerEntry.container.dimensions?.height ?? '');
+		setViewedLayoutActiveFace(layoutGrid?.xAxis ?? 'width-depth');
+		const widthDepthGrid = resolveContainerFaceGrid(layoutGrid, 'width-depth');
+		const widthHeightGrid = resolveContainerFaceGrid(layoutGrid, 'width-height');
+		const depthHeightGrid = resolveContainerFaceGrid(layoutGrid, 'depth-height');
+		setViewedLayoutWidthDepthGrid({ columns: String(widthDepthGrid.columns), rows: String(widthDepthGrid.rows) });
+		setViewedLayoutWidthHeightGrid({ columns: String(widthHeightGrid.columns), rows: String(widthHeightGrid.rows) });
+		setViewedLayoutDepthHeightGrid({ columns: String(depthHeightGrid.columns), rows: String(depthHeightGrid.rows) });
+		setViewedLayoutError('');
+		setShowViewedContainerLayoutPanel(true);
+	}
+
+	function updateViewedLayoutGrid(face: ContainerFace, patch: Partial<FaceGridInputDraft>) {
+		const apply = (current: FaceGridInputDraft): FaceGridInputDraft => ({
+			columns: patch.columns ?? current.columns,
+			rows: patch.rows ?? current.rows,
+		});
+
+		if (face === 'width-depth') {
+			setViewedLayoutWidthDepthGrid((current) => apply(current));
+			return;
+		}
+		if (face === 'width-height') {
+			setViewedLayoutWidthHeightGrid((current) => apply(current));
+			return;
+		}
+		setViewedLayoutDepthHeightGrid((current) => apply(current));
+	}
+
+	function commitViewedLayoutGrid(face: ContainerFace) {
+		if (face === 'width-depth') {
+			setViewedLayoutWidthDepthGrid((current) => {
+				const next = normaliseFaceGridInput(current);
+				return { columns: String(next.columns), rows: String(next.rows) };
+			});
+			return;
+		}
+		if (face === 'width-height') {
+			setViewedLayoutWidthHeightGrid((current) => {
+				const next = normaliseFaceGridInput(current);
+				return { columns: String(next.columns), rows: String(next.rows) };
+			});
+			return;
+		}
+		setViewedLayoutDepthHeightGrid((current) => {
+			const next = normaliseFaceGridInput(current);
+			return { columns: String(next.columns), rows: String(next.rows) };
+		});
+	}
+
+	function applyViewedContainerLayout() {
+		if (!selectedRoomSummary || !viewedContainerEntry?.container) return;
+
+		const hasAnyDimensions = [viewedLayoutWidth, viewedLayoutDepth, viewedLayoutHeight].some((value) => value !== '');
+		const hasFullDimensions = viewedLayoutWidth !== '' && viewedLayoutDepth !== '' && viewedLayoutHeight !== ''
+			&& viewedLayoutWidth > 0 && viewedLayoutDepth > 0 && viewedLayoutHeight > 0;
+
+		if (hasAnyDimensions && !hasFullDimensions) {
+			setViewedLayoutError('Width, depth, and height must all be set together.');
+			return;
+		}
+
+		const nextWidthDepthGrid = normaliseFaceGridInput(viewedLayoutWidthDepthGrid);
+		const nextWidthHeightGrid = normaliseFaceGridInput(viewedLayoutWidthHeightGrid);
+		const nextDepthHeightGrid = normaliseFaceGridInput(viewedLayoutDepthHeightGrid);
+
+		setViewedLayoutWidthDepthGrid({ columns: String(nextWidthDepthGrid.columns), rows: String(nextWidthDepthGrid.rows) });
+		setViewedLayoutWidthHeightGrid({ columns: String(nextWidthHeightGrid.columns), rows: String(nextWidthHeightGrid.rows) });
+		setViewedLayoutDepthHeightGrid({ columns: String(nextDepthHeightGrid.columns), rows: String(nextDepthHeightGrid.rows) });
+
+		const apply = (container: InventoryContainer): InventoryContainer => ({
+			...container,
+			dimensions: hasFullDimensions
+				? {
+					width: viewedLayoutWidth,
+					depth: viewedLayoutDepth,
+					height: viewedLayoutHeight,
+				}
+				: undefined,
+			layoutGrid: hasFullDimensions
+				? {
+					xAxis: viewedLayoutActiveFace,
+					columns: nextWidthDepthGrid.columns,
+					rows: nextWidthDepthGrid.rows,
+					widthDepth: nextWidthDepthGrid,
+					widthHeight: nextWidthHeightGrid,
+					depthHeight: nextDepthHeightGrid,
+				}
+				: undefined,
+		});
+
+		if (viewedContainerEntry.source === 'inventory') {
+			updateInventoryContainer(viewedContainerEntry.container.id, apply);
+		} else {
+			updateRoomContainer(selectedRoomSummary.room.id, viewedContainerEntry.container.id, apply);
+		}
+
+		setViewingContainerFace(viewedLayoutActiveFace);
+		setViewedLayoutError('');
+		setShowViewedContainerLayoutPanel(false);
+	}
+
+	function addItemInstanceToViewedContainer(item: ItemInstance) {
+		if (!selectedRoomSummary || !viewedContainerEntry?.container) return;
+		const append = (container: InventoryContainer): InventoryContainer => ({
+			...container,
+			items: [...container.items, item],
+		});
+
+		if (viewedContainerEntry.source === 'inventory') {
+			updateInventoryContainer(viewedContainerEntry.container.id, append);
+		} else {
+			updateRoomContainer(selectedRoomSummary.room.id, viewedContainerEntry.container.id, append);
+		}
+
+		setPendingViewedContainerItemId(item.id);
+		setShowViewedContainerAddItemPanel(false);
+	}
+
+	function addTemplateItemToViewedRoomContainer(itemTemplateRef: string) {
+		if (!selectedRoomSummary || !viewedContainerEntry?.container) return;
+		const resolved = resolveInventoryItemTemplate(itemTemplateRef, mergeInventoryItemTemplates(userItemTemplates, selectedRoomSummary.room.dedicatedItems));
+		addItemInstanceToViewedContainer({
+			id: uuidv4(),
+			itemTemplateRef,
+			quantity: resolved?.kind === 'consumable' ? 1 : undefined,
+			dimensions: resolved?.dimensions,
+		});
+	}
+
+	function createRoomItemForViewedContainer(itemTemplate: InventoryItemTemplate) {
+		if (!selectedRoomSummary || !viewedContainerEntry?.container) return;
+		const nextItem: ItemInstance = {
+			id: uuidv4(),
+			itemTemplateRef: itemTemplate.id,
+			quantity: itemTemplate.kind === 'consumable' ? 1 : undefined,
+			dimensions: itemTemplate.dimensions,
+		};
+
+		updateRoom(selectedRoomSummary.room.id, (current) => ({
+			...current,
+			dedicatedItems: [...(current.dedicatedItems ?? []), itemTemplate],
+			dedicatedContainers: (current.dedicatedContainers ?? []).map((container) => (
+				container.id === viewedContainerEntry.container?.id
+					? { ...container, items: [...container.items, nextItem] }
+					: container
+			)),
+		}));
+
+		setPendingViewedContainerItemId(nextItem.id);
+		setShowViewedContainerAddItemPanel(false);
+	}
+
 	function removePlacedItem(roomId: string | null, placementId: string) {
 		if (roomId === null) {
 			if (!onUpdateStoryPlacedItems) return;
@@ -994,119 +1423,6 @@ export function HomeFloorPlan({
 				))}
 			</div>
 		);
-	}
-
-	function createContainerForRoom(room: FloorPlanRoom, bounds: { minX: number; minY: number; width: number; height: number }) {
-		const draft = draftContainerByRoom[room.id] ?? { name: '', icon: 'inventory' };
-		if (!draft.name.trim() || !onUpdateRoomPlacedItems) return;
-
-		const now = new Date().toISOString();
-		const nextContainerId = uuidv4();
-		const { preferredInventory, baseInventory } = getPreferredInventory(now);
-
-		setResource({
-			...baseInventory,
-			updatedAt: now,
-			linkedHomeId: baseInventory.linkedHomeId ?? homeId,
-			containers: [
-				...(baseInventory.containers ?? []),
-				{
-					id: nextContainerId,
-					name: draft.name.trim(),
-					icon: draft.icon || 'inventory',
-					items: [],
-					notes: [],
-					attachments: [],
-					links: homeId
-						? [{
-							id: uuidv4(),
-							relationship: 'location',
-							targetKind: 'home-room',
-							targetResourceId: homeId,
-							targetRoomId: room.id,
-							createdAt: now,
-						}]
-						: undefined,
-				},
-			],
-			items: baseInventory.items ?? [],
-		});
-
-		ensureInventoryRegistered(baseInventory.id, preferredInventory);
-
-		const nextPlacementId = uuidv4();
-
-		onUpdateRoomPlacedItems(room.id, [
-			...room.placedItems,
-			{
-				id: nextPlacementId,
-				kind: 'container',
-				refId: nextContainerId,
-				width: 24,
-				depth: 24,
-				x: Math.round(bounds.minX + bounds.width / 2),
-				y: Math.round(bounds.minY + bounds.height / 2),
-				rotation: 0,
-			},
-		]);
-		setSelectedPlacementId(nextPlacementId);
-		setExpandedPlacedContainerId(nextPlacementId);
-		setEditingPlacedContainerId(nextPlacementId);
-
-		setDraftContainerByRoom((current) => ({
-			...current,
-			[room.id]: {
-				name: '',
-				icon: draft.icon || 'inventory',
-			},
-		}));
-	}
-
-	function addLooseItemToRoom(room: FloorPlanRoom, bounds: { minX: number; minY: number; width: number; height: number }) {
-		if (!onUpdateRoomPlacedItems) return;
-		const templateRef = newLooseItemTemplateRefByRoom[room.id] ?? mergedItemTemplates[0]?.id ?? '';
-		if (!templateRef) return;
-		const quantity = Math.max(0, Number(newLooseItemQuantityByRoom[room.id] ?? '1') || 0);
-
-		const now = new Date().toISOString();
-		const nextItemId = uuidv4();
-		const nextPlacementId = uuidv4();
-		const template = mergedItemTemplates.find((entry) => entry.id === templateRef) ?? null;
-		const defaultSize = template?.kind === 'facility' ? 18 : 14;
-		const { preferredInventory, baseInventory } = getPreferredInventory(now);
-
-		setResource({
-			...baseInventory,
-			updatedAt: now,
-			linkedHomeId: baseInventory.linkedHomeId ?? homeId,
-			containers: baseInventory.containers ?? [],
-			items: [...(baseInventory.items ?? []), { id: nextItemId, itemTemplateRef: templateRef, quantity }],
-		});
-
-		ensureInventoryRegistered(baseInventory.id, preferredInventory);
-
-		onUpdateRoomPlacedItems(room.id, [
-			...room.placedItems,
-			{
-				id: nextPlacementId,
-				kind: 'item',
-				refId: nextItemId,
-				quantity,
-				width: defaultSize,
-				depth: defaultSize,
-				x: Math.round(bounds.minX + bounds.width / 2),
-				y: Math.round(bounds.minY + bounds.height / 2),
-				rotation: 0,
-			},
-		]);
-		setSelectedPlacementId(nextPlacementId);
-		setExpandedPlacedContainerId(nextPlacementId);
-		setEditingPlacedContainerId(nextPlacementId);
-		setNewLooseItemQuantityByRoom((current) => ({
-			...current,
-			[room.id]: '1',
-		}));
-		setAddingLooseItemRoomId(null);
 	}
 
 	function createContainerForStory(bounds: { minX: number; minY: number; width: number; height: number }) {
@@ -1346,6 +1662,183 @@ export function HomeFloorPlan({
 		);
 	}
 
+	function renderRoomExpandedContent(summary: typeof roomSummaries[number]) {
+		const { room, placedContainerEntries, placedLooseItemEntries } = summary;
+		const selectedContainerEntry = placedContainerEntries.find((entry) => entry.placement.id === expandedPlacedContainerId) ?? null;
+		const selectedLooseItemEntry = placedLooseItemEntries.find((entry) => entry.placement.id === expandedPlacedContainerId) ?? null;
+		const hasFocusedPlacement = Boolean(selectedContainerEntry || selectedLooseItemEntry);
+		const visibleContainerEntries = selectedContainerEntry ? [selectedContainerEntry] : selectedLooseItemEntry ? [] : placedContainerEntries;
+		const visibleLooseItemEntries = selectedLooseItemEntry ? [selectedLooseItemEntry] : selectedContainerEntry ? [] : placedLooseItemEntries;
+
+		return (
+			<div className="space-y-3 border-t border-gray-200 px-4 py-4 dark:border-gray-700">
+				{!hasFocusedPlacement ? (
+					<div className="flex flex-wrap items-center gap-2">
+					<button
+						type="button"
+						onClick={() => {
+							onSelectRoom(room.id);
+							setRoomAddContainerRoomId(room.id);
+						}}
+						className="rounded-full bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700"
+					>
+						Add container
+					</button>
+					<button
+						type="button"
+						onClick={() => {
+							onSelectRoom(room.id);
+							setRoomAddItemRoomId(room.id);
+						}}
+						className="rounded-full bg-blue-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-600"
+					>
+						Add item
+					</button>
+					</div>
+				) : null}
+
+				{visibleContainerEntries.length > 0 ? (
+				<div className="space-y-2 rounded-xl bg-gray-50 px-3 py-3 text-sm dark:bg-gray-800/60">
+					<div className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Container placement</div>
+					{visibleContainerEntries.length === 0 ? (
+						<div className="mt-2 text-xs italic text-gray-400">No placed containers.</div>
+					) : (
+						<div className="space-y-2">
+							{visibleContainerEntries.map((entry) => {
+								const isSelectedPlacement = expandedPlacedContainerId === entry.placement.id;
+								const isViewing = viewingContainerPlacementId === entry.placement.id;
+								return (
+									<div key={entry.placement.id} className={isSelectedPlacement ? 'rounded-xl bg-white ring-2 ring-blue-200 dark:bg-gray-900/70 dark:ring-blue-900/60' : 'rounded-xl bg-white ring-1 ring-black/5 dark:bg-gray-900/70'}>
+										<button
+											type="button"
+											onClick={() => {
+												if (isSelectedPlacement) {
+													setExpandedPlacedContainerId(null);
+													setSelectedPlacementId((current) => current === entry.placement.id ? null : current);
+													setEditingPlacedContainerId((current) => current === entry.placement.id ? null : current);
+													setAddingItemContainerId((current) => current === entry.placement.id ? null : current);
+													if (viewingContainerPlacementId === entry.placement.id) {
+														setViewingContainerPlacementId(null);
+													}
+													return;
+												}
+
+												onSelectRoom(room.id);
+												setExpandedPlacedContainerId(entry.placement.id);
+												setSelectedPlacementId(entry.placement.id);
+												setViewingContainerPlacementId(null);
+											}}
+											className="flex w-full items-center justify-between gap-3 px-3 py-3 text-left"
+										>
+											<div className="flex min-w-0 items-center gap-3">
+												<IconDisplay iconKey={entry.containerIcon || 'inventory'} size={16} className="h-4 w-4 shrink-0 object-contain" alt="" />
+												<div className="min-w-0">
+													<div className="truncate text-sm font-semibold text-gray-800 dark:text-gray-100">{entry.containerName}</div>
+													<div className="text-[11px] text-gray-500 dark:text-gray-400">{entry.items.length} item{entry.items.length === 1 ? '' : 's'} · {entry.inventoryName}</div>
+												</div>
+											</div>
+											<span className="text-sm font-semibold text-blue-600 dark:text-blue-300">{isSelectedPlacement ? '↑' : '↓'}</span>
+										</button>
+										{isSelectedPlacement ? (
+											<div className="border-t border-gray-200 px-3 py-3 text-xs text-gray-600 dark:border-gray-700 dark:text-gray-300">
+												<div className="mb-2 text-[11px] text-gray-500 dark:text-gray-400">{entry.inventoryName}</div>
+												{renderContainerItems(entry.placement.refId, entry.items, false)}
+												<div className="mt-3 flex flex-wrap items-center gap-2">
+													<button
+														type="button"
+														onClick={() => {
+															onSelectRoom(room.id);
+															setExpandedPlacedContainerId(entry.placement.id);
+															setSelectedPlacementId(entry.placement.id);
+															setViewingContainerPlacementId(entry.placement.id);
+															setViewingContainerFace(entry.container?.layoutGrid?.xAxis ?? 'width-depth');
+														}}
+														className={isViewing ? 'rounded-full bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white' : 'rounded-full bg-gray-100 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700'}
+													>
+														View
+													</button>
+													<button type="button" onClick={() => removePlacedItem(room.id, entry.placement.id)} className="rounded-full bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-100 dark:bg-red-900/20 dark:text-red-300">Remove</button>
+												</div>
+											</div>
+										) : null}
+									</div>
+								);
+							})}
+						</div>
+					)}
+				</div>
+				) : null}
+
+				{visibleLooseItemEntries.length > 0 ? (
+				<div className="space-y-2 rounded-xl bg-gray-50 px-3 py-3 text-sm dark:bg-gray-800/60">
+					<div className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Room items</div>
+					{visibleLooseItemEntries.length === 0 ? (
+						<div className="mt-2 text-xs italic text-gray-400">No placed room items.</div>
+					) : (
+						<div className="space-y-2">
+							{visibleLooseItemEntries.map((entry) => {
+								const isSelectedPlacement = expandedPlacedContainerId === entry.placement.id;
+								const quantityLabel = entry.quantity != null ? `${entry.quantity}${entry.unit?.trim() ? ` ${entry.unit.trim()}` : ''}` : 'No quantity';
+								return (
+									<div key={entry.placement.id} className={isSelectedPlacement ? 'rounded-xl bg-white ring-2 ring-blue-200 dark:bg-gray-900/70 dark:ring-blue-900/60' : 'rounded-xl bg-white ring-1 ring-black/5 dark:bg-gray-900/70'}>
+										<button
+											type="button"
+											onClick={() => {
+												if (isSelectedPlacement) {
+													setExpandedPlacedContainerId(null);
+													setSelectedPlacementId((current) => current === entry.placement.id ? null : current);
+													setEditingPlacedContainerId((current) => current === entry.placement.id ? null : current);
+													if (viewingContainerPlacementId === entry.placement.id) {
+														setViewingContainerPlacementId(null);
+													}
+													return;
+												}
+
+												onSelectRoom(room.id);
+												setExpandedPlacedContainerId(entry.placement.id);
+												setSelectedPlacementId(entry.placement.id);
+												setViewingContainerPlacementId(null);
+											}}
+											className="flex w-full items-center justify-between gap-3 px-3 py-3 text-left"
+										>
+											<div className="flex min-w-0 items-center gap-3">
+												<IconDisplay iconKey={entry.itemIcon || 'inventory'} size={16} className="h-4 w-4 shrink-0 object-contain" alt="" />
+												<div className="min-w-0">
+													<div className="truncate text-sm font-semibold text-gray-800 dark:text-gray-100">{entry.itemName}</div>
+													<div className="text-[11px] text-gray-500 dark:text-gray-400">{quantityLabel}{entry.threshold != null ? ` · Threshold ${entry.threshold}` : ''} · {entry.inventoryName}</div>
+												</div>
+											</div>
+											<span className="text-sm font-semibold text-blue-600 dark:text-blue-300">{isSelectedPlacement ? '↑' : '↓'}</span>
+										</button>
+										{isSelectedPlacement ? (
+											<div className="border-t border-gray-200 px-3 py-3 text-xs text-gray-600 dark:border-gray-700 dark:text-gray-300">
+												<div className="mb-2 text-[11px] text-gray-500 dark:text-gray-400">{entry.inventoryName}</div>
+												<div className="mb-2 text-[11px] text-gray-500 dark:text-gray-400">{quantityLabel}{entry.threshold != null ? ` · Threshold ${entry.threshold}` : ''}</div>
+												<div className="flex flex-wrap items-center gap-2">
+													<button type="button" onClick={() => removePlacedItem(room.id, entry.placement.id)} className="rounded-full bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-100 dark:bg-red-900/20 dark:text-red-300">Remove</button>
+												</div>
+											</div>
+										) : null}
+									</div>
+								);
+							})}
+						</div>
+					)}
+				</div>
+				) : null}
+
+				{!hasFocusedPlacement ? renderPhotoSection(room.id, room.photos ?? [], room.id, 'Room photos', 'No room photos attached.') : null}
+
+				{!hasFocusedPlacement ? (
+				<div className="flex flex-wrap items-center gap-2 border-t border-gray-200 pt-3 dark:border-gray-700">
+					<button type="button" onClick={() => { onSelectRoom(room.id); onStartEditRoom?.(room); }} className="rounded-full bg-gray-100 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700">Edit room</button>
+					<button type="button" onClick={() => onDeleteRoom?.(room.id)} className="rounded-full bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-100 dark:bg-red-900/20 dark:text-red-300">Delete room</button>
+				</div>
+				) : null}
+			</div>
+		);
+	}
+
 	function removeLastSegment() {
 		if (!editable) return;
 		if (editingStoryOutline && onEditingStoryOutlineChange) {
@@ -1467,23 +1960,59 @@ export function HomeFloorPlan({
 				{roomEditorPanel}
 
 				<div className="relative">
-					{selectedPlacementDetails ? (
-						<div className="pointer-events-none absolute right-3 top-3 z-20">
-							<div className="pointer-events-auto min-w-[12rem] rounded-2xl bg-white/95 px-3 py-3 shadow-lg ring-1 ring-black/10 backdrop-blur dark:bg-gray-900/95 dark:ring-white/10">
-								<div className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">{selectedPlacementDetails.kindLabel}</div>
-								<div className="mt-1 text-sm font-semibold text-gray-800 dark:text-gray-100">{selectedPlacementDetails.name}</div>
-								<div className="mt-3 flex justify-end">
+					{viewedContainerEntry?.container ? (
+						<div className="space-y-3 rounded-2xl border border-gray-200 bg-white/95 p-3 shadow-sm ring-1 ring-black/5 backdrop-blur dark:border-gray-700 dark:bg-gray-900/95">
+							<div className="flex flex-wrap items-center justify-between gap-3">
+								<div>
+									<div className="text-sm font-semibold text-gray-800 dark:text-gray-100">{viewedContainerEntry.containerName}</div>
+									<div className="text-xs text-gray-500 dark:text-gray-400">{viewedContainerEntry.inventoryName}</div>
+								</div>
+							</div>
+							<ContainerLayoutCanvas
+								container={viewedContainerEntry.container}
+								activeFace={viewingContainerFace}
+								items={viewedContainerEntry.container.items}
+								isEditMode
+								viewportHeightClassName="h-[26rem] md:h-[30rem]"
+								pendingSelectedItemId={pendingViewedContainerItemId}
+								onPendingSelectedItemHandled={() => setPendingViewedContainerItemId(null)}
+								onPlaceItem={updateContainerCanvasItemPlacement}
+								onUpdateItemQuantity={updateViewedContainerItemQuantity}
+								onRemoveItem={removeContainerCanvasItemPlacement}
+							/>
+							<div className="space-y-2 border-t border-gray-200 pt-3 dark:border-gray-700">
+								<div className="flex flex-wrap items-center gap-2">
+									{(['width-depth', 'width-height', 'depth-height'] as ContainerFace[]).map((face) => (
+										<button
+											key={face}
+											type="button"
+											onClick={() => setViewingContainerFace(face)}
+											className={viewingContainerFace === face ? 'rounded-full bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white' : 'rounded-full bg-gray-100 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700'}
+										>
+											{containerFaceLabel(face)}
+										</button>
+									))}
+								</div>
+								<div className="flex items-center justify-end gap-2">
 									<button
 										type="button"
-										onClick={() => removePlacedItem(selectedPlacementDetails.roomId, selectedPlacementDetails.placementId)}
-										className="rounded-full bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-100 dark:bg-red-900/20 dark:text-red-300"
+										onClick={openViewedContainerLayoutPanel}
+										className="rounded-full bg-gray-100 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
 									>
-										Remove from room
+										Edit Layout
 									</button>
+									<button
+										type="button"
+										onClick={() => setShowViewedContainerAddItemPanel(true)}
+										className="rounded-full bg-blue-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-600"
+									>
+										Add Item
+									</button>
+									<button type="button" onClick={() => setViewingContainerPlacementId(null)} className="rounded-full bg-gray-100 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700">Back</button>
 								</div>
 							</div>
 						</div>
-					) : null}
+					) : (
 					<svg
 						ref={svgRef}
 						viewBox={`0 0 ${VIEWBOX_WIDTH} ${VIEWBOX_HEIGHT}`}
@@ -1640,6 +2169,7 @@ export function HomeFloorPlan({
 											onPointerDown={(event) => {
 												event.stopPropagation();
 												onSelectRoom(null);
+												setExpandedPlacedContainerId(entry.id);
 												setSelectedPlacementId(entry.id);
 												if (!isPlacementEditable) return;
 												const point = getWorldPoint(event);
@@ -1737,10 +2267,12 @@ export function HomeFloorPlan({
 											}).map((entry) => {
 												const footprint = getRotatedRectPoints({ x: entry.x, y: entry.y }, entry.width, entry.depth, entry.rotation).map((point) => `${point.x},${point.y}`).join(' ');
 												const isPlacementSelected = selectedPlacementId === entry.id;
-												const isPlacementEditable = editingPlacedContainerId === entry.id;
+												const isPlacementEditable = selectedPlacementId === entry.id;
+												const resolvedContainer = entry.kind === 'container' ? findRoomContainerRecord(room, entry.refId) : null;
+												const resolvedItem = entry.kind === 'item' ? resolvePlacedItemEntry(room, entry) : null;
 												const visualRecord = entry.kind === 'container'
-													? { icon: findInventoryContainerRecord(entry.refId)?.container.icon ?? 'inventory', fill: 'rgba(15,23,42,0.12)' }
-													: { icon: findInventoryItemRecord(entry.refId)?.resolvedItem?.icon ?? 'inventory', fill: 'rgba(59,130,246,0.10)' };
+													? { icon: resolvedContainer?.container.icon ?? 'inventory', fill: 'rgba(15,23,42,0.12)' }
+													: { icon: resolvedItem?.itemIcon ?? 'inventory', fill: 'rgba(59,130,246,0.10)' };
 												const resolvedIcon = resolveIcon(visualRecord.icon);
 												const iconSize = Math.max(10, Math.min(entry.width, entry.depth) * 0.62);
 
@@ -1755,6 +2287,7 @@ export function HomeFloorPlan({
 															onPointerDown={(event) => {
 																event.stopPropagation();
 																onSelectRoom(room.id);
+																setExpandedPlacedContainerId(entry.id);
 																setSelectedPlacementId(entry.id);
 																if (!isPlacementEditable) return;
 																const point = getWorldPoint(event);
@@ -1863,8 +2396,9 @@ export function HomeFloorPlan({
 								) : null}
 						</g>
 					</svg>
+					)}
 
-					{!selectedRoom && !editingRoom && !editingStoryOutline && story.rooms.length === 0 && !storyOutline ? (
+					{!viewedContainerEntry?.container && !selectedRoom && !editingRoom && !editingStoryOutline && story.rooms.length === 0 && !storyOutline ? (
 						<div className="pointer-events-none absolute inset-0 flex items-center justify-center p-4">
 							<div className="rounded-2xl bg-white/90 px-4 py-3 text-center text-xs text-gray-600 shadow-lg backdrop-blur dark:bg-gray-900/90 dark:text-gray-300">
 								Start by outlining the story boundary. After that, you can add rooms and leave open space for halls or circulation.
@@ -2080,14 +2614,53 @@ export function HomeFloorPlan({
 								{visibleRoomSummaries.map(({ room, bounds, placedContainerEntries, placedLooseItemEntries, placedLooseItemCount }) => {
 									const isExpanded = effectiveExpandedRoomId === room.id;
 									const isSelected = selectedRoom?.id === room.id;
-									const isContainerFocus = editingContainersRoomId === room.id;
-									const draftContainer = draftContainerByRoom[room.id] ?? { name: '', icon: 'inventory' };
-									const selectedLooseItemTemplateRef = newLooseItemTemplateRefByRoom[room.id] ?? mergedItemTemplates[0]?.id ?? '';
-									const targetInventoryName = (
-										inventoryResources.find((entry) => homeId && entry.linkedHomeId === homeId) ??
-										[...inventoryResources].sort((left, right) => left.createdAt.localeCompare(right.createdAt))[0] ??
-										null
-									)?.name ?? 'Inventory';
+									const summary = { room, bounds, placedContainerEntries, placedLooseItemEntries, placedLooseItemCount, placedEntries: [...placedContainerEntries, ...placedLooseItemEntries] };
+									return (
+										<div key={`modern-${room.id}`} className="rounded-2xl bg-white/95 shadow-sm ring-1 ring-black/5 backdrop-blur dark:bg-gray-900/95">
+											<button
+												type="button"
+												onClick={() => {
+													if (isExpanded) {
+														onSelectRoom(null);
+														setExpandedRoomId(null);
+														setRoomAddItemRoomId((current) => current === room.id ? null : current);
+														setRoomAddContainerRoomId((current) => current === room.id ? null : current);
+														setViewingContainerPlacementId(null);
+														return;
+													}
+
+													onSelectRoom(room.id);
+													setExpandedRoomId(room.id);
+												}}
+												className={isSelected ? 'flex w-full items-center justify-between gap-3 px-4 py-3 text-left ring-2 ring-inset ring-blue-200 dark:ring-blue-800' : 'flex w-full items-center justify-between gap-3 px-4 py-3 text-left'}
+											>
+												<div className="flex items-center gap-2">
+													<IconDisplay iconKey={room.icon || 'home'} size={16} className="h-4 w-4 object-contain" alt="" />
+													<div>
+														<div className="text-sm font-semibold text-gray-800 dark:text-gray-100">{room.name}</div>
+														<div className="text-[11px] text-gray-500 dark:text-gray-400">{placedContainerEntries.length} container{placedContainerEntries.length === 1 ? '' : 's'} · {placedLooseItemCount} item{placedLooseItemCount === 1 ? '' : 's'}{(room.photos?.length ?? 0) > 0 ? ` · ${room.photos?.length ?? 0} photo${(room.photos?.length ?? 0) === 1 ? '' : 's'}` : ''}</div>
+													</div>
+												</div>
+												<span className="text-base font-semibold text-blue-600 dark:text-blue-300">{isExpanded ? '↑' : '↓'}</span>
+											</button>
+											{isExpanded ? renderRoomExpandedContent(summary) : null}
+										</div>
+									);
+								})}
+							</div>
+						</div>
+					</div>
+				) : null}
+
+				{/* legacy room block removed
+					<div className="border-t border-gray-200 bg-gray-50/80 px-3 py-3 dark:border-gray-700 dark:bg-gray-950/40">
+						<div className="mx-auto w-full max-w-4xl space-y-2">
+							<div className="px-1 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Rooms</div>
+							<div className="space-y-2">
+								{visibleRoomSummaries.map(({ room, bounds, placedContainerEntries, placedLooseItemEntries, placedLooseItemCount }) => {
+									const isExpanded = effectiveExpandedRoomId === room.id;
+									const isSelected = selectedRoom?.id === room.id;
+									const summary = { room, bounds, placedContainerEntries, placedLooseItemEntries, placedLooseItemCount, placedEntries: [...placedContainerEntries, ...placedLooseItemEntries] };
 									return (
 										<div key={room.id} className="rounded-2xl bg-white/95 shadow-sm ring-1 ring-black/5 backdrop-blur dark:bg-gray-900/95">
 											<button
@@ -2096,7 +2669,9 @@ export function HomeFloorPlan({
 													if (isExpanded) {
 														onSelectRoom(null);
 														setExpandedRoomId(null);
-														setAddingLooseItemRoomId((current) => current === room.id ? null : current);
+														setRoomAddItemRoomId((current) => current === room.id ? null : current);
+														setRoomAddContainerRoomId((current) => current === room.id ? null : current);
+														setViewingContainerPlacementId(null);
 														return;
 													}
 
@@ -2396,6 +2971,94 @@ export function HomeFloorPlan({
 							</div>
 						</div>
 					</div>
+				*/}
+
+				{roomAddItemSummary ? (
+					<RoomAddItemPanel
+						room={roomAddItemSummary.room}
+						onClose={() => setRoomAddItemRoomId(null)}
+						onAddTemplateItem={(itemTemplateRef) => addTemplateItemToRoom(roomAddItemSummary.room, roomAddItemSummary.bounds, itemTemplateRef)}
+						onCreateRoomItem={(itemTemplate) => createRoomItem(roomAddItemSummary.room, roomAddItemSummary.bounds, itemTemplate)}
+					/>
+				) : null}
+
+				{roomAddContainerSummary ? (
+					<RoomAddContainerPanel
+						room={roomAddContainerSummary.room}
+						onClose={() => setRoomAddContainerRoomId(null)}
+						onAddExistingContainer={(containerId) => addExistingContainerToRoom(roomAddContainerSummary.room, roomAddContainerSummary.bounds, containerId)}
+						onCreateRoomContainer={(container) => createRoomContainer(roomAddContainerSummary.room, roomAddContainerSummary.bounds, container)}
+					/>
+				) : null}
+
+				{showViewedContainerAddItemPanel && viewedContainerEntry?.container ? (
+					viewedContainerEntry.source === 'inventory' && viewedContainerRecord?.source === 'inventory' && viewedContainerRecord.inventory ? (
+						<AddItemPanel
+							resource={viewedContainerRecord.inventory}
+							containerId={viewedContainerEntry.container.id}
+							onClose={() => setShowViewedContainerAddItemPanel(false)}
+							onItemInstanceAdded={(item) => addItemInstanceToViewedContainer(item)}
+						/>
+					) : selectedRoomSummary ? (
+						<RoomAddItemPanel
+							room={selectedRoomSummary.room}
+							onClose={() => setShowViewedContainerAddItemPanel(false)}
+							onAddTemplateItem={(itemTemplateRef) => addTemplateItemToViewedRoomContainer(itemTemplateRef)}
+							onCreateRoomItem={(itemTemplate) => createRoomItemForViewedContainer(itemTemplate)}
+						/>
+					) : null
+				) : null}
+
+				{showViewedContainerLayoutPanel && viewedContainerEntry?.container ? (
+					<PopupShell title="Edit Layout" onClose={() => setShowViewedContainerLayoutPanel(false)} size="large">
+						<div className="space-y-4">
+							<div className="grid gap-3 md:grid-cols-3">
+								<label className="space-y-1">
+									<span className="text-xs font-medium text-gray-600 dark:text-gray-300">Width</span>
+									<input type="number" min={1} value={viewedLayoutWidth} onChange={(event) => { const value = event.target.value; setViewedLayoutWidth(value === '' ? '' : Math.max(1, Number(value) || 1)); setViewedLayoutError(''); }} className={`${INPUT_CLS} w-full`} />
+								</label>
+								<label className="space-y-1">
+									<span className="text-xs font-medium text-gray-600 dark:text-gray-300">Depth</span>
+									<input type="number" min={1} value={viewedLayoutDepth} onChange={(event) => { const value = event.target.value; setViewedLayoutDepth(value === '' ? '' : Math.max(1, Number(value) || 1)); setViewedLayoutError(''); }} className={`${INPUT_CLS} w-full`} />
+								</label>
+								<label className="space-y-1">
+									<span className="text-xs font-medium text-gray-600 dark:text-gray-300">Height</span>
+									<input type="number" min={1} value={viewedLayoutHeight} onChange={(event) => { const value = event.target.value; setViewedLayoutHeight(value === '' ? '' : Math.max(1, Number(value) || 1)); setViewedLayoutError(''); }} className={`${INPUT_CLS} w-full`} />
+								</label>
+							</div>
+
+							<div className="flex flex-wrap gap-2">
+								{CONTAINER_FACE_OPTIONS.map((option) => (
+									<button
+										key={option.value}
+										type="button"
+										onClick={() => setViewedLayoutActiveFace(option.value)}
+										className={viewedLayoutActiveFace === option.value ? 'rounded-full bg-blue-500 px-3 py-1.5 text-xs font-semibold text-white' : 'rounded-full bg-gray-100 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700'}
+									>
+										{option.label}
+									</button>
+								))}
+							</div>
+
+							<div className="grid gap-3 md:grid-cols-2">
+								<label className="space-y-1">
+									<span className="text-xs font-medium text-gray-600 dark:text-gray-300">Columns</span>
+									<input type="number" min={1} max={10} value={(viewedLayoutActiveFace === 'width-depth' ? viewedLayoutWidthDepthGrid : viewedLayoutActiveFace === 'width-height' ? viewedLayoutWidthHeightGrid : viewedLayoutDepthHeightGrid).columns} onChange={(event) => updateViewedLayoutGrid(viewedLayoutActiveFace, { columns: event.target.value })} onBlur={() => commitViewedLayoutGrid(viewedLayoutActiveFace)} className={`${INPUT_CLS} w-full`} />
+								</label>
+								<label className="space-y-1">
+									<span className="text-xs font-medium text-gray-600 dark:text-gray-300">Rows</span>
+									<input type="number" min={1} max={10} value={(viewedLayoutActiveFace === 'width-depth' ? viewedLayoutWidthDepthGrid : viewedLayoutActiveFace === 'width-height' ? viewedLayoutWidthHeightGrid : viewedLayoutDepthHeightGrid).rows} onChange={(event) => updateViewedLayoutGrid(viewedLayoutActiveFace, { rows: event.target.value })} onBlur={() => commitViewedLayoutGrid(viewedLayoutActiveFace)} className={`${INPUT_CLS} w-full`} />
+								</label>
+							</div>
+
+							{viewedLayoutError ? <div className="text-sm text-red-600 dark:text-red-300">{viewedLayoutError}</div> : null}
+
+							<div className="flex justify-end gap-2">
+								<button type="button" onClick={() => setShowViewedContainerLayoutPanel(false)} className="rounded-full bg-gray-100 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700">Cancel</button>
+								<button type="button" onClick={applyViewedContainerLayout} className="rounded-full bg-blue-500 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-600">Save Layout</button>
+							</div>
+						</div>
+					</PopupShell>
 				) : null}
 
 				{outsideRoomsPanel}

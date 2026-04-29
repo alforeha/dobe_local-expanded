@@ -91,6 +91,8 @@ export interface FloorPlanRoom {
   segments: FloorPlanSegment[];
   origin: { x: number; y: number };
   placedItems: PlacedInstance[];
+  dedicatedItems?: InventoryItemTemplate[];
+  dedicatedContainers?: InventoryContainer[];
   photos?: string[];
 }
 

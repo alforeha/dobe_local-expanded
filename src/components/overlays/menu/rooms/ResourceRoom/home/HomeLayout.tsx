@@ -34,6 +34,23 @@ function cloneRoom(room: FloorPlanRoom): FloorPlanRoom {
 		origin: { ...room.origin },
 		segments: room.segments.map((segment) => ({ ...segment })),
 		placedItems: room.placedItems.map((item) => ({ ...item })),
+		dedicatedItems: room.dedicatedItems?.map((item) => ({ ...item })),
+		dedicatedContainers: room.dedicatedContainers?.map((container) => ({
+			...container,
+			items: container.items.map((item) => ({ ...item })),
+			dimensions: container.dimensions ? { ...container.dimensions } : undefined,
+			layoutGrid: container.layoutGrid
+				? {
+					...container.layoutGrid,
+					widthDepth: container.layoutGrid.widthDepth ? { ...container.layoutGrid.widthDepth } : undefined,
+					widthHeight: container.layoutGrid.widthHeight ? { ...container.layoutGrid.widthHeight } : undefined,
+					depthHeight: container.layoutGrid.depthHeight ? { ...container.layoutGrid.depthHeight } : undefined,
+				}
+				: undefined,
+			notes: container.notes?.map((note) => ({ ...note })),
+			attachments: container.attachments ? [...container.attachments] : undefined,
+			links: container.links?.map((link) => ({ ...link })),
+		})),
 		photos: room.photos ? [...room.photos] : undefined,
 	};
 }
@@ -78,6 +95,8 @@ function makeDraftRoom(story: HomeStory): FloorPlanRoom {
 		origin,
 		segments: [],
 		placedItems: [],
+		dedicatedItems: [],
+		dedicatedContainers: [],
 		photos: [],
 	};
 }
@@ -339,6 +358,19 @@ export function HomeLayout({ stories, onChange, editable = false, homeId }: Home
 		}));
 	}
 
+	function handleUpdateRoom(roomId: string, updater: (room: FloorPlanRoom) => FloorPlanRoom) {
+		if (!activeStory) return;
+		commit(stories.map((story) => {
+			if (story.id !== activeStory.id) return story;
+			return {
+				...story,
+				rooms: story.rooms.map((room) => (
+					room.id === roomId ? cloneRoom(updater(room)) : room
+				)),
+			};
+		}));
+	}
+
 	function handleUpdateStoryPhotos(photos: string[]) {
 		if (!activeStory) return;
 		commit(stories.map((story) => (
@@ -407,6 +439,7 @@ export function HomeLayout({ stories, onChange, editable = false, homeId }: Home
 					onStartEditRoom={editable ? handleStartEditRoom : undefined}
 					onDeleteRoom={editable ? deleteRoom : undefined}
 					onUpdateRoomPlacedItems={editable ? handleUpdateRoomPlacedItems : undefined}
+					onUpdateRoom={editable ? handleUpdateRoom : undefined}
 					onUpdateStoryPlacedItems={editable ? handleUpdateStoryPlacedItems : undefined}
 					onUpdateRoomPhotos={editable ? handleUpdateRoomPhotos : undefined}
 					onUpdateStoryPhotos={editable ? handleUpdateStoryPhotos : undefined}
