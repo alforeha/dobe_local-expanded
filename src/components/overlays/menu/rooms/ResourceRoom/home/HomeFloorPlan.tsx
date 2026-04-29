@@ -1617,11 +1617,26 @@ export function HomeFloorPlan({
 			onUpdateStoryPlacedItems(story.placedItems.filter((entry) => entry.id !== placementId));
 		} else {
 			const room = story.rooms.find((entry) => entry.id === roomId);
-			if (!room || !onUpdateRoomPlacedItems) return;
-			onUpdateRoomPlacedItems(
-				roomId,
-				room.placedItems.filter((entry) => entry.id !== placementId),
+			if (!room) return;
+			const removedPlacement = room.placedItems.find((entry) => entry.id === placementId) ?? null;
+			const nextPlacedItems = room.placedItems.filter((entry) => entry.id !== placementId);
+			const shouldPruneRoomTemplate = Boolean(
+				removedPlacement
+				&& removedPlacement.kind === 'item'
+				&& removedPlacement.refId.startsWith('room-item-')
+				&& !nextPlacedItems.some((entry) => entry.kind === 'item' && entry.refId === removedPlacement.refId),
 			);
+
+			if (shouldPruneRoomTemplate) {
+				updateRoom(roomId, (current) => ({
+					...current,
+					placedItems: current.placedItems.filter((entry) => entry.id !== placementId),
+					dedicatedItems: (current.dedicatedItems ?? []).filter((item) => item.id !== removedPlacement?.refId),
+				}));
+			} else {
+				if (!onUpdateRoomPlacedItems) return;
+				onUpdateRoomPlacedItems(roomId, nextPlacedItems);
+			}
 		}
 
 		setExpandedPlacedContainerId((current) => current === placementId ? null : current);

@@ -1,7 +1,23 @@
 import type { ItemTemplate } from '../coach/ItemLibrary';
-import { getItemTemplateByRef } from '../coach/ItemLibrary';
+import { getItemTemplateByRef, itemLibrary } from '../coach/ItemLibrary';
 import type { InventoryItemTemplate } from '../types/resource';
 import type { User } from '../types/user';
+
+export function getLibraryItem(id: string): InventoryItemTemplate | undefined {
+  const item = itemLibrary.find((entry) => entry.id === id);
+  if (!item) return undefined;
+
+  return {
+    id: item.id,
+    name: item.name,
+    icon: item.icon,
+    kind: item.kind,
+    dimensions: item.dimensions,
+    category: item.category,
+    description: item.description,
+    isCustom: false,
+  };
+}
 
 export function getUserInventoryItemTemplates(user: User | null | undefined): InventoryItemTemplate[] {
   return user?.lists.inventoryItemTemplates ?? [];
@@ -27,15 +43,18 @@ export function resolveInventoryItemTemplate(
   userTemplates: InventoryItemTemplate[] = [],
 ): (ItemTemplate & { source: 'library' | 'user' }) | null {
   const userTemplate = userTemplates.find((item) => item.id === itemTemplateRef);
+  const liveTemplate = getLibraryItem(itemTemplateRef);
   const builtIn = getItemTemplateByRef(itemTemplateRef);
 
-  if (userTemplate && builtIn && !builtIn.isCustom) {
+  if (userTemplate && liveTemplate && builtIn) {
     return {
       ...builtIn,
-      name: userTemplate.name || builtIn.name,
-      icon: userTemplate.icon || builtIn.icon,
-      kind: userTemplate.kind ?? builtIn.kind,
-      dimensions: userTemplate.dimensions ?? builtIn.dimensions,
+      name: liveTemplate.name,
+      icon: liveTemplate.icon,
+      description: liveTemplate.description ?? builtIn.description,
+      kind: liveTemplate.kind ?? builtIn.kind,
+      dimensions: liveTemplate.dimensions ?? userTemplate.dimensions ?? builtIn.dimensions,
+      category: (liveTemplate.category as ItemTemplate['category'] | undefined) ?? builtIn.category,
       source: 'library',
     };
   }
