@@ -22,6 +22,7 @@ import type {
   HomeResource,
   ItemInstance,
   InventoryResource,
+  PlacedInstance,
   Resource,
   VehicleLayout,
   VehicleMaintenanceTask,
@@ -1020,7 +1021,55 @@ export function generateDocTasks_stub(): void {
 
 /** W23: Monthly home maintenance check PlannedEvent. */
 function _genHomeSchedule(_resource: HomeResource): PlannedEvent[] {
-  return [];
+  const source: Array<{ placement: PlacedInstance; itemTemplateRef: string; itemName: string; itemIcon: string }> = [];
+  for (const story of _resource.stories ?? []) {
+    for (const placement of story.placedItems ?? []) {
+      if (placement.kind !== 'item') continue;
+      const template = getItemTemplateByRef(placement.refId);
+      if (!template || template.kind !== 'facility') continue;
+      source.push({ placement, itemTemplateRef: placement.refId, itemName: template.name, itemIcon: template.icon });
+    }
+    for (const room of story.rooms ?? []) {
+      for (const placement of room.placedItems ?? []) {
+        if (placement.kind !== 'item') continue;
+        const template = room.dedicatedItems?.find((item) => item.id === placement.refId) ?? getItemTemplateByRef(placement.refId);
+        if (!template || template.kind !== 'facility') continue;
+        source.push({ placement, itemTemplateRef: placement.refId, itemName: template.name, itemIcon: template.icon });
+      }
+    }
+  }
+
+  const scheduleStore = useScheduleStore.getState();
+  const created: PlannedEvent[] = [];
+  for (const entry of source) {
+    for (const recurringTask of entry.placement.recurringTasks ?? []) {
+      if (!isRecurringInventoryTask(recurringTask)) continue;
+      if (scheduleStore.plannedEvents[recurringTask.id]) continue;
+      const plannedEvent: PlannedEvent = {
+        id: recurringTask.id,
+        name: resolveTaskTemplateName(recurringTask.taskTemplateRef),
+        description: `Recurring task for ${entry.itemName}`,
+        icon: entry.itemIcon,
+        color: '#10b981',
+        seedDate: recurringTask.recurrence.seedDate,
+        dieDate: null,
+        recurrenceInterval: toPlannedEventRecurrence(recurringTask.recurrence),
+        activeState: 'active',
+        taskPool: [recurringTask.taskTemplateRef],
+        taskPoolCursor: 0,
+        taskList: [recurringTask.taskTemplateRef],
+        conflictMode: 'concurrent',
+        startTime: '09:00',
+        endTime: '09:30',
+        location: null,
+        sharedWith: null,
+        pushReminder: null,
+      };
+      scheduleStore.setPlannedEvent(plannedEvent);
+      created.push(plannedEvent);
+    }
+  }
+  return created;
 }
 
 function _genInventorySchedule(resource: InventoryResource): PlannedEvent[] {
@@ -1105,6 +1154,41 @@ function _genHomeGTD(resource: HomeResource, referenceDate: string): Task[] {
         { taskType: chore.taskType ?? 'CHECK' },
       ),
     );
+  }
+
+  for (const story of resource.stories ?? []) {
+    const placedItems = [
+      ...(story.placedItems ?? []).map((placement) => ({ placement, template: getItemTemplateByRef(placement.refId) })),
+      ...story.rooms.flatMap((room) =>
+        (room.placedItems ?? []).map((placement) => ({
+          placement,
+          template: room.dedicatedItems?.find((item) => item.id === placement.refId) ?? getItemTemplateByRef(placement.refId),
+        })),
+      ),
+    ];
+
+    for (const { placement, template } of placedItems) {
+      if (placement.kind !== 'item' || !template || template.kind !== 'facility') continue;
+      for (const recurringTask of placement.recurringTasks ?? []) {
+        if (!isRecurringInventoryTask(recurringTask)) continue;
+        const reminderLeadDays = recurringTask.reminderLeadDays ?? 7;
+        if (reminderLeadDays === -1) continue;
+        const next = computeNextOccurrence(recurringTask.recurrence, referenceDate);
+        if (next.days < 0 || next.days > reminderLeadDays) continue;
+        const templateKey = `resource-task:${resource.id}:home-placement:${placement.id}:${recurringTask.id}`;
+        tasks.push(
+          buildResourceReminderTask(
+            resource.id,
+            templateKey,
+            templateKey,
+            next.date,
+            resolveTaskTemplateName(recurringTask.taskTemplateRef),
+            { label: resolveTaskTemplateName(recurringTask.taskTemplateRef) } as Task['resultFields'],
+            { taskType: recurringTask.taskType ?? 'CHECK' },
+          ),
+        );
+      }
+    }
   }
 
   return tasks;

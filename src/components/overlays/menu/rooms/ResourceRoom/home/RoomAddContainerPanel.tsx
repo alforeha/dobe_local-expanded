@@ -1,15 +1,28 @@
 import { useMemo, useState } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { useResourceStore } from '../../../../../../stores/useResourceStore';
-import type { FloorPlanRoom, InventoryContainer, InventoryResource } from '../../../../../../types/resource';
+import type { FloorPlanRoom, HomeResource, InventoryContainer, InventoryResource } from '../../../../../../types/resource';
 import { IconDisplay } from '../../../../../shared/IconDisplay';
 import { IconPicker } from '../../../../../shared/IconPicker';
 import { PopupShell } from '../../../../../shared/popups/PopupShell';
 
+interface ExistingContainerPlacement {
+  containerId: string;
+  homeId: string;
+  homeName: string;
+  storyId: string;
+  storyName: string;
+  roomId: string | null;
+  roomName: string | null;
+  placementId: string;
+}
+
 interface RoomAddContainerPanelProps {
   room: FloorPlanRoom;
+  homeId?: string;
   onClose: () => void;
   onAddExistingContainer: (containerId: string) => void;
+  onMoveExistingContainer?: (containerId: string, source: ExistingContainerPlacement) => void;
   onCreateRoomContainer: (container: InventoryContainer) => void;
 }
 
@@ -34,8 +47,9 @@ function clampGrid(value: number): number {
   return Math.min(10, Math.max(1, value));
 }
 
-export function RoomAddContainerPanel({ room, onClose, onAddExistingContainer, onCreateRoomContainer }: RoomAddContainerPanelProps) {
+export function RoomAddContainerPanel({ room, homeId, onClose, onAddExistingContainer, onMoveExistingContainer, onCreateRoomContainer }: RoomAddContainerPanelProps) {
   const resources = useResourceStore((state) => state.resources);
+  const setResource = useResourceStore((state) => state.setResource);
   const [mode, setMode] = useState<PanelMode>('choose');
   const [icon, setIcon] = useState('inventory');
   const [name, setName] = useState('');
@@ -47,6 +61,8 @@ export function RoomAddContainerPanel({ room, onClose, onAddExistingContainer, o
   const [widthHeightGrid, setWidthHeightGrid] = useState<FaceGridInputDraft>({ columns: '1', rows: '1' });
   const [depthHeightGrid, setDepthHeightGrid] = useState<FaceGridInputDraft>({ columns: '1', rows: '1' });
   const [error, setError] = useState('');
+  const [pendingMove, setPendingMove] = useState<ExistingContainerPlacement | null>(null);
+  const [pendingMoveContainerId, setPendingMoveContainerId] = useState<string | null>(null);
 
   const containers = useMemo(
     () => Object.values(resources)
@@ -60,6 +76,113 @@ export function RoomAddContainerPanel({ room, onClose, onAddExistingContainer, o
         }))),
     [resources],
   );
+  const homeResources = useMemo(
+    () => Object.values(resources).filter((entry): entry is HomeResource => entry.type === 'home'),
+    [resources],
+  );
+  const existingPlacementsByContainerId = useMemo(() => {
+    const placements = new Map<string, ExistingContainerPlacement>();
+
+    for (const home of homeResources) {
+      for (const story of home.stories ?? []) {
+        for (const placement of story.placedItems) {
+          if (placement.kind !== 'container' || placements.has(placement.refId)) continue;
+          placements.set(placement.refId, {
+            containerId: placement.refId,
+            homeId: home.id,
+            homeName: home.name,
+            storyId: story.id,
+            storyName: story.name,
+            roomId: null,
+            roomName: null,
+            placementId: placement.id,
+          });
+        }
+
+        for (const storyRoom of story.rooms) {
+          for (const placement of storyRoom.placedItems) {
+            if (placement.kind !== 'container' || placements.has(placement.refId)) continue;
+            placements.set(placement.refId, {
+              containerId: placement.refId,
+              homeId: home.id,
+              homeName: home.name,
+              storyId: story.id,
+              storyName: story.name,
+              roomId: storyRoom.id,
+              roomName: storyRoom.name,
+              placementId: placement.id,
+            });
+          }
+        }
+      }
+    }
+
+    return placements;
+  }, [homeResources]);
+
+  function handleSelectExistingContainer(containerId: string) {
+    const existingPlacement = existingPlacementsByContainerId.get(containerId) ?? null;
+    if (existingPlacement && (existingPlacement.homeId !== homeId || existingPlacement.roomId !== room.id)) {
+      setPendingMove(existingPlacement);
+      setPendingMoveContainerId(containerId);
+      return;
+    }
+
+    setPendingMove(null);
+    setPendingMoveContainerId(null);
+    onAddExistingContainer(containerId);
+  }
+
+  function clearPendingMove() {
+    setPendingMove(null);
+    setPendingMoveContainerId(null);
+  }
+
+  function removePlacementFromSourceHome(source: ExistingContainerPlacement) {
+    const sourceHome = homeResources.find((entry) => entry.id === source.homeId);
+    if (!sourceHome) return;
+
+    setResource({
+      ...sourceHome,
+      updatedAt: new Date().toISOString(),
+      stories: (sourceHome.stories ?? []).map((story) => {
+        if (story.id !== source.storyId) return story;
+
+        if (source.roomId == null) {
+          return {
+            ...story,
+            placedItems: story.placedItems.filter((placement) => placement.id !== source.placementId),
+          };
+        }
+
+        return {
+          ...story,
+          rooms: story.rooms.map((storyRoom) => (
+            storyRoom.id === source.roomId
+              ? {
+                ...storyRoom,
+                placedItems: storyRoom.placedItems.filter((placement) => placement.id !== source.placementId),
+              }
+              : storyRoom
+          )),
+        };
+      }),
+    });
+  }
+
+  function confirmMove() {
+    if (!pendingMove || !pendingMoveContainerId) return;
+
+    if (onMoveExistingContainer) {
+      onMoveExistingContainer(pendingMoveContainerId, pendingMove);
+      clearPendingMove();
+      return;
+    }
+
+    removePlacementFromSourceHome(pendingMove);
+    onAddExistingContainer(pendingMoveContainerId);
+    clearPendingMove();
+  }
 
   function normaliseFaceGridInput(draft: FaceGridInputDraft): FaceGridDraft {
     return {
@@ -168,7 +291,7 @@ export function RoomAddContainerPanel({ room, onClose, onAddExistingContainer, o
                   <button
                     key={`${inventoryId}-${container.id}`}
                     type="button"
-                    onClick={() => onAddExistingContainer(container.id)}
+                    onClick={() => handleSelectExistingContainer(container.id)}
                     className="flex w-full items-center justify-between rounded-xl border border-gray-200 px-3 py-3 text-left transition-colors hover:bg-white dark:border-gray-700 dark:hover:bg-gray-800/70"
                   >
                     <div className="flex min-w-0 items-center gap-3">
@@ -183,6 +306,19 @@ export function RoomAddContainerPanel({ room, onClose, onAddExistingContainer, o
                     <span className="rounded-full bg-blue-50 px-2.5 py-1 text-[11px] font-semibold text-blue-700 dark:bg-blue-900/30 dark:text-blue-200">Add</span>
                   </button>
                 ))}
+                {pendingMove && pendingMoveContainerId ? (
+                  <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100">
+                    <div className="font-semibold">This container is currently placed in {pendingMove.homeName} - {pendingMove.roomName ?? 'Outside rooms'}. Move it here?</div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <button type="button" onClick={confirmMove} className="rounded-full bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-700">
+                        Confirm
+                      </button>
+                      <button type="button" onClick={clearPendingMove} className="rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-amber-900 hover:bg-amber-100 dark:bg-amber-900/30 dark:text-amber-100 dark:hover:bg-amber-900/50">
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
               </div>
             )}
           </section>

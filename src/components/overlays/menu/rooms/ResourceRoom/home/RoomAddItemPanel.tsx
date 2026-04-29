@@ -15,6 +15,7 @@ interface RoomAddItemPanelProps {
   onClose: () => void;
   onAddTemplateItem: (itemTemplateRef: string) => void;
   onCreateRoomItem: (itemTemplate: InventoryItemTemplate) => void;
+  placedTemplateCounts?: Partial<Record<string, number>>;
 }
 
 const CATEGORY_ORDER: ItemCategory[] = [
@@ -37,7 +38,7 @@ function renderItemMeta(item: { category?: string; kind?: string }) {
   return [item.category, item.kind].filter(Boolean).join(' · ');
 }
 
-export function RoomAddItemPanel({ room, onClose, onAddTemplateItem, onCreateRoomItem }: RoomAddItemPanelProps) {
+export function RoomAddItemPanel({ room, onClose, onAddTemplateItem, onCreateRoomItem, placedTemplateCounts }: RoomAddItemPanelProps) {
   const user = useUserStore((state) => state.user);
   const [activeTab, setActiveTab] = useState<RoomAddItemTab>('library');
   const [searchQuery, setSearchQuery] = useState('');
@@ -89,7 +90,7 @@ export function RoomAddItemPanel({ room, onClose, onAddTemplateItem, onCreateRoo
       id: `room-item-${uuidv4()}`,
       name: draftName.trim(),
       icon: draftIcon || 'inventory',
-      kind: 'consumable',
+      kind: 'facility',
       category: 'workspace',
       description: `Room item for ${room.name}`,
       isCustom: true,
@@ -103,29 +104,38 @@ export function RoomAddItemPanel({ room, onClose, onAddTemplateItem, onCreateRoo
   const renderItemRow = (
     item: { id: string; name: string; icon: string; category?: string; kind?: string },
     onClick: () => void,
-  ) => (
-    <button
-      key={item.id}
-      type="button"
-      onClick={onClick}
-      className="flex w-full items-center justify-between rounded-xl border border-gray-200 px-3 py-3 text-left transition-colors hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-700/40"
-    >
-      <div className="flex min-w-0 items-center gap-3">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gray-50 dark:bg-gray-800">
-          <IconDisplay iconKey={item.icon || 'inventory'} size={22} className="h-5.5 w-5.5 object-contain" />
+  ) => {
+    const placedCount = placedTemplateCounts?.[item.id] ?? 0;
+
+    return (
+      <button
+        key={item.id}
+        type="button"
+        onClick={onClick}
+        className="flex w-full items-center justify-between rounded-xl border border-gray-200 px-3 py-3 text-left transition-colors hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-700/40"
+      >
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gray-50 dark:bg-gray-800">
+            <IconDisplay iconKey={item.icon || 'inventory'} size={22} className="h-5.5 w-5.5 object-contain" />
+          </div>
+          <div className="min-w-0">
+            <div className="truncate text-sm font-medium text-gray-800 dark:text-gray-100">{item.name}</div>
+            {renderItemMeta(item) ? (
+              <div className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">{renderItemMeta(item)}</div>
+            ) : null}
+            {placedCount > 0 ? (
+              <div className="mt-0.5 text-[11px] font-medium text-blue-600 dark:text-blue-300">
+                Placed {placedCount} time{placedCount === 1 ? '' : 's'} already
+              </div>
+            ) : null}
+          </div>
         </div>
-        <div className="min-w-0">
-          <div className="truncate text-sm font-medium text-gray-800 dark:text-gray-100">{item.name}</div>
-          {renderItemMeta(item) ? (
-            <div className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">{renderItemMeta(item)}</div>
-          ) : null}
-        </div>
-      </div>
-      <span className="rounded-full bg-blue-50 px-2.5 py-1 text-[11px] font-semibold text-blue-700 dark:bg-blue-900/30 dark:text-blue-200">
-        Add
-      </span>
-    </button>
-  );
+        <span className="rounded-full bg-blue-50 px-2.5 py-1 text-[11px] font-semibold text-blue-700 dark:bg-blue-900/30 dark:text-blue-200">
+          {placedCount > 0 ? 'Add again' : 'Add'}
+        </span>
+      </button>
+    );
+  };
 
   return (
     <PopupShell title="Add Item" onClose={onClose} size="large">

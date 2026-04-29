@@ -33,7 +33,13 @@ function cloneRoom(room: FloorPlanRoom): FloorPlanRoom {
 		...room,
 		origin: { ...room.origin },
 		segments: room.segments.map((segment) => ({ ...segment })),
-		placedItems: room.placedItems.map((item) => ({ ...item })),
+		placedItems: room.placedItems.map((item) => ({
+			...item,
+			recurringTasks: item.recurringTasks?.map((task) => ({
+				...task,
+				recurrence: { ...task.recurrence },
+			})),
+		})),
 		dedicatedItems: room.dedicatedItems?.map((item) => ({ ...item })),
 		dedicatedContainers: room.dedicatedContainers?.map((container) => ({
 			...container,
@@ -58,7 +64,13 @@ function cloneRoom(room: FloorPlanRoom): FloorPlanRoom {
 function cloneStory(story: HomeStory): HomeStory {
 	return {
 		...story,
-		placedItems: (story.placedItems ?? []).map((item) => ({ ...item })),
+		placedItems: (story.placedItems ?? []).map((item) => ({
+			...item,
+			recurringTasks: item.recurringTasks?.map((task) => ({
+				...task,
+				recurrence: { ...task.recurrence },
+			})),
+		})),
 		photos: story.photos ? [...story.photos] : undefined,
 		rooms: story.rooms.map(cloneRoom),
 	};

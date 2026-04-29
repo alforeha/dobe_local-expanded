@@ -1,13 +1,19 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { v4 as uuidv4 } from 'uuid';
+import { CUSTOM_ITEM_TEMPLATE_PREFIX, getItemTaskTemplateMeta } from '../../../../../../coach/ItemLibrary';
+import { taskTemplateLibrary } from '../../../../../../coach';
+import { addManualGTDItem, completeManualGTDItem } from '../../../../../../engine/listsEngine';
 import { ColorPicker } from '../../../../../shared/ColorPicker';
 import { IconPicker } from '../../../../../shared/IconPicker';
 import { IconDisplay } from '../../../../../shared/IconDisplay';
 import { isImageIcon, resolveIcon } from '../../../../../../constants/iconMap';
 import { ATTACHMENT_MAX_BYTES } from '../../../../../../storage/storageBudget';
 import { useResourceStore } from '../../../../../../stores/useResourceStore';
+import { useScheduleStore } from '../../../../../../stores/useScheduleStore';
 import { useUserStore } from '../../../../../../stores/useUserStore';
-import type { FloorPlanRoom, FloorPlanSegment, FloorPlanSegmentKind, HomeStory, InventoryContainer, InventoryItemTemplate, InventoryResource, ItemInstance, PlacedInstance, SegmentDirection } from '../../../../../../types/resource';
+import type { FloorPlanRoom, FloorPlanSegment, FloorPlanSegmentKind, HomeStory, InventoryContainer, InventoryItemTemplate, InventoryResource, ItemInstance, ItemRecurringTask, PlacedInstance, RecurrenceDayOfWeek, ResourceRecurrenceRule, SegmentDirection } from '../../../../../../types/resource';
+import { makeDefaultRecurrenceRule, normalizeRecurrenceMode } from '../../../../../../types/resource';
+import type { Task } from '../../../../../../types/task';
 import { getUserInventoryItemTemplates, mergeInventoryItemTemplates, resolveInventoryItemTemplate } from '../../../../../../utils/inventoryItems';
 import { getPointDistance, getPointsBounds, pointsMatch, segmentsToPoints } from '../../../../../../utils/floorPlan';
 import { AddItemPanel } from '../inventory/AddItemPanel';
@@ -48,13 +54,152 @@ interface HomeFloorPlanProps {
 
 const VIEWBOX_WIDTH = 800;
 const VIEWBOX_HEIGHT = 600;
+const QUICK_ACTIONS_BADGE_RADIUS = 4;
+const QUICK_ACTIONS_BADGE_OFFSET_X = 10;
+const QUICK_ACTIONS_BADGE_OFFSET_Y = -10;
 	const VERTEX_VISIBLE_RADIUS = 9;
 	const VERTEX_HIT_RADIUS = 20;
 	const INPUT_CLS = 'rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 focus:border-purple-500 focus:outline-none dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100';
 	const STORY_SCOPE_ID = '__story__';
+	const TASK_TYPE_OPTIONS = ['CHECK', 'COUNTER', 'DURATION', 'TIMER', 'RATING', 'TEXT'] as const;
+	const DOW_LABELS: Array<{ key: RecurrenceDayOfWeek; label: string }> = [
+		{ key: 'sun', label: 'Su' },
+		{ key: 'mon', label: 'Mo' },
+		{ key: 'tue', label: 'Tu' },
+		{ key: 'wed', label: 'We' },
+		{ key: 'thu', label: 'Th' },
+		{ key: 'fri', label: 'Fr' },
+		{ key: 'sat', label: 'Sa' },
+	];
 
 	function getPlacedInstanceQuantity(placement: Pick<PlacedInstance, 'quantity'>) {
 		return placement.quantity ?? 1;
+	}
+
+	function getDayOfMonth(isoDate: string) {
+		const parsed = Number(isoDate.split('-')[2] ?? 1);
+		return Math.min(31, Math.max(1, parsed || 1));
+	}
+
+	function formatDayOfMonth(day: number) {
+		const mod10 = day % 10;
+		const mod100 = day % 100;
+		if (mod10 === 1 && mod100 !== 11) return `${day}st`;
+		if (mod10 === 2 && mod100 !== 12) return `${day}nd`;
+		if (mod10 === 3 && mod100 !== 13) return `${day}rd`;
+		return `${day}th`;
+	}
+
+	function describeTaskRecurrence(rule: ResourceRecurrenceRule) {
+		const interval = Math.max(1, rule.interval || 1);
+		switch (rule.frequency) {
+			case 'daily':
+				return interval === 1 ? 'Daily' : `Every ${interval} days`;
+			case 'weekly': {
+				const days = rule.days.length > 0
+					? rule.days.map((day) => DOW_LABELS.find((entry) => entry.key === day)?.label ?? day).join(', ')
+					: 'Seed day';
+				return interval === 1 ? `Weekly · ${days}` : `Every ${interval} weeks · ${days}`;
+			}
+			case 'monthly': {
+				const day = rule.monthlyDay ?? getDayOfMonth(rule.seedDate);
+				return interval === 1 ? `Monthly · ${formatDayOfMonth(day)}` : `Every ${interval} months · ${formatDayOfMonth(day)}`;
+			}
+			case 'yearly':
+				return interval === 1 ? 'Yearly' : `Every ${interval} years`;
+			default:
+				return 'Recurring';
+		}
+	}
+
+	function describeReminder(leadDays: number) {
+		if (leadDays < 0) return 'No reminder';
+		if (leadDays === 0) return 'Day of';
+		if (leadDays === 1) return '1 day before';
+		return `${leadDays} days before`;
+	}
+
+	function buildPlacedTaskQuickActionsKey(placementId: string, recurringTaskId: string, resourceRef: string | null | undefined) {
+		return `resource-task:${resourceRef ?? ''}:home-placement:${placementId}:${recurringTaskId}`;
+	}
+
+	function buildPlacementCleanQuickActionsKey(placementId: string, resourceRef: string | null | undefined) {
+		return `resource-task:${resourceRef ?? ''}:home-placement:${placementId}:clean`;
+	}
+
+	function buildPlacedRecurringTaskId(placementId: string, taskTemplateRef: string) {
+		return `placed-task:${placementId}:${taskTemplateRef.trim().toLowerCase()}`;
+	}
+
+	function humanizeTaskRef(taskTemplateRef: string) {
+		return taskTemplateRef
+			.replace(/^resource-task:/, '')
+			.replace(/^item-tmpl-/, '')
+			.replace(/[-_]+/g, ' ')
+			.replace(/\b\w/g, (char) => char.toUpperCase());
+	}
+
+	function buildPlacedItemRecurringTasks(placementId: string, itemTemplateRef: string, availableTemplates: InventoryItemTemplate[]): ItemRecurringTask[] {
+		const customTemplate = availableTemplates.find((option) => option.id === itemTemplateRef);
+		if (itemTemplateRef.startsWith(CUSTOM_ITEM_TEMPLATE_PREFIX)) {
+			return (customTemplate?.customTaskTemplates ?? [])
+				.filter((taskTemplate) => taskTemplate.name.trim().length > 0)
+				.map((taskTemplate) => ({
+					id: buildPlacedRecurringTaskId(placementId, taskTemplate.name.trim()),
+					taskTemplateRef: taskTemplate.name.trim(),
+					recurrenceMode: 'never',
+					recurrence: makeDefaultRecurrenceRule(),
+					reminderLeadDays: 7,
+				}));
+		}
+
+		const template = resolveInventoryItemTemplate(itemTemplateRef, availableTemplates);
+		const taskRefs = new Set<string>();
+		for (const task of template?.builtInTasks ?? []) {
+			if (task.taskTemplateRef) taskRefs.add(task.taskTemplateRef);
+		}
+
+		return [...taskRefs].map((taskTemplateRef) => ({
+			id: buildPlacedRecurringTaskId(placementId, taskTemplateRef),
+			taskTemplateRef,
+			recurrenceMode: 'never',
+			recurrence: makeDefaultRecurrenceRule(),
+			reminderLeadDays: 7,
+		}));
+	}
+
+	function resolvePlacedTaskDisplay(taskTemplateRef: string, itemTemplateRef: string, availableTemplates: InventoryItemTemplate[]) {
+		if (itemTemplateRef.startsWith(CUSTOM_ITEM_TEMPLATE_PREFIX)) {
+			const customTemplate = availableTemplates.find((option) => option.id === itemTemplateRef);
+			const customTask = customTemplate?.customTaskTemplates?.find((taskTemplate) => taskTemplate.name.trim() === taskTemplateRef);
+			if (customTask) {
+				return {
+					name: customTask.name,
+					icon: customTask.icon || 'task',
+				};
+			}
+		}
+
+		const coachTaskTemplate = taskTemplateLibrary.find((template) => template.id === taskTemplateRef);
+		if (coachTaskTemplate) {
+			return {
+				name: coachTaskTemplate.name,
+				icon: coachTaskTemplate.icon || 'task',
+			};
+		}
+
+		const itemTaskTemplate = getItemTaskTemplateMeta(taskTemplateRef);
+		if (itemTaskTemplate) {
+			return {
+				name: itemTaskTemplate.name,
+				icon: itemTaskTemplate.icon || 'task',
+			};
+		}
+
+		return {
+			name: humanizeTaskRef(taskTemplateRef),
+			icon: 'task',
+		};
 	}
 
 	type OutlineEditMode = 'add-point' | 'select-segment';
@@ -274,6 +419,8 @@ export function HomeFloorPlan({
 	const [newLooseItemQuantityByRoom, setNewLooseItemQuantityByRoom] = useState<Record<string, string>>({});
 	const [selectedPlacementId, setSelectedPlacementId] = useState<string | null>(null);
 	const [expandedPlacedContainerId, setExpandedPlacedContainerId] = useState<string | null>(null);
+	const [expandedPlacedTaskId, setExpandedPlacedTaskId] = useState<string | null>(null);
+	const [executePlacedTaskPrompt, setExecutePlacedTaskPrompt] = useState<{ name: string; taskType: string | null | undefined } | null>(null);
 	const [editingPlacedContainerId, setEditingPlacedContainerId] = useState<string | null>(null);
 	const [addingItemContainerId, setAddingItemContainerId] = useState<string | null>(null);
 	const [newItemTemplateRefByContainer, setNewItemTemplateRefByContainer] = useState<Record<string, string>>({});
@@ -297,6 +444,8 @@ export function HomeFloorPlan({
 	const [viewedLayoutError, setViewedLayoutError] = useState('');
 	const resources = useResourceStore((s) => s.resources);
 	const setResource = useResourceStore((s) => s.setResource);
+	const setTask = useScheduleStore((s) => s.setTask);
+	const tasks = useScheduleStore((s) => s.tasks);
 	const user = useUserStore((s) => s.user);
 	const setUser = useUserStore((s) => s.setUser);
 
@@ -387,6 +536,33 @@ export function HomeFloorPlan({
 		() => mergeInventoryItemTemplates(userItemTemplates, ...inventoryResources.map((entry) => entry.itemTemplates)),
 		[inventoryResources, userItemTemplates],
 	);
+	const pendingQuickActionsTaskKeys = useMemo(() => {
+		const next = new Set<string>();
+		if (!user) return next;
+
+		for (const taskId of user.lists.gtdList) {
+			const task = tasks[taskId];
+			if (!task || task.completionState !== 'pending') continue;
+			if (typeof task.attachmentRef !== 'string' || !task.attachmentRef.trim()) continue;
+			next.add(task.attachmentRef);
+		}
+
+		return next;
+	}, [tasks, user]);
+
+	function isPlacedTaskInQuickActions(placementId: string, recurringTaskId: string, resourceRef: string | null | undefined = homeId ?? null) {
+		return pendingQuickActionsTaskKeys.has(buildPlacedTaskQuickActionsKey(placementId, recurringTaskId, resourceRef));
+	}
+
+	function isPlacementCleanInQuickActions(placementId: string, resourceRef: string | null | undefined = homeId ?? null) {
+		return pendingQuickActionsTaskKeys.has(buildPlacementCleanQuickActionsKey(placementId, resourceRef));
+	}
+
+	function placedItemHasQuickActionsTask(placementId: string, recurringTasks: ItemRecurringTask[] | undefined) {
+		return (recurringTasks ?? []).some((task) => {
+			return isPlacedTaskInQuickActions(placementId, task.id);
+		});
+	}
 
 	function findRoomContainerRecord(room: FloorPlanRoom, containerId: string) {
 		const dedicatedContainer = room.dedicatedContainers?.find((candidate) => candidate.id === containerId);
@@ -453,6 +629,11 @@ export function HomeFloorPlan({
 				placement,
 				itemName: resolvedItem?.name ?? item.itemTemplateRef,
 				itemIcon: resolvedItem?.icon ?? 'inventory',
+				itemKind: resolvedItem?.kind,
+				itemTasks: resolvedItem?.builtInTasks ?? [],
+				recurringTasks: placement.recurringTasks ?? item.recurringTasks ?? [],
+				templateDimensions: resolvedItem?.dimensions,
+				itemTemplateRef: item.itemTemplateRef,
 				quantity: item.quantity,
 				unit: item.unit,
 				threshold: item.threshold,
@@ -468,6 +649,11 @@ export function HomeFloorPlan({
 				placement,
 				itemName: resolvedTemplate.name,
 				itemIcon: resolvedTemplate.icon,
+				itemKind: resolvedTemplate.kind,
+				itemTasks: resolvedTemplate.builtInTasks ?? [],
+				recurringTasks: placement.recurringTasks ?? buildPlacedItemRecurringTasks(placement.id, placement.refId, roomTemplates),
+				templateDimensions: resolvedTemplate.dimensions,
+				itemTemplateRef: placement.refId,
 				quantity: placement.quantity,
 				unit: undefined,
 				threshold: undefined,
@@ -484,6 +670,11 @@ export function HomeFloorPlan({
 			placement,
 			itemName: 'Unknown item',
 			itemIcon: 'inventory',
+			itemKind: undefined,
+			itemTasks: [],
+			recurringTasks: placement.recurringTasks ?? [],
+			templateDimensions: undefined,
+			itemTemplateRef: placement.refId,
 			quantity: placement.quantity,
 			unit: undefined,
 			threshold: undefined,
@@ -912,6 +1103,175 @@ export function HomeFloorPlan({
 		);
 	}
 
+	function updatePlacedRecurringTask(roomId: string | null, placementId: string, taskId: string, field: keyof ItemRecurringTask, value: ItemRecurringTask[keyof ItemRecurringTask]) {
+		const placementList = roomId === null
+			? story.placedItems
+			: (story.rooms.find((entry) => entry.id === roomId)?.placedItems ?? []);
+		const placement = placementList.find((entry) => entry.id === placementId);
+		if (!placement) return;
+		updatePlacedItem(roomId, placementId, {
+			recurringTasks: (placement.recurringTasks ?? []).map((task) => (
+				task.id === taskId ? { ...task, [field]: value } : task
+			)),
+		});
+	}
+
+	function updatePlacedRecurringTaskRecurrence(roomId: string | null, placementId: string, taskId: string, patch: Partial<ResourceRecurrenceRule>) {
+		const placementList = roomId === null
+			? story.placedItems
+			: (story.rooms.find((entry) => entry.id === roomId)?.placedItems ?? []);
+		const placement = placementList.find((entry) => entry.id === placementId);
+		const task = placement?.recurringTasks?.find((entry) => entry.id === taskId);
+		if (!placement || !task) return;
+		updatePlacedRecurringTask(roomId, placementId, taskId, 'recurrence', { ...task.recurrence, ...patch });
+	}
+
+	function addPlacedRecurringTask(roomId: string | null, placementId: string) {
+		const placementList = roomId === null
+			? story.placedItems
+			: (story.rooms.find((entry) => entry.id === roomId)?.placedItems ?? []);
+		const placement = placementList.find((entry) => entry.id === placementId);
+		if (!placement) return;
+		const nextTaskId = uuidv4();
+		updatePlacedItem(roomId, placementId, {
+			recurringTasks: [
+				...(placement.recurringTasks ?? []),
+				{
+					id: nextTaskId,
+					taskTemplateRef: 'New Task',
+					taskType: 'CHECK',
+					recurrenceMode: 'never',
+					recurrence: makeDefaultRecurrenceRule(),
+					reminderLeadDays: 7,
+				},
+			],
+		});
+		setExpandedPlacedTaskId(`${placementId}:${nextTaskId}`);
+	}
+
+	function removePlacedRecurringTask(roomId: string | null, placementId: string, taskId: string) {
+		const placementList = roomId === null
+			? story.placedItems
+			: (story.rooms.find((entry) => entry.id === roomId)?.placedItems ?? []);
+		const placement = placementList.find((entry) => entry.id === placementId);
+		if (!placement) return;
+		updatePlacedItem(roomId, placementId, {
+			recurringTasks: (placement.recurringTasks ?? []).filter((task) => task.id !== taskId),
+		});
+		setExpandedPlacedTaskId((current) => current === `${placementId}:${taskId}` ? null : current);
+	}
+
+	function executePlacedRecurringTask(taskName: string, taskType: string | null | undefined) {
+		setExecutePlacedTaskPrompt({ name: taskName, taskType });
+	}
+
+	function confirmExecutePlacedRecurringTask() {
+		if (!user) return;
+		if (!executePlacedTaskPrompt) return;
+		const item = addManualGTDItem({
+			title: executePlacedTaskPrompt.name,
+			note: 'Executed from a room facility task.',
+			templateRef: null,
+			taskType: executePlacedTaskPrompt.taskType ?? 'CHECK',
+			parameters: { label: executePlacedTaskPrompt.name },
+			resourceRef: homeId ?? null,
+			dueDate: null,
+		}, user);
+		completeManualGTDItem(item.id, user, { label: executePlacedTaskPrompt.name });
+		setExecutePlacedTaskPrompt(null);
+	}
+
+	function pushPlacedRecurringTaskReminder(placementId: string, recurringTaskId: string, taskName: string, taskType: string | null | undefined) {
+		if (!user) return;
+		if (isPlacedTaskInQuickActions(placementId, recurringTaskId)) return;
+		const quickActionsKey = buildPlacedTaskQuickActionsKey(placementId, recurringTaskId, homeId ?? null);
+		const nextTask: Task = {
+			id: uuidv4(),
+			templateRef: null,
+			isUnique: true,
+			title: taskName,
+			taskType: taskType ?? 'CHECK',
+			completionState: 'pending',
+			completedAt: null,
+			resultFields: { label: taskName },
+			attachmentRef: quickActionsKey,
+			resourceRef: homeId ?? null,
+			location: null,
+			sharedWith: null,
+			questRef: null,
+			actRef: null,
+			secondaryTag: null,
+		};
+
+		setTask(nextTask);
+		setUser({
+			...user,
+			lists: {
+				...user.lists,
+				gtdList: [...new Set([...user.lists.gtdList, nextTask.id])],
+			},
+		});
+	}
+
+	function pushRoomCleanTasks(summary: typeof roomSummaries[number]) {
+		if (!user) return;
+		const roomContainerTasks = summary.placedContainerEntries.map((entry) => ({
+			placementId: entry.placement.id,
+			title: `Clean ${entry.containerName}`,
+		}));
+		const roomFacilityTasks = summary.placedLooseItemEntries
+			.filter((entry) => entry.itemKind === 'facility')
+			.map((entry) => ({
+				placementId: entry.placement.id,
+				title: `Clean ${entry.itemName}`,
+			}));
+
+		const nextTasks = [...roomContainerTasks, ...roomFacilityTasks]
+			.filter((entry) => !isPlacementCleanInQuickActions(entry.placementId))
+			.map((entry) => ({
+				id: uuidv4(),
+				templateRef: null,
+				isUnique: true,
+				title: entry.title,
+				taskType: 'CHECK',
+				completionState: 'pending' as const,
+				completedAt: null,
+				resultFields: { label: entry.title },
+				attachmentRef: buildPlacementCleanQuickActionsKey(entry.placementId, homeId ?? null),
+				resourceRef: homeId ?? null,
+				location: null,
+				sharedWith: null,
+				questRef: null,
+				actRef: null,
+				secondaryTag: null,
+			} satisfies Task));
+
+		if (nextTasks.length === 0) return;
+		for (const nextTask of nextTasks) {
+			setTask(nextTask);
+		}
+		setUser({
+			...user,
+			lists: {
+				...user.lists,
+				gtdList: [...new Set([...user.lists.gtdList, ...nextTasks.map((task) => task.id)])],
+			},
+		});
+	}
+
+	function togglePlacedRecurringTaskDay(roomId: string | null, placementId: string, taskId: string, day: RecurrenceDayOfWeek) {
+		const placementList = roomId === null
+			? story.placedItems
+			: (story.rooms.find((entry) => entry.id === roomId)?.placedItems ?? []);
+		const placement = placementList.find((entry) => entry.id === placementId);
+		const task = placement?.recurringTasks?.find((entry) => entry.id === taskId);
+		if (!placement || !task) return;
+		const days = task.recurrence.days.includes(day)
+			? task.recurrence.days.filter((entry) => entry !== day)
+			: [...task.recurrence.days, day];
+		updatePlacedRecurringTaskRecurrence(roomId, placementId, taskId, { days });
+	}
+
 	function updateRoom(roomId: string, updater: (room: FloorPlanRoom) => FloorPlanRoom) {
 		onUpdateRoom?.(roomId, updater);
 	}
@@ -925,33 +1285,36 @@ export function HomeFloorPlan({
 		}));
 	}
 
-	function appendPlacedItemToRoom(room: FloorPlanRoom, bounds: { minX: number; minY: number; width: number; height: number }, placement: Omit<PlacedInstance, 'id' | 'x' | 'y' | 'rotation'>) {
+	function appendPlacedItemToRoom(room: FloorPlanRoom, bounds: { minX: number; minY: number; width: number; height: number }, placement: Omit<PlacedInstance, 'id' | 'x' | 'y' | 'rotation'>, placementId = uuidv4()) {
 		if (!onUpdateRoomPlacedItems) return;
-		const nextPlacementId = uuidv4();
 		onUpdateRoomPlacedItems(room.id, [
 			...room.placedItems,
 			{
 				...placement,
-				id: nextPlacementId,
+				id: placementId,
 				x: Math.round(bounds.minX + bounds.width / 2),
 				y: Math.round(bounds.minY + bounds.height / 2),
 				rotation: 0,
 			},
 		]);
-		setSelectedPlacementId(nextPlacementId);
-		setViewingContainerPlacementId(placement.kind === 'container' ? nextPlacementId : null);
+		setSelectedPlacementId(placementId);
+		setExpandedPlacedContainerId(placementId);
+		setViewingContainerPlacementId(placement.kind === 'container' ? placementId : null);
 	}
 
 	function addTemplateItemToRoom(room: FloorPlanRoom, bounds: { minX: number; minY: number; width: number; height: number }, itemTemplateRef: string) {
 		const resolvedItem = resolveInventoryItemTemplate(itemTemplateRef, mergeInventoryItemTemplates(userItemTemplates, room.dedicatedItems));
 		const defaultSize = resolvedItem?.kind === 'facility' ? 18 : 14;
+		const availableTemplates = mergeInventoryItemTemplates(userItemTemplates, room.dedicatedItems, ...inventoryResources.map((entry) => entry.itemTemplates));
+		const nextPlacementId = uuidv4();
 		appendPlacedItemToRoom(room, bounds, {
 			kind: 'item',
 			refId: itemTemplateRef,
-			quantity: undefined,
+			quantity: resolvedItem?.kind === 'facility' ? 1 : undefined,
+			recurringTasks: resolvedItem?.kind === 'facility' ? buildPlacedItemRecurringTasks(nextPlacementId, itemTemplateRef, availableTemplates) : undefined,
 			width: resolvedItem?.dimensions?.width ?? defaultSize,
 			depth: resolvedItem?.dimensions?.depth ?? defaultSize,
-		});
+		}, nextPlacementId);
 		setRoomAddItemRoomId(null);
 	}
 
@@ -959,6 +1322,7 @@ export function HomeFloorPlan({
 		const nextPlacementId = uuidv4();
 		const width = itemTemplate.dimensions?.width ?? 14;
 		const depth = itemTemplate.dimensions?.depth ?? 14;
+		const availableTemplates = mergeInventoryItemTemplates(userItemTemplates, room.dedicatedItems, [itemTemplate], ...inventoryResources.map((entry) => entry.itemTemplates));
 		updateRoom(room.id, (current) => ({
 			...current,
 			dedicatedItems: [...(current.dedicatedItems ?? []), itemTemplate],
@@ -968,7 +1332,8 @@ export function HomeFloorPlan({
 					id: nextPlacementId,
 					kind: 'item',
 					refId: itemTemplate.id,
-					quantity: undefined,
+					quantity: itemTemplate.kind === 'facility' ? 1 : undefined,
+					recurringTasks: itemTemplate.kind === 'facility' ? buildPlacedItemRecurringTasks(nextPlacementId, itemTemplate.id, availableTemplates) : undefined,
 					width,
 					depth,
 					x: Math.round(bounds.minX + bounds.width / 2),
@@ -1669,6 +2034,7 @@ export function HomeFloorPlan({
 		const hasFocusedPlacement = Boolean(selectedContainerEntry || selectedLooseItemEntry);
 		const visibleContainerEntries = selectedContainerEntry ? [selectedContainerEntry] : selectedLooseItemEntry ? [] : placedContainerEntries;
 		const visibleLooseItemEntries = selectedLooseItemEntry ? [selectedLooseItemEntry] : selectedContainerEntry ? [] : placedLooseItemEntries;
+		const cleanablePlacementCount = placedContainerEntries.length + placedLooseItemEntries.filter((entry) => entry.itemKind === 'facility').length;
 
 		return (
 			<div className="space-y-3 border-t border-gray-200 px-4 py-4 dark:border-gray-700">
@@ -1694,6 +2060,17 @@ export function HomeFloorPlan({
 					>
 						Add item
 					</button>
+					<button
+						type="button"
+						onClick={() => {
+							onSelectRoom(room.id);
+							pushRoomCleanTasks(summary);
+						}}
+						disabled={cleanablePlacementCount === 0}
+						className={cleanablePlacementCount > 0 ? 'rounded-full bg-slate-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-800 dark:bg-slate-200 dark:text-slate-900 dark:hover:bg-white' : 'rounded-full bg-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-400 dark:bg-gray-700 dark:text-gray-500'}
+					>
+						Clean room
+					</button>
 					</div>
 				) : null}
 
@@ -1707,6 +2084,7 @@ export function HomeFloorPlan({
 							{visibleContainerEntries.map((entry) => {
 								const isSelectedPlacement = expandedPlacedContainerId === entry.placement.id;
 								const isViewing = viewingContainerPlacementId === entry.placement.id;
+								const hasCleanTaskInQuickActions = isPlacementCleanInQuickActions(entry.placement.id);
 								return (
 									<div key={entry.placement.id} className={isSelectedPlacement ? 'rounded-xl bg-white ring-2 ring-blue-200 dark:bg-gray-900/70 dark:ring-blue-900/60' : 'rounded-xl bg-white ring-1 ring-black/5 dark:bg-gray-900/70'}>
 										<button
@@ -1734,7 +2112,7 @@ export function HomeFloorPlan({
 												<IconDisplay iconKey={entry.containerIcon || 'inventory'} size={16} className="h-4 w-4 shrink-0 object-contain" alt="" />
 												<div className="min-w-0">
 													<div className="truncate text-sm font-semibold text-gray-800 dark:text-gray-100">{entry.containerName}</div>
-													<div className="text-[11px] text-gray-500 dark:text-gray-400">{entry.items.length} item{entry.items.length === 1 ? '' : 's'} · {entry.inventoryName}</div>
+													<div className="text-[11px] text-gray-500 dark:text-gray-400">{entry.items.length} item{entry.items.length === 1 ? '' : 's'} · {entry.inventoryName}{hasCleanTaskInQuickActions ? ' · In Quick Actions' : ''}</div>
 												</div>
 											</div>
 											<span className="text-sm font-semibold text-blue-600 dark:text-blue-300">{isSelectedPlacement ? '↑' : '↓'}</span>
@@ -1778,7 +2156,12 @@ export function HomeFloorPlan({
 						<div className="space-y-2">
 							{visibleLooseItemEntries.map((entry) => {
 								const isSelectedPlacement = expandedPlacedContainerId === entry.placement.id;
-								const quantityLabel = entry.quantity != null ? `${entry.quantity}${entry.unit?.trim() ? ` ${entry.unit.trim()}` : ''}` : 'No quantity';
+								const quantityValue = entry.placement.quantity ?? entry.quantity;
+								const quantityLabel = quantityValue != null ? `${quantityValue}${entry.unit?.trim() ? ` ${entry.unit.trim()}` : ''}` : 'No quantity';
+								const isFacilityItem = entry.itemKind === 'facility';
+								const facilityTasks = entry.itemKind === 'facility' ? entry.recurringTasks ?? [] : [];
+								const isConsumableItem = entry.itemKind === 'consumable';
+								const hasCleanTaskInQuickActions = isFacilityItem && isPlacementCleanInQuickActions(entry.placement.id);
 								return (
 									<div key={entry.placement.id} className={isSelectedPlacement ? 'rounded-xl bg-white ring-2 ring-blue-200 dark:bg-gray-900/70 dark:ring-blue-900/60' : 'rounded-xl bg-white ring-1 ring-black/5 dark:bg-gray-900/70'}>
 										<button
@@ -1805,7 +2188,7 @@ export function HomeFloorPlan({
 												<IconDisplay iconKey={entry.itemIcon || 'inventory'} size={16} className="h-4 w-4 shrink-0 object-contain" alt="" />
 												<div className="min-w-0">
 													<div className="truncate text-sm font-semibold text-gray-800 dark:text-gray-100">{entry.itemName}</div>
-													<div className="text-[11px] text-gray-500 dark:text-gray-400">{quantityLabel}{entry.threshold != null ? ` · Threshold ${entry.threshold}` : ''} · {entry.inventoryName}</div>
+													<div className="text-[11px] text-gray-500 dark:text-gray-400">{quantityLabel}{entry.threshold != null ? ` · Threshold ${entry.threshold}` : ''} · {entry.inventoryName}{hasCleanTaskInQuickActions ? ' · In Quick Actions' : ''}</div>
 												</div>
 											</div>
 											<span className="text-sm font-semibold text-blue-600 dark:text-blue-300">{isSelectedPlacement ? '↑' : '↓'}</span>
@@ -1814,7 +2197,144 @@ export function HomeFloorPlan({
 											<div className="border-t border-gray-200 px-3 py-3 text-xs text-gray-600 dark:border-gray-700 dark:text-gray-300">
 												<div className="mb-2 text-[11px] text-gray-500 dark:text-gray-400">{entry.inventoryName}</div>
 												<div className="mb-2 text-[11px] text-gray-500 dark:text-gray-400">{quantityLabel}{entry.threshold != null ? ` · Threshold ${entry.threshold}` : ''}</div>
-												<div className="flex flex-wrap items-center gap-2">
+												{isFacilityItem ? (
+													<div className="mb-2 rounded-lg bg-gray-50 px-3 py-2 dark:bg-gray-800/70">
+														<div className="mb-2 flex items-center justify-between gap-2">
+															<div className="text-[11px] font-medium text-gray-600 dark:text-gray-300">Tasks</div>
+															<button type="button" onClick={() => addPlacedRecurringTask(room.id, entry.placement.id)} className="rounded-full bg-blue-50 px-2.5 py-1 text-[11px] font-semibold text-blue-700 hover:bg-blue-100 dark:bg-blue-900/20 dark:text-blue-200 dark:hover:bg-blue-900/40">Add task</button>
+														</div>
+														<div className="space-y-2">
+															{facilityTasks.length === 0 ? <div className="text-[11px] italic text-gray-400 dark:text-gray-500">No tasks added yet.</div> : null}
+															{facilityTasks.map((task) => {
+																const taskDisplay = resolvePlacedTaskDisplay(task.taskTemplateRef, entry.itemTemplateRef, mergedItemTemplates);
+																const isBuiltInTask = (entry.itemTasks ?? []).some((templateTask) => templateTask.taskTemplateRef === task.taskTemplateRef);
+																const isTaskInQuickActions = isPlacedTaskInQuickActions(entry.placement.id, task.id);
+																const taskExpandKey = `${entry.placement.id}:${task.id}`;
+																const isTaskExpanded = expandedPlacedTaskId === taskExpandKey;
+																return (
+																	<div key={task.id} className="rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900/70">
+																		<button
+																			type="button"
+																			onClick={() => setExpandedPlacedTaskId((current) => current === taskExpandKey ? null : taskExpandKey)}
+																			className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left"
+																		>
+																			<div className="min-w-0 flex items-center gap-2">
+																				<IconDisplay iconKey={taskDisplay.icon} size={14} className="h-4 w-4 shrink-0 object-contain" alt="" />
+																				<div className="min-w-0">
+																					<div className="truncate text-xs font-medium text-gray-800 dark:text-gray-100">{taskDisplay.name}</div>
+																					<div className="text-[11px] text-gray-500 dark:text-gray-400">
+																						{normalizeRecurrenceMode(task.recurrenceMode) === 'recurring'
+																							? `${describeTaskRecurrence(task.recurrence)} · ${describeReminder(task.reminderLeadDays ?? 7)}`
+																							: 'Intermittent'}
+																					</div>
+																				</div>
+																			</div>
+																			<span className="text-[11px] font-medium text-blue-500">{isTaskExpanded ? 'Close' : 'Edit'}</span>
+																		</button>
+																		{isTaskExpanded ? (
+																			<div className="space-y-3 border-t border-gray-200 px-3 py-3 dark:border-gray-700">
+																				<div className={`grid gap-2 ${isBuiltInTask ? '' : 'sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end'}`}>
+																					{isBuiltInTask ? (
+																						<div className="space-y-1">
+																							<span className="text-[11px] font-medium text-gray-600 dark:text-gray-300">Task</span>
+																							<div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-800/70 dark:text-gray-100">{taskDisplay.name}</div>
+																						</div>
+																					) : (
+																						<>
+																							<label className="space-y-1">
+																								<span className="text-[11px] font-medium text-gray-600 dark:text-gray-300">Task name</span>
+																								<input value={task.taskTemplateRef} onChange={(event) => updatePlacedRecurringTask(room.id, entry.placement.id, task.id, 'taskTemplateRef', event.target.value)} className={`${INPUT_CLS} w-full`} />
+																							</label>
+																							<button type="button" onClick={() => removePlacedRecurringTask(room.id, entry.placement.id, task.id)} className="rounded-full bg-red-50 px-3 py-2 text-xs font-semibold text-red-600 hover:bg-red-100 dark:bg-red-900/20 dark:text-red-300 sm:self-end">Remove task</button>
+																						</>
+																					)}
+																				</div>
+																				<div className={`grid gap-2 ${isBuiltInTask ? 'sm:grid-cols-[12rem]' : 'sm:grid-cols-[minmax(0,1fr)_12rem] sm:items-end'}`}>
+																					{isBuiltInTask ? null : (
+																						<label className="space-y-1">
+																							<span className="text-[11px] font-medium text-gray-600 dark:text-gray-300">Task type</span>
+																							<select value={task.taskType ?? 'CHECK'} onChange={(event) => updatePlacedRecurringTask(room.id, entry.placement.id, task.id, 'taskType', event.target.value)} className={`${INPUT_CLS} w-full`}>
+																								{TASK_TYPE_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
+																							</select>
+																						</label>
+																					)}
+																					<div className="flex rounded-full bg-gray-100 p-1 dark:bg-gray-900/60">
+																						{(['recurring', 'never'] as const).map((mode) => (
+																							<button
+																								key={mode}
+																								type="button"
+																								onClick={() => updatePlacedRecurringTask(room.id, entry.placement.id, task.id, 'recurrenceMode', mode)}
+																								className={`rounded-full px-3 py-1 text-[11px] font-medium transition-colors ${
+																									normalizeRecurrenceMode(task.recurrenceMode) === mode
+																										? 'bg-blue-500 text-white'
+																										: 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
+																								}`}
+																							>
+																								{mode === 'recurring' ? 'Recurring' : 'Intermittent'}
+																							</button>
+																						))}
+																					</div>
+																				</div>
+																				{normalizeRecurrenceMode(task.recurrenceMode) === 'recurring' ? (
+																					<div className="space-y-2 rounded-md border border-gray-200 bg-white px-3 py-3 dark:border-gray-600 dark:bg-gray-800/70">
+																						<div className="flex items-center gap-2">
+																							<span className="text-[11px] font-medium uppercase tracking-[0.12em] text-gray-500 dark:text-gray-400">Frequency</span>
+																							<select value={task.recurrence.frequency} onChange={(event) => updatePlacedRecurringTaskRecurrence(room.id, entry.placement.id, task.id, {
+																								frequency: event.target.value as ResourceRecurrenceRule['frequency'],
+																								days: event.target.value === 'weekly' ? task.recurrence.days : [],
+																								monthlyDay: event.target.value === 'monthly' ? (task.recurrence.monthlyDay ?? getDayOfMonth(task.recurrence.seedDate)) : null,
+																							})} className={`ml-auto w-36 ${INPUT_CLS}`}>
+																								<option value="daily">Daily</option>
+																								<option value="weekly">Weekly</option>
+																								<option value="monthly">Monthly</option>
+																								<option value="yearly">Yearly</option>
+																							</select>
+																						</div>
+																						{task.recurrence.frequency === 'monthly' ? (
+																							<div className="grid grid-cols-2 gap-2">
+																								<label className="space-y-1"><span className="text-xs font-medium text-gray-500 dark:text-gray-400">Every</span><input type="number" min={1} max={99} value={task.recurrence.interval} onChange={(event) => updatePlacedRecurringTaskRecurrence(room.id, entry.placement.id, task.id, { interval: Math.max(1, Number(event.target.value) || 1) })} className={INPUT_CLS} /></label>
+																								<label className="space-y-1"><span className="text-xs font-medium text-gray-500 dark:text-gray-400">Day of month</span><input type="number" min={1} max={31} value={task.recurrence.monthlyDay ?? getDayOfMonth(task.recurrence.seedDate)} onChange={(event) => updatePlacedRecurringTaskRecurrence(room.id, entry.placement.id, task.id, { monthlyDay: Math.min(31, Math.max(1, Number(event.target.value) || 1)) })} className={INPUT_CLS} /></label>
+																							</div>
+																						) : (
+																							<label className="space-y-1"><span className="text-xs font-medium text-gray-500 dark:text-gray-400">Interval</span><input type="number" min={1} max={99} value={task.recurrence.interval} onChange={(event) => updatePlacedRecurringTaskRecurrence(room.id, entry.placement.id, task.id, { interval: Math.max(1, Number(event.target.value) || 1) })} className={INPUT_CLS} /></label>
+																						)}
+																						{task.recurrence.frequency === 'weekly' ? (
+																							<div className="space-y-1"><label className="text-xs font-medium text-gray-500 dark:text-gray-400">Days</label><div className="flex gap-1">{DOW_LABELS.map(({ key, label }) => <button key={key} type="button" onClick={() => togglePlacedRecurringTaskDay(room.id, entry.placement.id, task.id, key)} className={`h-7 w-7 rounded text-xs font-medium transition-colors ${task.recurrence.days.includes(key) ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600'}`}>{label}</button>)}</div></div>
+																						) : null}
+																						<label className="space-y-1"><span className="text-xs font-medium text-gray-500 dark:text-gray-400">Start date</span><input type="date" value={task.recurrence.seedDate} onChange={(event) => updatePlacedRecurringTaskRecurrence(room.id, entry.placement.id, task.id, { seedDate: event.target.value, monthlyDay: task.recurrence.frequency === 'monthly' ? (task.recurrence.monthlyDay ?? getDayOfMonth(event.target.value)) : task.recurrence.monthlyDay })} className={INPUT_CLS} /></label>
+																						<label className="space-y-1"><span className="text-xs font-medium text-gray-500 dark:text-gray-400">Ends on</span><input type="date" value={task.recurrence.endsOn ?? ''} onChange={(event) => updatePlacedRecurringTaskRecurrence(room.id, entry.placement.id, task.id, { endsOn: event.target.value || null })} className={INPUT_CLS} /></label>
+																						<div className="flex items-center gap-2"><span className="shrink-0 text-xs font-medium text-gray-500 dark:text-gray-400">Reminder:</span><select value={task.reminderLeadDays ?? 7} onChange={(event) => updatePlacedRecurringTask(room.id, entry.placement.id, task.id, 'reminderLeadDays', Number(event.target.value))} className={`ml-auto w-40 ${INPUT_CLS}`}><option value={-1}>No reminder</option><option value={0}>Day of</option><option value={1}>1 day before</option><option value={3}>3 days before</option><option value={7}>7 days before</option><option value={14}>14 days before</option><option value={30}>30 days before</option></select></div>
+																					</div>
+																				) : (
+																					<div className="flex flex-wrap items-center gap-2">
+																						<button type="button" onClick={() => executePlacedRecurringTask(taskDisplay.name, task.taskType)} className="rounded-full bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-900/20 dark:text-emerald-200 dark:hover:bg-emerald-900/40">Execute</button>
+																						<button type="button" disabled={isTaskInQuickActions} onClick={() => { if (!isTaskInQuickActions) pushPlacedRecurringTaskReminder(entry.placement.id, task.id, taskDisplay.name, task.taskType); }} className={isTaskInQuickActions ? 'rounded-full bg-sky-100 px-3 py-2 text-xs font-semibold text-sky-700 dark:bg-sky-900/30 dark:text-sky-200' : 'rounded-full bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700 hover:bg-amber-100 dark:bg-amber-900/20 dark:text-amber-200 dark:hover:bg-amber-900/40'}>{isTaskInQuickActions ? 'In Quick Actions' : 'Push Reminder'}</button>
+																					</div>
+																				)}
+																			</div>
+																		) : null}
+																	</div>
+																);
+															})}
+														</div>
+													</div>
+												) : null}
+												{isConsumableItem ? (
+													<div className="rounded-lg bg-gray-50 px-3 py-3 dark:bg-gray-800/70">
+														<label className="block max-w-[10rem] space-y-1">
+															<span className="text-[11px] font-medium text-gray-600 dark:text-gray-300">Quantity</span>
+															<input type="number" min={0} value={quantityValue ?? 0} onChange={(event) => updatePlacedItem(room.id, entry.placement.id, { quantity: Math.max(0, Number(event.target.value) || 0) })} className={`${INPUT_CLS} w-full`} />
+														</label>
+													</div>
+												) : (
+													<div className="flex flex-wrap items-end gap-2 rounded-lg bg-gray-50 px-3 py-3 dark:bg-gray-800/70 sm:flex-nowrap">
+														<label className="min-w-0 flex-1 space-y-1"><span className="text-[11px] font-medium text-gray-600 dark:text-gray-300">W</span><input type="number" min={0} value={entry.placement.width} onChange={(event) => updatePlacedItem(room.id, entry.placement.id, { width: Math.max(0, Number(event.target.value) || 0) })} className={`${INPUT_CLS} w-full`} /></label>
+														<label className="min-w-0 flex-1 space-y-1"><span className="text-[11px] font-medium text-gray-600 dark:text-gray-300">D</span><input type="number" min={0} value={entry.placement.depth} onChange={(event) => updatePlacedItem(room.id, entry.placement.id, { depth: Math.max(0, Number(event.target.value) || 0) })} className={`${INPUT_CLS} w-full`} /></label>
+														<button type="button" onClick={() => updatePlacedItem(room.id, entry.placement.id, { rotation: ((entry.placement.rotation ?? 0) + 30) % 360 })} className="rounded-full bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-100 dark:bg-blue-900/20 dark:text-blue-200 dark:hover:bg-blue-900/40 sm:self-end">Rotate +30°</button>
+													</div>
+												)}
+												<div className="mt-3 flex flex-wrap items-center gap-2">
+													<div className="text-[11px] text-gray-500 dark:text-gray-400">Drag the selected footprint on the canvas to move it.</div>
 													<button type="button" onClick={() => removePlacedItem(room.id, entry.placement.id)} className="rounded-full bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-100 dark:bg-red-900/20 dark:text-red-300">Remove</button>
 												</div>
 											</div>
@@ -2157,6 +2677,14 @@ export function HomeFloorPlan({
 									: { icon: findInventoryItemRecord(entry.refId)?.resolvedItem?.icon ?? 'inventory', fill: 'rgba(59,130,246,0.08)' };
 								const resolvedIcon = resolveIcon(visualRecord.icon);
 								const iconSize = Math.max(10, Math.min(entry.width, entry.depth) * 0.62);
+								const itemRecord = entry.kind === 'item' ? findInventoryItemRecord(entry.refId) : null;
+								const hasQuickActionsIndicator = Boolean(
+									(entry.kind === 'container' && isPlacementCleanInQuickActions(entry.id))
+									|| (itemRecord?.resolvedItem?.kind === 'facility' && (
+										placedItemHasQuickActionsTask(entry.id, entry.recurringTasks ?? itemRecord.item.recurringTasks ?? [])
+										|| isPlacementCleanInQuickActions(entry.id)
+									))
+								);
 
 								return (
 									<g key={`story-placement-${entry.id}`}>
@@ -2176,12 +2704,19 @@ export function HomeFloorPlan({
 												setInteraction({ type: 'drag-container', roomId: null, placementId: entry.id, offsetX: point.x - entry.x, offsetY: point.y - entry.y });
 											}}
 										/>
-										<g transform={`translate(${entry.x} ${entry.y}) rotate(${entry.rotation})`} style={{ pointerEvents: 'none' }}>
-											{isImageIcon(resolvedIcon) ? (
-												<image href={resolvedIcon} x={-iconSize / 2} y={-iconSize / 2} width={iconSize} height={iconSize} preserveAspectRatio="xMidYMid meet" opacity={isPlacementSelected ? 1 : 0.82} />
-											) : (
-												<text x={0} y={0} textAnchor="middle" dominantBaseline="central" fontSize={iconSize} opacity={isPlacementSelected ? 1 : 0.9}>{resolvedIcon}</text>
-											)}
+										<g transform={`translate(${entry.x} ${entry.y})`} style={{ pointerEvents: 'none' }}>
+											<g transform={`rotate(${entry.rotation})`}>
+												{isImageIcon(resolvedIcon) ? (
+													<image href={resolvedIcon} x={-iconSize / 2} y={-iconSize / 2} width={iconSize} height={iconSize} preserveAspectRatio="xMidYMid meet" opacity={isPlacementSelected ? 1 : 0.82} />
+												) : (
+													<text x={0} y={0} textAnchor="middle" dominantBaseline="central" fontSize={iconSize} opacity={isPlacementSelected ? 1 : 0.9}>{resolvedIcon}</text>
+												)}
+											</g>
+											{hasQuickActionsIndicator ? (
+												<g transform={`translate(${QUICK_ACTIONS_BADGE_OFFSET_X} ${QUICK_ACTIONS_BADGE_OFFSET_Y})`}>
+													<circle cx={0} cy={0} r={QUICK_ACTIONS_BADGE_RADIUS} fill="#ef4444" />
+												</g>
+											) : null}
 										</g>
 									</g>
 								);
@@ -2275,6 +2810,13 @@ export function HomeFloorPlan({
 													: { icon: resolvedItem?.itemIcon ?? 'inventory', fill: 'rgba(59,130,246,0.10)' };
 												const resolvedIcon = resolveIcon(visualRecord.icon);
 												const iconSize = Math.max(10, Math.min(entry.width, entry.depth) * 0.62);
+												const hasQuickActionsIndicator = Boolean(
+													(entry.kind === 'container' && isPlacementCleanInQuickActions(entry.id))
+													|| (resolvedItem?.itemKind === 'facility' && (
+														placedItemHasQuickActionsTask(entry.id, resolvedItem.recurringTasks)
+														|| isPlacementCleanInQuickActions(entry.id)
+													))
+												);
 
 												return (
 													<g key={entry.id}>
@@ -2294,29 +2836,36 @@ export function HomeFloorPlan({
 																setInteraction({ type: 'drag-container', roomId: room.id, placementId: entry.id, offsetX: point.x - entry.x, offsetY: point.y - entry.y });
 															}}
 														/>
-														<g transform={`translate(${entry.x} ${entry.y}) rotate(${entry.rotation})`} style={{ pointerEvents: 'none' }}>
-															{isImageIcon(resolvedIcon) ? (
-																<image
-																	href={resolvedIcon}
-																	x={-iconSize / 2}
-																	y={-iconSize / 2}
-																	width={iconSize}
-																	height={iconSize}
-																	preserveAspectRatio="xMidYMid meet"
-																	opacity={isPlacementSelected ? 1 : 0.82}
-																/>
-															) : (
-																<text
-																	x={0}
-																	y={0}
-																	textAnchor="middle"
-																	dominantBaseline="central"
-																	fontSize={iconSize}
-																	opacity={isPlacementSelected ? 1 : 0.9}
-																>
-																	{resolvedIcon}
-																</text>
-															)}
+														<g transform={`translate(${entry.x} ${entry.y})`} style={{ pointerEvents: 'none' }}>
+															<g transform={`rotate(${entry.rotation})`}>
+																{isImageIcon(resolvedIcon) ? (
+																	<image
+																		href={resolvedIcon}
+																		x={-iconSize / 2}
+																		y={-iconSize / 2}
+																		width={iconSize}
+																		height={iconSize}
+																		preserveAspectRatio="xMidYMid meet"
+																		opacity={isPlacementSelected ? 1 : 0.82}
+																	/>
+																) : (
+																	<text
+																		x={0}
+																		y={0}
+																		textAnchor="middle"
+																		dominantBaseline="central"
+																		fontSize={iconSize}
+																		opacity={isPlacementSelected ? 1 : 0.9}
+																	>
+																		{resolvedIcon}
+																	</text>
+																)}
+															</g>
+															{hasQuickActionsIndicator ? (
+																<g transform={`translate(${QUICK_ACTIONS_BADGE_OFFSET_X} ${QUICK_ACTIONS_BADGE_OFFSET_Y})`}>
+																	<circle cx={0} cy={0} r={QUICK_ACTIONS_BADGE_RADIUS} fill="#ef4444" />
+																</g>
+															) : null}
 														</g>
 													</g>
 												);
@@ -3056,6 +3605,20 @@ export function HomeFloorPlan({
 							<div className="flex justify-end gap-2">
 								<button type="button" onClick={() => setShowViewedContainerLayoutPanel(false)} className="rounded-full bg-gray-100 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700">Cancel</button>
 								<button type="button" onClick={applyViewedContainerLayout} className="rounded-full bg-blue-500 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-600">Save Layout</button>
+							</div>
+						</div>
+					</PopupShell>
+				) : null}
+
+				{executePlacedTaskPrompt ? (
+					<PopupShell title="Execute Task" onClose={() => setExecutePlacedTaskPrompt(null)}>
+						<div className="space-y-4">
+							<p className="text-sm text-gray-600 dark:text-gray-300">
+								Mark <span className="font-semibold text-gray-900 dark:text-gray-100">{executePlacedTaskPrompt.name}</span> complete and add it to today&apos;s Quick Actions?
+							</p>
+							<div className="flex justify-end gap-2">
+								<button type="button" onClick={() => setExecutePlacedTaskPrompt(null)} className="rounded-full bg-gray-100 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700">Cancel</button>
+								<button type="button" onClick={confirmExecutePlacedRecurringTask} className="rounded-full bg-emerald-500 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-600">Mark Complete</button>
 							</div>
 						</div>
 					</PopupShell>

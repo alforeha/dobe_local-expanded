@@ -76,6 +76,10 @@ export interface PlacedInstance {
   kind: 'item' | 'container';
   refId: string;
   quantity?: number;
+  recurringTasks?: ItemRecurringTask[];
+  placedWidth?: number;
+  placedDepth?: number;
+  placedHeight?: number;
   width: number;
   depth: number;
   x: number;
