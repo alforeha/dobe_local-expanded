@@ -10,7 +10,7 @@ import {
 import { useResourceStore } from '../../../../../../stores/useResourceStore';
 import { useUserStore } from '../../../../../../stores/useUserStore';
 import type { HomeResource, InventoryCustomTaskTemplate, InventoryItemTemplate, InventoryResource, ItemInstance, PlacedInstance } from '../../../../../../types/resource';
-import type { CheckInputFields, ConsumeEntry, ConsumeInputFields } from '../../../../../../types/taskTemplate';
+import type { CheckInputFields, ConsumeEntry, ConsumeInputFields, TextInputFields } from '../../../../../../types/taskTemplate';
 import { IconDisplay } from '../../../../../shared/IconDisplay';
 import { IconPicker } from '../../../../../shared/IconPicker';
 import { PopupShell } from '../../../../../shared/popups/PopupShell';
@@ -80,9 +80,9 @@ interface RowDisclosureState {
   mode: 'remove' | 'placements';
 }
 
-type DraftTaskType = 'CHECK' | 'CONSUME';
+type DraftTaskType = 'CHECK' | 'CONSUME' | 'TEXT';
 
-type DraftTaskInputFields = CheckInputFields | ConsumeInputFields;
+type DraftTaskInputFields = CheckInputFields | ConsumeInputFields | (Partial<TextInputFields> & { label: string });
 
 type EditableInventoryCustomTaskTemplate = InventoryCustomTaskTemplate & {
   taskType?: DraftTaskType;
@@ -95,6 +95,12 @@ interface DraftNewItemTask {
   taskType: DraftTaskType;
   inputFields: DraftTaskInputFields;
   icon: string;
+}
+
+function formatDraftTaskTypeLabel(taskType: DraftTaskType) {
+  if (taskType === 'TEXT') return 'Use';
+  if (taskType === 'CONSUME') return 'Consume';
+  return 'Check';
 }
 
 interface AddItemPanelProps {
@@ -160,6 +166,7 @@ export function AddItemPanel({
   const [draftTaskIcon, setDraftTaskIcon] = useState('task');
   const [draftTaskType, setDraftTaskType] = useState<DraftTaskType>('CHECK');
   const [draftConsumeEntries, setDraftConsumeEntries] = useState<ConsumeEntry[]>([]);
+  const [draftTextPrompt, setDraftTextPrompt] = useState('');
   const [openConsumeEntryPickerIndex, setOpenConsumeEntryPickerIndex] = useState<number | null>(null);
   const [taskError, setTaskError] = useState('');
   const [error, setError] = useState('');
@@ -590,6 +597,13 @@ export function AddItemPanel({
                 label: task.name,
                 entries: (task.inputFields as ConsumeInputFields).entries,
               }
+            : task.taskType === 'TEXT'
+              ? {
+                  label: task.name,
+                  prompt: typeof (task.inputFields as Partial<TextInputFields>).prompt === 'string'
+                    ? (task.inputFields as Partial<TextInputFields>).prompt
+                    : '',
+                }
             : {
                 label: task.name,
               },
@@ -620,6 +634,7 @@ export function AddItemPanel({
     setDraftTaskName('');
     setDraftTaskType('CHECK');
     setDraftConsumeEntries([]);
+    setDraftTextPrompt('');
     setTaskError('');
     setError('');
   };
@@ -630,6 +645,7 @@ export function AddItemPanel({
     setDraftTaskIcon('task');
     setDraftTaskType('CHECK');
     setDraftConsumeEntries([]);
+    setDraftTextPrompt('');
     setOpenConsumeEntryPickerIndex(null);
     setTaskError('');
   };
@@ -686,6 +702,8 @@ export function AddItemPanel({
         taskType: draftTaskType,
         inputFields: draftTaskType === 'CONSUME'
           ? { label: trimmedName, entries }
+          : draftTaskType === 'TEXT'
+            ? { label: trimmedName, prompt: draftTextPrompt }
           : { label: trimmedName },
         icon: draftTaskIcon || 'task',
       },
@@ -1092,7 +1110,7 @@ export function AddItemPanel({
                               ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
                               : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'
                           }`}>
-                            {task.taskType}
+                            {formatDraftTaskTypeLabel(task.taskType)}
                           </span>
                           <button
                             type="button"
@@ -1140,11 +1158,15 @@ export function AddItemPanel({
                           if (nextType !== 'CONSUME') {
                             setDraftConsumeEntries([]);
                           }
+                          if (nextType !== 'TEXT') {
+                            setDraftTextPrompt('');
+                          }
                         }}
                         className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-purple-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
                       >
                         <option value="CHECK">CHECK</option>
                         <option value="CONSUME">CONSUME</option>
+                        <option value="TEXT">Use</option>
                       </select>
                     </label>
 
@@ -1261,6 +1283,19 @@ export function AddItemPanel({
                           </div>
                         )}
                       </div>
+                    ) : null}
+
+                    {draftTaskType === 'TEXT' ? (
+                      <label className="space-y-1">
+                        <span className="block text-xs font-medium text-gray-500 dark:text-gray-400">Prompt</span>
+                        <input
+                          type="text"
+                          value={draftTextPrompt}
+                          onChange={(event) => setDraftTextPrompt(event.target.value)}
+                          placeholder="e.g. Preheat to 375°F, Add 2 cups water"
+                          className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-purple-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
+                        />
+                      </label>
                     ) : null}
 
                     {taskError ? <p className="text-sm text-red-500">{taskError}</p> : null}

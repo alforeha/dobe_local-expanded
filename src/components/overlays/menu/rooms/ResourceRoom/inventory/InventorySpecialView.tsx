@@ -15,7 +15,7 @@ import { useScheduleStore } from '../../../../../../stores/useScheduleStore';
 import { useResourceStore } from '../../../../../../stores/useResourceStore';
 import { useUserStore } from '../../../../../../stores/useUserStore';
 import type { Task } from '../../../../../../types/task';
-import type { CheckInputFields, ConsumeEntry, ConsumeInputFields, TaskType } from '../../../../../../types/taskTemplate';
+import type { CheckInputFields, ConsumeEntry, ConsumeInputFields, TaskType, TextInputFields } from '../../../../../../types/taskTemplate';
 import { IconDisplay } from '../../../../../shared/IconDisplay';
 import { IconPicker } from '../../../../../shared/IconPicker';
 import { TextInput } from '../../../../../shared/inputs/TextInput';
@@ -46,8 +46,8 @@ type TabKey = 'items' | 'containers' | 'bags';
 type ItemPlacementFilterValue = 'all' | 'placed' | 'unplaced';
 type ItemKindFilterValue = 'all' | ItemKind;
 type ItemCategoryFilterValue = 'all' | ItemCategory | 'user-created' | 'room-created';
-type EditableTaskType = Extract<TaskType, 'CHECK' | 'CONSUME'>;
-type PlacementTaskInputFields = CheckInputFields | ConsumeInputFields;
+type EditableTaskType = Extract<TaskType, 'CHECK' | 'CONSUME' | 'TEXT'>;
+type PlacementTaskInputFields = CheckInputFields | ConsumeInputFields | (Partial<TextInputFields> & { label: string });
 type InventoryEditableTaskTemplate = InventoryCustomTaskTemplate & {
   taskType?: EditableTaskType;
   inputFields?: PlacementTaskInputFields;
@@ -144,6 +144,7 @@ function itemQuantityTotal(items: ItemInstance[]) {
 
 function formatTaskTypeLabel(taskType?: string | null) {
   if (!taskType) return 'CHECK';
+  if (taskType === 'TEXT') return 'Use';
   return taskType.replaceAll('_', ' ');
 }
 
@@ -698,10 +699,17 @@ export function InventorySpecialView({ resource }: InventorySpecialViewProps) {
                 quantity: Math.max(1, entry.quantity || 1),
               })),
             }
+          : (taskTemplate.taskType ?? 'CHECK') === 'TEXT'
+            ? {
+                label: taskTemplate.name,
+                prompt: typeof (taskTemplate.inputFields as Partial<TextInputFields> | undefined)?.prompt === 'string'
+                  ? (taskTemplate.inputFields as Partial<TextInputFields>).prompt
+                  : '',
+              }
           : { label: taskTemplate.name },
       })),
     );
-    setSelectedDraftTaskTemplateId(item.customTaskTemplates?.[0]?.id ?? null);
+    setSelectedDraftTaskTemplateId(null);
     setEditingItemId(itemId);
     setShowItemComposer(true);
     setExpandedItemId(itemId);
@@ -732,6 +740,18 @@ export function InventorySpecialView({ resource }: InventorySpecialViewProps) {
           inputFields: {
             label: nextTaskTemplate.name,
             entries: ((nextTaskTemplate.inputFields as ConsumeInputFields | undefined)?.entries ?? []),
+          },
+        };
+      }
+
+      if (taskType === 'TEXT') {
+        return {
+          ...nextTaskTemplate,
+          inputFields: {
+            label: nextTaskTemplate.name,
+            prompt: typeof (nextTaskTemplate.inputFields as Partial<TextInputFields> | undefined)?.prompt === 'string'
+              ? (nextTaskTemplate.inputFields as Partial<TextInputFields>).prompt
+              : '',
           },
         };
       }
@@ -794,6 +814,16 @@ export function InventorySpecialView({ resource }: InventorySpecialViewProps) {
     });
   }
 
+  function updateDraftTaskTextInput(taskTemplateId: string, prompt: string) {
+    const taskTemplate = draftTaskTemplates.find((entry) => entry.id === taskTemplateId);
+    updateDraftTaskTemplate(taskTemplateId, {
+      inputFields: {
+        label: taskTemplate?.name ?? '',
+        prompt,
+      },
+    });
+  }
+
   function handleSaveOrUpdateItem() {
     if (!user || !draftItemName.trim()) return;
 
@@ -828,6 +858,13 @@ export function InventorySpecialView({ resource }: InventorySpecialViewProps) {
                         quantity: Math.max(1, Math.floor(entry.quantity || 1)),
                       })),
                   }
+                : (taskTemplate.taskType ?? 'CHECK') === 'TEXT'
+                  ? {
+                      label: taskTemplate.name.trim(),
+                      prompt: typeof (taskTemplate.inputFields as Partial<TextInputFields> | undefined)?.prompt === 'string'
+                        ? (taskTemplate.inputFields as Partial<TextInputFields>).prompt?.trim() ?? ''
+                        : '',
+                    }
                 : {
                     label: taskTemplate.name.trim(),
                   },
@@ -1272,9 +1309,15 @@ export function InventorySpecialView({ resource }: InventorySpecialViewProps) {
                   </button>
                 </div>
                 <div className="mt-2 space-y-2">
-                  {draftTaskTemplates.length === 0 ? (
+                  {(selectedDraftTaskTemplateId
+                    ? draftTaskTemplates.filter((taskTemplate) => taskTemplate.id === selectedDraftTaskTemplateId)
+                    : draftTaskTemplates
+                  ).length === 0 ? (
                     <p className="text-xs italic text-gray-400">No custom tasks added yet.</p>
-                  ) : draftTaskTemplates.map((taskTemplate) => (
+                  ) : (selectedDraftTaskTemplateId
+                    ? draftTaskTemplates.filter((taskTemplate) => taskTemplate.id === selectedDraftTaskTemplateId)
+                    : draftTaskTemplates
+                  ).map((taskTemplate) => (
                     <button
                       key={taskTemplate.id}
                       type="button"
@@ -1294,7 +1337,7 @@ export function InventorySpecialView({ resource }: InventorySpecialViewProps) {
                           ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
                           : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'
                       }`}>
-                        {taskTemplate.taskType ?? 'CHECK'}
+                        {formatTaskTypeLabel(taskTemplate.taskType ?? 'CHECK')}
                       </span>
                     </button>
                   ))}
@@ -1327,6 +1370,7 @@ export function InventorySpecialView({ resource }: InventorySpecialViewProps) {
                           >
                             <option value="CHECK">CHECK</option>
                             <option value="CONSUME">CONSUME</option>
+                            <option value="TEXT">Use</option>
                           </select>
                         </label>
                       </div>
@@ -1389,6 +1433,21 @@ export function InventorySpecialView({ resource }: InventorySpecialViewProps) {
                             ))}
                           </div>
                         )}
+                      </div>
+                    ) : null}
+
+                    {(selectedDraftTaskTemplate.taskType ?? 'CHECK') === 'TEXT' ? (
+                      <div className="space-y-3 rounded-lg border border-gray-200 bg-white px-3 py-3 dark:border-gray-600 dark:bg-gray-800">
+                        <label className="space-y-1 block">
+                          <span className="block text-xs font-medium text-gray-500 dark:text-gray-400">Prompt</span>
+                          <input
+                            type="text"
+                            value={((selectedDraftTaskTemplate.inputFields as Partial<TextInputFields> | undefined)?.prompt) ?? ''}
+                            onChange={(event) => updateDraftTaskTextInput(selectedDraftTaskTemplate.id, event.target.value)}
+                            placeholder="e.g. Preheat to 375°F"
+                            className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100"
+                          />
+                        </label>
                       </div>
                     ) : null}
 
