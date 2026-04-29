@@ -22,13 +22,14 @@ import { TextInput } from '../../../../../shared/inputs/TextInput';
 import { AddItemPanel } from './AddItemPanel';
 import { AddBagPanel } from './AddBagPanel';
 import { AddContainerPanel } from './AddContainerPanel';
+import { ContainerLayoutCanvas } from './ContainerLayoutCanvas';
 import { taskTemplateLibrary } from '../../../../../../coach';
 import {
   getUserInventoryItemTemplates,
   mergeInventoryItemTemplates,
   resolveInventoryItemTemplate,
 } from '../../../../../../utils/inventoryItems';
-import { findHomeRoomReference, getHomeRoomReferences } from '../../../../../../utils/homeRooms';
+import { findHomeRoomReference } from '../../../../../../utils/homeRooms';
 import {
   CUSTOM_ITEM_TEMPLATE_PREFIX,
   getItemTaskTemplateMeta,
@@ -44,6 +45,7 @@ interface InventorySpecialViewProps {
 
 type TabKey = 'items' | 'containers' | 'bags';
 type ItemPlacementFilterValue = 'all' | 'placed' | 'unplaced';
+type ContainerPlacementFilterValue = 'all' | 'placed' | 'unplaced';
 type ItemKindFilterValue = 'all' | ItemKind;
 type ItemCategoryFilterValue = 'all' | ItemCategory | 'user-created' | 'room-created';
 type EditableTaskType = Extract<TaskType, 'CHECK' | 'CONSUME' | 'TEXT'>;
@@ -54,6 +56,12 @@ type InventoryEditableTaskTemplate = InventoryCustomTaskTemplate & {
 };
 
 const ITEM_PLACEMENT_FILTER_OPTIONS: Array<{ id: ItemPlacementFilterValue; label: string }> = [
+  { id: 'all', label: 'All' },
+  { id: 'placed', label: 'Placed' },
+  { id: 'unplaced', label: 'Unplaced' },
+];
+
+const CONTAINER_PLACEMENT_FILTER_OPTIONS: Array<{ id: ContainerPlacementFilterValue; label: string }> = [
   { id: 'all', label: 'All' },
   { id: 'placed', label: 'Placed' },
   { id: 'unplaced', label: 'Unplaced' },
@@ -102,6 +110,39 @@ interface ItemRowGroup {
   rows: ItemRowSummary[];
   showHeader: boolean;
 }
+
+type ContainerFace = 'width-depth' | 'depth-height' | 'width-height';
+
+interface ContainerRowSummary {
+  rowKey: string;
+  container: InventoryContainer;
+  ownership: 'user' | 'room';
+  ownerBadge?: string;
+  locationLabel: string;
+  isPlaced: boolean;
+  groupKey?: string;
+  groupLabel?: string;
+  lowItemCount: number;
+}
+
+interface ContainerRowGroup {
+  key: string;
+  label: string;
+  rows: ContainerRowSummary[];
+  showHeader: boolean;
+}
+
+interface RoomDedicatedContainerEditorTarget {
+  homeId: string;
+  roomId: string;
+  containerId: string;
+}
+
+const CONTAINER_FACE_OPTIONS: Array<{ value: ContainerFace; label: string; detail: string }> = [
+  { value: 'width-depth', label: 'Top', detail: 'Width x Depth' },
+  { value: 'depth-height', label: 'Side', detail: 'Depth x Height' },
+  { value: 'width-height', label: 'Front', detail: 'Width x Height' },
+];
 
 const DAY_LABELS: Record<string, string> = {
   sun: 'Su',
@@ -154,6 +195,13 @@ function titleCaseCategory(category: ItemCategory | 'user-created' | 'room-creat
   return category.charAt(0).toUpperCase() + category.slice(1);
 }
 
+function getDefaultContainerPreviewFace(container: InventoryContainer): ContainerFace {
+  if (container.layoutGrid?.widthDepth) return 'width-depth';
+  if (container.layoutGrid?.depthHeight) return 'depth-height';
+  if (container.layoutGrid?.widthHeight) return 'width-height';
+  return 'width-depth';
+}
+
 export function InventorySpecialView({ resource }: InventorySpecialViewProps) {
   const scheduleTasks = useScheduleStore((s) => s.tasks) as Record<string, Task>;
   const scheduleTaskTemplates = useScheduleStore((s) => s.taskTemplates);
@@ -172,6 +220,7 @@ export function InventorySpecialView({ resource }: InventorySpecialViewProps) {
   const [editingBagId, setEditingBagId] = useState<string | null>(null);
   const [showAddContainerPanel, setShowAddContainerPanel] = useState(false);
   const [editingContainerId, setEditingContainerId] = useState<string | null>(null);
+  const [editingRoomDedicatedContainer, setEditingRoomDedicatedContainer] = useState<RoomDedicatedContainerEditorTarget | null>(null);
   const [showItemComposer, setShowItemComposer] = useState(false);
   const [draftItemName, setDraftItemName] = useState('');
   const [draftItemIcon, setDraftItemIcon] = useState('inventory');
@@ -184,9 +233,11 @@ export function InventorySpecialView({ resource }: InventorySpecialViewProps) {
   const [selectedDraftTaskTemplateId, setSelectedDraftTaskTemplateId] = useState<string | null>(null);
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [itemPlacementFilter, setItemPlacementFilter] = useState<ItemPlacementFilterValue>('all');
+  const [containerPlacementFilter, setContainerPlacementFilter] = useState<ContainerPlacementFilterValue>('all');
   const [itemKindFilter, setItemKindFilter] = useState<ItemKindFilterValue>('all');
   const [itemCategoryFilter, setItemCategoryFilter] = useState<ItemCategoryFilterValue>('all');
   const [editingItemDetailsId, setEditingItemDetailsId] = useState<string | null>(null);
+  const [containerPreviewFaces, setContainerPreviewFaces] = useState<Record<string, ContainerFace>>({});
 
   const userTemplates = useMemo(() => getUserInventoryItemTemplates(user), [user]);
   const roomItemEntries = useMemo(() => {
@@ -249,8 +300,21 @@ export function InventorySpecialView({ resource }: InventorySpecialViewProps) {
     [containerEntries, editingBagId],
   );
   const editingContainer = useMemo(
-    () => (editingContainerId ? regularContainerEntries.find((entry) => entry.id === editingContainerId) ?? null : null),
-    [editingContainerId, regularContainerEntries],
+    () => {
+      if (editingRoomDedicatedContainer) {
+        const home = resources[editingRoomDedicatedContainer.homeId];
+        if (!home || home.type !== 'home') return null;
+        for (const story of home.stories ?? []) {
+          const room = story.rooms.find((entry) => entry.id === editingRoomDedicatedContainer.roomId);
+          const container = room?.dedicatedContainers?.find((entry) => entry.id === editingRoomDedicatedContainer.containerId);
+          if (container) return container;
+        }
+        return null;
+      }
+
+      return editingContainerId ? regularContainerEntries.find((entry) => entry.id === editingContainerId) ?? null : null;
+    },
+    [editingContainerId, editingRoomDedicatedContainer, regularContainerEntries, resources],
   );
   const homeResources = useMemo(
     () => Object.values(resources).filter((entry): entry is HomeResource => entry.type === 'home'),
@@ -264,6 +328,43 @@ export function InventorySpecialView({ resource }: InventorySpecialViewProps) {
     () => Object.values(resources).filter((entry): entry is InventoryResource => entry.type === 'inventory'),
     [resources],
   );
+  const lowStockLabels = new Set(
+    Object.values(scheduleTasks)
+      .filter((task) => task.resourceRef === resource.id && task.completionState === 'pending' && gtdTaskIds.has(task.id))
+      .map((task) => (task.resultFields as Record<string, string> | undefined)?.itemName)
+      .filter((itemName): itemName is string => Boolean(itemName)),
+  );
+  const roomDedicatedContainerEntries = useMemo(() => {
+    const rows: ContainerRowSummary[] = [];
+
+    for (const home of homeResources) {
+      for (const story of home.stories ?? []) {
+        for (const room of story.rooms) {
+          const groupLabel = `${home.name} / ${room.name}`;
+          for (const container of room.dedicatedContainers ?? []) {
+            const lowItemCount = container.items.filter((item) => {
+              const itemName = resolveInventoryItemTemplate(item.itemTemplateRef, itemEntries)?.name ?? item.itemTemplateRef;
+              return lowStockLabels.has(itemName) || (item.threshold != null && item.quantity != null && item.quantity <= item.threshold);
+            }).length;
+
+            rows.push({
+              rowKey: `room:${home.id}:${room.id}:${container.id}`,
+              container,
+              ownership: 'room',
+              ownerBadge: 'Room',
+              locationLabel: groupLabel,
+              isPlaced: true,
+              groupKey: `home:${home.id}:${room.id}`,
+              groupLabel,
+              lowItemCount,
+            });
+          }
+        }
+      }
+    }
+
+    return rows;
+  }, [homeResources, itemEntries, lowStockLabels]);
 
   const itemIdsWithDoc = useMemo(() => {
     const ids = new Set<string>();
@@ -278,13 +379,6 @@ export function InventorySpecialView({ resource }: InventorySpecialViewProps) {
     }
     return ids;
   }, [resources]);
-
-  const lowStockLabels = new Set(
-    Object.values(scheduleTasks)
-      .filter((task) => task.resourceRef === resource.id && task.completionState === 'pending' && gtdTaskIds.has(task.id))
-      .map((task) => (task.resultFields as Record<string, string> | undefined)?.itemName)
-      .filter((itemName): itemName is string => Boolean(itemName)),
-  );
 
   const itemPlacementsByTemplateId = useMemo(() => {
     const placements = new Map<string, ItemPlacementRecord[]>();
@@ -588,6 +682,129 @@ export function InventorySpecialView({ resource }: InventorySpecialViewProps) {
         return acc;
       }, []);
   }, [itemCategoryFilter, visibleItemRows]);
+
+  function resolveContainerPlacement(link: InventoryContainerLink | null | undefined) {
+    if (!link?.targetResourceId) {
+      return {
+        isPlaced: false,
+        label: 'Unplaced',
+      };
+    }
+
+    if (link.targetKind === 'vehicle') {
+      const vehicle = resources[link.targetResourceId] as VehicleResource | undefined;
+      const area = vehicle?.layout?.areas.find((entry) => entry.id === link.targetAreaId);
+      const label = vehicle?.name && area?.name
+        ? `${vehicle.name} / ${area.name}`
+        : area?.name ?? vehicle?.name ?? 'Vehicle';
+
+      return {
+        isPlaced: true,
+        label,
+        groupKey: `vehicle:${link.targetResourceId}:${link.targetAreaId ?? 'vehicle'}`,
+        groupLabel: label,
+      };
+    }
+
+    const home = resources[link.targetResourceId] as HomeResource | undefined;
+    const room = home ? findHomeRoomReference(home, link.targetRoomId) : null;
+    const label = home?.name && room?.name
+      ? `${home.name} / ${room.name}`
+      : room?.name ?? home?.name ?? 'Home room';
+
+    return {
+      isPlaced: true,
+      label,
+      groupKey: `home:${link.targetResourceId}:${link.targetRoomId ?? 'home'}`,
+      groupLabel: label,
+    };
+  }
+
+  const containerRows = useMemo<ContainerRowSummary[]>(() => {
+    const userRows = regularContainerEntries.map((container) => {
+      const placement = resolveContainerPlacement(getLocationLink(container));
+      const lowItemCount = container.items.filter((item) => {
+        const itemName = resolveInventoryItemTemplate(item.itemTemplateRef, itemEntries)?.name ?? item.itemTemplateRef;
+        return lowStockLabels.has(itemName) || (item.threshold != null && item.quantity != null && item.quantity <= item.threshold);
+      }).length;
+
+      return {
+        rowKey: `owned:${container.id}`,
+        container,
+        ownership: 'user',
+        locationLabel: placement.label,
+        isPlaced: placement.isPlaced,
+        groupKey: placement.groupKey,
+        groupLabel: placement.groupLabel,
+        lowItemCount,
+      } satisfies ContainerRowSummary;
+    });
+
+    return [...userRows, ...roomDedicatedContainerEntries];
+  }, [itemEntries, lowStockLabels, regularContainerEntries, roomDedicatedContainerEntries]);
+
+  const visibleContainerRows = useMemo(() => {
+    const filteredRows = containerRows.filter((row) => (
+      containerPlacementFilter === 'all'
+        ? true
+        : containerPlacementFilter === 'placed'
+          ? row.isPlaced
+          : !row.isPlaced
+    ));
+
+    return expandedContainerId && filteredRows.some((row) => row.rowKey === expandedContainerId)
+      ? filteredRows.filter((row) => row.rowKey === expandedContainerId)
+      : filteredRows;
+  }, [containerPlacementFilter, containerRows, expandedContainerId]);
+
+  const groupedContainerRows = useMemo<ContainerRowGroup[]>(() => {
+    const sortRows = (rows: ContainerRowSummary[]) => [...rows].sort((left, right) => {
+      if (left.ownership !== right.ownership) return left.ownership === 'room' ? -1 : 1;
+      return left.container.name.localeCompare(right.container.name);
+    });
+
+    if (containerPlacementFilter === 'unplaced') {
+      return visibleContainerRows.length === 0
+        ? []
+        : [{
+            key: 'unplaced-flat',
+            label: 'Unplaced',
+            rows: sortRows(visibleContainerRows),
+            showHeader: false,
+          }];
+    }
+
+    const groups = new Map<string, ContainerRowSummary[]>();
+    for (const row of visibleContainerRows.filter((entry) => entry.isPlaced)) {
+      const key = row.groupKey ?? row.locationLabel;
+      const current = groups.get(key) ?? [];
+      current.push(row);
+      groups.set(key, current);
+    }
+
+    const groupedRows = [...groups.entries()]
+      .map(([key, rows]) => ({
+        key,
+        label: rows[0]?.groupLabel ?? rows[0]?.locationLabel ?? 'Placed',
+        rows: sortRows(rows),
+        showHeader: true,
+      }))
+      .sort((left, right) => left.label.localeCompare(right.label));
+
+    if (containerPlacementFilter === 'all') {
+      const unplacedRows = visibleContainerRows.filter((row) => !row.isPlaced);
+      if (unplacedRows.length > 0) {
+        groupedRows.push({
+          key: 'unplaced',
+          label: 'Unplaced',
+          rows: sortRows(unplacedRows),
+          showHeader: true,
+        });
+      }
+    }
+
+    return groupedRows;
+  }, [containerPlacementFilter, visibleContainerRows]);
 
   function cleanupHomePlacements(match: (placement: { kind: 'item' | 'container'; refId: string }) => boolean) {
     const now = new Date().toISOString();
@@ -991,7 +1208,7 @@ export function InventorySpecialView({ resource }: InventorySpecialViewProps) {
     }
   }
 
-  function handleRemoveContainer(containerId: string) {
+  function handleDeleteContainer(containerId: string) {
     const container = containerEntries.find((entry) => entry.id === containerId);
     if (!container) return;
 
@@ -1005,7 +1222,32 @@ export function InventorySpecialView({ resource }: InventorySpecialViewProps) {
 
     cleanupHomePlacements((placement) => placement.kind === 'container' && placement.refId === containerId);
     cleanupVehiclePlacements(containerId);
-    setExpandedContainerId((prev) => (prev === containerId ? null : prev));
+    setExpandedContainerId((prev) => (prev === `owned:${containerId}` || prev === `bag:${containerId}` ? null : prev));
+  }
+
+  function handleSaveRoomDedicatedContainer(nextContainer: InventoryContainer) {
+    if (!editingRoomDedicatedContainer) return;
+
+    const home = resources[editingRoomDedicatedContainer.homeId];
+    if (!home || home.type !== 'home') return;
+
+    setResource({
+      ...home,
+      updatedAt: new Date().toISOString(),
+      stories: (home.stories ?? []).map((story) => ({
+        ...story,
+        rooms: story.rooms.map((room) => {
+          if (room.id !== editingRoomDedicatedContainer.roomId) return room;
+
+          return {
+            ...room,
+            dedicatedContainers: (room.dedicatedContainers ?? []).map((container) => (
+              container.id === editingRoomDedicatedContainer.containerId ? nextContainer : container
+            )),
+          };
+        }),
+      })),
+    });
   }
 
   function updateBagItems(containerId: string, updater: (items: ItemInstance[]) => ItemInstance[]) {
@@ -1114,20 +1356,11 @@ export function InventorySpecialView({ resource }: InventorySpecialViewProps) {
   }
 
   function getLocationLink(container: InventoryContainer) {
-    return container.links?.find((link) => link.relationship === 'location' && Boolean(link.targetResourceId));
+    return container.links?.find((link) => link.relationship === 'location');
   }
 
   function describeContainerLocation(link: InventoryContainerLink) {
-    if (!link.targetResourceId) return 'Unplaced';
-    if (link.targetKind === 'vehicle') {
-      const vehicle = resources[link.targetResourceId] as VehicleResource | undefined;
-      return vehicle?.name ?? 'Vehicle';
-    }
-
-    const home = resources[link.targetResourceId] as HomeResource | undefined;
-    const room = home ? findHomeRoomReference(home, link.targetRoomId) : null;
-    if (home?.name && room?.name) return `${home.name} - ${room.name}`;
-    return room?.name ?? home?.name ?? 'Home room';
+    return resolveContainerPlacement(link).label;
   }
 
   function updateContainerLocation(containerId: string, link: InventoryContainerLink | null) {
@@ -1139,50 +1372,46 @@ export function InventorySpecialView({ resource }: InventorySpecialViewProps) {
         const baseLinks = (container.links ?? []).filter((entry) => entry.relationship !== 'location');
         return {
           ...container,
-          links: link ? [...baseLinks, link] : baseLinks,
+          links: link ? [...baseLinks, link] : (baseLinks.length > 0 ? baseLinks : undefined),
         };
       }),
     });
   }
 
-  function setContainerHome(container: InventoryContainer, homeId: string) {
-    if (!homeId) {
-      updateContainerLocation(container.id, null);
-      return;
-    }
-    const home = homeResources.find((entry) => entry.id === homeId);
-    const firstRoomId = home ? getHomeRoomReferences(home)[0]?.id : undefined;
-    updateContainerLocation(container.id, {
-      id: getLocationLink(container)?.id ?? crypto.randomUUID(),
-      relationship: 'location',
-      targetKind: 'home-room',
-      targetResourceId: homeId,
-      targetRoomId: firstRoomId,
-      createdAt: getLocationLink(container)?.createdAt ?? new Date().toISOString(),
-    });
+  function ensureContainerPreviewFace(rowKey: string, container: InventoryContainer) {
+    setContainerPreviewFaces((current) => (
+      current[rowKey]
+        ? current
+        : {
+            ...current,
+            [rowKey]: getDefaultContainerPreviewFace(container),
+          }
+    ));
   }
 
-  function setContainerRoom(container: InventoryContainer, roomId: string) {
+  function toggleExpandedContainer(rowKey: string, container: InventoryContainer) {
+    ensureContainerPreviewFace(rowKey, container);
+    setExpandedContainerId((prev) => (prev === rowKey ? null : rowKey));
+  }
+
+  function handleRemoveContainerFromRoom(containerId: string) {
+    const container = regularContainerEntries.find((entry) => entry.id === containerId);
+    if (!container) return;
+
     const locationLink = getLocationLink(container);
-    if (!locationLink || locationLink.targetKind !== 'home-room') return;
-    updateContainerLocation(container.id, {
-      ...locationLink,
-      targetRoomId: roomId || undefined,
-    });
-  }
-
-  function setContainerVehicle(container: InventoryContainer, vehicleId: string) {
-    if (!vehicleId) {
-      updateContainerLocation(container.id, null);
-      return;
-    }
-    updateContainerLocation(container.id, {
-      id: getLocationLink(container)?.id ?? crypto.randomUUID(),
-      relationship: 'location',
-      targetKind: 'vehicle',
-      targetResourceId: vehicleId,
-      createdAt: getLocationLink(container)?.createdAt ?? new Date().toISOString(),
-    });
+    updateContainerLocation(
+      containerId,
+      locationLink
+        ? {
+            ...locationLink,
+            targetResourceId: undefined,
+            targetRoomId: undefined,
+            targetAreaId: undefined,
+          }
+        : null,
+    );
+    cleanupHomePlacements((placement) => placement.kind === 'container' && placement.refId === containerId);
+    cleanupVehiclePlacements(containerId);
   }
 
   const tabButtonClass = (tab: TabKey) =>
@@ -1201,7 +1430,7 @@ export function InventorySpecialView({ resource }: InventorySpecialViewProps) {
             Items ({itemEntries.length})
           </button>
           <button type="button" onClick={() => setActiveTab('containers')} className={tabButtonClass('containers')}>
-            Containers ({regularContainerEntries.length})
+            Containers ({containerRows.length})
           </button>
           <button type="button" onClick={() => setActiveTab('bags')} className={tabButtonClass('bags')}>
             Bags ({bagEntries.length})
@@ -1235,6 +1464,7 @@ export function InventorySpecialView({ resource }: InventorySpecialViewProps) {
             type="button"
             onClick={() => {
               setEditingContainerId(null);
+              setEditingRoomDedicatedContainer(null);
               setShowAddContainerPanel(true);
             }}
             className="rounded-full bg-blue-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-600"
@@ -1742,206 +1972,188 @@ export function InventorySpecialView({ resource }: InventorySpecialViewProps) {
             </div>
           )
         ) : activeTab === 'containers' ? (
-          regularContainerEntries.length === 0 ? (
-            <div className="flex h-full items-center justify-center rounded-2xl border border-dashed border-gray-200 bg-gray-50/70 px-4 text-sm text-gray-400 dark:border-gray-700 dark:bg-gray-900/30">
-              No containers added yet.
+          <div className="space-y-3">
+            <div className="flex flex-wrap gap-2">
+              {CONTAINER_PLACEMENT_FILTER_OPTIONS.map((option) => (
+                <button
+                  key={option.id}
+                  type="button"
+                  onClick={() => setContainerPlacementFilter(option.id)}
+                  className={containerPlacementFilter === option.id
+                    ? 'rounded-full bg-slate-800 px-3 py-1.5 text-xs font-semibold text-white dark:bg-slate-100 dark:text-slate-900'
+                    : 'rounded-full bg-gray-100 px-3 py-1.5 text-xs font-semibold text-gray-600 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600'}
+                >
+                  {option.label}
+                </button>
+              ))}
             </div>
-          ) : (
-            <div className="space-y-2">
-              {regularContainerEntries.map((container) => {
-                const locationLink = getLocationLink(container);
-                const lowItems = container.items.filter((item) => {
-                  const itemName = resolveInventoryItemTemplate(item.itemTemplateRef, itemEntries)?.name ?? item.itemTemplateRef;
-                  return lowStockLabels.has(itemName) || (item.threshold != null && item.quantity != null && item.quantity <= item.threshold);
-                });
-                const expanded = expandedContainerId === container.id;
-                const selectedHome = locationLink?.targetKind === 'home-room' ? homeResources.find((entry) => entry.id === locationLink.targetResourceId) : null;
-                const selectedVehicleId = locationLink?.targetKind === 'vehicle' ? locationLink.targetResourceId : '';
 
-                return (
-                  <article key={container.id} className="rounded-2xl border border-gray-200 bg-gray-50/80 dark:border-gray-700 dark:bg-gray-900/40">
-                    <button
-                      type="button"
-                      onClick={() => setExpandedContainerId((prev) => (prev === container.id ? null : container.id))}
-                      className="flex w-full items-center gap-3 px-3 py-3 text-left"
-                    >
-                      <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white dark:bg-gray-800">
-                        <IconDisplay iconKey={container.icon || 'inventory'} size={24} className="h-6 w-6 object-contain" />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2">
-                          <span className={`truncate text-sm font-semibold ${lowItems.length > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-gray-800 dark:text-gray-100'}`}>
-                            {container.name}
-                          </span>
-                        </div>
-                        <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
-                          <span>{container.items.length} item{container.items.length === 1 ? '' : 's'}</span>
-                          {locationLink ? <span>Placed in {describeContainerLocation(locationLink)}</span> : <span>Unplaced</span>}
-                        </div>
-                      </div>
-                      {lowItems.length > 0 ? (
-                        <span className="rounded-full bg-amber-100 px-2 py-1 text-[11px] font-semibold text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
-                          {lowItems.length} low
-                        </span>
-                      ) : null}
-                    </button>
+            {containerRows.length === 0 ? (
+              <div className="flex h-full items-center justify-center rounded-2xl border border-dashed border-gray-200 bg-gray-50/70 px-4 text-sm text-gray-400 dark:border-gray-700 dark:bg-gray-900/30">
+                No containers added yet.
+              </div>
+            ) : groupedContainerRows.length === 0 ? (
+              <div className="flex h-full items-center justify-center rounded-2xl border border-dashed border-gray-200 bg-gray-50/70 px-4 text-sm text-gray-400 dark:border-gray-700 dark:bg-gray-900/30">
+                No containers match this filter.
+              </div>
+            ) : (
+              groupedContainerRows.map((group) => (
+                <section key={group.key} className="space-y-2">
+                  {group.showHeader ? (
+                    <div className="px-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-500 dark:text-gray-400">
+                      {group.label}
+                    </div>
+                  ) : null}
+                  {group.rows.map((row) => {
+                    const expanded = expandedContainerId === row.rowKey;
+                    const previewFace = containerPreviewFaces[row.rowKey] ?? getDefaultContainerPreviewFace(row.container);
 
-                    {expanded ? (
-                      <div className="space-y-3 border-t border-gray-200 px-3 py-3 dark:border-gray-700">
-                        <div className="grid gap-3 lg:grid-cols-[minmax(0,1.2fr)_minmax(280px,0.8fr)]">
-                          <div className="rounded-xl bg-white px-3 py-3 dark:bg-gray-800">
-                            <div className="flex items-center justify-between gap-3">
-                              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-500 dark:text-gray-400">Contents</p>
-                              <span className="text-xs text-gray-400 dark:text-gray-500">{container.items.length}</span>
+                    return (
+                      <article key={row.rowKey} className="rounded-2xl border border-gray-200 bg-gray-50/80 dark:border-gray-700 dark:bg-gray-900/40">
+                        <button
+                          type="button"
+                          onClick={() => toggleExpandedContainer(row.rowKey, row.container)}
+                          className="flex w-full items-center gap-3 px-3 py-3 text-left"
+                        >
+                          <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white dark:bg-gray-800">
+                            <IconDisplay iconKey={row.container.icon || 'inventory'} size={24} className="h-6 w-6 object-contain" />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2">
+                              <span className={`truncate text-sm font-semibold ${row.lowItemCount > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-gray-800 dark:text-gray-100'}`}>
+                                {row.container.name}
+                              </span>
+                              {row.ownerBadge ? (
+                                <span className="rounded-full bg-white px-2 py-0.5 text-[11px] font-medium text-gray-500 dark:bg-gray-800 dark:text-gray-300">
+                                  {row.ownerBadge}
+                                </span>
+                              ) : null}
                             </div>
-                            <div className="mt-2 space-y-2">
-                              {container.items.length === 0 ? (
-                                <p className="text-xs italic text-gray-400">No items in container.</p>
-                              ) : container.items.map((item) => {
-                                const resolved = resolveInventoryItemTemplate(item.itemTemplateRef, itemEntries);
-                                const templateKind = getItemTemplateByRef(item.itemTemplateRef)?.kind ?? resolved?.kind ?? 'consumable';
-                                const taskDetails = templateKind === 'facility'
-                                  ? (item.recurringTasks ?? []).map((task) => {
-                                      const display = resolveTaskDisplay(task.taskTemplateRef, item.itemTemplateRef);
-                                      return `${display.name}: ${(task.recurrenceMode ?? 'never') === 'recurring' ? `${describeTaskRecurrence(task.recurrence)} · ${describeReminder(task.reminderLeadDays ?? 7)}` : 'Intermittent'}`;
-                                    })
-                                  : [];
-                                return (
-                                  <div key={item.id} className="rounded-lg bg-gray-50 px-2.5 py-2 text-xs text-gray-500 dark:bg-gray-900/60 dark:text-gray-400">
-                                    <div className="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-200">
-                                      {resolved?.icon ? <IconDisplay iconKey={resolved.icon} size={14} className="h-3.5 w-3.5 shrink-0 object-contain" /> : null}
-                                      <span>{resolved?.name ?? item.itemTemplateRef}</span>
-                                    </div>
-                                    {templateKind === 'consumable' ? (
-                                      <div className="mt-1">
-                                        {item.quantity ?? 0}{item.unit?.trim() ? ` ${item.unit.trim()}` : ''} on hand
-                                        {item.threshold != null ? ` · Threshold ${item.threshold}` : ''}
-                                      </div>
-                                    ) : taskDetails.length > 0 ? (
-                                      <div className="mt-1 space-y-1">
-                                        {taskDetails.map((detail) => <div key={`${item.id}-${detail}`}>{detail}</div>)}
-                                      </div>
-                                    ) : (
-                                      <div className="mt-1">Facility item</div>
-                                    )}
-                                  </div>
-                                );
-                              })}
+                            <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+                              <span>{row.container.items.length} item{row.container.items.length === 1 ? '' : 's'}</span>
+                              <span>{row.locationLabel}</span>
                             </div>
                           </div>
+                          {row.lowItemCount > 0 ? (
+                            <span className="rounded-full bg-amber-100 px-2 py-1 text-[11px] font-semibold text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
+                              {row.lowItemCount} low
+                            </span>
+                          ) : null}
+                          <span className="text-xs font-medium text-gray-400">{expanded ? 'Hide' : 'Open'}</span>
+                        </button>
 
-                          <div className="space-y-3">
+                        {expanded ? (
+                          <div className="space-y-3 border-t border-gray-200 px-3 py-3 dark:border-gray-700">
+                            <div className="rounded-xl bg-white px-3 py-3 dark:bg-gray-800">
+                              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-500 dark:text-gray-400">Layout Preview</p>
+                              <div className="mt-3">
+                                <ContainerLayoutCanvas
+                                  container={row.container}
+                                  activeFace={previewFace}
+                                  items={row.container.items}
+                                  isEditMode={false}
+                                  viewportHeightClassName="h-64 sm:h-72"
+                                  onPlaceItem={() => {}}
+                                  onUpdateItemQuantity={() => {}}
+                                  onRemoveItem={() => {}}
+                                />
+                              </div>
+                              <div className="mt-3 flex flex-wrap gap-2">
+                                {CONTAINER_FACE_OPTIONS.map((option) => (
+                                  <button
+                                    key={`${row.rowKey}-${option.value}`}
+                                    type="button"
+                                    onClick={() => setContainerPreviewFaces((current) => ({
+                                      ...current,
+                                      [row.rowKey]: option.value,
+                                    }))}
+                                    className={previewFace === option.value
+                                      ? 'rounded-full bg-blue-500 px-3 py-1.5 text-xs font-semibold text-white'
+                                      : 'rounded-full bg-gray-100 px-3 py-1.5 text-xs font-semibold text-gray-600 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600'}
+                                  >
+                                    {option.label}
+                                  </button>
+                                ))}
+                              </div>
+                              <div className="mt-3 flex justify-end">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (row.ownership === 'room') {
+                                      const [, homeId, roomId, containerId] = row.rowKey.split(':');
+                                      setEditingRoomDedicatedContainer({ homeId, roomId, containerId });
+                                      setEditingContainerId(null);
+                                    } else {
+                                      setEditingContainerId(row.container.id);
+                                      setEditingRoomDedicatedContainer(null);
+                                    }
+                                    setShowAddContainerPanel(true);
+                                  }}
+                                  className="rounded-full bg-blue-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-600"
+                                >
+                                  Edit Container
+                                </button>
+                              </div>
+                            </div>
+
+                            <div className="rounded-xl bg-white px-3 py-3 dark:bg-gray-800">
+                              <div className="flex items-center justify-between gap-3">
+                                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-500 dark:text-gray-400">Contents</p>
+                                <span className="text-xs text-gray-400 dark:text-gray-500">{row.container.items.length}</span>
+                              </div>
+                              <div className="mt-3 space-y-2">
+                                {row.container.items.length === 0 ? (
+                                  <p className="text-xs italic text-gray-400">No items in this container.</p>
+                                ) : row.container.items.map((item) => {
+                                  const resolved = resolveInventoryItemTemplate(item.itemTemplateRef, itemEntries);
+                                  return (
+                                    <div key={`${row.rowKey}:${item.id}`} className="flex items-center justify-between gap-3 rounded-lg bg-gray-50 px-3 py-2 dark:bg-gray-900/60">
+                                      <div className="flex min-w-0 items-center gap-2">
+                                        {resolved?.icon ? <IconDisplay iconKey={resolved.icon} size={16} className="h-4 w-4 shrink-0 object-contain" /> : null}
+                                        <span className="truncate text-sm font-medium text-gray-700 dark:text-gray-200">{resolved?.name ?? item.itemTemplateRef}</span>
+                                      </div>
+                                      <span className="shrink-0 text-xs font-semibold text-gray-500 dark:text-gray-400">Qty {item.quantity ?? 1}</span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+
                             <div className="rounded-xl bg-white px-3 py-3 dark:bg-gray-800">
                               <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-500 dark:text-gray-400">Placement</p>
-                              <div className="mt-2 flex flex-wrap gap-2">
-                                <button
-                                  type="button"
-                                  onClick={() => updateContainerLocation(container.id, null)}
-                                  className="rounded-full bg-gray-100 px-3 py-1.5 text-xs font-semibold text-gray-600 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200"
-                                >
-                                  Clear
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    const firstHome = homeResources[0];
-                                    if (firstHome) setContainerHome(container, firstHome.id);
-                                  }}
-                                  className="rounded-full bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-100 dark:bg-blue-900/30 dark:text-blue-200"
-                                >
-                                  Choose Home + Room
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    const firstVehicle = vehicleResources[0];
-                                    if (firstVehicle) setContainerVehicle(container, firstVehicle.id);
-                                  }}
-                                  className="rounded-full bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-100 dark:bg-blue-900/30 dark:text-blue-200"
-                                >
-                                  Choose Vehicle
-                                </button>
-                              </div>
-
-                              <div className="mt-3 space-y-2 text-xs text-gray-500 dark:text-gray-400">
-                                <div className="space-y-1">
-                                  <label className="font-medium text-gray-600 dark:text-gray-300">Home</label>
-                                  <select
-                                    value={locationLink?.targetKind === 'home-room' ? locationLink.targetResourceId : ''}
-                                    onChange={(event) => setContainerHome(container, event.target.value)}
-                                    className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-2 text-sm text-gray-900 focus:border-blue-500 focus:outline-none dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100"
+                              <div className="mt-3 text-sm text-gray-700 dark:text-gray-200">{row.locationLabel}</div>
+                              {row.ownership === 'user' ? (
+                                <div className="mt-3 flex flex-wrap gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRemoveContainerFromRoom(row.container.id)}
+                                    className="rounded-full bg-gray-100 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
                                   >
-                                    <option value="">No home placement</option>
-                                    {homeResources.map((home) => (
-                                      <option key={home.id} value={home.id}>{home.name}</option>
-                                    ))}
-                                  </select>
-                                </div>
-
-                                {selectedHome ? (
-                                  <div className="space-y-1">
-                                    <label className="font-medium text-gray-600 dark:text-gray-300">Room</label>
-                                    <select
-                                      value={locationLink?.targetKind === 'home-room' ? (locationLink.targetRoomId ?? '') : ''}
-                                      onChange={(event) => setContainerRoom(container, event.target.value)}
-                                      className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-2 text-sm text-gray-900 focus:border-blue-500 focus:outline-none dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100"
-                                    >
-                                      <option value="">No specific room</option>
-                                        {getHomeRoomReferences(selectedHome).map((room) => (
-                                        <option key={room.id} value={room.id}>{room.name}</option>
-                                      ))}
-                                    </select>
-                                  </div>
-                                ) : null}
-
-                                <div className="space-y-1">
-                                  <label className="font-medium text-gray-600 dark:text-gray-300">Vehicle</label>
-                                  <select
-                                    value={selectedVehicleId}
-                                    onChange={(event) => setContainerVehicle(container, event.target.value)}
-                                    className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-2 text-sm text-gray-900 focus:border-blue-500 focus:outline-none dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100"
+                                    Remove from room
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteContainer(row.container.id)}
+                                    disabled={row.container.items.length > 0}
+                                    title={row.container.items.length > 0 ? 'Remove all items first.' : 'Delete container'}
+                                    className={row.container.items.length === 0
+                                      ? 'rounded-full bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-100 dark:bg-red-900/20 dark:text-red-300'
+                                      : 'rounded-full bg-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-400 dark:bg-gray-700 dark:text-gray-500'}
                                   >
-                                    <option value="">No vehicle placement</option>
-                                    {vehicleResources.map((vehicle) => (
-                                      <option key={vehicle.id} value={vehicle.id}>{vehicle.name}</option>
-                                    ))}
-                                  </select>
+                                    Delete container
+                                  </button>
                                 </div>
-
-                                <div className="rounded-lg bg-gray-50 px-2.5 py-2 dark:bg-gray-900/60">
-                                  {locationLink ? `Current placement: ${describeContainerLocation(locationLink)}` : 'Current placement: none'}
-                                </div>
-                              </div>
+                              ) : null}
                             </div>
                           </div>
-                        </div>
-
-                        <div className="flex justify-end gap-2">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setEditingContainerId(container.id);
-                              setShowAddContainerPanel(true);
-                            }}
-                            className="rounded-full bg-blue-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-600"
-                          >
-                            Edit Container
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveContainer(container.id)}
-                            className="rounded-full bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-100 dark:bg-red-900/20 dark:text-red-300"
-                          >
-                            Delete
-                          </button>
-                        </div>
-                      </div>
-                    ) : null}
-                  </article>
-                );
-              })}
-            </div>
-          )
+                        ) : null}
+                      </article>
+                    );
+                  })}
+                </section>
+              ))
+            )}
+          </div>
         ) : (
           bagEntries.length === 0 ? (
             <div className="flex h-full items-center justify-center rounded-2xl border border-dashed border-gray-200 bg-gray-50/70 px-4 text-sm text-gray-400 dark:border-gray-700 dark:bg-gray-900/30">
@@ -1951,7 +2163,8 @@ export function InventorySpecialView({ resource }: InventorySpecialViewProps) {
             <div className="space-y-2">
               {bagEntries.map((bag) => {
                 const locationLink = getLocationLink(bag);
-                const expanded = expandedContainerId === bag.id;
+                const bagRowKey = `bag:${bag.id}`;
+                const expanded = expandedContainerId === bagRowKey;
                 const bagQuantity = itemQuantityTotal(bag.items);
 
                 return (
@@ -1959,7 +2172,7 @@ export function InventorySpecialView({ resource }: InventorySpecialViewProps) {
                     <div className="flex items-center gap-3 px-3 py-3">
                       <button
                         type="button"
-                        onClick={() => setExpandedContainerId((prev) => (prev === bag.id ? null : bag.id))}
+                        onClick={() => setExpandedContainerId((prev) => (prev === bagRowKey ? null : bagRowKey))}
                         className="flex min-w-0 flex-1 items-center gap-3 text-left"
                       >
                         <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white dark:bg-gray-800">
@@ -1982,7 +2195,7 @@ export function InventorySpecialView({ resource }: InventorySpecialViewProps) {
                       <div className="flex items-center gap-2">
                         <button
                           type="button"
-                          onClick={() => setExpandedContainerId((prev) => (prev === bag.id ? null : bag.id))}
+                          onClick={() => setExpandedContainerId((prev) => (prev === bagRowKey ? null : bagRowKey))}
                           className="text-xs font-medium text-gray-400"
                         >
                           {expanded ? 'Hide' : 'Open'}
@@ -2071,7 +2284,7 @@ export function InventorySpecialView({ resource }: InventorySpecialViewProps) {
                           </button>
                           <button
                             type="button"
-                            onClick={() => handleRemoveContainer(bag.id)}
+                            onClick={() => handleDeleteContainer(bag.id)}
                             className="rounded-full bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-100 dark:bg-red-900/20 dark:text-red-300"
                           >
                             Delete
@@ -2100,7 +2313,7 @@ export function InventorySpecialView({ resource }: InventorySpecialViewProps) {
           onItemAdded={(itemTemplateRef) => {
             if (addItemContainerId) {
               setActiveTab('bags');
-              setExpandedContainerId(addItemContainerId);
+              setExpandedContainerId(`bag:${addItemContainerId}`);
             } else {
               setActiveTab('items');
               setExpandedItemId(itemTemplateRef);
@@ -2114,14 +2327,21 @@ export function InventorySpecialView({ resource }: InventorySpecialViewProps) {
         <AddContainerPanel
           resource={resource}
           container={editingContainer}
+          onSaveContainer={editingRoomDedicatedContainer ? handleSaveRoomDedicatedContainer : undefined}
           onClose={() => {
             setShowAddContainerPanel(false);
             setEditingContainerId(null);
+            setEditingRoomDedicatedContainer(null);
           }}
           onContainerSaved={(containerId) => {
             setActiveTab('containers');
-            setExpandedContainerId(containerId);
+            setExpandedContainerId(
+              editingRoomDedicatedContainer
+                ? `room:${editingRoomDedicatedContainer.homeId}:${editingRoomDedicatedContainer.roomId}:${containerId}`
+                : `owned:${containerId}`,
+            );
             setEditingContainerId(null);
+            setEditingRoomDedicatedContainer(null);
             setShowAddContainerPanel(false);
           }}
         />
@@ -2136,7 +2356,7 @@ export function InventorySpecialView({ resource }: InventorySpecialViewProps) {
           }}
           onBagAdded={(bagId) => {
             setActiveTab('bags');
-            setExpandedContainerId(bagId);
+            setExpandedContainerId(`bag:${bagId}`);
             setEditingBagId(null);
             setShowAddBagPanel(false);
           }}

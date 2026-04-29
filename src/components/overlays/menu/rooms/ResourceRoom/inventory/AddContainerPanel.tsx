@@ -16,6 +16,7 @@ interface AddContainerPanelProps {
   container?: InventoryContainer | null;
   onClose: () => void;
   onContainerSaved?: (containerId: string) => void;
+  onSaveContainer?: (container: InventoryContainer) => void;
 }
 
 type ContainerFace = NonNullable<InventoryContainer['layoutGrid']>['xAxis'];
@@ -62,7 +63,7 @@ function formatPlacementSummary(item: ItemInstance, face: ContainerFace): string
   return item.placedInContainer?.[face] ? 'Placed' : 'Unplaced';
 }
 
-export function AddContainerPanel({ resource, container, onClose, onContainerSaved }: AddContainerPanelProps) {
+export function AddContainerPanel({ resource, container, onClose, onContainerSaved, onSaveContainer }: AddContainerPanelProps) {
   const setResource = useResourceStore((state) => state.setResource);
   const user = useUserStore((state) => state.user);
 
@@ -227,13 +228,17 @@ export function AddContainerPanel({ resource, container, onClose, onContainerSav
         : undefined,
     };
 
-    setResource({
-      ...resource,
-      updatedAt: new Date().toISOString(),
-      containers: container
-        ? (resource.containers ?? []).map((entry) => (entry.id === container.id ? nextContainer : entry))
-        : [...(resource.containers ?? []), nextContainer],
-    });
+    if (onSaveContainer) {
+      onSaveContainer(nextContainer);
+    } else {
+      setResource({
+        ...resource,
+        updatedAt: new Date().toISOString(),
+        containers: container
+          ? (resource.containers ?? []).map((entry) => (entry.id === container.id ? nextContainer : entry))
+          : [...(resource.containers ?? []), nextContainer],
+      });
+    }
 
     onContainerSaved?.(nextContainer.id);
     onClose();
