@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { v4 as uuidv4 } from 'uuid';
 import {
   CUSTOM_ITEM_TEMPLATE_PREFIX,
   itemLibrary,
@@ -14,7 +15,7 @@ import { IconPicker } from '../../../../../shared/IconPicker';
 import { PopupShell } from '../../../../../shared/popups/PopupShell';
 import { getLibraryItem, getUserInventoryItemTemplates, mergeInventoryItemTemplates } from '../../../../../../utils/inventoryItems';
 
-type AddItemTab = 'library' | 'new';
+type AddItemTab = 'library' | 'mine' | 'new';
 type LibraryItemState = 'not-added' | 'available' | 'placed';
 type StateFilter = 'all' | LibraryItemState;
 type CategoryFilter = 'all' | ItemCategory | 'user-created' | 'room-created';
@@ -29,8 +30,14 @@ const CATEGORY_ORDER: ItemCategory[] = [
   'workspace',
 ];
 
-const TAB_LABELS: Array<{ id: AddItemTab; label: string }> = [
+const INVENTORY_TAB_LABELS: Array<{ id: AddItemTab; label: string }> = [
   { id: 'library', label: 'Library' },
+  { id: 'new', label: 'New Item' },
+];
+
+const CONTAINER_TAB_LABELS: Array<{ id: AddItemTab; label: string }> = [
+  { id: 'library', label: 'Library' },
+  { id: 'mine', label: 'My Items' },
   { id: 'new', label: 'New Item' },
 ];
 
@@ -59,6 +66,7 @@ interface LibraryRow {
   name: string;
   icon: string;
   kind: ItemKind;
+  dimensions?: InventoryItemTemplate['dimensions'];
   categoryKey: CategorySection;
   categoryLabel: string;
   description?: string;
@@ -74,6 +82,7 @@ interface RowDisclosureState {
 interface AddItemPanelProps {
   resource: InventoryResource;
   containerId?: string;
+  mode?: 'inventory' | 'container';
   onClose: () => void;
   onItemAdded?: (itemTemplateRef: string) => void;
   onItemInstanceAdded?: (item: ItemInstance) => void;
@@ -105,7 +114,18 @@ function titleCaseCategory(category: CategorySection): string {
         .join(' ');
 }
 
-export function AddItemPanel({ resource, onClose, onItemInstanceAdded }: AddItemPanelProps) {
+function renderItemMeta(item: { categoryLabel?: string; kind?: string }) {
+  return [item.categoryLabel, item.kind].filter(Boolean).join(' · ');
+}
+
+export function AddItemPanel({
+  resource,
+  containerId,
+  mode = 'inventory',
+  onClose,
+  onItemAdded,
+  onItemInstanceAdded,
+}: AddItemPanelProps) {
   const [activeTab, setActiveTab] = useState<AddItemTab>('library');
   const [searchQuery, setSearchQuery] = useState('');
   const [stateFilter, setStateFilter] = useState<StateFilter>('all');
@@ -132,6 +152,8 @@ export function AddItemPanel({ resource, onClose, onItemInstanceAdded }: AddItem
     [userTemplates],
   );
   const normalizedSearch = searchQuery.trim().toLowerCase();
+  const isContainerMode = mode === 'container';
+  const tabLabels = isContainerMode ? CONTAINER_TAB_LABELS : INVENTORY_TAB_LABELS;
 
   const ensureInventoryLinked = (inventoryId: string) => {
     if (!user) return;
@@ -324,8 +346,8 @@ export function AddItemPanel({ resource, onClose, onItemInstanceAdded }: AddItem
     return Array.from(byId.values()).sort((left, right) => left.name.localeCompare(right.name));
   }, [resources]);
 
-  const libraryRows = useMemo<LibraryRow[]>(() => {
-    const builtInRows = itemLibrary.map((item) => {
+  const builtInRows = useMemo<LibraryRow[]>(() => {
+    return itemLibrary.map((item) => {
       const liveTemplate = getLibraryItem(item.id) ?? {
         id: item.id,
         name: item.name,
@@ -340,6 +362,7 @@ export function AddItemPanel({ resource, onClose, onItemInstanceAdded }: AddItem
         name: liveTemplate.name,
         icon: liveTemplate.icon,
         kind: liveTemplate.kind ?? 'consumable',
+        dimensions: liveTemplate.dimensions,
         categoryKey: (liveTemplate.category as ItemCategory | undefined) ?? 'workspace',
         categoryLabel: titleCaseCategory((liveTemplate.category as ItemCategory | undefined) ?? 'workspace'),
         description: liveTemplate.description,
@@ -349,8 +372,10 @@ export function AddItemPanel({ resource, onClose, onItemInstanceAdded }: AddItem
         placements,
       } satisfies LibraryRow;
     });
+  }, [placementDetailsByTemplateId, userTemplateIds]);
 
-    const customRows = userTemplates
+  const customRows = useMemo<LibraryRow[]>(() => {
+    return userTemplates
       .filter((template) => isCustomTemplate(template))
       .map((template) => {
         const liveTemplate = getLibraryItem(template.id) ?? template;
@@ -360,6 +385,7 @@ export function AddItemPanel({ resource, onClose, onItemInstanceAdded }: AddItem
           name: liveTemplate.name,
           icon: liveTemplate.icon || 'inventory',
           kind: liveTemplate.kind ?? 'consumable',
+          dimensions: liveTemplate.dimensions,
           categoryKey: 'user-created',
           categoryLabel: 'User Created',
           description: liveTemplate.description,
@@ -367,8 +393,10 @@ export function AddItemPanel({ resource, onClose, onItemInstanceAdded }: AddItem
           placements,
         } satisfies LibraryRow;
       });
+  }, [placementDetailsByTemplateId, userTemplates]);
 
-    const roomCreatedRows = roomCreatedTemplates.map((template) => {
+  const roomCreatedRows = useMemo<LibraryRow[]>(() => {
+    return roomCreatedTemplates.map((template) => {
       const liveTemplate = getLibraryItem(template.id) ?? template;
       const placements = placementDetailsByTemplateId.get(template.id) ?? [];
       return {
@@ -376,6 +404,7 @@ export function AddItemPanel({ resource, onClose, onItemInstanceAdded }: AddItem
         name: liveTemplate.name,
         icon: liveTemplate.icon || 'inventory',
         kind: liveTemplate.kind ?? 'facility',
+        dimensions: liveTemplate.dimensions,
         categoryKey: 'room-created',
         categoryLabel: 'Room Created',
         description: liveTemplate.description,
@@ -383,13 +412,39 @@ export function AddItemPanel({ resource, onClose, onItemInstanceAdded }: AddItem
         placements,
       } satisfies LibraryRow;
     });
+  }, [placementDetailsByTemplateId, roomCreatedTemplates]);
 
+  const libraryRows = useMemo<LibraryRow[]>(() => {
     return [...builtInRows, ...customRows, ...roomCreatedRows]
       .filter((item) => item.name.toLowerCase().includes(normalizedSearch))
-      .filter((item) => stateFilter === 'all' || item.state === stateFilter)
+      .filter((item) => isContainerMode || stateFilter === 'all' || item.state === stateFilter)
       .filter((item) => categoryFilter === 'all' || item.categoryKey === categoryFilter)
       .sort((left, right) => left.name.localeCompare(right.name));
-  }, [categoryFilter, normalizedSearch, placementDetailsByTemplateId, roomCreatedTemplates, stateFilter, userTemplateIds, userTemplates]);
+  }, [builtInRows, categoryFilter, customRows, isContainerMode, normalizedSearch, roomCreatedRows, stateFilter]);
+
+  const containerLibraryRows = useMemo(
+    () => builtInRows
+      .filter((item) => item.name.toLowerCase().includes(normalizedSearch))
+      .filter((item) => categoryFilter === 'all' || item.categoryKey === categoryFilter)
+      .sort((left, right) => left.name.localeCompare(right.name)),
+    [builtInRows, categoryFilter, normalizedSearch],
+  );
+
+  const groupedContainerLibraryRows = useMemo(
+    () => CATEGORY_ORDER.map((category) => ({
+      category,
+      label: titleCaseCategory(category),
+      items: containerLibraryRows.filter((item) => item.categoryKey === category),
+    })).filter((group) => group.items.length > 0),
+    [containerLibraryRows],
+  );
+
+  const containerPersonalRows = useMemo(
+    () => [...customRows, ...roomCreatedRows]
+      .filter((item) => item.name.toLowerCase().includes(normalizedSearch))
+      .sort((left, right) => left.name.localeCompare(right.name)),
+    [customRows, normalizedSearch, roomCreatedRows],
+  );
 
   const groupedLibraryRows = useMemo(
     () => {
@@ -508,6 +563,37 @@ export function AddItemPanel({ resource, onClose, onItemInstanceAdded }: AddItem
     setError('');
   };
 
+  const handleAddItemInstance = (item: LibraryRow) => {
+    const nextItem: ItemInstance = {
+      id: uuidv4(),
+      itemTemplateRef: item.id,
+      quantity: 1,
+      dimensions: item.dimensions,
+    };
+
+    if (onItemInstanceAdded) {
+      onItemInstanceAdded(nextItem);
+    } else if (containerId) {
+      setResource({
+        ...resource,
+        updatedAt: new Date().toISOString(),
+        containers: (resource.containers ?? []).map((container) => (
+          container.id === containerId
+            ? {
+                ...container,
+                items: [...container.items, nextItem],
+              }
+            : container
+        )),
+      });
+    }
+
+    onItemAdded?.(item.id);
+    if (!onItemAdded && !onItemInstanceAdded) {
+      onClose();
+    }
+  };
+
   const renderStateControl = (item: LibraryRow) => {
     if (item.state === 'not-added') {
       return (
@@ -563,6 +649,32 @@ export function AddItemPanel({ resource, onClose, onItemInstanceAdded }: AddItem
   const renderItemRow = (item: LibraryRow) => {
     const showRemoveConfirmation = rowDisclosure?.itemId === item.id && rowDisclosure.mode === 'remove';
     const showPlacements = rowDisclosure?.itemId === item.id && rowDisclosure.mode === 'placements';
+
+    if (isContainerMode) {
+      return (
+        <button
+          key={item.id}
+          type="button"
+          onClick={() => handleAddItemInstance(item)}
+          className="flex w-full items-center justify-between rounded-xl border border-gray-200 px-3 py-3 text-left transition-colors hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-700/40"
+        >
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gray-50 dark:bg-gray-800">
+              <IconDisplay iconKey={item.icon || 'inventory'} size={22} className="h-5.5 w-5.5 object-contain" />
+            </div>
+            <div className="min-w-0">
+              <div className="truncate text-sm font-medium text-gray-800 dark:text-gray-100">{item.name}</div>
+              {renderItemMeta(item) ? (
+                <div className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">{renderItemMeta(item)}</div>
+              ) : null}
+            </div>
+          </div>
+          <span className="rounded-full bg-blue-50 px-2.5 py-1 text-[11px] font-semibold text-blue-700 dark:bg-blue-900/30 dark:text-blue-200">
+            Add
+          </span>
+        </button>
+      );
+    }
 
     return (
       <article
@@ -637,7 +749,7 @@ export function AddItemPanel({ resource, onClose, onItemInstanceAdded }: AddItem
     <PopupShell title="Add Item" onClose={onClose} size="large">
       <div className="flex flex-col gap-4">
         <div className="flex gap-2 border-b border-gray-200 pb-3 dark:border-gray-700">
-          {TAB_LABELS.map((tab) => (
+          {tabLabels.map((tab) => (
             <button
               key={tab.id}
               type="button"
@@ -657,68 +769,101 @@ export function AddItemPanel({ resource, onClose, onItemInstanceAdded }: AddItem
           ))}
         </div>
 
-        {activeTab === 'library' ? (
+        {(activeTab === 'library' || (isContainerMode && activeTab === 'mine')) ? (
           <>
             <input
               type="text"
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
-              placeholder="Search library items"
+              placeholder={activeTab === 'library' ? 'Search library items' : 'Search my items'}
               className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-purple-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
             />
 
-            <div className="flex flex-col gap-3 rounded-xl border border-gray-200 bg-gray-50/80 px-3 py-3 dark:border-gray-700 dark:bg-gray-900/40">
-              <div className="flex flex-wrap gap-2">
-                {STATE_FILTERS.map((filter) => (
-                  <button
-                    key={filter.id}
-                    type="button"
-                    onClick={() => setStateFilter(filter.id)}
-                    className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
-                      stateFilter === filter.id
-                        ? 'bg-purple-600 text-white'
-                        : 'bg-white text-gray-600 hover:bg-gray-100 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700'
-                    }`}
-                  >
-                    {filter.label}
-                  </button>
-                ))}
-              </div>
+            {activeTab === 'library' ? (
+              <div className="flex flex-col gap-3 rounded-xl border border-gray-200 bg-gray-50/80 px-3 py-3 dark:border-gray-700 dark:bg-gray-900/40">
+                {!isContainerMode ? (
+                  <div className="flex flex-wrap gap-2">
+                    {STATE_FILTERS.map((filter) => (
+                      <button
+                        key={filter.id}
+                        type="button"
+                        onClick={() => setStateFilter(filter.id)}
+                        className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
+                          stateFilter === filter.id
+                            ? 'bg-purple-600 text-white'
+                            : 'bg-white text-gray-600 hover:bg-gray-100 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700'
+                        }`}
+                      >
+                        {filter.label}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
 
-              <label className="flex flex-col gap-1 text-xs font-medium text-gray-500 dark:text-gray-400">
-                <span>Category</span>
-                <select
-                  value={categoryFilter}
-                  onChange={(event) => setCategoryFilter(event.target.value as CategoryFilter)}
-                  className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-purple-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
-                >
-                  <option value="all">All Categories</option>
-                  {CATEGORY_ORDER.map((category) => (
-                    <option key={category} value={category}>{titleCaseCategory(category)}</option>
-                  ))}
-                  <option value="user-created">User Created</option>
-                  <option value="room-created">Room Created</option>
-                </select>
-              </label>
-            </div>
+                <label className="flex flex-col gap-1 text-xs font-medium text-gray-500 dark:text-gray-400">
+                  <span>Category</span>
+                  <select
+                    value={categoryFilter}
+                    onChange={(event) => setCategoryFilter(event.target.value as CategoryFilter)}
+                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-purple-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
+                  >
+                    <option value="all">All Categories</option>
+                    {CATEGORY_ORDER.map((category) => (
+                      <option key={category} value={category}>{titleCaseCategory(category)}</option>
+                    ))}
+                    {!isContainerMode ? <option value="user-created">User Created</option> : null}
+                    {!isContainerMode ? <option value="room-created">Room Created</option> : null}
+                  </select>
+                </label>
+              </div>
+            ) : null}
           </>
         ) : null}
 
         {activeTab === 'library' ? (
-          groupedLibraryRows.length === 0 ? (
-            <p className="text-sm text-gray-500 dark:text-gray-400">No matching items.</p>
+          isContainerMode ? (
+            groupedContainerLibraryRows.length === 0 ? (
+              <p className="text-sm text-gray-500 dark:text-gray-400">No matching library items.</p>
+            ) : (
+              <div className="space-y-4">
+                {groupedContainerLibraryRows.map((group) => (
+                  <section key={group.category} className="space-y-2">
+                    <div className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">
+                      {group.label}
+                    </div>
+                    <div className="space-y-2">
+                      {group.items.map((item) => renderItemRow(item))}
+                    </div>
+                  </section>
+                ))}
+              </div>
+            )
           ) : (
-            <div className="space-y-4">
-              {groupedLibraryRows.map((group) => (
-                <section key={group.category} className="space-y-2">
-                  <div className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">
-                    {group.label}
-                  </div>
-                  <div className="space-y-2">
-                    {group.items.map((item) => renderItemRow(item))}
-                  </div>
-                </section>
-              ))}
+            groupedLibraryRows.length === 0 ? (
+              <p className="text-sm text-gray-500 dark:text-gray-400">No matching items.</p>
+            ) : (
+              <div className="space-y-4">
+                {groupedLibraryRows.map((group) => (
+                  <section key={group.category} className="space-y-2">
+                    <div className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">
+                      {group.label}
+                    </div>
+                    <div className="space-y-2">
+                      {group.items.map((item) => renderItemRow(item))}
+                    </div>
+                  </section>
+                ))}
+              </div>
+            )
+          )
+        ) : null}
+
+        {isContainerMode && activeTab === 'mine' ? (
+          containerPersonalRows.length === 0 ? (
+            <p className="text-sm text-gray-500 dark:text-gray-400">No custom item templates found.</p>
+          ) : (
+            <div className="space-y-2">
+              {containerPersonalRows.map((item) => renderItemRow(item))}
             </div>
           )
         ) : null}

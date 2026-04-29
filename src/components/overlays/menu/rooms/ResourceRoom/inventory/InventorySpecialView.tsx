@@ -1175,6 +1175,7 @@ export function InventorySpecialView({ resource }: InventorySpecialViewProps) {
       {showAddItemPanel ? (
         <AddItemPanel
           resource={resource}
+          mode={addItemContainerId ? 'container' : 'inventory'}
           onClose={() => {
             setShowAddItemPanel(false);
             setAddItemContainerId(null);

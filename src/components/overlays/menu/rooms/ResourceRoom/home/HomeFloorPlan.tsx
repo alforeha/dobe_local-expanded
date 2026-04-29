@@ -3559,6 +3559,7 @@ export function HomeFloorPlan({
 					viewedContainerEntry.source === 'inventory' && viewedContainerRecord?.source === 'inventory' && viewedContainerRecord.inventory ? (
 						<AddItemPanel
 							resource={viewedContainerRecord.inventory}
+							mode="container"
 							containerId={viewedContainerEntry.container.id}
 							onClose={() => setShowViewedContainerAddItemPanel(false)}
 							onItemInstanceAdded={(item) => addItemInstanceToViewedContainer(item)}
