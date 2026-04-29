@@ -114,6 +114,7 @@ export interface ItemRecurringTask {
   id: string;
   taskTemplateRef: string;
   taskType?: string;
+  inputFields?: Partial<InputFields>;
   recurrenceMode?: 'recurring' | 'never';
   recurrence: ResourceRecurrenceRule;
   reminderLeadDays?: number;

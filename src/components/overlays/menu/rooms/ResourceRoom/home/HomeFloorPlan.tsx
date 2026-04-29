@@ -14,6 +14,7 @@ import { useUserStore } from '../../../../../../stores/useUserStore';
 import type { FloorPlanRoom, FloorPlanSegment, FloorPlanSegmentKind, HomeStory, InventoryContainer, InventoryItemTemplate, InventoryResource, ItemInstance, ItemRecurringTask, PlacedInstance, RecurrenceDayOfWeek, ResourceRecurrenceRule, SegmentDirection } from '../../../../../../types/resource';
 import { makeDefaultRecurrenceRule, normalizeRecurrenceMode } from '../../../../../../types/resource';
 import type { Task } from '../../../../../../types/task';
+import type { ConsumeEntry, ConsumeInputFields, TextInputFields } from '../../../../../../types/taskTemplate';
 import { getUserInventoryItemTemplates, mergeInventoryItemTemplates, resolveInventoryItemTemplate } from '../../../../../../utils/inventoryItems';
 import { getPointDistance, getPointsBounds, pointsMatch, segmentsToPoints } from '../../../../../../utils/floorPlan';
 import { AddItemPanel } from '../inventory/AddItemPanel';
@@ -62,6 +63,12 @@ const QUICK_ACTIONS_BADGE_OFFSET_Y = -10;
 	const INPUT_CLS = 'rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 focus:border-purple-500 focus:outline-none dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100';
 	const STORY_SCOPE_ID = '__story__';
 	const TASK_TYPE_OPTIONS = ['CHECK', 'COUNTER', 'DURATION', 'TIMER', 'RATING', 'TEXT'] as const;
+	const ITEM_TASK_TYPE_OPTIONS = [
+		{ value: 'CHECK', label: 'Check' },
+		{ value: 'CONSUME', label: 'Consume' },
+		{ value: 'TEXT', label: 'Use' },
+	] as const;
+	void TASK_TYPE_OPTIONS;
 	const DOW_LABELS: Array<{ key: RecurrenceDayOfWeek; label: string }> = [
 		{ key: 'sun', label: 'Su' },
 		{ key: 'mon', label: 'Mo' },
@@ -139,14 +146,59 @@ const QUICK_ACTIONS_BADGE_OFFSET_Y = -10;
 			.replace(/\b\w/g, (char) => char.toUpperCase());
 	}
 
+	function getItemTaskTypeLabel(taskType: string | null | undefined) {
+		if (taskType === 'TEXT') return 'Use';
+		if (taskType === 'CONSUME') return 'Consume';
+		if (taskType === 'CHECK' || !taskType) return 'Check';
+		return taskType;
+	}
+
+	function buildPlacedRecurringTaskInputFields(taskName: string, taskType: string | null | undefined, inputFields?: Partial<ConsumeInputFields> | Partial<TextInputFields>) {
+		if (taskType === 'CONSUME') {
+			const consumeInputFields = (inputFields as Partial<ConsumeInputFields> | undefined) ?? {};
+			return {
+				label: taskName,
+				entries: ((consumeInputFields.entries ?? []) as ConsumeEntry[]).map((entry) => ({
+					itemTemplateRef: entry.itemTemplateRef,
+					quantity: Math.max(1, Number(entry.quantity) || 1),
+				})),
+			} satisfies ConsumeInputFields;
+		}
+
+		if (taskType === 'TEXT') {
+			const textInputFields = (inputFields as Partial<TextInputFields> | undefined) ?? {};
+			return {
+				prompt: typeof textInputFields.prompt === 'string' ? textInputFields.prompt : '',
+				maxLength: null,
+				expectedValue: typeof textInputFields.expectedValue === 'string' ? textInputFields.expectedValue : '',
+			} satisfies TextInputFields;
+		}
+
+		return {
+			label: taskName,
+		};
+	}
+
 	function buildPlacedItemRecurringTasks(placementId: string, itemTemplateRef: string, availableTemplates: InventoryItemTemplate[]): ItemRecurringTask[] {
 		const customTemplate = availableTemplates.find((option) => option.id === itemTemplateRef);
 		if (itemTemplateRef.startsWith(CUSTOM_ITEM_TEMPLATE_PREFIX)) {
-			return (customTemplate?.customTaskTemplates ?? [])
+			const customTaskTemplates = (customTemplate?.customTaskTemplates ?? []) as Array<{
+				id: string;
+				name: string;
+				taskType?: string;
+				inputFields?: Partial<ConsumeInputFields>;
+			}>;
+			return customTaskTemplates
 				.filter((taskTemplate) => taskTemplate.name.trim().length > 0)
 				.map((taskTemplate) => ({
 					id: buildPlacedRecurringTaskId(placementId, taskTemplate.name.trim()),
 					taskTemplateRef: taskTemplate.name.trim(),
+					taskType: taskTemplate.taskType ?? 'CHECK',
+					inputFields: buildPlacedRecurringTaskInputFields(
+						taskTemplate.name.trim(),
+						taskTemplate.taskType ?? 'CHECK',
+						taskTemplate.inputFields as Partial<ConsumeInputFields> | undefined,
+					),
 					recurrenceMode: 'never',
 					recurrence: makeDefaultRecurrenceRule(),
 					reminderLeadDays: 7,
@@ -765,6 +817,10 @@ export function HomeFloorPlan({
 		() => outsidePlacedLooseItemEntries.reduce((sum, entry) => sum + getPlacedInstanceQuantity(entry.placement), 0),
 		[outsidePlacedLooseItemEntries],
 	);
+	const userConsumableTaskTemplates = useMemo(
+		() => userItemTemplates.filter((item) => (item.kind ?? 'consumable') === 'consumable'),
+		[userItemTemplates],
+	);
 	const visibleRoomSummaries = useMemo(() => {
 		if (!selectedRoomId) return roomSummaries;
 		return roomSummaries.filter((entry) => entry.room.id === selectedRoomId);
@@ -1114,6 +1170,123 @@ export function HomeFloorPlan({
 		});
 	}
 
+	function updatePlacedRecurringTaskName(roomId: string | null, placementId: string, taskId: string, taskName: string) {
+		const placementList = roomId === null
+			? story.placedItems
+			: (story.rooms.find((entry) => entry.id === roomId)?.placedItems ?? []);
+		const placement = placementList.find((entry) => entry.id === placementId);
+		if (!placement) return;
+		updatePlacedItem(roomId, placementId, {
+			recurringTasks: (placement.recurringTasks ?? []).map((task) => (
+				task.id === taskId
+					? {
+						...task,
+						taskTemplateRef: taskName,
+						inputFields: buildPlacedRecurringTaskInputFields(taskName, task.taskType, task.inputFields as Partial<ConsumeInputFields> | undefined),
+					}
+					: task
+			)),
+		});
+	}
+
+	function updatePlacedRecurringTaskType(roomId: string | null, placementId: string, taskId: string, taskType: string) {
+		const placementList = roomId === null
+			? story.placedItems
+			: (story.rooms.find((entry) => entry.id === roomId)?.placedItems ?? []);
+		const placement = placementList.find((entry) => entry.id === placementId);
+		const task = placement?.recurringTasks?.find((entry) => entry.id === taskId);
+		if (!placement || !task) return;
+		updatePlacedItem(roomId, placementId, {
+			recurringTasks: (placement.recurringTasks ?? []).map((entry) => (
+				entry.id === taskId
+					? {
+						...entry,
+						taskType,
+						inputFields: buildPlacedRecurringTaskInputFields(entry.taskTemplateRef, taskType, entry.inputFields as Partial<ConsumeInputFields> | undefined),
+					}
+					: entry
+			)),
+		});
+	}
+
+	function addPlacedRecurringTaskConsumeEntry(roomId: string | null, placementId: string, taskId: string) {
+		const placementList = roomId === null
+			? story.placedItems
+			: (story.rooms.find((entry) => entry.id === roomId)?.placedItems ?? []);
+		const placement = placementList.find((entry) => entry.id === placementId);
+		const task = placement?.recurringTasks?.find((entry) => entry.id === taskId);
+		if (!placement || !task) return;
+		const consumeFields = buildPlacedRecurringTaskInputFields(
+			task.taskTemplateRef,
+			'CONSUME',
+			task.inputFields as Partial<ConsumeInputFields> | undefined,
+		) as ConsumeInputFields;
+		updatePlacedRecurringTask(roomId, placementId, taskId, 'inputFields', {
+			label: task.taskTemplateRef,
+			entries: [
+				...consumeFields.entries,
+				{ itemTemplateRef: '', quantity: 1 },
+			],
+		});
+	}
+
+	function updatePlacedRecurringTaskConsumeEntry(roomId: string | null, placementId: string, taskId: string, entryIndex: number, patch: Partial<ConsumeEntry>) {
+		const placementList = roomId === null
+			? story.placedItems
+			: (story.rooms.find((entry) => entry.id === roomId)?.placedItems ?? []);
+		const placement = placementList.find((entry) => entry.id === placementId);
+		const task = placement?.recurringTasks?.find((entry) => entry.id === taskId);
+		if (!placement || !task) return;
+		const consumeFields = buildPlacedRecurringTaskInputFields(
+			task.taskTemplateRef,
+			'CONSUME',
+			task.inputFields as Partial<ConsumeInputFields> | undefined,
+		) as ConsumeInputFields;
+		updatePlacedRecurringTask(roomId, placementId, taskId, 'inputFields', {
+			label: task.taskTemplateRef,
+			entries: consumeFields.entries.map((entry, index) => (
+				index === entryIndex ? { ...entry, ...patch, quantity: Math.max(1, Number((patch.quantity ?? entry.quantity)) || 1) } : entry
+			)),
+		});
+	}
+
+	function removePlacedRecurringTaskConsumeEntry(roomId: string | null, placementId: string, taskId: string, entryIndex: number) {
+		const placementList = roomId === null
+			? story.placedItems
+			: (story.rooms.find((entry) => entry.id === roomId)?.placedItems ?? []);
+		const placement = placementList.find((entry) => entry.id === placementId);
+		const task = placement?.recurringTasks?.find((entry) => entry.id === taskId);
+		if (!placement || !task) return;
+		const consumeFields = buildPlacedRecurringTaskInputFields(
+			task.taskTemplateRef,
+			'CONSUME',
+			task.inputFields as Partial<ConsumeInputFields> | undefined,
+		) as ConsumeInputFields;
+		updatePlacedRecurringTask(roomId, placementId, taskId, 'inputFields', {
+			label: task.taskTemplateRef,
+			entries: consumeFields.entries.filter((_, index) => index !== entryIndex),
+		});
+	}
+
+	function updatePlacedRecurringTaskTextInput(roomId: string | null, placementId: string, taskId: string, patch: Partial<TextInputFields>) {
+		const placementList = roomId === null
+			? story.placedItems
+			: (story.rooms.find((entry) => entry.id === roomId)?.placedItems ?? []);
+		const placement = placementList.find((entry) => entry.id === placementId);
+		const task = placement?.recurringTasks?.find((entry) => entry.id === taskId);
+		if (!placement || !task) return;
+		const nextTextInputFields = {
+			...(buildPlacedRecurringTaskInputFields(
+				task.taskTemplateRef,
+				'TEXT',
+				task.inputFields as Partial<TextInputFields> | undefined,
+			) as TextInputFields),
+			...patch,
+			maxLength: null,
+		};
+		updatePlacedRecurringTask(roomId, placementId, taskId, 'inputFields', nextTextInputFields);
+	}
+
 	function updatePlacedRecurringTaskRecurrence(roomId: string | null, placementId: string, taskId: string, patch: Partial<ResourceRecurrenceRule>) {
 		const placementList = roomId === null
 			? story.placedItems
@@ -1138,6 +1311,7 @@ export function HomeFloorPlan({
 					id: nextTaskId,
 					taskTemplateRef: 'New Task',
 					taskType: 'CHECK',
+					inputFields: { label: 'New Task' },
 					recurrenceMode: 'never',
 					recurrence: makeDefaultRecurrenceRule(),
 					reminderLeadDays: 7,
@@ -2269,7 +2443,16 @@ export function HomeFloorPlan({
 																			<div className="min-w-0 flex items-center gap-2">
 																				<IconDisplay iconKey={taskDisplay.icon} size={14} className="h-4 w-4 shrink-0 object-contain" alt="" />
 																				<div className="min-w-0">
-																					<div className="truncate text-xs font-medium text-gray-800 dark:text-gray-100">{taskDisplay.name}</div>
+																					<div className="flex min-w-0 items-center gap-2">
+																						<div className="truncate text-xs font-medium text-gray-800 dark:text-gray-100">{taskDisplay.name}</div>
+																						<span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+																							(task.taskType ?? 'CHECK') === 'CONSUME'
+																								? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
+																								: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'
+																						}`}>
+																							{getItemTaskTypeLabel(task.taskType ?? 'CHECK')}
+																						</span>
+																					</div>
 																					<div className="text-[11px] text-gray-500 dark:text-gray-400">
 																						{normalizeRecurrenceMode(task.recurrenceMode) === 'recurring'
 																							? `${describeTaskRecurrence(task.recurrence)} · ${describeReminder(task.reminderLeadDays ?? 7)}`
@@ -2291,7 +2474,7 @@ export function HomeFloorPlan({
 																						<>
 																							<label className="space-y-1">
 																								<span className="text-[11px] font-medium text-gray-600 dark:text-gray-300">Task name</span>
-																								<input value={task.taskTemplateRef} onChange={(event) => updatePlacedRecurringTask(room.id, entry.placement.id, task.id, 'taskTemplateRef', event.target.value)} className={`${INPUT_CLS} w-full`} />
+																								<input value={task.taskTemplateRef} onChange={(event) => updatePlacedRecurringTaskName(room.id, entry.placement.id, task.id, event.target.value)} className={`${INPUT_CLS} w-full`} />
 																							</label>
 																							<button type="button" onClick={() => removePlacedRecurringTask(room.id, entry.placement.id, task.id)} className="rounded-full bg-red-50 px-3 py-2 text-xs font-semibold text-red-600 hover:bg-red-100 dark:bg-red-900/20 dark:text-red-300 sm:self-end">Remove task</button>
 																						</>
@@ -2301,8 +2484,8 @@ export function HomeFloorPlan({
 																					{isBuiltInTask ? null : (
 																						<label className="space-y-1">
 																							<span className="text-[11px] font-medium text-gray-600 dark:text-gray-300">Task type</span>
-																							<select value={task.taskType ?? 'CHECK'} onChange={(event) => updatePlacedRecurringTask(room.id, entry.placement.id, task.id, 'taskType', event.target.value)} className={`${INPUT_CLS} w-full`}>
-																								{TASK_TYPE_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
+																							<select value={task.taskType ?? 'CHECK'} onChange={(event) => updatePlacedRecurringTaskType(room.id, entry.placement.id, task.id, event.target.value)} className={`${INPUT_CLS} w-full`}>
+																								{ITEM_TASK_TYPE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
 																							</select>
 																						</label>
 																					)}
@@ -2323,6 +2506,60 @@ export function HomeFloorPlan({
 																						))}
 																					</div>
 																				</div>
+																				{!isBuiltInTask && (task.taskType ?? 'CHECK') === 'CONSUME' ? (
+																					<div className="space-y-3 rounded-md border border-gray-200 bg-gray-50 px-3 py-3 dark:border-gray-600 dark:bg-gray-800/70">
+																						<div className="flex items-center justify-between gap-2">
+																							<div className="text-[11px] font-medium text-gray-600 dark:text-gray-300">Consume entries</div>
+																							<button type="button" onClick={() => addPlacedRecurringTaskConsumeEntry(room.id, entry.placement.id, task.id)} className="rounded-full bg-blue-50 px-2.5 py-1 text-[11px] font-semibold text-blue-700 hover:bg-blue-100 dark:bg-blue-900/20 dark:text-blue-200 dark:hover:bg-blue-900/40">Add entry</button>
+																						</div>
+																						{(((task.inputFields as ConsumeInputFields | undefined)?.entries) ?? []).length === 0 ? (
+																							<div className="rounded-md border border-dashed border-gray-300 px-3 py-3 text-sm text-gray-500 dark:border-gray-600 dark:text-gray-400">No consume entries yet.</div>
+																						) : (
+																							<div className="space-y-2">
+																								{(((task.inputFields as ConsumeInputFields | undefined)?.entries) ?? []).map((consumeEntry, consumeIndex) => (
+																									<div key={`${task.id}-consume-${consumeIndex}`} className="grid gap-3 rounded-md border border-gray-200 bg-white px-3 py-3 dark:border-gray-600 dark:bg-gray-900/70 sm:grid-cols-[minmax(0,1fr)_7rem_auto] sm:items-end">
+																										<label className="space-y-1">
+																											<span className="text-[11px] font-medium text-gray-600 dark:text-gray-300">Item</span>
+																											<select value={consumeEntry.itemTemplateRef} onChange={(event) => updatePlacedRecurringTaskConsumeEntry(room.id, entry.placement.id, task.id, consumeIndex, { itemTemplateRef: event.target.value })} className={`${INPUT_CLS} w-full`}>
+																												<option value="">Select item</option>
+																												{userConsumableTaskTemplates.map((template) => <option key={template.id} value={template.id}>{template.name}</option>)}
+																											</select>
+																										</label>
+																										<label className="space-y-1">
+																											<span className="text-[11px] font-medium text-gray-600 dark:text-gray-300">Quantity</span>
+																											<input type="number" min={1} value={consumeEntry.quantity} onChange={(event) => updatePlacedRecurringTaskConsumeEntry(room.id, entry.placement.id, task.id, consumeIndex, { quantity: Math.max(1, Number(event.target.value) || 1) })} className={`${INPUT_CLS} w-full`} />
+																										</label>
+																										<button type="button" onClick={() => removePlacedRecurringTaskConsumeEntry(room.id, entry.placement.id, task.id, consumeIndex)} className="rounded-full bg-red-50 px-2.5 py-1 text-[11px] font-semibold text-red-600 hover:bg-red-100 dark:bg-red-900/20 dark:text-red-300 sm:self-end">Remove</button>
+																									</div>
+																								))}
+																							</div>
+																						)}
+																					</div>
+																				) : null}
+																				{!isBuiltInTask && (task.taskType ?? 'CHECK') === 'TEXT' ? (
+																					<div className="grid gap-3 rounded-md border border-gray-200 bg-gray-50 px-3 py-3 dark:border-gray-600 dark:bg-gray-800/70">
+																						<label className="space-y-1">
+																							<span className="text-[11px] font-medium text-gray-600 dark:text-gray-300">Prompt</span>
+																							<input
+																								type="text"
+																								value={((task.inputFields as TextInputFields | undefined)?.prompt) ?? ''}
+																								onChange={(event) => updatePlacedRecurringTaskTextInput(room.id, entry.placement.id, task.id, { prompt: event.target.value })}
+																								className={`${INPUT_CLS} w-full`}
+																								placeholder="Enter the prompt shown to the user"
+																							/>
+																						</label>
+																						<label className="space-y-1">
+																							<span className="text-[11px] font-medium text-gray-600 dark:text-gray-300">Expected value return</span>
+																							<input
+																								type="text"
+																								value={((task.inputFields as TextInputFields | undefined)?.expectedValue) ?? ''}
+																								onChange={(event) => updatePlacedRecurringTaskTextInput(room.id, entry.placement.id, task.id, { expectedValue: event.target.value })}
+																								className={`${INPUT_CLS} w-full`}
+																								placeholder="Enter the expected response"
+																							/>
+																						</label>
+																					</div>
+																				) : null}
 																				{normalizeRecurrenceMode(task.recurrenceMode) === 'recurring' ? (
 																					<div className="space-y-2 rounded-md border border-gray-200 bg-white px-3 py-3 dark:border-gray-600 dark:bg-gray-800/70">
 																						<div className="flex items-center gap-2">

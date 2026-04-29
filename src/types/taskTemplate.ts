@@ -204,6 +204,7 @@ export interface RatingInputFields {
 export interface TextInputFields {
   prompt: string;
   maxLength: number | null;
+  expectedValue?: string;
   /** Result capture — entered text */
   value?: string;
 }
