@@ -12,11 +12,13 @@
 import { v4 as uuidv4 } from 'uuid';
 import type { Task } from '../types/task';
 import type { Event, EventAttachment, EventAttachmentSource } from '../types/event';
-import type { InputFields, LocationPointInputFields, Waypoint, XpAward } from '../types/taskTemplate';
+import type { HomeResource, InventoryResource, Resource } from '../types/resource';
+import type { ConsumeEntry, ConsumeInputFields, InputFields, LocationPointInputFields, TaskTemplate, Waypoint, XpAward } from '../types/taskTemplate';
 import type { StatGroupKey } from '../types/user';
 import { useScheduleStore } from '../stores/useScheduleStore';
 import { useUserStore } from '../stores/useUserStore';
 import { useProgressionStore } from '../stores/useProgressionStore';
+import { useResourceStore } from '../stores/useResourceStore';
 import { EVENT_MAX_ATTACHMENTS } from '../storage/storageBudget';
 
 import { awardXP, awardStat, awardGold } from './awardPipeline';
@@ -30,7 +32,7 @@ import { getAppNowISO } from '../utils/dateUtils';
 import { getTaskCooldownState } from '../utils/taskCooldown';
 import { getLibraryTemplatePool, resolveTaskTemplate } from '../utils/resolveTaskTemplate';
 import { isWisdomTemplate } from './xpBoosts';
-import { autoCompleteSystemTask } from './resourceEngine';
+import { autoCompleteSystemTask, generateReplenishGTDItem } from './resourceEngine';
 
 const DEFAULT_TASK_XP = 5;
 const STAT_GROUP_KEYS: StatGroupKey[] = ['health', 'strength', 'agility', 'defense', 'charisma', 'wisdom'];
@@ -59,6 +61,263 @@ export interface TaskResult {
   resourceRef?: string | null;
   /** Optional location recorded during completion */
   location?: Task['location'];
+}
+
+interface QuantityTarget {
+  resourceId: string;
+  itemTemplateRef: string;
+  locationLabel: string;
+  getQuantity: (resources: Record<string, Resource>) => number;
+  setQuantity: (resources: Record<string, Resource>, quantity: number) => void;
+}
+
+function isConsumeEntry(value: unknown): value is ConsumeEntry {
+  if (!value || typeof value !== 'object') return false;
+
+  const candidate = value as Partial<ConsumeEntry>;
+  return typeof candidate.itemTemplateRef === 'string'
+    && typeof candidate.quantity === 'number'
+    && (candidate.action === 'consume' || candidate.action === 'replenish');
+}
+
+function normaliseConsumeEntries(entries: unknown): ConsumeEntry[] {
+  if (!Array.isArray(entries)) return [];
+
+  return entries
+    .filter(isConsumeEntry)
+    .map((entry) => ({
+      itemTemplateRef: entry.itemTemplateRef.trim(),
+      quantity: Math.max(1, Math.floor(entry.quantity)),
+      action: entry.action,
+    }))
+    .filter((entry) => entry.itemTemplateRef.length > 0);
+}
+
+function getConsumeEntries(
+  updatedTask: Task,
+  template: TaskTemplate | null,
+  result: TaskResult,
+): ConsumeEntry[] {
+  const resultEntries = normaliseConsumeEntries((result.resultFields as Partial<ConsumeInputFields>).entries);
+  if (resultEntries.length > 0) return resultEntries;
+
+  const savedEntries = normaliseConsumeEntries((updatedTask.resultFields as Partial<ConsumeInputFields>).entries);
+  if (savedEntries.length > 0) return savedEntries;
+
+  if (template?.taskType === 'CONSUME') {
+    return normaliseConsumeEntries((template.inputFields as ConsumeInputFields).entries);
+  }
+
+  return [];
+}
+
+function cloneResource<T extends Resource>(resource: T): T {
+  return JSON.parse(JSON.stringify(resource)) as T;
+}
+
+function getMutableResource(
+  workingResources: Record<string, Resource>,
+  baseResources: Record<string, Resource>,
+  resourceId: string,
+): Resource | null {
+  const existing = workingResources[resourceId];
+  if (existing) return existing;
+
+  const base = baseResources[resourceId];
+  if (!base) return null;
+
+  const clone = cloneResource(base);
+  workingResources[resourceId] = clone;
+  return clone;
+}
+
+function collectQuantityTargets(resources: Record<string, Resource>, itemTemplateRef: string): QuantityTarget[] {
+  const targets: QuantityTarget[] = [];
+
+  for (const resource of Object.values(resources)) {
+    if (resource.type === 'home') {
+      for (const story of resource.stories ?? []) {
+        for (const placement of story.placedItems ?? []) {
+          if (placement.kind !== 'item' || placement.refId !== itemTemplateRef) continue;
+          const locationLabel = story.name?.trim()
+            ? `${resource.name} - ${story.name}`
+            : resource.name;
+          targets.push({
+            resourceId: resource.id,
+            itemTemplateRef,
+            locationLabel,
+            getQuantity: (currentResources) => {
+              const currentResource = currentResources[resource.id] as HomeResource | undefined;
+              const currentStory = currentResource?.stories?.find((entry) => entry.id === story.id);
+              const currentPlacement = currentStory?.placedItems?.find((entry) => entry.id === placement.id);
+              return Math.max(0, currentPlacement?.quantity ?? 0);
+            },
+            setQuantity: (currentResources, quantity) => {
+              const currentResource = currentResources[resource.id] as HomeResource | undefined;
+              const currentStory = currentResource?.stories?.find((entry) => entry.id === story.id);
+              const currentPlacement = currentStory?.placedItems?.find((entry) => entry.id === placement.id);
+              if (!currentPlacement) return;
+              currentPlacement.quantity = Math.max(0, quantity);
+            },
+          });
+        }
+
+        for (const room of story.rooms ?? []) {
+          for (const placement of room.placedItems ?? []) {
+            if (placement.kind !== 'item' || placement.refId !== itemTemplateRef) continue;
+            targets.push({
+              resourceId: resource.id,
+              itemTemplateRef,
+              locationLabel: `${resource.name} - ${room.name}`,
+              getQuantity: (currentResources) => {
+                const currentResource = currentResources[resource.id] as HomeResource | undefined;
+                const currentStory = currentResource?.stories?.find((entry) => entry.id === story.id);
+                const currentRoom = currentStory?.rooms?.find((entry) => entry.id === room.id);
+                const currentPlacement = currentRoom?.placedItems?.find((entry) => entry.id === placement.id);
+                return Math.max(0, currentPlacement?.quantity ?? 0);
+              },
+              setQuantity: (currentResources, quantity) => {
+                const currentResource = currentResources[resource.id] as HomeResource | undefined;
+                const currentStory = currentResource?.stories?.find((entry) => entry.id === story.id);
+                const currentRoom = currentStory?.rooms?.find((entry) => entry.id === room.id);
+                const currentPlacement = currentRoom?.placedItems?.find((entry) => entry.id === placement.id);
+                if (!currentPlacement) return;
+                currentPlacement.quantity = Math.max(0, quantity);
+              },
+            });
+          }
+        }
+      }
+      continue;
+    }
+
+    if (resource.type !== 'inventory') continue;
+
+    for (const item of resource.items) {
+      if (item.itemTemplateRef !== itemTemplateRef) continue;
+      targets.push({
+        resourceId: resource.id,
+        itemTemplateRef,
+        locationLabel: resource.name,
+        getQuantity: (currentResources) => {
+          const currentResource = currentResources[resource.id] as InventoryResource | undefined;
+          const currentItem = currentResource?.items.find((entry) => entry.id === item.id);
+          return Math.max(0, currentItem?.quantity ?? 0);
+        },
+        setQuantity: (currentResources, quantity) => {
+          const currentResource = currentResources[resource.id] as InventoryResource | undefined;
+          const currentItem = currentResource?.items.find((entry) => entry.id === item.id);
+          if (!currentItem) return;
+          currentItem.quantity = Math.max(0, quantity);
+        },
+      });
+    }
+
+    for (const container of resource.containers ?? []) {
+      for (const item of container.items) {
+        if (item.itemTemplateRef !== itemTemplateRef) continue;
+        targets.push({
+          resourceId: resource.id,
+          itemTemplateRef,
+          locationLabel: `${resource.name} - ${container.name}`,
+          getQuantity: (currentResources) => {
+            const currentResource = currentResources[resource.id] as InventoryResource | undefined;
+            const currentContainer = currentResource?.containers?.find((entry) => entry.id === container.id);
+            const currentItem = currentContainer?.items.find((entry) => entry.id === item.id);
+            return Math.max(0, currentItem?.quantity ?? 0);
+          },
+          setQuantity: (currentResources, quantity) => {
+            const currentResource = currentResources[resource.id] as InventoryResource | undefined;
+            const currentContainer = currentResource?.containers?.find((entry) => entry.id === container.id);
+            const currentItem = currentContainer?.items.find((entry) => entry.id === item.id);
+            if (!currentItem) return;
+            currentItem.quantity = Math.max(0, quantity);
+          },
+        });
+      }
+    }
+  }
+
+  return targets;
+}
+
+function applyConsumeTaskEffects(entries: ConsumeEntry[]): void {
+  if (entries.length === 0) return;
+
+  const resourceStore = useResourceStore.getState();
+  const baseResources = resourceStore.resources;
+  const workingResources: Record<string, Resource> = {};
+  const zeroQuantityReplenishTargets = new Map<string, { resourceId: string; locationLabel: string; itemTemplateRef: string }>();
+  const touchedResourceIds = new Set<string>();
+  const now = getAppNowISO();
+
+  for (const entry of entries) {
+    const targets = collectQuantityTargets(baseResources, entry.itemTemplateRef);
+    if (targets.length === 0) continue;
+
+    const getCurrentResources = () => ({ ...baseResources, ...workingResources });
+
+    if (entry.action === 'consume') {
+      let remaining = entry.quantity;
+      const sortedTargets = [...targets].sort((left, right) => left.getQuantity(getCurrentResources()) - right.getQuantity(getCurrentResources()));
+
+      for (const target of sortedTargets) {
+        if (remaining <= 0) break;
+        const mutableResource = getMutableResource(workingResources, baseResources, target.resourceId);
+        if (!mutableResource) continue;
+
+        const currentQuantity = target.getQuantity(workingResources);
+        if (currentQuantity <= 0) continue;
+
+        const consumed = Math.min(currentQuantity, remaining);
+        const nextQuantity = currentQuantity - consumed;
+        target.setQuantity(workingResources, nextQuantity);
+        touchedResourceIds.add(target.resourceId);
+        remaining -= consumed;
+
+        if (nextQuantity === 0) {
+          zeroQuantityReplenishTargets.set(
+            `${target.resourceId}::${target.locationLabel}::${entry.itemTemplateRef}`,
+            {
+              resourceId: target.resourceId,
+              locationLabel: target.locationLabel,
+              itemTemplateRef: entry.itemTemplateRef,
+            },
+          );
+        }
+      }
+      continue;
+    }
+
+    const sortedTargets = [...targets].sort((left, right) => left.getQuantity(getCurrentResources()) - right.getQuantity(getCurrentResources()));
+    const target = sortedTargets[0];
+    if (!target) continue;
+
+    const mutableResource = getMutableResource(workingResources, baseResources, target.resourceId);
+    if (!mutableResource) continue;
+
+    const currentQuantity = target.getQuantity(workingResources);
+    target.setQuantity(workingResources, currentQuantity + entry.quantity);
+    touchedResourceIds.add(target.resourceId);
+  }
+
+  for (const resourceId of touchedResourceIds) {
+    const resource = workingResources[resourceId];
+    if (!resource) continue;
+
+    resourceStore.setResource({
+      ...resource,
+      updatedAt: now,
+    } as Resource);
+  }
+
+  for (const replenishTarget of zeroQuantityReplenishTargets.values()) {
+    generateReplenishGTDItem(
+      replenishTarget.itemTemplateRef,
+      replenishTarget.locationLabel,
+      replenishTarget.resourceId || null,
+    );
+  }
 }
 
 // ── ATTACHMENT RECORD (D46) ───────────────────────────────────────────────────
@@ -151,6 +410,10 @@ export function completeTask(
   };
 
   scheduleStore.setTask(updatedTask);
+  const resolvedTaskType = updatedTask.taskType ?? template?.taskType ?? null;
+  if (resolvedTaskType === 'CONSUME') {
+    applyConsumeTaskEffects(getConsumeEntries(updatedTask, template, result));
+  }
   if (updatedTask.templateRef === STARTER_TEMPLATE_IDS.openWelcomeEvent) {
     autoCompleteSystemTask(STARTER_TEMPLATE_IDS.openWelcomeEvent);
   }

@@ -98,6 +98,7 @@ function getTaskTypeIconKey(taskType: TaskType): string {
     LOCATION_POINT: 'location_point',
     LOCATION_TRAIL: 'location_trail',
     ROLL: 'roll',
+    CONSUME: 'consume',
   };
 
   return map[taskType];

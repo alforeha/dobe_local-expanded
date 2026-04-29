@@ -32,7 +32,7 @@ import type {
 import { normalizeRecurrenceMode } from '../types/resource';
 import type { PlannedEvent } from '../types/plannedEvent';
 import type { Task } from '../types/task';
-import type { CircuitInputFields, InputFields, TaskType } from '../types/taskTemplate';
+import type { CircuitInputFields, ConsumeEntry, ConsumeInputFields, InputFields, TaskType } from '../types/taskTemplate';
 import type { XpAward } from '../types/taskTemplate';
 import type { StatGroupKey, User } from '../types/user';
 import { getAppDate, getAppNowISO, localISODate } from '../utils/dateUtils';
@@ -333,6 +333,65 @@ function buildPendingTask(
     actRef: null,
     secondaryTag: null,
   };
+}
+
+export function generateReplenishGTDItem(
+  itemTemplateRef: string,
+  locationLabel: string,
+  resourceRef: string | null = null,
+): void {
+  const latestUser = useUserStore.getState().user;
+  if (!latestUser) return;
+
+  const scheduleStore = useScheduleStore.getState();
+  const resolvedTemplate = findItemTemplate(itemTemplateRef);
+  const itemName = resolvedTemplate?.name ?? itemTemplateRef;
+  const trimmedLocation = locationLabel.trim();
+  const title = trimmedLocation
+    ? `Replenish ${itemName} at ${trimmedLocation}`
+    : `Replenish ${itemName}`;
+  const attachmentRef = `resource-task:replenish:${resourceRef ?? ''}:${itemTemplateRef}:${trimmedLocation.toLowerCase()}`;
+
+  const existingPendingTask = latestUser.lists.gtdList
+    .map((taskId) => scheduleStore.tasks[taskId])
+    .find((task) => task?.completionState === 'pending' && task.attachmentRef === attachmentRef);
+  if (existingPendingTask) return;
+
+  const entries: ConsumeEntry[] = [{
+    itemTemplateRef,
+    quantity: 1,
+    action: 'replenish',
+  }];
+
+  const replenishTask: Task = {
+    id: uuidv4(),
+    templateRef: null,
+    isUnique: true,
+    title,
+    taskType: 'CONSUME',
+    completionState: 'pending',
+    completedAt: null,
+    resultFields: {
+      label: title,
+      entries,
+    } satisfies Partial<ConsumeInputFields>,
+    attachmentRef,
+    resourceRef,
+    location: null,
+    sharedWith: null,
+    questRef: null,
+    actRef: null,
+    secondaryTag: null,
+  };
+
+  scheduleStore.setTask(replenishTask);
+  useUserStore.getState().setUser({
+    ...latestUser,
+    lists: {
+      ...latestUser.lists,
+      gtdList: [...new Set([...latestUser.lists.gtdList, replenishTask.id])],
+    },
+  });
 }
 
 export function autoCompleteSystemTask(templateRef: string): void {

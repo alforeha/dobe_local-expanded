@@ -9,7 +9,8 @@ import {
 } from '../../../../../../coach/ItemLibrary';
 import { useResourceStore } from '../../../../../../stores/useResourceStore';
 import { useUserStore } from '../../../../../../stores/useUserStore';
-import type { HomeResource, InventoryItemTemplate, InventoryResource, ItemInstance, PlacedInstance } from '../../../../../../types/resource';
+import type { HomeResource, InventoryCustomTaskTemplate, InventoryItemTemplate, InventoryResource, ItemInstance, PlacedInstance } from '../../../../../../types/resource';
+import type { CheckInputFields, ConsumeEntry, ConsumeInputFields } from '../../../../../../types/taskTemplate';
 import { IconDisplay } from '../../../../../shared/IconDisplay';
 import { IconPicker } from '../../../../../shared/IconPicker';
 import { PopupShell } from '../../../../../shared/popups/PopupShell';
@@ -79,6 +80,23 @@ interface RowDisclosureState {
   mode: 'remove' | 'placements';
 }
 
+type DraftTaskType = 'CHECK' | 'CONSUME';
+
+type DraftTaskInputFields = CheckInputFields | ConsumeInputFields;
+
+type EditableInventoryCustomTaskTemplate = InventoryCustomTaskTemplate & {
+  taskType?: DraftTaskType;
+  inputFields?: DraftTaskInputFields;
+};
+
+interface DraftNewItemTask {
+  id: string;
+  name: string;
+  taskType: DraftTaskType;
+  inputFields: DraftTaskInputFields;
+  icon: string;
+}
+
 interface AddItemPanelProps {
   resource: InventoryResource;
   containerId?: string;
@@ -136,6 +154,14 @@ export function AddItemPanel({
   const [draftKind, setDraftKind] = useState<ItemKind>('consumable');
   const [draftCategory, setDraftCategory] = useState<ItemCategory>('workspace');
   const [draftDescription, setDraftDescription] = useState('');
+  const [draftTasks, setDraftTasks] = useState<DraftNewItemTask[]>([]);
+  const [isAddingTask, setIsAddingTask] = useState(false);
+  const [draftTaskName, setDraftTaskName] = useState('');
+  const [draftTaskIcon, setDraftTaskIcon] = useState('task');
+  const [draftTaskType, setDraftTaskType] = useState<DraftTaskType>('CHECK');
+  const [draftConsumeEntries, setDraftConsumeEntries] = useState<ConsumeEntry[]>([]);
+  const [openConsumeEntryPickerIndex, setOpenConsumeEntryPickerIndex] = useState<number | null>(null);
+  const [taskError, setTaskError] = useState('');
   const [error, setError] = useState('');
 
   const resources = useResourceStore((state) => state.resources);
@@ -414,6 +440,18 @@ export function AddItemPanel({
     });
   }, [placementDetailsByTemplateId, roomCreatedTemplates]);
 
+  const taskItemTemplates = useMemo(
+    () => mergeInventoryItemTemplates(
+      userTemplates,
+      itemLibrary
+        .map((item) => getLibraryItem(item.id))
+        .filter((item): item is InventoryItemTemplate => item != null),
+    )
+      .filter((template) => (template.kind ?? 'consumable') === 'consumable')
+      .filter((template) => (placementDetailsByTemplateId.get(template.id)?.length ?? 0) > 0),
+    [placementDetailsByTemplateId, userTemplates],
+  );
+
   const libraryRows = useMemo<LibraryRow[]>(() => {
     return [...builtInRows, ...customRows, ...roomCreatedRows]
       .filter((item) => item.name.toLowerCase().includes(normalizedSearch))
@@ -541,6 +579,23 @@ export function AddItemPanel({
       return;
     }
 
+    const nextCustomTaskTemplates: EditableInventoryCustomTaskTemplate[] = draftKind === 'facility'
+      ? draftTasks.map((task) => ({
+          id: crypto.randomUUID(),
+          name: task.name,
+          icon: task.icon,
+          taskType: task.taskType,
+          inputFields: task.taskType === 'CONSUME'
+            ? {
+                label: task.name,
+                entries: (task.inputFields as ConsumeInputFields).entries,
+              }
+            : {
+                label: task.name,
+              },
+        }))
+      : [];
+
     const nextTemplate: InventoryItemTemplate = {
       id: makeCustomItemTemplateRef(draftName.trim(), draftKind, draftIcon || 'inventory'),
       name: draftName.trim(),
@@ -549,7 +604,7 @@ export function AddItemPanel({
       category: draftCategory,
       description: draftDescription.trim() || 'Custom inventory item',
       isCustom: true,
-      customTaskTemplates: [],
+      customTaskTemplates: nextCustomTaskTemplates as InventoryCustomTaskTemplate[],
     };
 
     handleAddTemplate(nextTemplate);
@@ -560,7 +615,89 @@ export function AddItemPanel({
     setDraftIcon('inventory');
     setDraftKind('consumable');
     setDraftCategory('workspace');
+    setDraftTasks([]);
+    setIsAddingTask(false);
+    setDraftTaskName('');
+    setDraftTaskType('CHECK');
+    setDraftConsumeEntries([]);
+    setTaskError('');
     setError('');
+  };
+
+  const resetTaskComposer = () => {
+    setIsAddingTask(false);
+    setDraftTaskName('');
+    setDraftTaskIcon('task');
+    setDraftTaskType('CHECK');
+    setDraftConsumeEntries([]);
+    setOpenConsumeEntryPickerIndex(null);
+    setTaskError('');
+  };
+
+  const addDraftConsumeEntry = () => {
+    setDraftConsumeEntries((current) => ([
+      ...current,
+      {
+        itemTemplateRef: '',
+        quantity: 1,
+        action: 'consume',
+      },
+    ]));
+    setOpenConsumeEntryPickerIndex((current) => current ?? draftConsumeEntries.length);
+  };
+
+  const updateDraftConsumeEntry = (index: number, patch: Partial<ConsumeEntry>) => {
+    setDraftConsumeEntries((current) => current.map((entry, entryIndex) => (
+      entryIndex === index ? { ...entry, ...patch } : entry
+    )));
+  };
+
+  const removeDraftConsumeEntry = (index: number) => {
+    setDraftConsumeEntries((current) => current.filter((_, entryIndex) => entryIndex !== index));
+    setOpenConsumeEntryPickerIndex((current) => {
+      if (current == null) return null;
+      if (current === index) return null;
+      return current > index ? current - 1 : current;
+    });
+  };
+
+  const resolveTaskItemTemplate = (itemTemplateRef: string) => taskItemTemplates.find((template) => template.id === itemTemplateRef) ?? null;
+
+  const handleSaveDraftTask = () => {
+    const trimmedName = draftTaskName.trim();
+    if (!trimmedName) {
+      setTaskError('Task name is required.');
+      return;
+    }
+
+    const entries = draftTaskType === 'CONSUME'
+      ? draftConsumeEntries
+          .filter((entry) => entry.itemTemplateRef.trim().length > 0)
+          .map((entry) => ({
+            itemTemplateRef: entry.itemTemplateRef,
+            quantity: Math.max(1, Math.floor(entry.quantity || 1)),
+            action: entry.action,
+          }))
+      : [];
+
+    setDraftTasks((current) => ([
+      ...current,
+      {
+        id: crypto.randomUUID(),
+        name: trimmedName,
+        taskType: draftTaskType,
+        inputFields: draftTaskType === 'CONSUME'
+          ? { label: trimmedName, entries }
+          : { label: trimmedName },
+        icon: draftTaskIcon || 'task',
+      },
+    ]));
+
+    resetTaskComposer();
+  };
+
+  const handleRemoveDraftTask = (taskId: string) => {
+    setDraftTasks((current) => current.filter((task) => task.id !== taskId));
   };
 
   const handleAddItemInstance = (item: LibraryRow) => {
@@ -922,6 +1059,267 @@ export function AddItemPanel({
                 className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-purple-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
               />
             </label>
+
+            {draftKind === 'facility' ? (
+              <div className="space-y-3 rounded-xl border border-gray-200 bg-gray-50/80 px-4 py-4 dark:border-gray-700 dark:bg-gray-900/40">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div className="text-sm font-semibold text-gray-800 dark:text-gray-100">Tasks</div>
+                    <div className="text-xs text-gray-500 dark:text-gray-400">Add facility tasks to seed this item template.</div>
+                  </div>
+                </div>
+
+                {draftTasks.length === 0 ? (
+                  <div className="rounded-lg border border-dashed border-gray-300 px-3 py-3 text-sm text-gray-500 dark:border-gray-600 dark:text-gray-400">
+                    No tasks added yet.
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {draftTasks.map((task) => (
+                      <div
+                        key={task.id}
+                        className="flex items-center justify-between gap-3 rounded-lg border border-gray-200 bg-white px-3 py-2 dark:border-gray-600 dark:bg-gray-800"
+                      >
+                        <div className="flex min-w-0 items-center gap-2">
+                          <IconDisplay
+                            iconKey={task.icon || 'task'}
+                            size={16}
+                            className="h-4 w-4 shrink-0 object-contain"
+                          />
+                          <div className="truncate text-sm font-medium text-gray-800 dark:text-gray-100">{task.name}</div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${
+                            task.taskType === 'CONSUME'
+                              ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
+                              : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'
+                          }`}>
+                            {task.taskType}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveDraftTask(task.id)}
+                            className="rounded-full bg-red-50 px-2.5 py-1 text-[11px] font-semibold text-red-600 transition-colors hover:bg-red-100 dark:bg-red-900/20 dark:text-red-300"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {isAddingTask ? (
+                  <div className="space-y-3 rounded-lg border border-gray-200 bg-white px-3 py-3 dark:border-gray-600 dark:bg-gray-800">
+                    <div className="grid grid-cols-[auto_1fr] items-end gap-3">
+                      <div>
+                        <span className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">Task icon</span>
+                        <IconPicker value={draftTaskIcon} onChange={setDraftTaskIcon} align="left" />
+                      </div>
+
+                      <label className="space-y-1">
+                        <span className="block text-xs font-medium text-gray-500 dark:text-gray-400">Task name</span>
+                        <input
+                          type="text"
+                          value={draftTaskName}
+                          onChange={(event) => {
+                            setDraftTaskName(event.target.value);
+                            setTaskError('');
+                          }}
+                          className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-purple-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
+                        />
+                      </label>
+                    </div>
+
+                    <label className="space-y-1">
+                      <span className="block text-xs font-medium text-gray-500 dark:text-gray-400">Task type</span>
+                      <select
+                        value={draftTaskType}
+                        onChange={(event) => {
+                          const nextType = event.target.value as DraftTaskType;
+                          setDraftTaskType(nextType);
+                          setTaskError('');
+                          if (nextType !== 'CONSUME') {
+                            setDraftConsumeEntries([]);
+                          }
+                        }}
+                        className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-purple-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
+                      >
+                        <option value="CHECK">CHECK</option>
+                        <option value="CONSUME">CONSUME</option>
+                      </select>
+                    </label>
+
+                    {draftTaskType === 'CONSUME' ? (
+                      <div className="space-y-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-3 dark:border-gray-700 dark:bg-gray-900/40">
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="text-xs font-medium text-gray-500 dark:text-gray-400">Consume entries</div>
+                          <button
+                            type="button"
+                            onClick={addDraftConsumeEntry}
+                            className="text-xs font-medium text-blue-500 transition-colors hover:text-blue-600"
+                          >
+                            + Add entry
+                          </button>
+                        </div>
+
+                        {draftConsumeEntries.length === 0 ? (
+                          <div className="rounded-lg border border-dashed border-gray-300 px-3 py-3 text-sm text-gray-500 dark:border-gray-600 dark:text-gray-400">
+                            No consume entries yet.
+                          </div>
+                        ) : (
+                          <div className="space-y-2">
+                            {draftConsumeEntries.map((entry, index) => (
+                              <div
+                                key={`draft-consume-entry-${index}`}
+                                className="space-y-3 rounded-lg border border-gray-200 bg-white px-3 py-3 dark:border-gray-600 dark:bg-gray-800"
+                              >
+                                <div className="space-y-1">
+                                  <span className="block text-xs font-medium text-gray-500 dark:text-gray-400">Item</span>
+                                  <div className="relative">
+                                    <button
+                                      type="button"
+                                      onClick={() => setOpenConsumeEntryPickerIndex((current) => current === index ? null : index)}
+                                      className="flex w-full min-w-0 items-center justify-between gap-3 rounded-lg border border-gray-300 bg-white px-3 py-2 text-left text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-purple-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
+                                    >
+                                      {resolveTaskItemTemplate(entry.itemTemplateRef) ? (
+                                        <span className="flex min-w-0 items-center gap-2">
+                                          <IconDisplay
+                                            iconKey={resolveTaskItemTemplate(entry.itemTemplateRef)?.icon || 'inventory'}
+                                            size={16}
+                                            className="h-4 w-4 shrink-0 object-contain"
+                                          />
+                                          <span className="truncate">{resolveTaskItemTemplate(entry.itemTemplateRef)?.name}</span>
+                                        </span>
+                                      ) : (
+                                        <span className="truncate text-gray-500 dark:text-gray-400">Select item</span>
+                                      )}
+                                      <span className="shrink-0 text-xs text-gray-400">▼</span>
+                                    </button>
+
+                                    {openConsumeEntryPickerIndex === index ? (
+                                      <div className="absolute inset-x-0 top-full z-20 mt-1 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-lg dark:border-gray-600 dark:bg-gray-800">
+                                        {taskItemTemplates.length === 0 ? (
+                                          <div className="px-3 py-3 text-sm text-gray-500 dark:text-gray-400">
+                                            No placed consumable items available.
+                                          </div>
+                                        ) : (
+                                          <div className="max-h-56 overflow-y-auto py-1">
+                                            {taskItemTemplates.map((template) => {
+                                              const placementCount = placementDetailsByTemplateId.get(template.id)?.length ?? 0;
+                                              return (
+                                                <button
+                                                  key={template.id}
+                                                  type="button"
+                                                  onClick={() => {
+                                                    updateDraftConsumeEntry(index, { itemTemplateRef: template.id });
+                                                    setOpenConsumeEntryPickerIndex(null);
+                                                  }}
+                                                  className="flex w-full min-w-0 items-center gap-3 px-3 py-2 text-left transition-colors hover:bg-gray-50 dark:hover:bg-gray-700"
+                                                >
+                                                  <IconDisplay
+                                                    iconKey={template.icon || 'inventory'}
+                                                    size={18}
+                                                    className="h-4.5 w-4.5 shrink-0 object-contain"
+                                                  />
+                                                  <span className="min-w-0 flex-1">
+                                                    <span className="block truncate text-sm font-medium text-gray-800 dark:text-gray-100">{template.name}</span>
+                                                    <span className="block text-xs text-gray-500 dark:text-gray-400">Placed in {placementCount} location{placementCount === 1 ? '' : 's'}</span>
+                                                  </span>
+                                                </button>
+                                              );
+                                            })}
+                                          </div>
+                                        )}
+                                      </div>
+                                    ) : null}
+                                  </div>
+                                </div>
+
+                                <div className="grid gap-3 sm:grid-cols-[minmax(0,8rem)_minmax(0,1fr)] sm:items-end">
+                                  <label className="space-y-1 block">
+                                    <span className="block text-xs font-medium text-gray-500 dark:text-gray-400">Quantity</span>
+                                    <input
+                                      type="number"
+                                      min={1}
+                                      value={entry.quantity}
+                                      onChange={(event) => updateDraftConsumeEntry(index, { quantity: Math.max(1, Number(event.target.value) || 1) })}
+                                      className="w-full min-w-0 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-purple-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
+                                    />
+                                  </label>
+
+                                  <div className="space-y-1 min-w-0">
+                                    <span className="block text-xs font-medium text-gray-500 dark:text-gray-400">Action</span>
+                                    <div className="flex flex-wrap rounded-lg bg-gray-100 p-1 dark:bg-gray-900/60">
+                                      {(['consume', 'replenish'] as const).map((action) => (
+                                        <button
+                                          key={action}
+                                          type="button"
+                                          onClick={() => updateDraftConsumeEntry(index, { action })}
+                                          className={`min-w-[8rem] flex-1 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                                            entry.action === action
+                                              ? 'bg-purple-600 text-white'
+                                              : 'text-gray-500 hover:text-gray-700 dark:text-gray-300 dark:hover:text-gray-100'
+                                          }`}
+                                        >
+                                          {action === 'consume' ? 'Consume' : 'Replenish'}
+                                        </button>
+                                      ))}
+                                    </div>
+                                  </div>
+                                </div>
+
+                                <div className="flex justify-end">
+                                  <button
+                                    type="button"
+                                    onClick={() => removeDraftConsumeEntry(index)}
+                                    className="rounded-full bg-red-50 px-2.5 py-1 text-[11px] font-semibold text-red-600 transition-colors hover:bg-red-100 dark:bg-red-900/20 dark:text-red-300"
+                                  >
+                                    Remove
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ) : null}
+
+                    {taskError ? <p className="text-sm text-red-500">{taskError}</p> : null}
+
+                    <div className="flex justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={resetTaskComposer}
+                        className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleSaveDraftTask}
+                        className="rounded-lg bg-purple-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-purple-700"
+                      >
+                        Save
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsAddingTask(true);
+                        setTaskError('');
+                      }}
+                      className="rounded-lg bg-blue-50 px-3 py-2 text-sm font-medium text-blue-700 transition-colors hover:bg-blue-100 dark:bg-blue-900/30 dark:text-blue-200"
+                    >
+                      Add Task
+                    </button>
+                  </div>
+                )}
+              </div>
+            ) : null}
 
             {error ? <p className="text-sm text-red-500">{error}</p> : null}
 

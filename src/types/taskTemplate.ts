@@ -52,7 +52,8 @@ export type TaskType =
   | 'LOCATION_POINT'
   | 'LOCATION_TRAIL'
   /** D78 — system-generated random roll, one per day, XP multiplier */
-  | 'ROLL';
+  | 'ROLL'
+  | 'CONSUME';
 
 // ── INPUT FIELDS — per TaskType (D41) ────────────────────────────────────────
 // Each interface defines the inputFields{} shape for a given TaskType.
@@ -266,6 +267,17 @@ export interface LogInputFields {
   unit?: string | null;
 }
 
+export interface ConsumeEntry {
+  itemTemplateRef: string;
+  quantity: number;
+  action: 'consume' | 'replenish';
+}
+
+export interface ConsumeInputFields {
+  label: string;
+  entries: ConsumeEntry[];
+}
+
 export interface LocationPointInputFields {
   label: string;
   captureAccuracy: boolean;
@@ -320,6 +332,7 @@ export type InputFields =
   | ChecklistInputFields
   | ScanInputFields
   | LogInputFields
+  | ConsumeInputFields
   | LocationPointInputFields
   | LocationTrailInputFields
   | RollInputFields;

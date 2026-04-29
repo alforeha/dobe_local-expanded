@@ -1,12 +1,16 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { getTaskTypeIconKey, normalizeTaskTemplateIconKey } from '../../../../../constants/iconMap';
+import { itemLibrary } from '../../../../../coach/ItemLibrary';
 import { PopupShell } from '../../../../shared/popups/PopupShell';
 import { IconPicker } from '../../../../shared/IconPicker';
 import { useScheduleStore } from '../../../../../stores/useScheduleStore';
-import { normalizeCircuitInputFields, type ChecklistItem, type CircuitInputFields, type CircuitStep, type CircuitStepType, type FormField, type InputFields, type TaskSecondaryTag, type TaskTemplate, type TaskType } from '../../../../../types';
+import { useUserStore } from '../../../../../stores/useUserStore';
+import { normalizeCircuitInputFields, type ChecklistItem, type CircuitInputFields, type CircuitStep, type CircuitStepType, type ConsumeEntry, type ConsumeInputFields, type FormField, type InputFields, type TaskSecondaryTag, type TaskTemplate, type TaskType } from '../../../../../types';
 import type { StatGroupKey } from '../../../../../types/user';
+import type { InventoryItemTemplate } from '../../../../../types/resource';
+import { getLibraryItem, getUserInventoryItemTemplates, mergeInventoryItemTemplates } from '../../../../../utils/inventoryItems';
 
 const TASK_TYPES: TaskType[] = [
   'CHECK',
@@ -25,6 +29,7 @@ const TASK_TYPES: TaskType[] = [
   'LOCATION_POINT',
   'LOCATION_TRAIL',
   'ROLL',
+  'CONSUME',
 ];
 
 const TASK_TYPE_LABELS: Record<TaskType, string> = {
@@ -44,6 +49,7 @@ const TASK_TYPE_LABELS: Record<TaskType, string> = {
   LOCATION_POINT: 'Location Point',
   LOCATION_TRAIL: 'Location Trail',
   ROLL: 'Roll',
+  CONSUME: 'Consume',
 };
 
 const SECONDARY_TAGS: TaskSecondaryTag[] = [
@@ -180,6 +186,8 @@ function defaultInputFields(taskType: TaskType): InputFields {
       return { label: 'Record trail', captureInterval: null };
     case 'ROLL':
       return { sides: 6 };
+    case 'CONSUME':
+      return { label: 'Consume items', entries: [] };
   }
 }
 
@@ -218,6 +226,7 @@ export function TaskTemplatePopup({
   readOnly = false,
 }: TaskTemplatePopupProps) {
   const setTaskTemplate = useScheduleStore((s) => s.setTaskTemplate);
+  const user = useUserStore((s) => s.user);
   const isEditMode = editKey !== null && editTemplate !== null;
 
   const initialStatGroup: StatGroupKey = (() => {
@@ -251,6 +260,14 @@ export function TaskTemplatePopup({
   );
   const [error, setError] = useState('');
   const [expandedCircuitStepId, setExpandedCircuitStepId] = useState<string | null>(null);
+  const availableConsumeTemplates = useMemo<InventoryItemTemplate[]>(() => (
+    mergeInventoryItemTemplates(
+      getUserInventoryItemTemplates(user),
+      itemLibrary
+        .map((item) => getLibraryItem(item.id))
+        .filter((item): item is InventoryItemTemplate => item != null),
+    )
+  ), [user]);
 
   function updateField(key: string, value: unknown) {
     setInputFields((prev) => ({ ...prev, [key]: value }));
@@ -769,6 +786,135 @@ export function TaskTemplatePopup({
           </select>
         ));
 
+      case 'CONSUME': {
+        const consumeFields = inputFields as ConsumeInputFields;
+        const entries = consumeFields.entries ?? [];
+
+        function setConsumeFields(next: ConsumeInputFields) {
+          setInputFields(next);
+        }
+
+        function updateConsumeEntry(index: number, patch: Partial<ConsumeEntry>) {
+          const nextEntries = entries.map((entry, entryIndex) => (
+            entryIndex === index ? { ...entry, ...patch } : entry
+          ));
+          setConsumeFields({ ...consumeFields, entries: nextEntries });
+        }
+
+        function addConsumeEntry() {
+          setConsumeFields({
+            ...consumeFields,
+            entries: [
+              ...entries,
+              {
+                itemTemplateRef: '',
+                quantity: 1,
+                action: 'consume',
+              },
+            ],
+          });
+        }
+
+        function removeConsumeEntry(index: number) {
+          setConsumeFields({
+            ...consumeFields,
+            entries: entries.filter((_, entryIndex) => entryIndex !== index),
+          });
+        }
+
+        return (
+          <div className="space-y-3">
+            {labeledRow('Label', (
+              <input
+                type="text"
+                value={consumeFields.label}
+                onChange={(e) => setConsumeFields({ ...consumeFields, label: e.target.value })}
+                disabled={readOnly}
+                placeholder="Consume items"
+                className={inputClassName(readOnly)}
+              />
+            ))}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-3">
+                <label className="block text-xs font-medium text-gray-500 dark:text-gray-400">Entries</label>
+                {!readOnly && (
+                  <button
+                    type="button"
+                    onClick={addConsumeEntry}
+                    className="text-xs font-medium text-blue-500 hover:text-blue-600"
+                  >
+                    + Add entry
+                  </button>
+                )}
+              </div>
+              {entries.length === 0 ? (
+                <p className="rounded-lg border border-dashed border-gray-300 px-3 py-3 text-sm text-gray-500 dark:border-gray-600 dark:text-gray-400">
+                  No consume entries yet.
+                </p>
+              ) : null}
+              {entries.map((entry, index) => (
+                <div key={`consume-entry-${index}`} className="grid grid-cols-[minmax(0,1fr)_7rem_9rem_auto] items-end gap-2 rounded-xl border border-gray-200 bg-white px-3 py-3 dark:border-gray-700 dark:bg-gray-900/40">
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">Item</label>
+                    <select
+                      value={entry.itemTemplateRef}
+                      onChange={(e) => updateConsumeEntry(index, { itemTemplateRef: e.target.value })}
+                      disabled={readOnly}
+                      className={inputClassName(readOnly)}
+                    >
+                      <option value="">Select item</option>
+                      {availableConsumeTemplates.map((template) => (
+                        <option key={template.id} value={template.id}>{template.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">Quantity</label>
+                    <input
+                      type="number"
+                      value={entry.quantity}
+                      min={1}
+                      onChange={(e) => updateConsumeEntry(index, { quantity: Math.max(1, Number(e.target.value) || 1) })}
+                      disabled={readOnly}
+                      className={inputClassName(readOnly)}
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">Action</label>
+                    <div className="flex rounded-xl bg-gray-100 p-1 dark:bg-gray-800">
+                      {(['consume', 'replenish'] as const).map((action) => (
+                        <button
+                          key={action}
+                          type="button"
+                          onClick={() => !readOnly && updateConsumeEntry(index, { action })}
+                          disabled={readOnly}
+                          className={`flex-1 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
+                            entry.action === action
+                              ? 'bg-blue-500 text-white'
+                              : 'text-gray-500 hover:text-gray-700 dark:text-gray-300 dark:hover:text-gray-100'
+                          }`}
+                        >
+                          {action === 'consume' ? 'Consume' : 'Replenish'}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  {!readOnly ? (
+                    <button
+                      type="button"
+                      onClick={() => removeConsumeEntry(index)}
+                      className="px-1 pb-2 text-sm text-gray-400 hover:text-red-400"
+                    >
+                      ×
+                    </button>
+                  ) : <div />}
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      }
+
       default:
         return null;
     }
@@ -785,13 +931,23 @@ export function TaskTemplatePopup({
       return;
     }
 
+    const normalizedInputFields = taskType === 'CONSUME'
+      ? {
+          ...(inputFields as ConsumeInputFields),
+          label: (inputFields as ConsumeInputFields).label.trim() || 'Consume items',
+          entries: ((inputFields as ConsumeInputFields).entries ?? []).filter(
+            (entry) => entry.itemTemplateRef.trim().length > 0 && entry.quantity > 0,
+          ),
+        } satisfies ConsumeInputFields
+      : inputFields;
+
     const template: TaskTemplate = {
       name: name.trim(),
       description: description.trim(),
       icon: normalizeTaskTemplateIconKey(icon, taskType),
       taskType,
       secondaryTag: secondaryTag === '' ? null : secondaryTag,
-      inputFields,
+      inputFields: normalizedInputFields,
       xpAward: buildXpAward(statGroup, xpValue),
       cooldown: cooldown === '' ? null : cooldown,
       media: null,

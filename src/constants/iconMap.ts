@@ -54,6 +54,7 @@ export const ICON_MAP: Record<string, string> = {
   'task-type-location-point': taskLocationPoint,
   'task-type-location-trail': taskLocationTrail,
   'task-type-roll': taskRoll,
+  'task-type-consume': menuTasks,
   check: taskCheck,
   counter: taskCounter,
   rating: taskRating,
@@ -71,6 +72,7 @@ export const ICON_MAP: Record<string, string> = {
   location_point: taskLocationPoint,
   location_trail: taskLocationTrail,
   roll: taskRoll,
+  consume: menuTasks,
   // categories
   health: statHealth,
   food: '🍎',
@@ -445,6 +447,7 @@ const LEGACY_TASK_TEMPLATE_ICON_MAP: Record<string, string> = {
   location_point: 'task-type-location-point',
   location_trail: 'task-type-location-trail',
   roll: 'task-type-roll',
+  consume: 'task-type-consume',
 };
 
 export function normalizeTaskTemplateIconKey(iconKey: string, taskType?: TaskType): string {

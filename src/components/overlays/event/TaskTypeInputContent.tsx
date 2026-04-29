@@ -2,6 +2,7 @@ import type {
   CheckInputFields,
   ChoiceInputFields,
   ChecklistInputFields,
+  ConsumeInputFields,
   CounterInputFields,
   DurationInputFields,
   FormInputFields,
@@ -22,6 +23,7 @@ import type { Task } from '../../../types/task';
 import { CheckInput } from './inputs/CheckInput';
 import { ChoiceInput } from './inputs/ChoiceInput';
 import { ChecklistInput } from './inputs/ChecklistInput';
+import { ConsumeInput } from './inputs/ConsumeInput';
 import { CounterInput } from './inputs/CounterInput';
 import { DurationInput } from './inputs/DurationInput';
 import { FormInput } from './inputs/FormInput';
@@ -129,6 +131,16 @@ export function TaskTypeInputContent({
           onComplete={onComplete as (result: Partial<LogInputFields>) => void}
           hideSubmit={hideSubmit}
           onResultChange={onResultChange as ((result: Partial<LogInputFields>) => void) | undefined}
+        />
+      );
+    case 'CONSUME':
+      return (
+        <ConsumeInput
+          inputFields={template.inputFields as ConsumeInputFields}
+          task={task}
+          onComplete={onComplete as (result: Partial<ConsumeInputFields>) => void}
+          hideSubmit={hideSubmit}
+          onResultChange={onResultChange as ((result: Partial<ConsumeInputFields>) => void) | undefined}
         />
       );
     case 'SETS_REPS':
