@@ -44,6 +44,7 @@ export function RoomAddItemPanel({ room, onClose, onAddTemplateItem, onCreateRoo
   const [searchQuery, setSearchQuery] = useState('');
   const [draftIcon, setDraftIcon] = useState('inventory');
   const [draftName, setDraftName] = useState('');
+  const [draftCategory, setDraftCategory] = useState<ItemCategory>('workspace');
   const [draftWidth, setDraftWidth] = useState<number | ''>('');
   const [draftDepth, setDraftDepth] = useState<number | ''>('');
   const [draftHeight, setDraftHeight] = useState<number | ''>('');
@@ -91,7 +92,7 @@ export function RoomAddItemPanel({ room, onClose, onAddTemplateItem, onCreateRoo
       name: draftName.trim(),
       icon: draftIcon || 'inventory',
       kind: 'facility',
-      category: 'workspace',
+      category: draftCategory,
       description: `Room item for ${room.name}`,
       isCustom: true,
       dimensions: hasFullDimensions
@@ -218,6 +219,18 @@ export function RoomAddItemPanel({ room, onClose, onAddTemplateItem, onCreateRoo
             </div>
 
             <div className="grid gap-3 sm:grid-cols-3">
+              <label className="space-y-1">
+                <span className="text-xs font-medium text-gray-600 dark:text-gray-300">Category</span>
+                <select
+                  value={draftCategory}
+                  onChange={(event) => setDraftCategory(event.target.value as ItemCategory)}
+                  className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-purple-500 focus:outline-none dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100"
+                >
+                  {CATEGORY_ORDER.map((category) => (
+                    <option key={category} value={category}>{category}</option>
+                  ))}
+                </select>
+              </label>
               <label className="space-y-1">
                 <span className="text-xs font-medium text-gray-600 dark:text-gray-300">Width</span>
                 <input type="number" min={1} value={draftWidth} onChange={(event) => setDraftWidth(event.target.value === '' ? '' : Math.max(1, Number(event.target.value) || 1))} className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-purple-500 focus:outline-none dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100" />

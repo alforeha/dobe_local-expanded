@@ -734,18 +734,16 @@ export function HomeFloorPlan({
 	const outsidePlacedLooseItemEntries = useMemo(() => story.placedItems
 		.filter((entry) => entry.kind === 'item')
 		.map((entry) => {
-			for (const inventory of inventoryResources) {
-				const item = inventory.items.find((candidate) => candidate.id === entry.refId);
-				if (!item) continue;
-				const resolvedItem = resolveInventoryItemTemplate(item.itemTemplateRef, mergeInventoryItemTemplates(userItemTemplates, inventory.itemTemplates));
+			const record = findInventoryItemRecord(entry.refId);
+			if (record) {
 				return {
 					placement: entry,
-					itemName: resolvedItem?.name ?? item.itemTemplateRef,
-					itemIcon: resolvedItem?.icon ?? 'inventory',
-					quantity: item.quantity,
-					unit: item.unit,
-					threshold: item.threshold,
-					inventoryName: inventory.name,
+					itemName: record.resolvedItem?.name ?? record.item?.itemTemplateRef ?? entry.refId,
+					itemIcon: record.resolvedItem?.icon ?? 'inventory',
+					quantity: entry.quantity ?? record.item?.quantity,
+					unit: record.item?.unit,
+					threshold: record.item?.threshold,
+					inventoryName: record.inventory?.name ?? 'Placed item',
 				};
 			}
 
@@ -1626,12 +1624,24 @@ export function HomeFloorPlan({
 				&& removedPlacement.refId.startsWith('room-item-')
 				&& !nextPlacedItems.some((entry) => entry.kind === 'item' && entry.refId === removedPlacement.refId),
 			);
+			const shouldPruneRoomContainer = Boolean(
+				removedPlacement
+				&& removedPlacement.kind === 'container'
+				&& (room.dedicatedContainers ?? []).some((container) => container.id === removedPlacement.refId)
+				&& !nextPlacedItems.some((entry) => entry.kind === 'container' && entry.refId === removedPlacement.refId),
+			);
 
 			if (shouldPruneRoomTemplate) {
 				updateRoom(roomId, (current) => ({
 					...current,
 					placedItems: current.placedItems.filter((entry) => entry.id !== placementId),
 					dedicatedItems: (current.dedicatedItems ?? []).filter((item) => item.id !== removedPlacement?.refId),
+				}));
+			} else if (shouldPruneRoomContainer) {
+				updateRoom(roomId, (current) => ({
+					...current,
+					placedItems: current.placedItems.filter((entry) => entry.id !== placementId),
+					dedicatedContainers: (current.dedicatedContainers ?? []).filter((container) => container.id !== removedPlacement?.refId),
 				}));
 			} else {
 				if (!onUpdateRoomPlacedItems) return;
@@ -1710,6 +1720,15 @@ export function HomeFloorPlan({
 			};
 		}
 
+		const resolvedItem = resolveInventoryItemTemplate(itemId, mergedItemTemplates);
+		if (resolvedItem) {
+			return {
+				inventory: null,
+				item: null,
+				resolvedItem,
+			};
+		}
+
 		return null;
 	}
 
@@ -1728,16 +1747,8 @@ export function HomeFloorPlan({
 	}
 
 	function updateInventoryItem(itemId: string, updater: (item: ItemInstance) => ItemInstance) {
-		const record = findInventoryItemRecord(itemId);
-		if (!record) return;
-		setResource({
-			...record.inventory,
-			updatedAt: new Date().toISOString(),
-			containers: record.inventory.containers,
-			items: record.inventory.items.map((item) => (
-				item.id === itemId ? updater(item) : item
-			)),
-		});
+		void itemId;
+		void updater;
 	}
 
 	function addItemToContainer(containerId: string, selectionKey: string) {
@@ -1875,29 +1886,16 @@ export function HomeFloorPlan({
 		if (!templateRef) return;
 		const quantity = Math.max(0, Number(newLooseItemQuantityByRoom[STORY_SCOPE_ID] ?? '1') || 0);
 
-		const now = new Date().toISOString();
-		const nextItemId = uuidv4();
 		const nextPlacementId = uuidv4();
 		const template = mergedItemTemplates.find((entry) => entry.id === templateRef) ?? null;
 		const defaultSize = template?.kind === 'facility' ? 18 : 14;
-		const { preferredInventory, baseInventory } = getPreferredInventory(now);
-
-		setResource({
-			...baseInventory,
-			updatedAt: now,
-			linkedHomeId: baseInventory.linkedHomeId ?? homeId,
-			containers: baseInventory.containers ?? [],
-			items: [...(baseInventory.items ?? []), { id: nextItemId, itemTemplateRef: templateRef, quantity }],
-		});
-
-		ensureInventoryRegistered(baseInventory.id, preferredInventory);
 
 		onUpdateStoryPlacedItems([
 			...story.placedItems,
 			{
 				id: nextPlacementId,
 				kind: 'item',
-				refId: nextItemId,
+				refId: templateRef,
 				quantity,
 				width: defaultSize,
 				depth: defaultSize,
@@ -1915,6 +1913,41 @@ export function HomeFloorPlan({
 		}));
 		setAddingLooseItemRoomId(null);
 	}
+
+	function addLooseItemToRoom(room: FloorPlanRoom, bounds: { minX: number; minY: number; width: number; height: number }) {
+		if (!onUpdateRoomPlacedItems) return;
+		const templateRef = newLooseItemTemplateRefByRoom[room.id] ?? mergedItemTemplates[0]?.id ?? '';
+		if (!templateRef) return;
+		const quantity = Math.max(0, Number(newLooseItemQuantityByRoom[room.id] ?? '1') || 0);
+		const nextPlacementId = uuidv4();
+		const template = mergedItemTemplates.find((entry) => entry.id === templateRef) ?? null;
+		const defaultSize = template?.kind === 'facility' ? 18 : 14;
+
+		onUpdateRoomPlacedItems(room.id, [
+			...room.placedItems,
+			{
+				id: nextPlacementId,
+				kind: 'item',
+				refId: templateRef,
+				quantity,
+				width: defaultSize,
+				depth: defaultSize,
+				x: Math.round(bounds.minX + bounds.width / 2),
+				y: Math.round(bounds.minY + bounds.height / 2),
+				rotation: 0,
+			},
+		]);
+
+		setSelectedPlacementId(nextPlacementId);
+		setExpandedPlacedContainerId(nextPlacementId);
+		setEditingPlacedContainerId(nextPlacementId);
+		setNewLooseItemQuantityByRoom((current) => ({
+			...current,
+			[room.id]: '1',
+		}));
+		setAddingLooseItemRoomId(null);
+	}
+	void addLooseItemToRoom;
 
 	async function handlePhotoSelection(scopeId: string, roomId: string | null, files: FileList | null) {
 		if (!files || files.length === 0) return;
@@ -2696,7 +2729,7 @@ export function HomeFloorPlan({
 								const hasQuickActionsIndicator = Boolean(
 									(entry.kind === 'container' && isPlacementCleanInQuickActions(entry.id))
 									|| (itemRecord?.resolvedItem?.kind === 'facility' && (
-										placedItemHasQuickActionsTask(entry.id, entry.recurringTasks ?? itemRecord.item.recurringTasks ?? [])
+										placedItemHasQuickActionsTask(entry.id, entry.recurringTasks ?? itemRecord.item?.recurringTasks ?? [])
 										|| isPlacementCleanInQuickActions(entry.id)
 									))
 								);

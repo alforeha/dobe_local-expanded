@@ -43,14 +43,26 @@ interface InventorySpecialViewProps {
 }
 
 type TabKey = 'items' | 'containers' | 'bags';
-type ItemFilter = 'all' | 'placed' | 'unplaced';
+type ItemPlacementFilterValue = 'all' | 'placed' | 'unplaced';
+type ItemKindFilterValue = 'all' | ItemKind;
+type ItemCategoryFilterValue = 'all' | ItemCategory | 'user-created' | 'room-created';
 type EditableTaskType = Extract<TaskType, 'CHECK' | 'COUNTER' | 'DURATION' | 'TIMER' | 'RATING' | 'TEXT'>;
 type InventoryEditableTaskTemplate = InventoryCustomTaskTemplate & { taskType?: EditableTaskType };
 
-const ITEM_FILTER_OPTIONS: Array<{ id: ItemFilter; label: string }> = [
+const ITEM_PLACEMENT_FILTER_OPTIONS: Array<{ id: ItemPlacementFilterValue; label: string }> = [
   { id: 'all', label: 'All' },
   { id: 'placed', label: 'Placed' },
   { id: 'unplaced', label: 'Unplaced' },
+];
+
+const ITEM_CATEGORY_OPTIONS: ItemCategory[] = [
+  'kitchen',
+  'bedroom',
+  'cleaning',
+  'garden',
+  'vehicle',
+  'bathroom',
+  'workspace',
 ];
 
 type ItemPlacementTarget =
@@ -74,8 +86,17 @@ interface ItemRowSummary {
   placements: ItemPlacementRecord[];
   totalOnHand: number;
   kind: ItemKind;
+  categoryKey: ItemCategory | 'user-created' | 'room-created';
+  categoryLabel: string;
   description: string;
   isUserManaged: boolean;
+}
+
+interface ItemRowGroup {
+  key: ItemCategory | 'user-created' | 'room-created';
+  label: string;
+  rows: ItemRowSummary[];
+  showHeader: boolean;
 }
 
 const DAY_LABELS: Record<string, string> = {
@@ -122,6 +143,12 @@ function formatTaskTypeLabel(taskType?: string | null) {
   return taskType.replaceAll('_', ' ');
 }
 
+function titleCaseCategory(category: ItemCategory | 'user-created' | 'room-created') {
+  if (category === 'user-created') return 'User Created';
+  if (category === 'room-created') return 'Room Created';
+  return category.charAt(0).toUpperCase() + category.slice(1);
+}
+
 export function InventorySpecialView({ resource }: InventorySpecialViewProps) {
   const scheduleTasks = useScheduleStore((s) => s.tasks) as Record<string, Task>;
   const resources = useResourceStore((s) => s.resources);
@@ -149,13 +176,57 @@ export function InventorySpecialView({ resource }: InventorySpecialViewProps) {
   const [draftItemDepth, setDraftItemDepth] = useState('0');
   const [draftTaskTemplates, setDraftTaskTemplates] = useState<InventoryEditableTaskTemplate[]>([]);
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
-  const [itemFilter, setItemFilter] = useState<ItemFilter>('all');
+  const [itemPlacementFilter, setItemPlacementFilter] = useState<ItemPlacementFilterValue>('all');
+  const [itemKindFilter, setItemKindFilter] = useState<ItemKindFilterValue>('all');
+  const [itemCategoryFilter, setItemCategoryFilter] = useState<ItemCategoryFilterValue>('all');
   const [editingItemDetailsId, setEditingItemDetailsId] = useState<string | null>(null);
 
   const userTemplates = useMemo(() => getUserInventoryItemTemplates(user), [user]);
+  const roomItemEntries = useMemo(() => {
+    const byId = new Map<string, InventoryItemTemplate>();
+
+    const appendTemplate = (template: InventoryItemTemplate | null | undefined) => {
+      if (!template?.id) return;
+      byId.set(template.id, template);
+    };
+
+    for (const entry of Object.values(resources)) {
+      if (entry.type !== 'home') continue;
+      for (const story of entry.stories ?? []) {
+        for (const placement of story.placedItems ?? []) {
+          if (placement.kind !== 'item') continue;
+          appendTemplate(
+            userTemplates.find((template) => template.id === placement.refId)
+            ?? resource.itemTemplates?.find((template) => template.id === placement.refId)
+            ?? getItemTemplateByRef(placement.refId)
+            ?? undefined,
+          );
+        }
+
+        for (const room of story.rooms) {
+          for (const template of room.dedicatedItems ?? []) {
+            appendTemplate(template);
+          }
+
+          for (const placement of room.placedItems ?? []) {
+            if (placement.kind !== 'item') continue;
+            appendTemplate(
+              (room.dedicatedItems ?? []).find((template) => template.id === placement.refId)
+              ?? userTemplates.find((template) => template.id === placement.refId)
+              ?? resource.itemTemplates?.find((template) => template.id === placement.refId)
+              ?? getItemTemplateByRef(placement.refId)
+              ?? undefined,
+            );
+          }
+        }
+      }
+    }
+
+    return Array.from(byId.values());
+  }, [resource.itemTemplates, resources, userTemplates]);
   const itemEntries = useMemo(
-    () => mergeInventoryItemTemplates(userTemplates, resource.itemTemplates),
-    [resource.itemTemplates, userTemplates],
+    () => mergeInventoryItemTemplates(userTemplates, resource.itemTemplates, roomItemEntries),
+    [resource.itemTemplates, roomItemEntries, userTemplates],
   );
   const containerEntries = useMemo(() => resource.containers ?? [], [resource.containers]);
   const regularContainerEntries = useMemo(
@@ -283,6 +354,12 @@ export function InventorySpecialView({ resource }: InventorySpecialViewProps) {
     }
 
     const collectHomePlacements = (home: HomeResource, room: NonNullable<HomeResource['stories']>[number]['rooms'][number] | null, placedItems: PlacedInstance[]) => {
+      const placedContainerIds = new Set(
+        (placedItems ?? [])
+          .filter((placement) => placement.kind === 'container')
+          .map((placement) => placement.refId),
+      );
+
       if (room) {
         for (const container of room.dedicatedContainers ?? []) {
           containerItemsByContainerId.set(
@@ -307,6 +384,31 @@ export function InventorySpecialView({ resource }: InventorySpecialViewProps) {
               },
             })),
           );
+
+          if (placedContainerIds.has(container.id)) continue;
+
+          for (const item of container.items) {
+            appendPlacement(
+              item.itemTemplateRef,
+              {
+                locationPath: `${home.name} / ${room.name} / ${container.name}`,
+                quantity: item.quantity ?? 1,
+                segments: [
+                  { key: `${home.id}:home`, icon: home.icon || 'home', label: home.name },
+                  { key: `${room.id}:room`, icon: room.icon || 'home-room', label: room.name },
+                  { key: `${container.id}:container`, icon: container.icon || 'inventory', label: container.name },
+                ],
+                target: {
+                  kind: 'home-room-container-item',
+                  homeId: home.id,
+                  roomId: room.id,
+                  containerId: container.id,
+                  itemId: item.id,
+                },
+              },
+              `${room.id}:${container.id}:${item.id}`,
+            );
+          }
         }
       }
 
@@ -407,6 +509,9 @@ export function InventorySpecialView({ resource }: InventorySpecialViewProps) {
         const resolved = resolveInventoryItemTemplate(template.id, itemEntries);
         const placements = itemPlacementsByTemplateId.get(template.id) ?? [];
         const kind = (resolved?.kind ?? template.kind ?? 'consumable') as ItemKind;
+        const isRoomCreated = template.id.startsWith('room-item-');
+        const isUserManaged = !isRoomCreated && (template.isCustom === true || template.id.startsWith(CUSTOM_ITEM_TEMPLATE_PREFIX));
+        const category = ((resolved?.category ?? template.category ?? 'workspace') as ItemCategory);
         return {
           template,
           resolved,
@@ -414,17 +519,53 @@ export function InventorySpecialView({ resource }: InventorySpecialViewProps) {
           placements,
           totalOnHand: placements.reduce((sum, placement) => sum + (placement.quantity ?? 1), 0),
           kind,
+          categoryKey: isRoomCreated ? 'room-created' : (isUserManaged ? 'user-created' : category),
+          categoryLabel: isRoomCreated ? 'Room Created' : (isUserManaged ? 'User Created' : titleCaseCategory(category)),
           description: builtInTemplate?.description ?? resolved?.description ?? (template.id.startsWith(CUSTOM_ITEM_TEMPLATE_PREFIX) ? 'Custom inventory item' : ''),
-          isUserManaged: userTemplates.some((entry) => entry.id === template.id),
+          isUserManaged,
         } satisfies ItemRowSummary;
       })
-      .filter((row) => itemFilter === 'all' || (itemFilter === 'placed' ? row.placements.length > 0 : row.placements.length === 0));
-  }, [itemEntries, itemFilter, itemPlacementsByTemplateId, userTemplates]);
+      .filter((row) => itemPlacementFilter === 'all' || (itemPlacementFilter === 'placed' ? row.placements.length > 0 : row.placements.length === 0))
+      .filter((row) => itemKindFilter === 'all' || row.kind === itemKindFilter)
+      .filter((row) => itemCategoryFilter === 'all' || row.categoryKey === itemCategoryFilter);
+  }, [itemCategoryFilter, itemEntries, itemKindFilter, itemPlacementFilter, itemPlacementsByTemplateId]);
 
   const visibleItemRows = useMemo(
     () => (expandedItemId ? itemRows.filter((row) => row.template.id === expandedItemId) : itemRows),
     [expandedItemId, itemRows],
   );
+
+  const groupedVisibleItemRows = useMemo<ItemRowGroup[]>(() => {
+    if (itemCategoryFilter !== 'all') {
+      return visibleItemRows.length === 0
+        ? []
+        : [{
+            key: itemCategoryFilter,
+            label: titleCaseCategory(itemCategoryFilter),
+            rows: visibleItemRows,
+            showHeader: false,
+          }];
+    }
+
+    const groups = new Map<ItemCategory | 'user-created' | 'room-created', ItemRowSummary[]>();
+    for (const row of visibleItemRows) {
+      const current = groups.get(row.categoryKey) ?? [];
+      current.push(row);
+      groups.set(row.categoryKey, current);
+    }
+
+    return [...ITEM_CATEGORY_OPTIONS, 'user-created' as const, 'room-created' as const].reduce<ItemRowGroup[]>((acc, key) => {
+        const rows = groups.get(key) ?? [];
+        if (rows.length === 0) return acc;
+        acc.push({
+          key,
+          label: titleCaseCategory(key),
+          rows,
+          showHeader: true,
+        });
+        return acc;
+      }, []);
+  }, [itemCategoryFilter, visibleItemRows]);
 
   function cleanupHomePlacements(match: (placement: { kind: 'item' | 'container'; refId: string }) => boolean) {
     const now = new Date().toISOString();
@@ -592,9 +733,6 @@ export function InventorySpecialView({ resource }: InventorySpecialViewProps) {
       setResource({
         ...resource,
         updatedAt: new Date().toISOString(),
-        items: resource.items.map((item) =>
-          item.itemTemplateRef === editingItemId ? { ...item, itemTemplateRef: nextItem.id } : item,
-        ),
         containers: containerEntries.map((container) => ({
           ...container,
           items: container.items.map((item) =>
@@ -649,12 +787,10 @@ export function InventorySpecialView({ resource }: InventorySpecialViewProps) {
   function updateInventoryPlacementQuantity(target: Extract<ItemPlacementTarget, { kind: 'inventory-item' | 'inventory-container-item' }>, quantity: number) {
     const inventoryResource = resources[target.inventoryResourceId];
     if (!inventoryResource || inventoryResource.type !== 'inventory') return;
+    if (target.kind === 'inventory-item') return;
     setResource({
       ...inventoryResource,
       updatedAt: new Date().toISOString(),
-      items: target.kind === 'inventory-item'
-        ? inventoryResource.items.map((item) => item.id === target.itemId ? { ...item, quantity } : item)
-        : inventoryResource.items,
       containers: (inventoryResource.containers ?? []).map((container) => {
         if (target.kind !== 'inventory-container-item' || container.id !== target.containerId) return container;
         return {
@@ -688,13 +824,11 @@ export function InventorySpecialView({ resource }: InventorySpecialViewProps) {
     if (!container) return;
 
     const now = new Date().toISOString();
-    const removedItemIds = new Set(container.items.map((item) => item.id));
 
     setResource({
       ...resource,
       updatedAt: now,
       containers: containerEntries.filter((entry) => entry.id !== containerId),
-      items: resource.items.filter((item) => !removedItemIds.has(item.id)),
     });
 
     cleanupHomePlacements((placement) => placement.kind === 'container' && placement.refId === containerId);
@@ -858,6 +992,7 @@ export function InventorySpecialView({ resource }: InventorySpecialViewProps) {
         ? 'bg-blue-500 text-white'
         : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600'
     }`;
+  const itemFilterSelectClass = 'rounded-full border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 focus:border-blue-500 focus:outline-none dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100';
 
   return (
     <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-3xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800">
@@ -1043,22 +1178,48 @@ export function InventorySpecialView({ resource }: InventorySpecialViewProps) {
           ) : (
             <div className="space-y-2">
               {activeTab === 'items' ? (
-                <div className="mb-3 flex flex-wrap gap-2">
-                  {ITEM_FILTER_OPTIONS.map((option) => (
-                    <button
-                      key={option.id}
-                      type="button"
-                      onClick={() => setItemFilter(option.id)}
-                      className={itemFilter === option.id
-                        ? 'rounded-full bg-slate-800 px-3 py-1.5 text-xs font-semibold text-white dark:bg-slate-100 dark:text-slate-900'
-                        : 'rounded-full bg-gray-100 px-3 py-1.5 text-xs font-semibold text-gray-600 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600'}
-                    >
-                      {option.label}
-                    </button>
-                  ))}
+                <div className="mb-3 flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setItemPlacementFilter('all');
+                      setItemKindFilter('all');
+                      setItemCategoryFilter('all');
+                    }}
+                    className={itemPlacementFilter === 'all' && itemKindFilter === 'all' && itemCategoryFilter === 'all'
+                      ? 'rounded-full bg-slate-800 px-3 py-1.5 text-xs font-semibold text-white dark:bg-slate-100 dark:text-slate-900'
+                      : 'rounded-full bg-gray-100 px-3 py-1.5 text-xs font-semibold text-gray-600 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600'}
+                  >
+                    All
+                  </button>
+                  <select value={itemPlacementFilter} onChange={(event) => setItemPlacementFilter(event.target.value as ItemPlacementFilterValue)} className={itemFilterSelectClass}>
+                    {ITEM_PLACEMENT_FILTER_OPTIONS.map((option) => (
+                      <option key={option.id} value={option.id}>{`Placement: ${option.label}`}</option>
+                    ))}
+                  </select>
+                  <select value={itemKindFilter} onChange={(event) => setItemKindFilter(event.target.value as ItemKindFilterValue)} className={itemFilterSelectClass}>
+                    <option value="all">Kind: All</option>
+                    <option value="facility">Kind: Facility</option>
+                    <option value="consumable">Kind: Consumable</option>
+                  </select>
+                  <select value={itemCategoryFilter} onChange={(event) => setItemCategoryFilter(event.target.value as ItemCategoryFilterValue)} className={itemFilterSelectClass}>
+                    <option value="all">Category: All</option>
+                    {ITEM_CATEGORY_OPTIONS.map((category) => (
+                      <option key={category} value={category}>{`Category: ${titleCaseCategory(category)}`}</option>
+                    ))}
+                    <option value="user-created">Category: User Created</option>
+                    <option value="room-created">Category: Room Created</option>
+                  </select>
                 </div>
               ) : null}
-              {visibleItemRows.map((row) => {
+              {groupedVisibleItemRows.map((group) => (
+                <section key={group.key} className="space-y-2">
+                  {group.showHeader ? (
+                    <div className="px-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-500 dark:text-gray-400">
+                      {group.label}
+                    </div>
+                  ) : null}
+                  {group.rows.map((row) => {
                 const item = row.template;
                 const taskRefs = [
                   ...(row.builtInTemplate?.builtInTasks?.map((task) => task.taskTemplateRef) ?? []),
@@ -1228,7 +1389,9 @@ export function InventorySpecialView({ resource }: InventorySpecialViewProps) {
                     ) : null}
                   </article>
                 );
-              })}
+                  })}
+                </section>
+              ))}
             </div>
           )
         ) : activeTab === 'containers' ? (

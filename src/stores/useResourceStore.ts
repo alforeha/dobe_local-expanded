@@ -18,6 +18,7 @@ import type {
   VehicleResource,
 } from '../types';
 import { isAccount, isContact, isDoc, isHome, isInventory, isVehicle } from '../types';
+import { getItemTemplateByRef } from '../coach/ItemLibrary';
 
 // ── STATE ─────────────────────────────────────────────────────────────────────
 
@@ -163,18 +164,66 @@ function getHomeRoomIds(home: HomeResource): Set<string> {
   return roomIds;
 }
 
+function getRoomPlacementCenter(room: NonNullable<HomeResource['stories']>[number]['rooms'][number]) {
+  let currentX = room.origin.x;
+  let currentY = room.origin.y;
+  let minX = currentX;
+  let maxX = currentX;
+  let minY = currentY;
+  let maxY = currentY;
+
+  for (const segment of room.segments) {
+    switch (segment.direction) {
+      case 'up':
+        currentY -= segment.distance;
+        break;
+      case 'down':
+        currentY += segment.distance;
+        break;
+      case 'left':
+        currentX -= segment.distance;
+        break;
+      case 'right':
+        currentX += segment.distance;
+        break;
+    }
+    minX = Math.min(minX, currentX);
+    maxX = Math.max(maxX, currentX);
+    minY = Math.min(minY, currentY);
+    maxY = Math.max(maxY, currentY);
+  }
+
+  return {
+    x: Math.round((minX + maxX) / 2),
+    y: Math.round((minY + maxY) / 2),
+  };
+}
+
 function sanitizeResources(resources: Record<string, Resource>): Record<string, Resource> {
   let changed = false;
   const nextResources: Record<string, Resource> = {};
   const userInventoryTemplateIds = new Set(useUserStore.getState().user?.lists.inventoryItemTemplates?.map((item) => item.id) ?? []);
-  const inventoryItemIds = new Set<string>();
+  const legacyInventoryItems = new Map<string, { itemTemplateRef: string; quantity?: number }>();
   const inventoryContainerIds = new Set<string>();
 
   for (const resource of Object.values(resources)) {
     if (!isInventory(resource)) continue;
-    for (const item of resource.items) inventoryItemIds.add(item.id);
+    for (const item of resource.items) {
+      legacyInventoryItems.set(item.id, {
+        itemTemplateRef: item.itemTemplateRef,
+        quantity: item.quantity,
+      });
+    }
     for (const container of resource.containers ?? []) inventoryContainerIds.add(container.id);
   }
+
+  const isValidPlacedItemRef = (
+    refId: string,
+    roomDedicatedItemIds?: Set<string>,
+  ) => userInventoryTemplateIds.has(refId)
+    || roomDedicatedItemIds?.has(refId) === true
+    || refId.startsWith('room-item-')
+    || getItemTemplateByRef(refId) !== null;
 
   for (const [resourceId, resource] of Object.entries(resources)) {
     if (isInventory(resource)) {
@@ -234,11 +283,17 @@ function sanitizeResources(resources: Record<string, Resource>): Record<string, 
         };
       });
 
+      const nextItems = resource.items.length > 0 ? [] : resource.items;
+      if (nextItems !== resource.items) {
+        resourceChanged = true;
+      }
+
       if (resourceChanged) {
         changed = true;
         nextResources[resourceId] = {
           ...resource,
           containers: nextContainers,
+          items: nextItems,
         };
         continue;
       }
@@ -251,21 +306,87 @@ function sanitizeResources(resources: Record<string, Resource>): Record<string, 
       let resourceChanged = false;
       const nextStories = resource.stories?.map((story) => {
         let storyChanged = false;
+        const nextStoryPlacedItems = story.placedItems.flatMap((placement) => {
+          if (placement.kind === 'container') {
+            return inventoryContainerIds.has(placement.refId) ? [placement] : [];
+          }
+
+          const migrated = legacyInventoryItems.get(placement.refId);
+          const nextPlacement = migrated
+            ? {
+                ...placement,
+                refId: migrated.itemTemplateRef,
+                quantity: placement.quantity ?? migrated.quantity,
+              }
+            : placement;
+
+          if (nextPlacement !== placement) {
+            storyChanged = true;
+          }
+
+          return isValidPlacedItemRef(nextPlacement.refId) ? [nextPlacement] : [];
+        });
+        if (nextStoryPlacedItems.length !== story.placedItems.length) {
+          storyChanged = true;
+        }
+
         const nextRooms = story.rooms.map((room) => {
-          const nextPlacedItems = room.placedItems.filter((placement) => {
-            if (placement.kind === 'item') {
-              return inventoryItemIds.has(placement.refId) || userInventoryTemplateIds.has(placement.refId);
-            }
+          const roomDedicatedItemIds = new Set((room.dedicatedItems ?? []).map((item) => item.id));
+          const roomDedicatedContainerIds = new Set((room.dedicatedContainers ?? []).map((container) => container.id));
+          const nextPlacedItems = room.placedItems.flatMap((placement) => {
             if (placement.kind === 'container') {
-              return inventoryContainerIds.has(placement.refId);
+              return inventoryContainerIds.has(placement.refId) || roomDedicatedContainerIds.has(placement.refId) ? [placement] : [];
             }
-            return true;
+
+            const migrated = legacyInventoryItems.get(placement.refId);
+            const nextPlacement = migrated
+              ? {
+                  ...placement,
+                  refId: migrated.itemTemplateRef,
+                  quantity: placement.quantity ?? migrated.quantity,
+                }
+              : placement;
+
+            if (nextPlacement !== placement) {
+              storyChanged = true;
+            }
+
+            return isValidPlacedItemRef(nextPlacement.refId, roomDedicatedItemIds) ? [nextPlacement] : [];
           });
-          if (nextPlacedItems.length !== room.placedItems.length) {
+          const restoredPlacedItems = [...nextPlacedItems];
+          const existingContainerPlacementIds = new Set(
+            restoredPlacedItems
+              .filter((placement) => placement.kind === 'container')
+              .map((placement) => placement.refId),
+          );
+          const roomCenter = getRoomPlacementCenter(room);
+          for (const container of room.dedicatedContainers ?? []) {
+            if (existingContainerPlacementIds.has(container.id)) continue;
+            storyChanged = true;
+            restoredPlacedItems.push({
+              id: `restored-room-container:${room.id}:${container.id}`,
+              kind: 'container',
+              refId: container.id,
+              width: Math.max(1, container.dimensions?.width ?? 24),
+              depth: Math.max(1, container.dimensions?.depth ?? 24),
+              x: roomCenter.x,
+              y: roomCenter.y,
+              rotation: 0,
+            });
+          }
+
+          if (restoredPlacedItems.length !== room.placedItems.length) {
             storyChanged = true;
             return {
               ...room,
-              placedItems: nextPlacedItems,
+              placedItems: restoredPlacedItems,
+            };
+          }
+          if (restoredPlacedItems.some((placement, index) => placement !== room.placedItems[index])) {
+            storyChanged = true;
+            return {
+              ...room,
+              placedItems: restoredPlacedItems,
             };
           }
           return room;
@@ -275,6 +396,7 @@ function sanitizeResources(resources: Record<string, Resource>): Record<string, 
         resourceChanged = true;
         return {
           ...story,
+          placedItems: nextStoryPlacedItems,
           rooms: nextRooms,
         };
       });
