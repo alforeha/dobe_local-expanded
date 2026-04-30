@@ -46,6 +46,20 @@ export interface ContactLink {
   relationship: string;
 }
 
+export interface AlbumEntry {
+  id: string;
+  date: string;
+  note?: string;
+  photoUri?: string;
+  location?: {
+    latitude: number;
+    longitude: number;
+    placeName?: string;
+  };
+  sourceRef?: string;
+  sourceKind?: 'event' | 'placed-item' | 'placed-container' | 'inspection' | 'manual';
+}
+
 /**
  * Home meta - generates: chore tasks (CHECK / CHECKLIST)
  * rooms[] - each room has a stable id ref (D42).
@@ -97,7 +111,7 @@ export interface FloorPlanRoom {
   placedItems: PlacedInstance[];
   dedicatedItems?: InventoryItemTemplate[];
   dedicatedContainers?: InventoryContainer[];
-  photos?: string[];
+  photos?: AlbumEntry[];
 }
 
 export interface HomeStory {
@@ -106,7 +120,7 @@ export interface HomeStory {
   outlineOrigin?: { x: number; y: number };
   outlineSegments?: FloorPlanSegment[];
   placedItems: PlacedInstance[];
-  photos?: string[];
+  photos?: AlbumEntry[];
   rooms: FloorPlanRoom[];
 }
 
@@ -441,6 +455,7 @@ export interface ContactResource {
   linkedContacts?: ContactLink[];
   notes?: ResourceNote[];
   links?: ResourceLink[];
+  album?: AlbumEntry[];
   linkedHomeId?: string;
   linkedAccountIds?: string[];
   /** STUB: MULTI-USER - social graph, shared profile */
@@ -461,6 +476,7 @@ export interface HomeResource {
   chores?: HomeChore[];
   notes?: ResourceNote[];
   links?: ResourceLink[];
+  album?: AlbumEntry[];
   linkedAccountIds?: string[];
   linkedDocIds?: string[];
   /** STUB: MULTI-USER - shared home, co-owners */
@@ -487,6 +503,7 @@ export interface VehicleResource {
   maintenanceTasks?: VehicleMaintenanceTask[];
   notes?: ResourceNote[];
   links?: ResourceLink[];
+  album?: AlbumEntry[];
   linkedContactId?: string;
   linkedAccountId?: string;
   linkedDocIds?: string[];

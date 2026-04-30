@@ -11,10 +11,11 @@ import { ATTACHMENT_MAX_BYTES } from '../../../../../../storage/storageBudget';
 import { useResourceStore } from '../../../../../../stores/useResourceStore';
 import { useScheduleStore } from '../../../../../../stores/useScheduleStore';
 import { useUserStore } from '../../../../../../stores/useUserStore';
-import type { FloorPlanRoom, FloorPlanSegment, FloorPlanSegmentKind, HomeStory, InventoryContainer, InventoryItemTemplate, InventoryResource, ItemInstance, ItemRecurringTask, PlacedInstance, RecurrenceDayOfWeek, ResourceRecurrenceRule, SegmentDirection } from '../../../../../../types/resource';
+import type { AlbumEntry, FloorPlanRoom, FloorPlanSegment, FloorPlanSegmentKind, HomeStory, InventoryContainer, InventoryItemTemplate, InventoryResource, ItemInstance, ItemRecurringTask, PlacedInstance, RecurrenceDayOfWeek, ResourceRecurrenceRule, SegmentDirection } from '../../../../../../types/resource';
 import { makeDefaultRecurrenceRule, normalizeRecurrenceMode } from '../../../../../../types/resource';
 import type { Task } from '../../../../../../types/task';
 import type { ConsumeEntry, ConsumeInputFields, TextInputFields } from '../../../../../../types/taskTemplate';
+import { createAlbumEntry } from '../../../../../../utils/albumHelpers';
 import { getUserInventoryItemTemplates, mergeInventoryItemTemplates, resolveInventoryItemTemplate } from '../../../../../../utils/inventoryItems';
 import { getPointDistance, getPointsBounds, pointsMatch, segmentsToPoints } from '../../../../../../utils/floorPlan';
 import { AddItemPanel } from '../inventory/AddItemPanel';
@@ -48,8 +49,8 @@ interface HomeFloorPlanProps {
 	onUpdateRoomPlacedItems?: (roomId: string, placedItems: PlacedInstance[]) => void;
 	onUpdateRoom?: (roomId: string, updater: (room: FloorPlanRoom) => FloorPlanRoom) => void;
 	onUpdateStoryPlacedItems?: (placedItems: PlacedInstance[]) => void;
-	onUpdateRoomPhotos?: (roomId: string, photos: string[]) => void;
-	onUpdateStoryPhotos?: (photos: string[]) => void;
+	onUpdateRoomPhotos?: (roomId: string, photos: AlbumEntry[]) => void;
+	onUpdateStoryPhotos?: (photos: AlbumEntry[]) => void;
 }
 
 
@@ -734,27 +735,25 @@ export function HomeFloorPlan({
 			source: 'missing' as const,
 		};
 	}
-	const roomSummaries = useMemo(() => {
-		return story.rooms.map((room) => {
-			const bounds = getPointsBounds(segmentsToPoints(room.origin, room.segments));
-			const placedContainerEntries = room.placedItems
-				.filter((entry) => entry.kind === 'container')
-				.map((entry) => resolvePlacedContainerEntry(room, entry));
-				const placedLooseItemEntries = room.placedItems
-					.filter((entry) => entry.kind === 'item')
-					.map((entry) => resolvePlacedItemEntry(room, entry));
+	const roomSummaries = story.rooms.map((room) => {
+		const bounds = getPointsBounds(segmentsToPoints(room.origin, room.segments));
+		const placedContainerEntries = room.placedItems
+			.filter((entry) => entry.kind === 'container')
+			.map((entry) => resolvePlacedContainerEntry(room, entry));
+		const placedLooseItemEntries = room.placedItems
+			.filter((entry) => entry.kind === 'item')
+			.map((entry) => resolvePlacedItemEntry(room, entry));
 
-			return {
-				room,
-				bounds,
-				placedContainerEntries,
-				placedLooseItemEntries,
-				placedEntries: [...placedContainerEntries, ...placedLooseItemEntries],
-				placedLooseItemCount: placedLooseItemEntries.reduce((sum, entry) => sum + getPlacedInstanceQuantity(entry.placement), 0),
-			};
-		});
-	}, [inventoryResources, story.rooms, userItemTemplates]);
-	const outsidePlacedContainerEntries = useMemo(() => story.placedItems
+		return {
+			room,
+			bounds,
+			placedContainerEntries,
+			placedLooseItemEntries,
+			placedEntries: [...placedContainerEntries, ...placedLooseItemEntries],
+			placedLooseItemCount: placedLooseItemEntries.reduce((sum, entry) => sum + getPlacedInstanceQuantity(entry.placement), 0),
+		};
+	});
+	const outsidePlacedContainerEntries = story.placedItems
 		.filter((entry) => entry.kind === 'container')
 		.map((entry) => {
 			for (const inventory of inventoryResources) {
@@ -782,8 +781,8 @@ export function HomeFloorPlan({
 				inventoryName: 'Unlinked inventory',
 				items: [],
 			};
-		}), [inventoryResources, story.placedItems, userItemTemplates]);
-	const outsidePlacedLooseItemEntries = useMemo(() => story.placedItems
+		});
+	const outsidePlacedLooseItemEntries = story.placedItems
 		.filter((entry) => entry.kind === 'item')
 		.map((entry) => {
 			const record = findInventoryItemRecord(entry.refId);
@@ -808,23 +807,15 @@ export function HomeFloorPlan({
 				threshold: undefined,
 				inventoryName: 'Unlinked inventory',
 			};
-		}), [inventoryResources, story.placedItems, userItemTemplates]);
-	const outsidePlacedEntries = useMemo(
-		() => [...outsidePlacedContainerEntries, ...outsidePlacedLooseItemEntries],
-		[outsidePlacedContainerEntries, outsidePlacedLooseItemEntries],
-	);
-	const outsidePlacedLooseItemCount = useMemo(
-		() => outsidePlacedLooseItemEntries.reduce((sum, entry) => sum + getPlacedInstanceQuantity(entry.placement), 0),
-		[outsidePlacedLooseItemEntries],
-	);
+		});
+	const outsidePlacedLooseItemCount = outsidePlacedLooseItemEntries.reduce((sum, entry) => sum + getPlacedInstanceQuantity(entry.placement), 0);
 	const userConsumableTaskTemplates = useMemo(
 		() => userItemTemplates.filter((item) => (item.kind ?? 'consumable') === 'consumable'),
 		[userItemTemplates],
 	);
-	const visibleRoomSummaries = useMemo(() => {
-		if (!selectedRoomId) return roomSummaries;
-		return roomSummaries.filter((entry) => entry.room.id === selectedRoomId);
-	}, [roomSummaries, selectedRoomId]);
+	const visibleRoomSummaries = !selectedRoomId
+		? roomSummaries
+		: roomSummaries.filter((entry) => entry.room.id === selectedRoomId);
 	const containerFocusSummary = roomSummaries.find((entry) => entry.room.id === editingContainersRoomId) ?? null;
 	const selectedRoomSummary = roomSummaries.find((entry) => entry.room.id === selectedRoom?.id) ?? null;
 	const selectedEditingSegment = selectedSegmentIndex != null ? editingSegmentLines[selectedSegmentIndex] ?? null : null;
@@ -833,25 +824,19 @@ export function HomeFloorPlan({
 	const editingRoomId = editingRoom?.id ?? null;
 	const roomAddItemSummary = roomAddItemRoomId ? roomSummaries.find((entry) => entry.room.id === roomAddItemRoomId) ?? null : null;
 	const roomAddContainerSummary = roomAddContainerRoomId ? roomSummaries.find((entry) => entry.room.id === roomAddContainerRoomId) ?? null : null;
-	const viewedContainerEntry = useMemo(() => {
-		if (!selectedRoomSummary || !viewingContainerPlacementId) return null;
-		return selectedRoomSummary.placedContainerEntries.find((entry) => entry.placement.id === viewingContainerPlacementId) ?? null;
-	}, [selectedRoomSummary, viewingContainerPlacementId]);
-	const viewedContainerRecord = useMemo(() => {
-		if (!selectedRoomSummary || !viewedContainerEntry?.container) return null;
-		return findRoomContainerRecord(selectedRoomSummary.room, viewedContainerEntry.container.id);
-	}, [selectedRoomSummary, viewedContainerEntry]);
+	const viewedContainerEntry = !selectedRoomSummary || !viewingContainerPlacementId
+		? null
+		: selectedRoomSummary.placedContainerEntries.find((entry) => entry.placement.id === viewingContainerPlacementId) ?? null;
+	const viewedContainerRecord = !selectedRoomSummary || !viewedContainerEntry?.container
+		? null
+		: findRoomContainerRecord(selectedRoomSummary.room, viewedContainerEntry.container.id);
+	const viewedContainerLayoutPanelOpen = showViewedContainerLayoutPanel && Boolean(viewedContainerEntry?.container);
 
 	useEffect(() => {
 		if (!viewingContainerPlacementId || viewedContainerEntry) return;
 		const resetId = window.setTimeout(() => setViewingContainerPlacementId(null), 0);
 		return () => window.clearTimeout(resetId);
 	}, [viewedContainerEntry, viewingContainerPlacementId]);
-
-	useEffect(() => {
-		if (viewedContainerEntry) return;
-		setShowViewedContainerLayoutPanel(false);
-	}, [viewedContainerEntry]);
 
 	useEffect(() => {
 		const resetId = window.setTimeout(() => {
@@ -880,7 +865,7 @@ export function HomeFloorPlan({
 			</div>
 		</div>
 	) : null;
-	const viewportBounds = useMemo(() => {
+	const viewportBounds = (() => {
 		if (containerFocusSummary) {
 			return containerFocusSummary.bounds;
 		}
@@ -918,7 +903,7 @@ export function HomeFloorPlan({
 		}
 
 		return combineBounds(boundsList);
-	}, [canvasRooms, containerFocusSummary, currentPoint, editingRoom, editingStoryOutline, isPlacingStartPoint, previewPoint, selectedRoomSummary, showPointPreview, startPointAnchor, startPointPreview, storyOutlinePoints]);
+	})();
 
 	useEffect(() => {
 		if (!editingContainersRoomId) return;
@@ -938,7 +923,7 @@ export function HomeFloorPlan({
 
 		const hasExpandedPlacement = Boolean(
 			selectedRoomSummary?.placedEntries.some((entry) => entry.placement.id === expandedPlacedContainerId)
-			|| outsidePlacedEntries.some((entry) => entry.placement.id === expandedPlacedContainerId),
+			|| story.placedItems.some((entry) => entry.id === expandedPlacedContainerId),
 		);
 
 		if (!hasExpandedPlacement) {
@@ -954,7 +939,7 @@ export function HomeFloorPlan({
 			const syncId = window.setTimeout(() => setSelectedPlacementId(expandedPlacedContainerId), 0);
 			return () => window.clearTimeout(syncId);
 		}
-	}, [expandedPlacedContainerId, outsidePlacedEntries, selectedPlacementId, selectedRoomSummary]);
+	}, [expandedPlacedContainerId, selectedPlacementId, selectedRoomSummary, story.placedItems]);
 
 	useEffect(() => {
 		if (!editingRoomId) {
@@ -2150,7 +2135,7 @@ export function HomeFloorPlan({
 					oversizedCount += 1;
 					continue;
 				}
-				nextPhotos.push(dataUrl);
+				nextPhotos.push(createAlbumEntry({ photoUri: dataUrl }));
 				addedCount += 1;
 			} catch {
 				failedCount += 1;
@@ -2190,7 +2175,7 @@ export function HomeFloorPlan({
 		setPhotoStatusByScope((current) => ({ ...current, [scopeId]: 'Photo removed.' }));
 	}
 
-	function renderPhotoSection(scopeId: string, photos: string[], roomId: string | null, title: string, emptyLabel: string) {
+	function renderPhotoSection(scopeId: string, photos: AlbumEntry[], roomId: string | null, title: string, emptyLabel: string) {
 		if (!editable && photos.length === 0) return null;
 
 		const isBusy = photoUploadBusyByScope[scopeId] === true;
@@ -2210,7 +2195,7 @@ export function HomeFloorPlan({
 					<div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
 						{photos.map((photo, index) => (
 							<div key={`${scopeId}-photo-${index}`} className="overflow-hidden rounded-xl bg-white ring-1 ring-black/5 dark:bg-gray-900/70">
-								<img src={photo} alt={`${title} ${index + 1}`} className="h-24 w-full object-cover" />
+								<img src={photo.photoUri} alt={`${title} ${index + 1}`} className="h-24 w-full object-cover" />
 								{editable ? (
 									<button
 										type="button"
@@ -3844,7 +3829,7 @@ export function HomeFloorPlan({
 					) : null
 				) : null}
 
-				{showViewedContainerLayoutPanel && viewedContainerEntry?.container ? (
+				{viewedContainerLayoutPanelOpen && viewedContainerEntry?.container ? (
 					<PopupShell title="Edit Layout" onClose={() => setShowViewedContainerLayoutPanel(false)} size="large">
 						<div className="space-y-4">
 							<div className="grid gap-3 md:grid-cols-3">

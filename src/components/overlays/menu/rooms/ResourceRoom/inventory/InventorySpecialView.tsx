@@ -209,7 +209,7 @@ export function InventorySpecialView({ resource }: InventorySpecialViewProps) {
   const setResource = useResourceStore((s) => s.setResource);
   const user = useUserStore((s) => s.user);
   const setUser = useUserStore((s) => s.setUser);
-  const gtdTaskIds = new Set(user?.lists.gtdList ?? []);
+  const gtdTaskIds = useMemo(() => new Set(user?.lists.gtdList ?? []), [user?.lists.gtdList]);
 
   const [activeTab, setActiveTab] = useState<TabKey>('items');
   const [expandedItemId, setExpandedItemId] = useState<string | null>(null);
@@ -328,11 +328,14 @@ export function InventorySpecialView({ resource }: InventorySpecialViewProps) {
     () => Object.values(resources).filter((entry): entry is InventoryResource => entry.type === 'inventory'),
     [resources],
   );
-  const lowStockLabels = new Set(
-    Object.values(scheduleTasks)
-      .filter((task) => task.resourceRef === resource.id && task.completionState === 'pending' && gtdTaskIds.has(task.id))
-      .map((task) => (task.resultFields as Record<string, string> | undefined)?.itemName)
-      .filter((itemName): itemName is string => Boolean(itemName)),
+  const lowStockLabels = useMemo(
+    () => new Set(
+      Object.values(scheduleTasks)
+        .filter((task) => task.resourceRef === resource.id && task.completionState === 'pending' && gtdTaskIds.has(task.id))
+        .map((task) => (task.resultFields as Record<string, string> | undefined)?.itemName)
+        .filter((itemName): itemName is string => Boolean(itemName)),
+    ),
+    [gtdTaskIds, resource.id, scheduleTasks],
   );
   const roomDedicatedContainerEntries = useMemo(() => {
     const rows: ContainerRowSummary[] = [];
@@ -720,44 +723,38 @@ export function InventorySpecialView({ resource }: InventorySpecialViewProps) {
     };
   }
 
-  const containerRows = useMemo<ContainerRowSummary[]>(() => {
-    const userRows = regularContainerEntries.map((container) => {
-      const placement = resolveContainerPlacement(getLocationLink(container));
-      const lowItemCount = container.items.filter((item) => {
-        const itemName = resolveInventoryItemTemplate(item.itemTemplateRef, itemEntries)?.name ?? item.itemTemplateRef;
-        return lowStockLabels.has(itemName) || (item.threshold != null && item.quantity != null && item.quantity <= item.threshold);
-      }).length;
+  const userContainerRows: ContainerRowSummary[] = regularContainerEntries.map((container) => {
+    const placement = resolveContainerPlacement(getLocationLink(container));
+    const lowItemCount = container.items.filter((item) => {
+      const itemName = resolveInventoryItemTemplate(item.itemTemplateRef, itemEntries)?.name ?? item.itemTemplateRef;
+      return lowStockLabels.has(itemName) || (item.threshold != null && item.quantity != null && item.quantity <= item.threshold);
+    }).length;
 
-      return {
-        rowKey: `owned:${container.id}`,
-        container,
-        ownership: 'user',
-        locationLabel: placement.label,
-        isPlaced: placement.isPlaced,
-        groupKey: placement.groupKey,
-        groupLabel: placement.groupLabel,
-        lowItemCount,
-      } satisfies ContainerRowSummary;
-    });
+    return {
+      rowKey: `owned:${container.id}`,
+      container,
+      ownership: 'user',
+      locationLabel: placement.label,
+      isPlaced: placement.isPlaced,
+      groupKey: placement.groupKey,
+      groupLabel: placement.groupLabel,
+      lowItemCount,
+    } satisfies ContainerRowSummary;
+  });
+  const containerRows: ContainerRowSummary[] = [...userContainerRows, ...roomDedicatedContainerEntries];
 
-    return [...userRows, ...roomDedicatedContainerEntries];
-  }, [itemEntries, lowStockLabels, regularContainerEntries, roomDedicatedContainerEntries]);
+  const filteredContainerRows = containerRows.filter((row) => (
+    containerPlacementFilter === 'all'
+      ? true
+      : containerPlacementFilter === 'placed'
+        ? row.isPlaced
+        : !row.isPlaced
+  ));
+  const visibleContainerRows = expandedContainerId && filteredContainerRows.some((row) => row.rowKey === expandedContainerId)
+    ? filteredContainerRows.filter((row) => row.rowKey === expandedContainerId)
+    : filteredContainerRows;
 
-  const visibleContainerRows = useMemo(() => {
-    const filteredRows = containerRows.filter((row) => (
-      containerPlacementFilter === 'all'
-        ? true
-        : containerPlacementFilter === 'placed'
-          ? row.isPlaced
-          : !row.isPlaced
-    ));
-
-    return expandedContainerId && filteredRows.some((row) => row.rowKey === expandedContainerId)
-      ? filteredRows.filter((row) => row.rowKey === expandedContainerId)
-      : filteredRows;
-  }, [containerPlacementFilter, containerRows, expandedContainerId]);
-
-  const groupedContainerRows = useMemo<ContainerRowGroup[]>(() => {
+  const groupedContainerRows: ContainerRowGroup[] = (() => {
     const sortRows = (rows: ContainerRowSummary[]) => [...rows].sort((left, right) => {
       if (left.ownership !== right.ownership) return left.ownership === 'room' ? -1 : 1;
       return left.container.name.localeCompare(right.container.name);
@@ -804,7 +801,7 @@ export function InventorySpecialView({ resource }: InventorySpecialViewProps) {
     }
 
     return groupedRows;
-  }, [containerPlacementFilter, visibleContainerRows]);
+  })();
 
   function cleanupHomePlacements(match: (placement: { kind: 'item' | 'container'; refId: string }) => boolean) {
     const now = new Date().toISOString();

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import type { FloorPlanRoom, FloorPlanSegment, HomeStory, InventoryResource } from '../../../../../../types/resource';
+import type { AlbumEntry, FloorPlanRoom, FloorPlanSegment, HomeStory, InventoryResource } from '../../../../../../types/resource';
 import { useResourceStore } from '../../../../../../stores/useResourceStore';
 import { closeFloorPlanSegments, getPointsBounds, segmentsToPoints } from '../../../../../../utils/floorPlan';
 import { PopupShell } from '../../../../../shared/popups/PopupShell';
@@ -352,7 +352,7 @@ export function HomeLayout({ stories, onChange, editable = false, homeId }: Home
 		)));
 	}
 
-	function handleUpdateRoomPhotos(roomId: string, photos: string[]) {
+	function handleUpdateRoomPhotos(roomId: string, photos: AlbumEntry[]) {
 		if (!activeStory) return;
 		commit(stories.map((story) => {
 			if (story.id !== activeStory.id) return story;
@@ -383,7 +383,7 @@ export function HomeLayout({ stories, onChange, editable = false, homeId }: Home
 		}));
 	}
 
-	function handleUpdateStoryPhotos(photos: string[]) {
+	function handleUpdateStoryPhotos(photos: AlbumEntry[]) {
 		if (!activeStory) return;
 		commit(stories.map((story) => (
 			story.id !== activeStory.id

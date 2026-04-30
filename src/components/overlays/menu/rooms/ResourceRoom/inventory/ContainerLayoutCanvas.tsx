@@ -113,27 +113,20 @@ export function ContainerLayoutCanvas({
   );
   const selectableItems = useMemo(
     () => items.filter((item) => !item.placedInContainer || Object.keys(item.placedInContainer).length === 0),
-    [activeFace, items],
+    [items],
   );
+  const activeSelectedItemId = pendingSelectedItemId
+    ?? (selectedItemId && items.some((item) => item.id === selectedItemId) ? selectedItemId : null);
   const selectedItem = useMemo(
-    () => items.find((item) => item.id === selectedItemId) ?? null,
-    [items, selectedItemId],
+    () => items.find((item) => item.id === activeSelectedItemId) ?? null,
+    [activeSelectedItemId, items],
   );
   const selectedPlacement = selectedItem?.placedInContainer?.[activeFace];
   const hasFixedViewport = Boolean(viewportHeightClassName);
   const faceAspectRatio = faceDimensions.xSize / faceDimensions.ySize;
 
   useEffect(() => {
-    if (!selectedItemId) return;
-    const stillExists = items.some((item) => item.id === selectedItemId);
-    if (!stillExists) {
-      setSelectedItemId(null);
-    }
-  }, [items, selectedItemId]);
-
-  useEffect(() => {
     if (!pendingSelectedItemId) return;
-    setSelectedItemId(pendingSelectedItemId);
     onPendingSelectedItemHandled?.();
   }, [onPendingSelectedItemHandled, pendingSelectedItemId]);
 
@@ -165,16 +158,16 @@ export function ContainerLayoutCanvas({
   }
 
   function handleCanvasClick(event: React.MouseEvent<HTMLDivElement>) {
-    if (!isEditMode || !selectedItemId) return;
-    const item = items.find((entry) => entry.id === selectedItemId);
+    if (!isEditMode || !activeSelectedItemId) return;
+    const item = items.find((entry) => entry.id === activeSelectedItemId);
     if (!item) return;
-    if (item.placedInContainer?.[activeFace] && draggingItemId === selectedItemId) return;
+    if (item.placedInContainer?.[activeFace] && draggingItemId === activeSelectedItemId) return;
 
     const rect = event.currentTarget.getBoundingClientRect();
     const rotation = item.placedInContainer?.[activeFace]?.rotation ?? 0;
-    const next = getPlacementForPointer(event.clientX, event.clientY, rect, selectedItemId, rotation);
-    onPlaceItem(selectedItemId, activeFace, next.x, next.y, rotation);
-    setSelectedItemId(selectedItemId);
+    const next = getPlacementForPointer(event.clientX, event.clientY, rect, activeSelectedItemId, rotation);
+    onPlaceItem(activeSelectedItemId, activeFace, next.x, next.y, rotation);
+    setSelectedItemId(activeSelectedItemId);
   }
 
   function handleCanvasDrop(event: React.DragEvent<HTMLDivElement>) {
@@ -307,7 +300,7 @@ export function ContainerLayoutCanvas({
               setSelectedItemId(item.id);
             }}
             className={`absolute flex items-center justify-center overflow-hidden rounded-lg border shadow-sm ${
-              selectedItemId === item.id
+              activeSelectedItemId === item.id
                 ? 'border-blue-500 bg-blue-100 text-blue-900 dark:border-blue-400 dark:bg-blue-900/60 dark:text-blue-100'
                 : 'border-emerald-300 bg-emerald-100 text-emerald-900 dark:border-emerald-600 dark:bg-emerald-900/50 dark:text-emerald-100'
             }`}
@@ -339,7 +332,7 @@ export function ContainerLayoutCanvas({
           <div className="space-y-2">
             {selectableItems.map((item) => {
               const resolved = resolveInventoryItemTemplate(item.itemTemplateRef, userTemplates);
-              const isSelected = selectedItemId === item.id;
+              const isSelected = activeSelectedItemId === item.id;
               return (
                 <button
                   key={`available-${item.id}`}
@@ -371,7 +364,7 @@ export function ContainerLayoutCanvas({
 
       {isEditMode ? (
         <div className="space-y-3 rounded-2xl border border-gray-200 bg-gray-50/80 p-3 dark:border-gray-700 dark:bg-gray-900/40">
-          {selectedItemId && !selectedPlacement ? (
+          {activeSelectedItemId && !selectedPlacement ? (
             <div className="text-xs text-gray-500 dark:text-gray-400">
               Click anywhere on the canvas to place the selected item on this face.
             </div>
@@ -381,7 +374,7 @@ export function ContainerLayoutCanvas({
             <div className="space-y-2">
               {placedItems.map((item) => {
                 const resolved = resolveInventoryItemTemplate(item.itemTemplateRef, userTemplates);
-                const isSelected = selectedItemId === item.id;
+                const isSelected = activeSelectedItemId === item.id;
                 const quantityValue = item.quantity ?? 1;
 
                 return (

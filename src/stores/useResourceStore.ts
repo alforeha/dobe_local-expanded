@@ -56,6 +56,60 @@ const initialState: ResourceState = {
   resources: {},
 };
 
+function createMigratedAlbumEntry(photoUri: string) {
+  return {
+    id: crypto.randomUUID(),
+    date: new Date().toISOString().split('T')[0],
+    photoUri,
+    sourceKind: 'manual' as const,
+  };
+}
+
+function migrateLegacyAlbumEntries<T extends { photos?: unknown }>(entity: T): T {
+  if (!Array.isArray(entity.photos) || !entity.photos.some((entry) => typeof entry === 'string')) {
+    return entity;
+  }
+
+  return {
+    ...entity,
+    photos: entity.photos.map((entry) => (
+      typeof entry === 'string' ? createMigratedAlbumEntry(entry) : entry
+    )),
+  };
+}
+
+function migrateHomePhotoAlbums(home: HomeResource): HomeResource {
+  if (!home.stories?.length) return home;
+
+  let changed = false;
+  const stories = home.stories.map((story) => {
+    let nextStory = migrateLegacyAlbumEntries(story);
+    if (nextStory !== story) changed = true;
+
+    const rooms = story.rooms.map((room) => {
+      const nextRoom = migrateLegacyAlbumEntries(room);
+      if (nextRoom !== room) changed = true;
+      return nextRoom;
+    });
+
+    if (rooms.some((room, index) => room !== story.rooms[index])) {
+      nextStory = {
+        ...nextStory,
+        rooms,
+      };
+      changed = true;
+    }
+
+    return nextStory;
+  });
+
+  if (!changed) return home;
+  return {
+    ...home,
+    stories,
+  };
+}
+
 function getInverseContactRelationship(relationship: string): string {
   const normalized = relationship.trim().toLowerCase();
   switch (normalized) {
@@ -303,8 +357,14 @@ function sanitizeResources(resources: Record<string, Resource>): Record<string, 
     }
 
     if (isHome(resource)) {
+      const migratedHome = migrateHomePhotoAlbums(resource);
+      const homeResource = migratedHome;
+      if (homeResource !== resource) {
+        changed = true;
+      }
+
       let resourceChanged = false;
-      const nextStories = resource.stories?.map((story) => {
+      const nextStories = homeResource.stories?.map((story) => {
         let storyChanged = false;
         const nextStoryPlacedItems = story.placedItems.flatMap((placement) => {
           if (placement.kind === 'container') {
@@ -401,10 +461,10 @@ function sanitizeResources(resources: Record<string, Resource>): Record<string, 
         };
       });
 
-      if (resourceChanged) {
+      if (resourceChanged || homeResource !== resource) {
         changed = true;
         nextResources[resourceId] = {
-          ...resource,
+          ...homeResource,
           stories: nextStories,
         };
         continue;

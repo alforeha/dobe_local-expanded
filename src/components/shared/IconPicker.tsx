@@ -69,7 +69,7 @@ export function IconPicker({ value, onChange, label, align = 'center' }: IconPic
       window.removeEventListener('resize', updatePopoverPosition);
       window.removeEventListener('scroll', updatePopoverPosition, true);
     };
-  }, [open]);
+  }, [align, open]);
 
   const normalised = value?.toLowerCase?.() ?? '';
   const entries = Object.entries(ICON_MAP);
