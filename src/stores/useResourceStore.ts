@@ -79,8 +79,9 @@ function migrateAlbumEntryNotes(album: AlbumEntry[] | undefined): {
     const legacyNote = 'note' in entry && typeof (entry as AlbumEntry & { note?: unknown }).note === 'string'
       ? ((entry as AlbumEntry & { note?: string }).note ?? '').trim()
       : '';
+    const hasBlobPhotoUri = typeof entry.photoUri === 'string' && entry.photoUri.startsWith('blob:');
 
-    if (!legacyNote) {
+    if (!legacyNote && !hasBlobPhotoUri) {
       return entry;
     }
 
@@ -88,12 +89,15 @@ function migrateAlbumEntryNotes(album: AlbumEntry[] | undefined): {
     const { note: _note, ...rest } = entry as AlbumEntry & { note?: string };
     return {
       ...rest,
-      notes: [{
-        id: crypto.randomUUID(),
-        authorRef: 'me',
-        text: legacyNote,
-        createdAt: `${entry.date}T00:00:00.000Z`,
-      }],
+      ...(legacyNote ? {
+        notes: [{
+          id: crypto.randomUUID(),
+          authorRef: 'me',
+          text: legacyNote,
+          createdAt: `${entry.date}T00:00:00.000Z`,
+        }],
+      } : {}),
+      ...(hasBlobPhotoUri ? { photoUri: undefined } : {}),
     } satisfies AlbumEntry;
   });
 

@@ -3,7 +3,6 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { useAutoLocationPreferences } from '../../../hooks/useAutoLocationPreferences';
 import type { Event } from '../../../types';
-import type { EventAttachment } from '../../../types';
 import type { EventGlobeLayerDefinition } from './EventGlobeLayers';
 import './EventGlobeView.css';
 
@@ -43,17 +42,6 @@ function getTrailColor(source: HTMLElement | null): string {
   return getComputedStyle(target).getPropertyValue('--map-trail-color').trim() || '#0ea5e9';
 }
 
-function isImageAttachment(attachment: EventAttachment): boolean {
-  return attachment.mimeType.startsWith('image/');
-}
-
-function getAttachmentLabel(attachment: EventAttachment): string {
-  if (attachment.label.trim()) return attachment.label.trim();
-
-  const fromUri = attachment.uri.split('/').pop()?.split('?')[0]?.trim();
-  return fromUri || 'Photo attachment';
-}
-
 function createEventLocationIcon(): L.DivIcon {
   return L.divIcon({
     className: '',
@@ -64,13 +52,30 @@ function createEventLocationIcon(): L.DivIcon {
   });
 }
 
-function createPhotoIcon(): L.DivIcon {
+function createPhotoIcon(photoUri?: string): L.DivIcon {
+  const safePhotoUri = photoUri ? escapeHtml(photoUri) : '';
+  const placeholderMarkup = `
+    <div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:#e5e7eb;color:#6b7280;font-size:18px;line-height:1;">📷</div>
+  `;
+  const imageMarkup = safePhotoUri
+    ? `<img src="${safePhotoUri}" alt="" style="width:100%;height:100%;object-fit:cover;display:block;" onerror="this.onerror=null;this.outerHTML='${placeholderMarkup
+        .replace(/'/g, '&apos;')
+        .replace(/\n/g, '')}';" />`
+    : placeholderMarkup;
+
   return L.divIcon({
     className: '',
-    html: '<div class="cdb-event-globe-view__photo-pin">📷</div>',
-    iconSize: [30, 30],
-    iconAnchor: [15, 15],
-    popupAnchor: [0, -12],
+    html: `
+      <div style="position:relative;width:44px;height:56px;display:flex;flex-direction:column;align-items:center;filter:drop-shadow(0 10px 22px rgba(15,23,42,0.28));">
+        <div style="width:44px;height:44px;overflow:hidden;border-radius:14px;border:3px solid rgba(255,255,255,0.96);background:#ffffff;box-shadow:0 10px 24px rgba(15,23,42,0.22);">
+          ${imageMarkup}
+        </div>
+        <div style="margin-top:-2px;width:0;height:0;border-left:8px solid transparent;border-right:8px solid transparent;border-top:12px solid #ffffff;"></div>
+      </div>
+    `,
+    iconSize: [44, 56],
+    iconAnchor: [22, 54],
+    popupAnchor: [0, -46],
   });
 }
 
@@ -117,9 +122,9 @@ function buildLayerPopup(layer: EventGlobeLayerDefinition): string {
     `;
   }
 
-  const title = getAttachmentLabel(layer.attachment);
-  const imageMarkup = layer.attachment.uri && isImageAttachment(layer.attachment)
-    ? `<img class="cdb-event-globe-view__popup-thumb" src="${escapeHtml(layer.attachment.uri)}" alt="${escapeHtml(title)}" />`
+  const title = layer.label;
+  const imageMarkup = layer.photoUri
+    ? `<img class="cdb-event-globe-view__popup-thumb" src="${escapeHtml(layer.photoUri)}" alt="${escapeHtml(title)}" />`
     : '';
 
   return `
@@ -256,7 +261,7 @@ export function EventGlobeView({ event: _event, layerDefinitions, layerVisibilit
       }
 
       L.marker([layer.points[0].lat, layer.points[0].lng], {
-        icon: createPhotoIcon(),
+        icon: createPhotoIcon(layer.photoUri),
       })
         .bindPopup(buildLayerPopup(layer))
         .addTo(layerGroup);

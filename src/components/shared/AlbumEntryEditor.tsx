@@ -60,6 +60,15 @@ function getFirstName(value: string): string {
   return value.trim().split(/\s+/)[0] ?? value;
 }
 
+function PhotoUnavailablePlaceholder() {
+  return (
+    <div className="flex h-full w-full flex-col items-center justify-center gap-2 bg-gray-100 text-gray-500 dark:bg-gray-900 dark:text-gray-400">
+      <IconDisplay iconKey="camera" size={28} className="h-7 w-7 object-contain opacity-40" alt="" />
+      <span className="text-sm font-medium">Photo not available</span>
+    </div>
+  );
+}
+
 export function AlbumEntryEditor({
   entry,
   onSave,
@@ -72,6 +81,7 @@ export function AlbumEntryEditor({
 }: AlbumEntryEditorProps) {
   const isEdit = Boolean(entry);
   const [photoUri, setPhotoUri] = useState<string | undefined>(entry?.photoUri);
+  const [photoLoadFailed, setPhotoLoadFailed] = useState(false);
   const [date, setDate] = useState<string>(entry?.date ? entry.date.slice(0, 10) : '');
   const [location, setLocation] = useState<AlbumEntry['location']>(entry?.location);
   const [notes, setNotes] = useState<NoteEntry[]>(entry?.notes ?? []);
@@ -121,6 +131,10 @@ export function AlbumEntryEditor({
   useEffect(() => {
     setTaskRef(selectedTaskRef ?? '');
   }, [selectedTaskRef]);
+
+  useEffect(() => {
+    setPhotoLoadFailed(false);
+  }, [photoUri]);
 
   useEffect(() => {
     setNotes(entry?.notes ?? []);
@@ -359,7 +373,16 @@ export function AlbumEntryEditor({
             <div className="relative h-[42vh] min-h-[18rem] max-h-[50vh] flex-none items-center justify-center overflow-hidden bg-gray-100 dark:bg-gray-900">
               {photoUri ? (
                 <>
-                  <img src={photoUri} alt="Album entry preview" className="h-full w-full object-cover" />
+                  {photoLoadFailed ? (
+                    <PhotoUnavailablePlaceholder />
+                  ) : (
+                    <img
+                      src={photoUri}
+                      alt="Album entry preview"
+                      className="h-full w-full object-cover"
+                      onError={() => setPhotoLoadFailed(true)}
+                    />
+                  )}
                   <button
                     type="button"
                     onClick={handleClearPhoto}

@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { taskTemplateLibrary } from '../../../coach';
 import { starterTaskTemplates } from '../../../coach/StarterQuestLibrary';
 import { useScheduleStore } from '../../../stores/useScheduleStore';
-import type { Event, EventAttachment, Task } from '../../../types';
+import type { Event, EventAlbumEntry, EventAttachment, Task } from '../../../types';
 import type { EventLocation } from '../../../types/plannedEvent';
 import type { InputFields, LocationPointInputFields, LocationTrailInputFields, TaskTemplate, TaskType, Waypoint } from '../../../types/taskTemplate';
 import { resolveTaskDisplayName } from '../../../utils/resolveTaskDisplayName';
@@ -40,7 +40,8 @@ interface PointLayerDefinition extends BaseLayerDefinition {
 
 interface PhotoLayerDefinition extends BaseLayerDefinition {
   kind: 'photo';
-  attachment: EventAttachment;
+  label: string;
+  photoUri?: string;
 }
 
 export type EventGlobeLayerDefinition =
@@ -80,6 +81,13 @@ function getAttachmentLabel(attachment: EventAttachment): string {
 
   const fromUri = attachment.uri.split('/').pop()?.split('?')[0]?.trim();
   return fromUri || 'Photo attachment';
+}
+
+function getAlbumEntryLabel(entry: EventAlbumEntry): string {
+  const latestNote = entry.notes?.[entry.notes.length - 1]?.text?.trim();
+  if (latestNote) return latestNote;
+  if (entry.location?.placeName?.trim()) return entry.location.placeName.trim();
+  return entry.date ? `Album photo ${entry.date}` : 'Album photo';
 }
 
 export function useEventGlobeLayers(event: Event | undefined, previewResults: Record<string, Partial<InputFields>> = {}) {
@@ -162,8 +170,23 @@ export function useEventGlobeLayers(event: Event | undefined, previewResults: Re
         key: attachment.id,
         kind: 'photo',
         label: getAttachmentLabel(attachment),
-        attachment,
+        photoUri: attachment.uri,
         points: [{ lat: attachment.location.latitude, lng: attachment.location.longitude }],
+      });
+    }
+
+    const albumEntries = Array.isArray(event.eventAlbum) ? event.eventAlbum : [];
+
+    for (const entry of albumEntries) {
+      if (!entry.location) continue;
+      if (typeof entry.location.latitude !== 'number' || typeof entry.location.longitude !== 'number') continue;
+
+      layers.push({
+        key: `album:${entry.id}`,
+        kind: 'photo',
+        label: getAlbumEntryLabel(entry),
+        photoUri: entry.photoUri,
+        points: [{ lat: entry.location.latitude, lng: entry.location.longitude }],
       });
     }
 

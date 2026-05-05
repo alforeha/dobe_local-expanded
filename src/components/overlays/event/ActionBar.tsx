@@ -1,40 +1,44 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { IconDisplay } from '../../shared/IconDisplay';
 import './ActionBar.css';
 
 interface ActionBarProps {
   eventId: string;
   activeSection: ActionBarSection;
   onSectionChange: (section: ActionBarSection) => void;
+  hasLocationData?: boolean;
   isEditMode: boolean;
   onEnterEdit: () => void;
   onExitEdit: () => void;
   onSectionAdd?: (section: ActionBarSection) => void;
   onDeleteEvent?: () => void;
-  showGlobeButton?: boolean;
-  isGlobeViewOpen?: boolean;
-  onToggleGlobeView?: () => void;
 }
 
-export type ActionBarSection = 'actions' | 'participants' | 'location' | 'attachments';
+export type ActionBarSection = 'actions' | 'participants' | 'album' | 'globe';
 
-const sectionOrder: ActionBarSection[] = ['actions', 'participants', 'location', 'attachments'];
+const sectionOrder: Array<Exclude<ActionBarSection, 'globe'>> = ['actions', 'participants', 'album'];
 
-const sectionLabels: Record<ActionBarSection, string> = {
+const sectionLabels: Record<Exclude<ActionBarSection, 'globe'>, string> = {
   actions: 'Actions',
   participants: 'Participants',
-  location: 'Location',
-  attachments: 'Album',
+  album: 'Album',
 };
 
-const addButtonLabels: Record<ActionBarSection, string> = {
+const addButtonLabels: Record<Exclude<ActionBarSection, 'globe'>, string> = {
   actions: '+ Task',
   participants: '+ Participant',
-  location: '+ Location',
-  attachments: '+ Photo',
+  album: '+ Photo',
 };
 
-export function ActionBar({ eventId: _eventId, activeSection, onSectionChange, isEditMode, onEnterEdit, onExitEdit, onSectionAdd, onDeleteEvent, showGlobeButton = false, isGlobeViewOpen = false, onToggleGlobeView }: ActionBarProps) {
+const sectionIcons: Record<ActionBarSection, string> = {
+  actions: 'event-nav-actions',
+  participants: 'event-nav-participants',
+  album: 'event-nav-album',
+  globe: 'event-nav-globe',
+};
+
+export function ActionBar({ eventId: _eventId, activeSection, onSectionChange, hasLocationData = false, isEditMode, onEnterEdit, onExitEdit, onSectionAdd, onDeleteEvent }: ActionBarProps) {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [dropdownPosition, setDropdownPosition] = useState<{ top: number; left: number } | null>(null);
@@ -92,11 +96,6 @@ export function ActionBar({ eventId: _eventId, activeSection, onSectionChange, i
     closeDropdown();
   };
 
-  const handleSectionSelect = (section: ActionBarSection) => {
-    onSectionChange(section);
-    closeDropdown();
-  };
-
   const handleAddClick = () => {
     onSectionAdd?.(activeSection);
   };
@@ -120,15 +119,10 @@ export function ActionBar({ eventId: _eventId, activeSection, onSectionChange, i
     });
   };
 
-  const handleGlobeToggle = () => {
-    closeDropdown();
-    onToggleGlobeView?.();
-  };
-
   return (
     <>
       <div className="relative z-[80] flex shrink-0 items-center justify-between border-b border-gray-200 dark:border-gray-700 px-3 py-2">
-        {isGlobeViewOpen ? <div /> : (
+        {activeSection === 'globe' ? <div /> : (
           <button
             type="button"
             aria-label={addButtonLabels[activeSection]}
@@ -139,78 +133,81 @@ export function ActionBar({ eventId: _eventId, activeSection, onSectionChange, i
           </button>
         )}
 
-        <div className="action-bar-right-cluster">
-          {showGlobeButton && (
-            <button
-              type="button"
-              aria-label={isGlobeViewOpen ? 'Close globe view' : 'Open globe view'}
-              aria-pressed={isGlobeViewOpen}
-              onClick={handleGlobeToggle}
-              className={`action-bar-globe-button${isGlobeViewOpen ? ' is-active' : ''}`}
-            >
-              <span aria-hidden="true">🌍</span>
-            </button>
-          )}
-
-          {!isGlobeViewOpen && (
-            <div ref={dropdownRef} className="action-bar-menu-wrap">
-              <button
-                ref={dropdownButtonRef}
-                type="button"
-                aria-haspopup="menu"
-                aria-expanded={isDropdownOpen}
-                onClick={handleDropdownToggle}
-                className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
-              >
-                {sectionLabels[activeSection]}
-                <span className="text-xs text-gray-400 dark:text-gray-500">▾</span>
-              </button>
-
-              {isDropdownOpen && dropdownPosition && createPortal(
-                <div
-                  ref={dropdownRef}
-                  className="action-bar-dropdown action-bar-dropdown-portal"
-                  role="menu"
-                  style={{ top: dropdownPosition.top, left: dropdownPosition.left }}
+        <div className="action-bar-controls">
+          <div className="action-bar-nav" role="tablist" aria-label="Event sections">
+            {sectionOrder.map((section) => {
+              const isActive = activeSection === section;
+              return (
+                <button
+                  key={section}
+                  type="button"
+                  role="tab"
+                  aria-selected={isActive}
+                  aria-label={sectionLabels[section]}
+                  onClick={() => onSectionChange(section)}
+                  className={`action-bar-nav-button${isActive ? ' is-active' : ''}`}
                 >
-                  {sectionOrder.map((section) => (
-                    <button
-                      key={section}
-                      type="button"
-                      role="menuitem"
-                      onClick={() => handleSectionSelect(section)}
-                      className={`action-bar-menu-item${activeSection === section ? ' is-active' : ''}`}
-                    >
-                      <span>{sectionLabels[section]}</span>
-                    </button>
-                  ))}
+                  <IconDisplay iconKey={sectionIcons[section]} size={18} className="h-[18px] w-[18px] object-contain" alt="" />
+                </button>
+              );
+            })}
 
-                  <div className="action-bar-menu-divider" />
+            {hasLocationData ? (
+              <button
+                type="button"
+                role="tab"
+                aria-selected={activeSection === 'globe'}
+                aria-label="Globe"
+                onClick={() => onSectionChange('globe')}
+                className={`action-bar-nav-button${activeSection === 'globe' ? ' is-active' : ''}`}
+              >
+                <IconDisplay iconKey={sectionIcons.globe} size={18} className="h-[18px] w-[18px] object-contain" alt="" />
+              </button>
+            ) : null}
+          </div>
 
+          <div className="action-bar-menu-wrap">
+            <button
+              ref={dropdownButtonRef}
+              type="button"
+              aria-haspopup="menu"
+              aria-expanded={isDropdownOpen}
+              onClick={handleDropdownToggle}
+              className="action-bar-menu-button"
+            >
+              <span aria-hidden="true">...</span>
+            </button>
+
+            {isDropdownOpen && dropdownPosition && createPortal(
+              <div
+                ref={dropdownRef}
+                className="action-bar-dropdown action-bar-dropdown-portal"
+                role="menu"
+                style={{ top: dropdownPosition.top, left: dropdownPosition.left }}
+              >
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={handleEditToggle}
+                  className="action-bar-menu-item"
+                >
+                  <span>Edit</span>
+                </button>
+
+                {onDeleteEvent && (
                   <button
                     type="button"
                     role="menuitem"
-                    onClick={handleEditToggle}
-                    className="action-bar-menu-item"
+                    onClick={handleDeleteClick}
+                    className="action-bar-menu-item is-danger"
                   >
-                    <span>{isEditMode ? 'Done' : 'Edit'}</span>
+                    <span>{confirmDelete ? 'Confirm delete' : 'Delete'}</span>
                   </button>
-
-                  {onDeleteEvent && (
-                    <button
-                      type="button"
-                      role="menuitem"
-                      onClick={handleDeleteClick}
-                      className="action-bar-menu-item is-danger"
-                    >
-                      <span>{confirmDelete ? 'Confirm delete' : 'Delete'}</span>
-                    </button>
-                  )}
-                </div>,
-                document.body,
-              )}
-            </div>
-          )}
+                )}
+              </div>,
+              document.body,
+            )}
+          </div>
         </div>
       </div>
     </>

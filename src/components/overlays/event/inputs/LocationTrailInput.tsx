@@ -108,6 +108,8 @@ export function LocationTrailInput({ eventId, inputFields, task, onComplete, onR
   const layerRef = useRef<L.LayerGroup | null>(null);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const dragMarkerRef = useRef<L.Marker | null>(null);
+  const onResultChangeRef = useRef(onResultChange);
+  const lastPreviewResultKeyRef = useRef<string | null>(null);
 
   const persistedWaypoints = useMemo(() => {
     const taskWaypoints = (task.resultFields as Partial<LocationTrailInputFields>).waypoints;
@@ -141,11 +143,27 @@ export function LocationTrailInput({ eventId, inputFields, task, onComplete, onR
     ];
   }, [isComplete, mapPlacementMode, pendingWaypointPosition, selectedWaypointIndex, visibleWaypoints]);
   const trailDistanceLabel = useMemo(() => formatTrailDistance(renderedWaypoints), [renderedWaypoints]);
+  const previewResult = useMemo(
+    () => ({ label, captureInterval, waypoints }),
+    [captureInterval, label, waypoints],
+  );
+  const previewResultKey = useMemo(() => JSON.stringify(previewResult), [previewResult]);
 
   useEffect(() => {
-    if (isComplete) return;
-    onResultChange?.({ label, captureInterval, waypoints });
-  }, [captureInterval, isComplete, label, onResultChange, waypoints]);
+    onResultChangeRef.current = onResultChange;
+  }, [onResultChange]);
+
+  useEffect(() => {
+    if (isComplete) {
+      lastPreviewResultKeyRef.current = null;
+      return;
+    }
+
+    if (lastPreviewResultKeyRef.current === previewResultKey) return;
+
+    lastPreviewResultKeyRef.current = previewResultKey;
+    onResultChangeRef.current?.(previewResult);
+  }, [isComplete, previewResult, previewResultKey]);
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return undefined;

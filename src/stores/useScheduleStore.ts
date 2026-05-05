@@ -148,7 +148,9 @@ function normalizeEventAlbum(
         ? ((entry as EventAlbumEntry & { note?: string }).note ?? '').trim()
         : '';
 
-      if (!legacyNote) {
+      const hasBlobPhotoUri = typeof entry.photoUri === 'string' && entry.photoUri.startsWith('blob:');
+
+      if (!legacyNote && !hasBlobPhotoUri) {
         return entry;
       }
 
@@ -163,7 +165,8 @@ function normalizeEventAlbum(
 
       return {
         ...rest,
-        notes,
+        ...(legacyNote ? { notes } : {}),
+        ...(hasBlobPhotoUri ? { photoUri: undefined } : {}),
       };
     });
 

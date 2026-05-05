@@ -1,4 +1,6 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
+import { taskTemplateLibrary } from '../../../coach';
+import { starterTaskTemplates } from '../../../coach/StarterQuestLibrary';
 import { useScheduleStore } from '../../../stores/useScheduleStore';
 import { storageDelete, storageKey } from '../../../storage';
 import { TaskBlock } from './TaskBlock';
@@ -6,14 +8,47 @@ import { ActionBar } from './ActionBar';
 import type { ActionBarSection } from './ActionBar';
 import { ActionsSection } from './sections/ActionsSection';
 import { AlbumSection } from './sections/AlbumSection';
-import { LocationSection } from './sections/LocationSection';
 import { ParticipantsSection } from './sections/ParticipantsSection';
 import { EventGlobeLayerControls, EventGlobeView } from './EventGlobeView.tsx';
 import { useEventGlobeLayers } from './EventGlobeLayers';
-import type { Event } from '../../../types';
+import type { Event, Task } from '../../../types';
 import { format } from '../../../utils/dateUtils';
 import { IconDisplay } from '../../shared/IconDisplay';
-import type { InputFields } from '../../../types/taskTemplate';
+import type { InputFields, TaskTemplate, TaskType } from '../../../types/taskTemplate';
+import { resolveTaskTemplate } from '../../../utils/resolveTaskTemplate';
+
+function arePreviewResultsEqual(
+  current: Partial<InputFields> | undefined,
+  next: Partial<InputFields>,
+): boolean {
+  return JSON.stringify(current ?? {}) === JSON.stringify(next);
+}
+
+function buildTemplateRecord(scheduleTemplates: Record<string, TaskTemplate>): Record<string, TaskTemplate> {
+  const templates: Record<string, TaskTemplate> = {};
+
+  for (const template of taskTemplateLibrary) {
+    if (template.id) templates[template.id] = template;
+  }
+
+  for (const template of starterTaskTemplates) {
+    if (template.id) templates[template.id] = template;
+  }
+
+  for (const [id, template] of Object.entries(scheduleTemplates)) {
+    templates[id] = template;
+  }
+
+  return templates;
+}
+
+function resolveEventTaskType(task: Task | undefined, templates: Record<string, TaskTemplate>): TaskType | null {
+  if (!task) return null;
+  if (task.isUnique === true) return (task.taskType as TaskType | null) ?? null;
+  if (!task.templateRef) return null;
+
+  return resolveTaskTemplate(task.templateRef, templates, starterTaskTemplates, taskTemplateLibrary)?.taskType ?? null;
+}
 
 interface EventOverlayProps {
   eventId: string;
@@ -24,6 +59,7 @@ export function EventOverlay({ eventId, onClose }: EventOverlayProps) {
   const activeEvents = useScheduleStore((s) => s.activeEvents);
   const historyEvents = useScheduleStore((s) => s.historyEvents);
   const tasks = useScheduleStore((s) => s.tasks);
+  const taskTemplates = useScheduleStore((s) => s.taskTemplates);
   const deleteEvent = useScheduleStore((s) => s.deleteEvent);
   const updateEvent = useScheduleStore((s) => s.updateEvent);
 
@@ -35,7 +71,6 @@ export function EventOverlay({ eventId, onClose }: EventOverlayProps) {
   );
   const [activeSection, setActiveSection] = useState<ActionBarSection>('actions');
   const [isEditMode, setIsEditMode] = useState(false);
-  const [showGlobeView, setShowGlobeView] = useState(false);
   const [hideCompleted, setHideCompleted] = useState(false);
   const [taskPreviewResults, setTaskPreviewResults] = useState<Record<string, Partial<InputFields>>>({});
   const [sectionAddRequest, setSectionAddRequest] = useState({
@@ -46,8 +81,32 @@ export function EventOverlay({ eventId, onClose }: EventOverlayProps) {
   const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const alreadyCompleteOnMount = useRef(event?.completionState === 'complete');
   const { layerDefinitions, layerVisibility, toggleLayer } = useEventGlobeLayers(event, taskPreviewResults);
-  const hasGlobeData = layerDefinitions.length > 0;
-  const isGlobeViewOpen = showGlobeView && hasGlobeData;
+  const templates = useMemo(() => buildTemplateRecord(taskTemplates), [taskTemplates]);
+
+  const hasLocationData = Boolean(
+    event?.location ||
+    eventTaskIds.length > 0 &&
+    eventTaskIds.some((taskId) => {
+      const task = tasks[taskId];
+      if (!task) return false;
+
+       const taskType = resolveEventTaskType(task, templates);
+
+      if (taskType === 'LOCATION_TRAIL') {
+        const waypoints = (task.resultFields as Partial<InputFields> & { waypoints?: unknown[] } | undefined)?.waypoints;
+        return Array.isArray(waypoints) && waypoints.length > 0;
+      }
+
+      if (taskType === 'LOCATION_POINT') {
+        const lat = (task.resultFields as Partial<InputFields> & { lat?: unknown } | undefined)?.lat;
+        return typeof lat === 'number';
+      }
+
+      return false;
+    }) ||
+    event?.eventAlbum?.some((entry) => Boolean(entry.location))
+  );
+  const isGlobeViewOpen = activeSection === 'globe';
 
   useEffect(() => {
     if (event?.completionState === 'complete' && !alreadyCompleteOnMount.current) {
@@ -86,6 +145,23 @@ export function EventOverlay({ eventId, onClose }: EventOverlayProps) {
     }
     setActiveSection(section);
     setSectionAddRequest((current) => ({ section, nonce: current.nonce + 1 }));
+  }, []);
+
+  const handlePreviewResultChange = useCallback((taskId: string, result: Partial<InputFields>) => {
+    setTaskPreviewResults((current) => {
+      if (Object.keys(result).length === 0) {
+        if (!(taskId in current)) return current;
+        const next = { ...current };
+        delete next[taskId];
+        return next;
+      }
+
+      if (arePreviewResultsEqual(current[taskId], result)) {
+        return current;
+      }
+
+      return { ...current, [taskId]: result };
+    });
   }, []);
 
   if (!event) {
@@ -191,66 +267,55 @@ export function EventOverlay({ eventId, onClose }: EventOverlayProps) {
         </div>
       </div>
 
+      <ActionBar
+        eventId={eventId}
+        activeSection={activeSection}
+        onSectionChange={setActiveSection}
+        hasLocationData={hasLocationData}
+        isEditMode={isEditMode}
+        onEnterEdit={() => setIsEditMode(true)}
+        onExitEdit={() => setIsEditMode(false)}
+        onSectionAdd={handleSectionAdd}
+        onDeleteEvent={() => {
+          deleteEvent(eventId);
+          storageDelete(storageKey.plannedEvent(eventId));
+          onClose();
+        }}
+      />
+
       <div className="relative flex min-h-0 flex-1 flex-col">
-        <div className="flex-1 min-h-0 overflow-hidden p-3">
-          {isGlobeViewOpen ? (
-            <EventGlobeView
-              event={event}
-              layerDefinitions={layerDefinitions}
-              layerVisibility={layerVisibility}
-              onClose={() => setShowGlobeView(false)}
-              showCloseButton={true}
-            />
-          ) : (
+        {activeSection === 'actions' && (
+          <div className="shrink-0 overflow-hidden border-b border-gray-200 p-3 dark:border-gray-700" style={{ height: 'min(28rem, 52vh)' }}>
             <TaskBlock
               taskId={effectiveSelectedTaskId}
               eventId={eventId}
               onTaskComplete={handleTaskComplete}
-              onPreviewResultChange={(taskId, result) => {
-                setTaskPreviewResults((current) => {
-                  if (Object.keys(result).length === 0) {
-                    if (!(taskId in current)) return current;
-                    const next = { ...current };
-                    delete next[taskId];
-                    return next;
-                  }
-
-                  return { ...current, [taskId]: result };
-                });
-              }}
+              onPreviewResultChange={handlePreviewResultChange}
               className="h-full"
             />
-          )}
-        </div>
+          </div>
+        )}
 
-        <div className="flex h-1/3 min-h-0 flex-col shrink-0 border-t border-gray-200 dark:border-gray-700">
-          <ActionBar
-            eventId={eventId}
-            activeSection={activeSection}
-            onSectionChange={setActiveSection}
-            isEditMode={isEditMode}
-            onEnterEdit={() => setIsEditMode(true)}
-            onExitEdit={() => setIsEditMode(false)}
-            onSectionAdd={handleSectionAdd}
-            showGlobeButton={hasGlobeData}
-            isGlobeViewOpen={isGlobeViewOpen}
-            onToggleGlobeView={() => {
-              if (!hasGlobeData) return;
-              setShowGlobeView((current) => !current);
-            }}
-            onDeleteEvent={() => {
-              deleteEvent(eventId);
-              storageDelete(storageKey.plannedEvent(eventId));
-              onClose();
-            }}
-          />
-
+        <div className={isGlobeViewOpen ? 'flex-1 min-h-0 overflow-hidden' : 'flex-1 min-h-0 overflow-y-auto'}>
           {isGlobeViewOpen ? (
-            <EventGlobeLayerControls
-              layerDefinitions={layerDefinitions}
-              layerVisibility={layerVisibility}
-              onToggleLayer={toggleLayer}
-            />
+            <div className="flex h-full min-h-0 flex-col">
+              <div className="flex-1 min-h-0 overflow-hidden p-3">
+                <EventGlobeView
+                  event={event}
+                  layerDefinitions={layerDefinitions}
+                  layerVisibility={layerVisibility}
+                  onClose={() => setActiveSection('actions')}
+                  showCloseButton={true}
+                />
+              </div>
+              <div className="shrink-0 overflow-hidden border-t border-gray-200 dark:border-gray-700" style={{ height: 'min(9rem, 24%)' }}>
+                <EventGlobeLayerControls
+                  layerDefinitions={layerDefinitions}
+                  layerVisibility={layerVisibility}
+                  onToggleLayer={toggleLayer}
+                />
+              </div>
+            </div>
           ) : activeSection === 'actions' && (
             <ActionsSection
               event={event}
@@ -276,19 +341,11 @@ export function EventOverlay({ eventId, onClose }: EventOverlayProps) {
             />
           )}
 
-          {!isGlobeViewOpen && activeSection === 'location' && (
-            <LocationSection
-              event={event}
-              isEditMode={isEditMode}
-              addRequestNonce={sectionAddRequest.section === 'location' ? sectionAddRequest.nonce : 0}
-            />
-          )}
-
-          {!isGlobeViewOpen && activeSection === 'attachments' && (
+          {!isGlobeViewOpen && activeSection === 'album' && (
             <AlbumSection
               event={event}
               isEditMode={isEditMode}
-              addRequestNonce={sectionAddRequest.section === 'attachments' ? sectionAddRequest.nonce : 0}
+              addRequestNonce={sectionAddRequest.section === 'album' ? sectionAddRequest.nonce : 0}
             />
           )}
         </div>

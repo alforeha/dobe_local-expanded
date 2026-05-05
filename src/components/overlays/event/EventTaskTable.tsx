@@ -54,15 +54,9 @@ export function EventTaskTable({
         </div>
       )}
 
-      {activeSection === 'location' && (
+      {activeSection === 'album' && (
         <div className="flex flex-1 items-center justify-center px-3 text-sm text-gray-500 dark:text-gray-400">
-          Location - coming in LE-09b
-        </div>
-      )}
-
-      {activeSection === 'attachments' && (
-        <div className="flex flex-1 items-center justify-center px-3 text-sm text-gray-500 dark:text-gray-400">
-          Attachments - coming in LE-09d
+          Album - coming in LE-09d
         </div>
       )}
     </div>

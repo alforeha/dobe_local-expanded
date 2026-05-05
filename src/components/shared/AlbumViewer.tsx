@@ -49,11 +49,50 @@ const SOURCE_KIND_LABELS: Record<NonNullable<AlbumEntry['sourceKind']>, string> 
   'placed-container': 'Container',
 };
 
-function PhotoPlaceholder({ className }: { className?: string }) {
+function PhotoUnavailablePlaceholder({ className, textClassName }: { className?: string; textClassName?: string }) {
   return (
-    <div className={`flex items-center justify-center bg-gray-100 dark:bg-gray-800 ${className ?? ''}`}>
+    <div className={`flex flex-col items-center justify-center gap-2 bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400 ${className ?? ''}`}>
       <IconDisplay iconKey="camera" size={28} className="h-7 w-7 object-contain opacity-40" alt="" />
+      <span className={textClassName ?? 'text-xs font-medium'}>Photo not available</span>
     </div>
+  );
+}
+
+function AlbumPhoto({
+  photoUri,
+  alt,
+  className,
+  placeholderClassName,
+  placeholderTextClassName,
+}: {
+  photoUri?: string;
+  alt: string;
+  className: string;
+  placeholderClassName: string;
+  placeholderTextClassName?: string;
+}) {
+  const [hasError, setHasError] = useState(false);
+
+  useEffect(() => {
+    setHasError(false);
+  }, [photoUri]);
+
+  if (!photoUri || hasError) {
+    return (
+      <PhotoUnavailablePlaceholder
+        className={placeholderClassName}
+        textClassName={placeholderTextClassName}
+      />
+    );
+  }
+
+  return (
+    <img
+      src={photoUri}
+      alt={alt}
+      className={className}
+      onError={() => setHasError(true)}
+    />
   );
 }
 
@@ -171,18 +210,13 @@ function FullScreenViewer({ entries, startIndex, onClose, onEdit, onDelete }: Fu
           </button>
         ) : null}
 
-        {entry.photoUri ? (
-          <img
-            src={entry.photoUri}
-            alt={dateLabel}
-            className="max-h-full max-w-full object-contain"
-          />
-        ) : (
-          <div className="flex flex-col items-center gap-3 rounded-2xl bg-white/5 px-10 py-12">
-            <IconDisplay iconKey="camera" size={48} className="h-12 w-12 object-contain opacity-60" alt="" />
-            <span className="text-sm text-gray-300">No photo</span>
-          </div>
-        )}
+        <AlbumPhoto
+          photoUri={entry.photoUri}
+          alt={dateLabel}
+          className="max-h-full max-w-full object-contain"
+          placeholderClassName="h-full min-h-[16rem] w-full rounded-2xl bg-white/5 px-10 py-12 text-gray-300"
+          placeholderTextClassName="text-sm"
+        />
 
         {entries.length > 1 ? (
           <button
@@ -269,15 +303,12 @@ export function AlbumViewer({ entries, onAdd, onEdit, onDelete, groupBy, title }
         className="group flex w-full flex-col overflow-hidden rounded-xl bg-white text-left ring-1 ring-black/5 transition-shadow hover:shadow-md dark:bg-gray-900/70"
       >
         <div className="aspect-square w-full overflow-hidden">
-          {entry.photoUri ? (
-            <img
-              src={entry.photoUri}
-              alt={dateLabel}
-              className="h-full w-full object-cover transition-transform group-hover:scale-[1.02]"
-            />
-          ) : (
-            <PhotoPlaceholder className="h-full w-full" />
-          )}
+          <AlbumPhoto
+            photoUri={entry.photoUri}
+            alt={dateLabel}
+            className="h-full w-full object-cover transition-transform group-hover:scale-[1.02]"
+            placeholderClassName="h-full w-full"
+          />
         </div>
         <div className="space-y-0.5 px-2 py-1.5">
           <div className="text-[11px] font-semibold text-gray-700 dark:text-gray-200">
