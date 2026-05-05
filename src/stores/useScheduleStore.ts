@@ -13,11 +13,13 @@ import type {
   PlannedEvent,
   Event,
   EventAttachment,
+  QAAlbumEntry,
   QuickActionsEvent,
   QuickActionsWeatherSnapshot,
   Task,
   TaskTemplate,
 } from '../types';
+import type { InputFields } from '../types/taskTemplate';
 import { isTemplateQuestLocked } from '../utils/isTemplateQuestLocked';
 import { isOneOffEvent } from '../utils/isOneOffEvent';
 import { v4 as uuidv4 } from 'uuid';
@@ -44,6 +46,10 @@ interface ScheduleActions {
   removePlannedEvent: (id: string) => void;
 
   setActiveEvent: (event: Event | QuickActionsEvent) => void;
+  updateQACompletion: (qaEventId: string, taskRef: string, completedAt: string, resultFields: Partial<InputFields>) => void;
+  removeQACompletion: (qaEventId: string, taskRef: string) => void;
+  removeQAAlbumEntry: (qaEventId: string, entryId: string) => void;
+  updateQAAlbumEntry: (qaEventId: string, entryId: string, patch: Partial<QAAlbumEntry>) => void;
   updateEvent: (eventId: string, patch: Partial<Event>) => void;
   removeTaskFromEvent: (taskId: string, eventId: string) => void;
   archiveEvent: (eventId: string) => void;
@@ -459,6 +465,115 @@ export const useScheduleStore = create<ScheduleState & ScheduleActions>()(
           activeEvents: { ...state.activeEvents, [event.id]: event },
         }));
         // TODO: MVP06 — persist to event:{uuid} or qa:{date} via storageLayer
+      },
+
+      updateQACompletion: (qaEventId, taskRef, completedAt, resultFields) => {
+        set((state) => {
+          const activeEvent = state.activeEvents[qaEventId];
+          if (!activeEvent || activeEvent.eventType !== 'quickActions') {
+            return {};
+          }
+          const qaEvent = activeEvent as QuickActionsEvent;
+
+          const hasCompletion = qaEvent.completions.some((completion) => completion.taskRef === taskRef);
+          if (!hasCompletion) {
+            return {};
+          }
+
+          const nextTask = state.tasks[taskRef]
+            ? {
+                ...state.tasks[taskRef],
+                resultFields: {
+                  ...state.tasks[taskRef].resultFields,
+                  ...resultFields,
+                },
+              }
+            : null;
+
+          return {
+            activeEvents: {
+              ...state.activeEvents,
+              [qaEventId]: {
+                ...qaEvent,
+                completions: qaEvent.completions.map((completion) => (
+                  completion.taskRef === taskRef
+                    ? { ...completion, completedAt }
+                    : completion
+                )),
+              },
+            },
+            tasks: nextTask
+              ? {
+                  ...state.tasks,
+                  [taskRef]: nextTask,
+                }
+              : state.tasks,
+          };
+        });
+      },
+
+      removeQACompletion: (qaEventId, taskRef) => {
+        set((state) => {
+          const activeEvent = state.activeEvents[qaEventId];
+          if (!activeEvent || activeEvent.eventType !== 'quickActions') {
+            return {};
+          }
+          const qaEvent = activeEvent as QuickActionsEvent;
+
+          return {
+            activeEvents: {
+              ...state.activeEvents,
+              [qaEventId]: {
+                ...qaEvent,
+                completions: qaEvent.completions.filter((completion) => completion.taskRef !== taskRef),
+              },
+            },
+          };
+        });
+      },
+
+      removeQAAlbumEntry: (qaEventId, entryId) => {
+        set((state) => {
+          const activeEvent = state.activeEvents[qaEventId];
+          if (!activeEvent || activeEvent.eventType !== 'quickActions') {
+            return {};
+          }
+          const qaEvent = activeEvent as QuickActionsEvent;
+
+          return {
+            activeEvents: {
+              ...state.activeEvents,
+              [qaEventId]: {
+                ...qaEvent,
+                album: (qaEvent.album ?? []).filter((entry) => entry.id !== entryId),
+              },
+            },
+          };
+        });
+      },
+
+      updateQAAlbumEntry: (qaEventId, entryId, patch) => {
+        set((state) => {
+          const activeEvent = state.activeEvents[qaEventId];
+          if (!activeEvent || activeEvent.eventType !== 'quickActions') {
+            return {};
+          }
+          const qaEvent = activeEvent as QuickActionsEvent;
+
+          return {
+            activeEvents: {
+              ...state.activeEvents,
+              [qaEventId]: {
+                ...qaEvent,
+                album: (qaEvent.album ?? []).map((entry) => (
+                  entry.id === entryId
+                    ? { ...entry, ...patch }
+                    : entry
+                )),
+              },
+            },
+          };
+        });
       },
 
       updateEvent: (eventId, patch) => {

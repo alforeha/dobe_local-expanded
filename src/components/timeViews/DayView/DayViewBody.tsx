@@ -775,6 +775,7 @@ export function DayViewBody({ date, onEventOpen, onEditPlanned }: DayViewBodyPro
 
       {(openCompletion || openAlbumEntry) && (
         <QACompletionPopup
+          qaEventId={qaEvent?.id ?? ''}
           completion={openCompletion ?? undefined}
           albumEntry={openAlbumEntry ?? undefined}
           onClose={() => {
