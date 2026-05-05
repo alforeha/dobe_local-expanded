@@ -27,7 +27,7 @@ export function TimeViewContainer({ activeView, onEventOpen, onResourceOpen, onW
   return (
     <div className="h-full overflow-visible">
       {activeView === 'day' && <DayView key={dayViewSeed?.toISOString() ?? 'default'} onEventOpen={onEventOpen} onResourceOpen={onResourceOpen} onEditPlanned={onEditPlanned} todaySignal={todaySignals?.day} initialDate={dayViewSeed ?? undefined} />}
-      {activeView === 'week' && <WeekView initialWeekStart={weekViewSeed ?? undefined} todaySignal={todaySignals?.week} onDaySelect={onDaySelect} />}
+      {activeView === 'week' && <WeekView key={weekViewSeed?.toISOString() ?? 'default'} initialWeekStart={weekViewSeed ?? undefined} todaySignal={todaySignals?.week} onDaySelect={onDaySelect} />}
       {activeView === 'explorer' && <WeekExplorer onWeekSelect={onWeekSelect} todaySignal={todaySignals?.explorer} />}
     </div>
   );

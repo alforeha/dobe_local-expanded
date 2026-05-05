@@ -775,6 +775,7 @@ export function DayViewBody({ date, onEventOpen, onEditPlanned }: DayViewBodyPro
 
       {(openCompletion || openAlbumEntry) && (
         <QACompletionPopup
+          key={openAlbumEntry ? `album:${openAlbumEntry.id}` : openCompletion ? `completion:${openCompletion.taskRef}:${openCompletion.completedAt}` : 'closed'}
           qaEventId={qaEvent?.id ?? ''}
           completion={openCompletion ?? undefined}
           albumEntry={openAlbumEntry ?? undefined}

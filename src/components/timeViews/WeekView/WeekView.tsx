@@ -29,10 +29,6 @@ export function WeekView({ initialWeekStart, todaySignal, onDaySelect }: WeekVie
   const [weekStart, setWeekStart] = useState(() => getPrevMonday(initialWeekStart ?? appDate));
   const [weather, setWeather] = useState<WeatherDay[]>([]);
 
-  useEffect(() => {
-    if (initialWeekStart) setWeekStart(getPrevMonday(initialWeekStart));
-  }, [initialWeekStart]);
-
   const goBack = () => setWeekStart((d) => addDays(d, -7));
   const goForward = () => setWeekStart((d) => addDays(d, 7));
 

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import type { QAAlbumEntry, QuickActionsCompletion, RollInputFields } from '../../../types';
 import { useScheduleStore } from '../../../stores/useScheduleStore';
@@ -72,13 +72,9 @@ function PhotoUnavailablePlaceholder() {
 }
 
 function AlbumPhoto({ photoUri }: { photoUri?: string }) {
-  const [hasError, setHasError] = useState(false);
+  const [failedPhotoUri, setFailedPhotoUri] = useState<string | null>(null);
 
-  useEffect(() => {
-    setHasError(false);
-  }, [photoUri]);
-
-  if (!photoUri || hasError) {
+  if (!photoUri || failedPhotoUri === photoUri) {
     return <PhotoUnavailablePlaceholder />;
   }
 
@@ -87,7 +83,7 @@ function AlbumPhoto({ photoUri }: { photoUri?: string }) {
       src={photoUri}
       alt="Weather capture"
       className="w-full rounded-2xl object-contain"
-      onError={() => setHasError(true)}
+      onError={() => setFailedPhotoUri(photoUri)}
     />
   );
 }
@@ -119,21 +115,6 @@ export function QACompletionPopup({ qaEventId, completion, albumEntry, onClose }
     updateQAAlbumEntry: state.updateQAAlbumEntry,
     removeQAAlbumEntry: state.removeQAAlbumEntry,
   })));
-
-  useEffect(() => {
-    setIsEditing(false);
-    setDraftCompletionTime(completion ? formatHHMM(completion.completedAt) : '');
-    setDraftResultFields(completion ? ((tasks[completion.taskRef]?.resultFields ?? {}) as Partial<InputFields>) : {});
-    setConfirmDeleteCompletion(false);
-  }, [completion, tasks]);
-
-  useEffect(() => {
-    setIsEditing(false);
-    setDraftAlbumTime(albumEntry ? formatHHMM(albumEntry.date) : '');
-    setDraftPhotoUri(albumEntry?.photoUri);
-    setPhotoStatus('');
-    setConfirmDeleteAlbum(false);
-  }, [albumEntry]);
 
   function beginCompletionEdit() {
     if (!completion) return;

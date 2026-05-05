@@ -39,10 +39,6 @@ export function DayView({ onEventOpen, onResourceOpen, onEditPlanned, todaySigna
   const [weatherHistoryPopupOpen, setWeatherHistoryPopupOpen] = useState(false);
   const [resourcePopupOpen, setResourcePopupOpen] = useState(false);
 
-  useEffect(() => {
-    if (initialDate) setCurrentDate(initialDate);
-  }, [initialDate]);
-
   function handleWeatherOpen() {
     const dateISO = format(currentDate, 'iso');
     const todayISOValue = format(appDate, 'iso');

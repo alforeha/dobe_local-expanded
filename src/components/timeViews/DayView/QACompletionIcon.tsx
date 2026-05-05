@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { IconDisplay } from '../../shared/IconDisplay';
 
 interface QACompletionIconProps {
@@ -19,13 +19,10 @@ export function QACompletionIcon({
   onClick,
 }: QACompletionIconProps) {
   const leftOffset = offsetIndex * 30;
-  const [imageFailed, setImageFailed] = useState(false);
-
-  useEffect(() => {
-    setImageFailed(false);
-  }, [photoUri]);
+  const [failedPhotoUri, setFailedPhotoUri] = useState<string | null>(null);
 
   const fallbackIconKey = weatherIconKey ?? iconKey;
+  const showPhoto = Boolean(photoUri) && failedPhotoUri !== photoUri;
 
   return (
     <button
@@ -35,12 +32,12 @@ export function QACompletionIcon({
       className="absolute flex h-7 w-7 items-center justify-center rounded-full bg-purple-500 text-sm shadow ring-2 ring-white transition-transform hover:bg-purple-600 active:scale-95"
       style={{ top: `${topPx}px`, left: `${leftOffset}px`, zIndex: 20 + offsetIndex }}
     >
-      {photoUri && !imageFailed ? (
+      {showPhoto ? (
         <img
           src={photoUri}
           alt=""
           className="h-full w-full rounded-full object-cover"
-          onError={() => setImageFailed(true)}
+          onError={() => setFailedPhotoUri(photoUri ?? null)}
         />
       ) : (
         <IconDisplay iconKey={fallbackIconKey} size={16} className="h-4 w-4 object-contain" alt="" />
