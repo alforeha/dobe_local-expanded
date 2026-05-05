@@ -6,7 +6,6 @@ import { useResourceStore } from '../../../../../../stores/useResourceStore';
 import { IconDisplay } from '../../../../../shared/IconDisplay';
 import { AlbumViewer } from '../../../../../shared/AlbumViewer';
 import { AlbumEntryEditor } from '../../../../../shared/AlbumEntryEditor';
-import { PopupShell } from '../../../../../shared/popups/PopupShell';
 import { ResourceMetaTabs } from '../shared/ResourceMetaTabs';
 import { HomeLayout } from './HomeLayout';
 
@@ -263,16 +262,11 @@ export function HomeMetaView({ resource }: HomeMetaViewProps) {
       <ResourceMetaTabs resource={liveHome} details={details} noteLabelWidth="w-16" />
 
       {(isCreatingEntry || editingEntry) ? (
-        <PopupShell
-          title={isCreatingEntry ? 'Add Album Entry' : 'Edit Album Entry'}
-          onClose={handleCancelEntry}
-        >
-          <AlbumEntryEditor
-            entry={editingEntry ?? undefined}
-            onSave={handleSaveEntry}
-            onCancel={handleCancelEntry}
-          />
-        </PopupShell>
+        <AlbumEntryEditor
+          entry={editingEntry ?? undefined}
+          onSave={handleSaveEntry}
+          onCancel={handleCancelEntry}
+        />
       ) : null}
     </>
   );

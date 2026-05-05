@@ -22,6 +22,13 @@ export interface ResourceNote {
   createdAt: string; // ISO datetime
 }
 
+export interface NoteEntry {
+  id: string;
+  authorRef: string;
+  text: string;
+  createdAt: string;
+}
+
 export interface ResourceLink {
   id: string;
   targetResourceId: string;
@@ -49,7 +56,7 @@ export interface ContactLink {
 export interface AlbumEntry {
   id: string;
   date: string;
-  note?: string;
+  notes?: NoteEntry[];
   photoUri?: string;
   location?: {
     latitude: number;

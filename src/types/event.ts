@@ -7,6 +7,7 @@
 // Also contains: QuickActionsEvent (D12, D44).
 // ─────────────────────────────────────────
 
+import type { NoteEntry } from './resource';
 import type { EventLocation } from './plannedEvent';
 
 // ── EVENT TYPE DISCRIMINATOR (D44) ────────────────────────────────────────────
@@ -43,6 +44,20 @@ export interface EventAttachment {
   location?: EventLocation | null;
 }
 
+export interface EventAlbumEntry {
+  id: string;
+  date: string;
+  notes?: NoteEntry[];
+  photoUri?: string;
+  location?: {
+    latitude: number;
+    longitude: number;
+    placeName?: string;
+  };
+  contactRefs?: string[];
+  taskRef?: string;
+}
+
 // ── EVENT ROOT ────────────────────────────────────────────────────────────────
 
 export interface Event {
@@ -69,6 +84,7 @@ export interface Event {
   xpAwarded: number;
   /** Attachment refs — max 5, max 200 KB each (D09) */
   attachments: EventAttachment[];
+  eventAlbum?: EventAlbumEntry[];
   /** STUB: LOCATION-SHARING — reserved for captured venue/location metadata once the LOCATION-SHARING chapter is enabled. */
   location: EventLocation | null;
   note: string | null;

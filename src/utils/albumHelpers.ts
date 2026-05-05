@@ -3,7 +3,7 @@ import type { AlbumEntry } from '../types/resource';
 export function createAlbumEntry(options: {
   photoUri?: string;
   location?: AlbumEntry['location'];
-  note?: string;
+  notes?: AlbumEntry['notes'];
   sourceRef?: string;
   sourceKind?: AlbumEntry['sourceKind'];
   date?: string;
@@ -11,7 +11,7 @@ export function createAlbumEntry(options: {
   return {
     id: crypto.randomUUID(),
     date: options.date ?? new Date().toISOString().split('T')[0],
-    note: options.note,
+    notes: options.notes,
     photoUri: options.photoUri,
     location: options.location,
     sourceRef: options.sourceRef,

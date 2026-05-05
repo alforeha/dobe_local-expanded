@@ -5,9 +5,9 @@ import { TaskBlock } from './TaskBlock';
 import { ActionBar } from './ActionBar';
 import type { ActionBarSection } from './ActionBar';
 import { ActionsSection } from './sections/ActionsSection';
+import { AlbumSection } from './sections/AlbumSection';
 import { LocationSection } from './sections/LocationSection';
 import { ParticipantsSection } from './sections/ParticipantsSection';
-import { AttachmentsSection } from './sections/AttachmentsSection';
 import { EventGlobeLayerControls, EventGlobeView } from './EventGlobeView.tsx';
 import { useEventGlobeLayers } from './EventGlobeLayers';
 import type { Event } from '../../../types';
@@ -285,9 +285,8 @@ export function EventOverlay({ eventId, onClose }: EventOverlayProps) {
           )}
 
           {!isGlobeViewOpen && activeSection === 'attachments' && (
-            <AttachmentsSection
+            <AlbumSection
               event={event}
-              eventId={eventId}
               isEditMode={isEditMode}
               addRequestNonce={sectionAddRequest.section === 'attachments' ? sectionAddRequest.nonce : 0}
             />

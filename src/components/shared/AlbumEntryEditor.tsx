@@ -1,21 +1,28 @@
-// AlbumEntryEditor — shared create/edit form for AlbumEntry records.
-// Used by HomeMetaView's Album tab (and future: Vehicle, Contact) to create
-// new entries or edit existing ones with photo capture, date, note, and
-// location fields. Replacing the photo attempts to update location from
-// captured EXIF metadata. Manual location entry geocodes via Nominatim
-// (LE-06a pattern) or accepts manual lat/lng inputs.
-
 import { useEffect, useRef, useState } from 'react';
-import type { AlbumEntry } from '../../types/resource';
+import { createPortal } from 'react-dom';
+import type { EventAttendee } from '../../types/event';
+import type { Task } from '../../types/task';
+import type { AlbumEntry, NoteEntry } from '../../types/resource';
 import { createAlbumEntry } from '../../utils/albumHelpers';
-import { capturePhoto } from '../../utils/photoCapture';
-import { forwardGeocode } from '../../utils/geocode';
+import { capturePhoto, isNativePhotoCaptureAvailable, readPhotoFile } from '../../utils/photoCapture';
+import { useUserStore } from '../../stores/useUserStore';
+import { AlbumLocationPicker } from './AlbumLocationPicker';
 import { IconDisplay } from './IconDisplay';
+
+export interface AlbumEntryEditorSaveMeta {
+  contactRefs: string[];
+  taskRef?: string;
+}
 
 interface AlbumEntryEditorProps {
   entry?: AlbumEntry;
-  onSave: (entry: AlbumEntry) => void;
+  onSave: (entry: AlbumEntry, meta?: AlbumEntryEditorSaveMeta) => void;
   onCancel: () => void;
+  contactOptions?: EventAttendee[];
+  selectedContactRefs?: string[];
+  taskOptions?: Task[];
+  selectedTaskRef?: string;
+  getTaskLabel?: (task: Task) => string;
 }
 
 const INPUT_CLS = 'w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-purple-500 focus:outline-none dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100';
@@ -28,24 +35,64 @@ function formatCoordinates(lat: number, lng: number): string {
   return `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
 }
 
-export function AlbumEntryEditor({ entry, onSave, onCancel }: AlbumEntryEditorProps) {
+function formatDateLabel(date: string): string {
+  if (!date) return 'No date set';
+  const parsed = new Date(`${date.slice(0, 10)}T00:00:00`);
+  if (Number.isNaN(parsed.getTime())) return date;
+
+  const today = todayIso();
+  const prefix = date.slice(0, 10) === today ? 'Today, ' : '';
+  return `${prefix}${parsed.toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' })}`;
+}
+
+function getInitials(value: string): string {
+  const parts = value
+    .split(/\s+/)
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .slice(0, 2);
+
+  if (parts.length === 0) return '?';
+  return parts.map((part) => part[0]?.toUpperCase() ?? '').join('');
+}
+
+function getFirstName(value: string): string {
+  return value.trim().split(/\s+/)[0] ?? value;
+}
+
+export function AlbumEntryEditor({
+  entry,
+  onSave,
+  onCancel,
+  contactOptions,
+  selectedContactRefs,
+  taskOptions,
+  selectedTaskRef,
+  getTaskLabel,
+}: AlbumEntryEditorProps) {
   const isEdit = Boolean(entry);
   const [photoUri, setPhotoUri] = useState<string | undefined>(entry?.photoUri);
-  const [date, setDate] = useState<string>(entry?.date ? entry.date.slice(0, 10) : todayIso());
-  const [note, setNote] = useState<string>(entry?.note ?? '');
+  const [date, setDate] = useState<string>(entry?.date ? entry.date.slice(0, 10) : '');
   const [location, setLocation] = useState<AlbumEntry['location']>(entry?.location);
+  const [notes, setNotes] = useState<NoteEntry[]>(entry?.notes ?? []);
+  const [contactRefs, setContactRefs] = useState<string[]>(selectedContactRefs ?? []);
+  const [taskRef, setTaskRef] = useState<string>(selectedTaskRef ?? '');
+  const [pendingNoteText, setPendingNoteText] = useState('');
+  const [isNoteComposerOpen, setIsNoteComposerOpen] = useState(false);
+  const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
 
   const [isCapturing, setIsCapturing] = useState(false);
   const [photoStatus, setPhotoStatus] = useState<string>('');
-
-  const [isLocationFormOpen, setIsLocationFormOpen] = useState(false);
-  const [addressInput, setAddressInput] = useState('');
-  const [manualLat, setManualLat] = useState('');
-  const [manualLng, setManualLng] = useState('');
-  const [locationStatus, setLocationStatus] = useState<string>('');
-  const [isGeocoding, setIsGeocoding] = useState(false);
+  const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
+  const [isLocationPickerOpen, setIsLocationPickerOpen] = useState(false);
+  const [draftDate, setDraftDate] = useState(date || todayIso());
+  const [draftTime, setDraftTime] = useState('12:00');
 
   const objectUrlsRef = useRef<string[]>([]);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const notesZoneRef = useRef<HTMLDivElement | null>(null);
+  const displayName = useUserStore((state) => state.user?.system.displayName ?? 'me');
+  const profileIcon = useUserStore((state) => state.user?.system.icon ?? 'user-default');
 
   // Track object URLs we created in this editor so we can revoke them when
   // the editor unmounts (or before being replaced) to avoid leaks. We never
@@ -67,7 +114,50 @@ export function AlbumEntryEditor({ entry, onSave, onCancel }: AlbumEntryEditorPr
     };
   }, []);
 
+  useEffect(() => {
+    setContactRefs(selectedContactRefs ?? []);
+  }, [selectedContactRefs]);
+
+  useEffect(() => {
+    setTaskRef(selectedTaskRef ?? '');
+  }, [selectedTaskRef]);
+
+  useEffect(() => {
+    setNotes(entry?.notes ?? []);
+  }, [entry?.id, entry?.notes]);
+
+  useEffect(() => {
+    if (!confirmingDeleteId) return undefined;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target as Node;
+      if (notesZoneRef.current?.contains(target)) return;
+      setConfirmingDeleteId(null);
+    };
+
+    document.addEventListener('pointerdown', handlePointerDown);
+    return () => document.removeEventListener('pointerdown', handlePointerDown);
+  }, [confirmingDeleteId]);
+
+  const canUseNativeCamera = isNativePhotoCaptureAvailable();
+
+  function applyCaptureResult(result: Awaited<ReturnType<typeof readPhotoFile>>) {
+    trackObjectUrl(result.uri);
+    setPhotoUri(result.uri);
+    setLocation(result.location);
+    setDate(result.capturedAt ? result.capturedAt.slice(0, 10) : '');
+    setPhotoStatus(result.location || result.capturedAt ? 'Photo metadata loaded.' : 'Photo updated.');
+  }
+
   async function handleCapture(allowGallery: boolean) {
+    if (!canUseNativeCamera) {
+      setPhotoStatus(allowGallery ? '' : 'Camera not available on this device.');
+      if (allowGallery) {
+        fileInputRef.current?.click();
+      }
+      return;
+    }
+
     setIsCapturing(true);
     setPhotoStatus('');
     try {
@@ -76,14 +166,7 @@ export function AlbumEntryEditor({ entry, onSave, onCancel }: AlbumEntryEditorPr
         setPhotoStatus('No photo selected.');
         return;
       }
-      trackObjectUrl(result.uri);
-      setPhotoUri(result.uri);
-      if (result.location) {
-        setLocation(result.location);
-        setPhotoStatus('Photo and location updated.');
-      } else {
-        setPhotoStatus('Photo updated.');
-      }
+      applyCaptureResult(result);
     } catch {
       setPhotoStatus('Unable to capture photo.');
     } finally {
@@ -91,295 +174,410 @@ export function AlbumEntryEditor({ entry, onSave, onCancel }: AlbumEntryEditorPr
     }
   }
 
+  async function handleFileSelected(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0] ?? null;
+    event.target.value = '';
+    if (!file) {
+      setPhotoStatus('No photo selected.');
+      return;
+    }
+
+    setIsCapturing(true);
+    setPhotoStatus('');
+
+    try {
+      const result = await readPhotoFile(file);
+      applyCaptureResult(result);
+    } catch {
+      setPhotoStatus('Unable to load photo.');
+    } finally {
+      setIsCapturing(false);
+    }
+  }
+
   function handleClearPhoto() {
     setPhotoUri(undefined);
+    setDate('');
+    setLocation(undefined);
     setPhotoStatus('Photo removed.');
   }
 
-  function handleClearLocation() {
-    setLocation(undefined);
-    setLocationStatus('');
+  function handleAddNote() {
+    const trimmed = pendingNoteText.trim();
+    if (!trimmed) return;
+
+    setNotes((current) => ([
+      ...current,
+      {
+        id: crypto.randomUUID(),
+        authorRef: displayName,
+        text: trimmed,
+        createdAt: new Date().toISOString(),
+      },
+    ]));
+    setPendingNoteText('');
+    setIsNoteComposerOpen(false);
   }
 
-  function openLocationForm() {
-    setIsLocationFormOpen(true);
-    setAddressInput('');
-    setManualLat(location?.latitude != null ? String(location.latitude) : '');
-    setManualLng(location?.longitude != null ? String(location.longitude) : '');
-    setLocationStatus('');
+  function handleDeleteNote(noteId: string) {
+    setNotes((current) => current.filter((note) => note.id !== noteId));
+    setConfirmingDeleteId(null);
   }
 
-  function closeLocationForm() {
-    setIsLocationFormOpen(false);
-    setLocationStatus('');
-  }
-
-  async function handleAddressSubmit() {
-    const trimmed = addressInput.trim();
-    if (!trimmed) {
-      setLocationStatus('Enter an address first.');
+  function handleDeleteClick(noteId: string) {
+    if (confirmingDeleteId === noteId) {
+      handleDeleteNote(noteId);
       return;
     }
-    setIsGeocoding(true);
-    setLocationStatus('');
-    try {
-      const result = await forwardGeocode(trimmed);
-      if (!result) {
-        setLocationStatus('Unable to resolve that address.');
-        return;
-      }
-      setLocation({
-        latitude: result.lat,
-        longitude: result.lng,
-        placeName: result.displayName?.trim() || trimmed,
-      });
-      setLocationStatus('Location saved.');
-      setIsLocationFormOpen(false);
-    } finally {
-      setIsGeocoding(false);
-    }
+
+    setConfirmingDeleteId(noteId);
   }
 
-  function handleManualLocationSubmit() {
-    const lat = parseFloat(manualLat);
-    const lng = parseFloat(manualLng);
-    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
-      setLocationStatus('Enter valid lat/lng numbers.');
-      return;
-    }
-    setLocation({
-      latitude: lat,
-      longitude: lng,
-      placeName: location?.placeName,
-    });
-    setLocationStatus('Location saved.');
-    setIsLocationFormOpen(false);
+  function openDatePicker() {
+    setDraftDate(date || todayIso());
+    setDraftTime('12:00');
+    setIsDatePickerOpen(true);
+  }
+
+  function confirmDatePicker() {
+    setDate(draftDate);
+    setIsDatePickerOpen(false);
   }
 
   function handleSave() {
-    const trimmedNote = note.trim();
     const next: AlbumEntry = entry
       ? {
           ...entry,
           date: date || todayIso(),
-          note: trimmedNote ? trimmedNote : undefined,
+          notes: notes.length > 0 ? notes : undefined,
           photoUri,
           location,
         }
       : createAlbumEntry({
           date: date || todayIso(),
-          note: trimmedNote ? trimmedNote : undefined,
+          notes: notes.length > 0 ? notes : undefined,
           photoUri,
           location,
         });
-    onSave(next);
+    onSave(
+      next,
+      contactOptions || taskOptions
+        ? {
+            contactRefs,
+            taskRef: taskRef || undefined,
+          }
+        : undefined,
+    );
+  }
+
+  function handleContactToggle(contactId: string) {
+    setContactRefs((current) => (
+      current.includes(contactId)
+        ? current.filter((id) => id !== contactId)
+        : [...current, contactId]
+    ));
   }
 
   const locationLabel = location
     ? location.placeName?.trim()
       ? location.placeName.trim()
       : formatCoordinates(location.latitude, location.longitude)
-    : null;
+    : 'No location set';
 
-  return (
-    <div className="space-y-4">
-      <div className="text-sm font-semibold text-gray-800 dark:text-gray-100">
-        {isEdit ? 'Edit album entry' : 'New album entry'}
-      </div>
+  const showContacts = Boolean(contactOptions?.length);
 
-      {/* Photo */}
-      <div className="space-y-2 rounded-xl bg-gray-50 px-3 py-3 dark:bg-gray-800/60">
-        <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
-          Photo
-        </div>
-        <div className="flex items-center gap-3">
-          <div className="h-20 w-20 shrink-0 overflow-hidden rounded-lg ring-1 ring-black/5">
-            {photoUri ? (
-              <img src={photoUri} alt="Album entry preview" className="h-full w-full object-cover" />
-            ) : (
-              <div className="flex h-full w-full items-center justify-center bg-gray-100 dark:bg-gray-900/70">
-                <IconDisplay iconKey="camera" size={24} className="h-6 w-6 object-contain opacity-40" alt="" />
-              </div>
-            )}
-          </div>
-          <div className="flex flex-col gap-1.5">
+  if (typeof document === 'undefined') {
+    return null;
+  }
+
+  return createPortal(
+    <div className="fixed inset-0 z-[80] flex flex-col bg-white text-gray-900 dark:bg-gray-950 dark:text-gray-100">
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        style={{ display: 'none' }}
+        onChange={handleFileSelected}
+      />
+
+      {isDatePickerOpen ? (
+        <div className="flex min-h-0 flex-1 flex-col">
+          <div className="flex shrink-0 items-center justify-between border-b border-gray-200 px-4 py-3 dark:border-gray-800">
             <button
               type="button"
-              disabled={isCapturing}
-              onClick={() => handleCapture(false)}
-              className="rounded-full bg-blue-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-600 disabled:opacity-50"
+              onClick={() => setIsDatePickerOpen(false)}
+              className="rounded-full px-3 py-1.5 text-sm font-medium text-gray-500 hover:bg-gray-100 hover:text-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
             >
-              {isCapturing ? 'Working...' : 'Take Photo'}
+              Cancel
             </button>
+            <div className="text-sm font-semibold">Pick Date</div>
             <button
               type="button"
-              disabled={isCapturing}
-              onClick={() => handleCapture(true)}
-              className="rounded-full bg-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-300 disabled:opacity-50 dark:bg-gray-700 dark:text-gray-100 dark:hover:bg-gray-600"
+              onClick={confirmDatePicker}
+              className="rounded-full bg-blue-500 px-3 py-1.5 text-sm font-semibold text-white hover:bg-blue-600"
             >
-              Choose from Gallery
+              Confirm
             </button>
-            {photoUri ? (
-              <button
-                type="button"
-                onClick={handleClearPhoto}
-                className="text-left text-[11px] font-medium text-red-500 hover:text-red-600"
-              >
-                Remove photo
-              </button>
-            ) : null}
           </div>
-        </div>
-        {photoStatus ? (
-          <div className="text-[11px] text-gray-500 dark:text-gray-400">{photoStatus}</div>
-        ) : null}
-      </div>
 
-      {/* Date */}
-      <label className="block space-y-1">
-        <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Date</span>
-        <input
-          type="date"
-          value={date}
-          onChange={(event) => setDate(event.target.value)}
-          className={INPUT_CLS}
-        />
-      </label>
-
-      {/* Note */}
-      <label className="block space-y-1">
-        <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Note</span>
-        <textarea
-          rows={3}
-          value={note}
-          onChange={(event) => setNote(event.target.value)}
-          placeholder="Optional note..."
-          className={`${INPUT_CLS} resize-y`}
-        />
-      </label>
-
-      {/* Location */}
-      <div className="space-y-2 rounded-xl bg-gray-50 px-3 py-3 dark:bg-gray-800/60">
-        <div className="flex items-center justify-between gap-2">
-          <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Location</span>
-          {location && !isLocationFormOpen ? (
-            <button
-              type="button"
-              onClick={handleClearLocation}
-              className="text-[11px] font-medium text-red-500 hover:text-red-600"
-            >
-              Clear
-            </button>
-          ) : null}
-        </div>
-        {location ? (
-          <div className="text-xs text-gray-700 dark:text-gray-200">
-            <div className="font-medium">{locationLabel}</div>
-            <div className="text-[11px] text-gray-500 dark:text-gray-400">
-              {formatCoordinates(location.latitude, location.longitude)}
-            </div>
-          </div>
-        ) : (
-          <div className="text-[11px] italic text-gray-400">No location set.</div>
-        )}
-
-        {!isLocationFormOpen ? (
-          <button
-            type="button"
-            onClick={openLocationForm}
-            className="rounded-full bg-blue-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-600"
-          >
-            {location ? 'Edit Location' : 'Set Location'}
-          </button>
-        ) : (
-          <div className="space-y-3 rounded-lg border border-gray-200 bg-white px-3 py-3 dark:border-gray-700 dark:bg-gray-900/70">
-            <label className="block space-y-1">
-              <span className="text-[11px] font-medium text-gray-600 dark:text-gray-300">Address</span>
-              <div className="flex flex-col gap-2 sm:flex-row">
-                <input
-                  type="text"
-                  value={addressInput}
-                  onChange={(event) => setAddressInput(event.target.value)}
-                  placeholder="e.g. 1600 Pennsylvania Ave NW, Washington DC"
-                  className={`${INPUT_CLS} sm:flex-1`}
-                />
-                <button
-                  type="button"
-                  onClick={handleAddressSubmit}
-                  disabled={isGeocoding}
-                  className="rounded-md bg-blue-500 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-600 disabled:opacity-50"
-                >
-                  {isGeocoding ? 'Resolving...' : 'Resolve'}
-                </button>
-              </div>
+          <div className="flex flex-1 flex-col gap-6 px-4 py-6">
+            <label className="block space-y-2">
+              <span className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Date</span>
+              <input
+                type="date"
+                value={draftDate}
+                onChange={(event) => setDraftDate(event.target.value)}
+                className={`${INPUT_CLS} text-base`}
+              />
             </label>
 
-            <div className="text-[11px] uppercase tracking-wide text-gray-400">or enter manually</div>
-
-            <div className="grid grid-cols-2 gap-2">
-              <label className="block space-y-1">
-                <span className="text-[11px] font-medium text-gray-600 dark:text-gray-300">Latitude</span>
-                <input
-                  type="number"
-                  step="any"
-                  value={manualLat}
-                  onChange={(event) => setManualLat(event.target.value)}
-                  className={INPUT_CLS}
-                />
-              </label>
-              <label className="block space-y-1">
-                <span className="text-[11px] font-medium text-gray-600 dark:text-gray-300">Longitude</span>
-                <input
-                  type="number"
-                  step="any"
-                  value={manualLng}
-                  onChange={(event) => setManualLng(event.target.value)}
-                  className={INPUT_CLS}
-                />
-              </label>
-            </div>
-
-            <div className="flex flex-wrap items-center justify-end gap-2">
-              <button
-                type="button"
-                onClick={closeLocationForm}
-                className="rounded-md px-3 py-1.5 text-xs font-medium text-gray-500 hover:text-gray-700 dark:hover:text-gray-200"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleManualLocationSubmit}
-                className="rounded-md bg-blue-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-600"
-              >
-                Use coordinates
-              </button>
-            </div>
-
-            {locationStatus ? (
-              <div className="text-[11px] text-gray-500 dark:text-gray-400">{locationStatus}</div>
-            ) : null}
+            <label className="block space-y-2">
+              <span className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Time</span>
+              <input
+                type="time"
+                value={draftTime}
+                onChange={(event) => setDraftTime(event.target.value)}
+                className={`${INPUT_CLS} text-base`}
+              />
+            </label>
           </div>
-        )}
-      </div>
+        </div>
+      ) : (
+        <>
+          <div className="flex shrink-0 items-center justify-between border-b border-gray-200 px-4 py-3 dark:border-gray-800">
+            <div className="text-base font-semibold">{isEdit ? 'Edit Photo' : 'Add Photo'}</div>
+            <button
+              type="button"
+              onClick={onCancel}
+              className="rounded-full px-3 py-1.5 text-sm font-medium text-gray-500 hover:bg-gray-100 hover:text-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
+            >
+              Close
+            </button>
+          </div>
 
-      {/* Actions */}
-      <div className="flex items-center justify-end gap-2 pt-1">
-        <button
-          type="button"
-          onClick={onCancel}
-          className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
-        >
-          Cancel
-        </button>
-        <button
-          type="button"
-          onClick={handleSave}
-          className="rounded-md bg-blue-500 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-600"
-        >
-          Save
-        </button>
-      </div>
-    </div>
+          <div className="flex min-h-0 flex-1 flex-col">
+            <div className="relative h-[42vh] min-h-[18rem] max-h-[50vh] flex-none items-center justify-center overflow-hidden bg-gray-100 dark:bg-gray-900">
+              {photoUri ? (
+                <>
+                  <img src={photoUri} alt="Album entry preview" className="h-full w-full object-cover" />
+                  <button
+                    type="button"
+                    onClick={handleClearPhoto}
+                    className="absolute right-4 top-4 rounded-full bg-black/60 px-3 py-1.5 text-xs font-semibold text-white hover:bg-black/70"
+                  >
+                    Retake
+                  </button>
+                </>
+              ) : (
+                <div className="flex h-full w-full items-center justify-center px-6">
+                  <div className="flex w-full max-w-sm flex-col items-center gap-4">
+                  <button
+                    type="button"
+                    disabled={isCapturing}
+                    onClick={() => { void handleCapture(false); }}
+                    className="flex w-full items-center justify-center rounded-3xl bg-blue-500 px-6 py-4 text-base font-semibold text-white hover:bg-blue-600 disabled:opacity-50"
+                  >
+                    {isCapturing ? 'Working...' : 'Take Photo'}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isCapturing}
+                    onClick={() => {
+                      setPhotoStatus('');
+                      fileInputRef.current?.click();
+                    }}
+                    className="flex w-full items-center justify-center rounded-3xl bg-white px-6 py-4 text-base font-semibold text-gray-800 shadow-sm ring-1 ring-black/5 hover:bg-gray-50 disabled:opacity-50 dark:bg-gray-800 dark:text-gray-100 dark:hover:bg-gray-700"
+                  >
+                    Choose from Gallery
+                  </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="flex-none space-y-2 border-t border-gray-200 bg-white/95 px-4 py-2.5 dark:border-gray-800 dark:bg-gray-950/95">
+              {photoStatus ? (
+                <div className="text-xs text-gray-500 dark:text-gray-400">{photoStatus}</div>
+              ) : null}
+
+              <div className="space-y-2 rounded-2xl bg-gray-50 px-3 py-2 dark:bg-gray-900">
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={openDatePicker}
+                    className="flex min-w-0 flex-1 items-center gap-2 rounded-full border border-gray-200 bg-white px-3 py-2 text-left shadow-sm hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:hover:bg-gray-700"
+                  >
+                    <span className="text-sm text-gray-500 dark:text-gray-400">📅</span>
+                    <span className="truncate text-xs font-medium text-gray-700 dark:text-gray-200">{formatDateLabel(date)}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setIsLocationPickerOpen(true)}
+                    className="flex min-w-0 flex-1 items-center gap-2 rounded-full border border-gray-200 bg-white px-3 py-2 text-left shadow-sm hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:hover:bg-gray-700"
+                  >
+                    <span className="text-sm text-gray-500 dark:text-gray-400">📍</span>
+                    <span className="truncate text-xs font-medium text-gray-700 dark:text-gray-200">{locationLabel}</span>
+                  </button>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  {showContacts ? (
+                    <div className="flex min-w-0 flex-1 items-center gap-2 rounded-xl px-2 py-1.5">
+                      <span className="text-sm text-gray-500 dark:text-gray-400">👤</span>
+                      <div className="flex min-w-0 flex-wrap gap-1.5">
+                        {contactOptions?.map((contact) => {
+                          const isSelected = contactRefs.includes(contact.contactId);
+                          return (
+                            <button
+                              key={contact.contactId}
+                              type="button"
+                              onClick={() => handleContactToggle(contact.contactId)}
+                              className={`rounded-full px-2 py-1 text-[11px] font-medium transition-colors ${
+                                isSelected
+                                  ? 'bg-blue-500 text-white'
+                                  : 'bg-white text-gray-700 ring-1 ring-black/5 hover:bg-gray-100 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700'
+                              }`}
+                              title={contact.displayName}
+                            >
+                              {getFirstName(contact.displayName).slice(0, 10) || getInitials(contact.displayName)}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {taskOptions?.length ? (
+                    <label className={`flex min-w-0 items-center gap-2 rounded-xl px-2 py-1.5 ${showContacts ? 'flex-1' : 'w-full'}`}>
+                      <span className="text-sm text-gray-500 dark:text-gray-400">🔗</span>
+                      <select
+                        value={taskRef}
+                        onChange={(event) => setTaskRef(event.target.value)}
+                        className="min-w-0 flex-1 bg-transparent text-xs font-medium text-gray-700 outline-none dark:text-gray-200"
+                      >
+                        <option value="">Link task</option>
+                        {taskOptions.map((task) => (
+                          <option key={task.id} value={task.id}>
+                            {getTaskLabel ? getTaskLabel(task) : task.title || task.id}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+
+            <div className="min-h-0 flex-1 border-t border-gray-200 bg-gray-50 dark:border-gray-800 dark:bg-gray-900/60">
+              <div ref={notesZoneRef} className="flex h-full min-h-0 flex-col px-4 py-3">
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Notes</div>
+                  <button
+                    type="button"
+                    onClick={() => setIsNoteComposerOpen(true)}
+                    className="rounded-full border border-gray-200 bg-white px-3 py-1 text-xs font-semibold text-gray-700 shadow-sm hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+                  >
+                    + Add Note
+                  </button>
+                </div>
+
+                {isNoteComposerOpen ? (
+                  <div className="rounded-2xl bg-white p-3 ring-1 ring-black/5 dark:bg-gray-800">
+                    <textarea
+                      rows={4}
+                      value={pendingNoteText}
+                      onChange={(event) => setPendingNoteText(event.target.value)}
+                      placeholder="Write a note"
+                      className={`${INPUT_CLS} resize-none`}
+                    />
+                    <div className="mt-3 flex items-center justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPendingNoteText('');
+                          setIsNoteComposerOpen(false);
+                        }}
+                        className="rounded-full px-3 py-1.5 text-xs font-medium text-gray-500 hover:bg-gray-100 hover:text-gray-700 dark:text-gray-300 dark:hover:bg-gray-700"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleAddNote}
+                        disabled={!pendingNoteText.trim()}
+                        className="rounded-full bg-blue-500 px-4 py-1.5 text-xs font-semibold text-white hover:bg-blue-600 disabled:opacity-50"
+                      >
+                        Save
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="min-h-0 flex-1 overflow-y-auto">
+                    <div className="space-y-2 pr-1">
+                      {notes.length === 0 ? (
+                        <div className="text-xs italic text-gray-400">No notes yet.</div>
+                      ) : notes.map((note) => {
+                        const canDelete = note.authorRef === displayName;
+                        return (
+                          <div key={note.id} className="flex items-start gap-2 rounded-xl bg-white px-3 py-2 ring-1 ring-black/5 dark:bg-gray-800">
+                            <div className="flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-full bg-blue-100 text-[11px] font-semibold text-blue-700 dark:bg-blue-900/50 dark:text-blue-200">
+                              {canDelete && profileIcon ? (
+                                <IconDisplay iconKey={profileIcon} size={20} className="h-5 w-5 object-contain" alt={note.authorRef} />
+                              ) : (
+                                getInitials(note.authorRef)
+                              )}
+                            </div>
+                            <div className="min-w-0 flex-1 pt-0.5 text-sm text-gray-800 dark:text-gray-100">
+                              {note.text}
+                            </div>
+                            {canDelete ? (
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteClick(note.id)}
+                                className={`shrink-0 rounded-full px-2 py-1 text-xs font-medium transition-colors ${
+                                  confirmingDeleteId === note.id
+                                    ? 'bg-red-100 text-red-700 hover:bg-red-200 dark:bg-red-900/40 dark:text-red-300 dark:hover:bg-red-900/60'
+                                    : 'text-gray-400 hover:bg-gray-100 hover:text-red-500 dark:hover:bg-gray-700'
+                                }`}
+                                aria-label="Delete note"
+                              >
+                                {confirmingDeleteId === note.id ? 'Confirm delete?' : '✕'}
+                              </button>
+                            ) : null}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="shrink-0 border-t border-gray-200 px-4 py-4 dark:border-gray-800">
+              <button
+                type="button"
+                onClick={handleSave}
+                className="w-full rounded-3xl bg-blue-500 px-4 py-3 text-base font-semibold text-white hover:bg-blue-600"
+              >
+                Save
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+
+      {isLocationPickerOpen ? (
+        <AlbumLocationPicker
+          initialLocation={location ?? undefined}
+          onCancel={() => setIsLocationPickerOpen(false)}
+          onConfirm={(nextLocation) => {
+            setLocation(nextLocation);
+            setIsLocationPickerOpen(false);
+          }}
+        />
+      ) : null}
+    </div>,
+    document.body,
   );
 }

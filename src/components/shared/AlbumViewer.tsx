@@ -36,6 +36,11 @@ function formatLocation(location: AlbumEntry['location']): string | null {
   return `${location.latitude.toFixed(4)}, ${location.longitude.toFixed(4)}`;
 }
 
+function getLatestNoteText(entry: AlbumEntry): string {
+  const latestNote = entry.notes?.[entry.notes.length - 1];
+  return latestNote?.text?.trim() ?? '';
+}
+
 const SOURCE_KIND_LABELS: Record<NonNullable<AlbumEntry['sourceKind']>, string> = {
   manual: 'Manual',
   event: 'Event',
@@ -198,7 +203,13 @@ function FullScreenViewer({ entries, startIndex, onClose, onEdit, onDelete }: Fu
         onClick={(event) => event.stopPropagation()}
       >
         <div className="text-sm font-semibold">{dateLabel || 'No date'}</div>
-        {entry.note ? <div className="text-xs text-gray-200 whitespace-pre-wrap">{entry.note}</div> : null}
+        {entry.notes?.length ? (
+          <div className="space-y-1">
+            {entry.notes.map((note) => (
+              <div key={note.id} className="text-xs text-gray-200 whitespace-pre-wrap">{note.text}</div>
+            ))}
+          </div>
+        ) : null}
         {locationLabel ? (
           <div className="text-[11px] text-gray-300">{locationLabel}</div>
         ) : null}
@@ -249,7 +260,7 @@ export function AlbumViewer({ entries, onAdd, onEdit, onDelete, groupBy, title }
 
   function renderCard(entry: AlbumEntry, scope: AlbumEntry[]) {
     const dateLabel = formatReadableDate(entry.date);
-    const notePreview = entry.note?.trim() ?? '';
+    const notePreview = getLatestNoteText(entry);
     return (
       <button
         key={entry.id}

@@ -24,14 +24,14 @@ const sectionLabels: Record<ActionBarSection, string> = {
   actions: 'Actions',
   participants: 'Participants',
   location: 'Location',
-  attachments: 'Attachments',
+  attachments: 'Album',
 };
 
 const addButtonLabels: Record<ActionBarSection, string> = {
   actions: '+ Task',
   participants: '+ Participant',
   location: '+ Location',
-  attachments: '+ Attachment',
+  attachments: '+ Photo',
 };
 
 export function ActionBar({ eventId: _eventId, activeSection, onSectionChange, isEditMode, onEnterEdit, onExitEdit, onSectionAdd, onDeleteEvent, showGlobeButton = false, isGlobeViewOpen = false, onToggleGlobeView }: ActionBarProps) {

@@ -10,6 +10,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { useUserStore } from './useUserStore';
 import type {
   AccountResource,
+  AlbumEntry,
   ContactResource,
   DocResource,
   HomeResource,
@@ -65,6 +66,43 @@ function createMigratedAlbumEntry(photoUri: string) {
   };
 }
 
+function migrateAlbumEntryNotes(album: AlbumEntry[] | undefined): {
+  album: AlbumEntry[] | undefined;
+  changed: boolean;
+} {
+  if (!Array.isArray(album)) {
+    return { album, changed: false };
+  }
+
+  let changed = false;
+  const nextAlbum = album.map((entry) => {
+    const legacyNote = 'note' in entry && typeof (entry as AlbumEntry & { note?: unknown }).note === 'string'
+      ? ((entry as AlbumEntry & { note?: string }).note ?? '').trim()
+      : '';
+
+    if (!legacyNote) {
+      return entry;
+    }
+
+    changed = true;
+    const { note: _note, ...rest } = entry as AlbumEntry & { note?: string };
+    return {
+      ...rest,
+      notes: [{
+        id: crypto.randomUUID(),
+        authorRef: 'me',
+        text: legacyNote,
+        createdAt: `${entry.date}T00:00:00.000Z`,
+      }],
+    } satisfies AlbumEntry;
+  });
+
+  return {
+    album: changed ? nextAlbum : album,
+    changed,
+  };
+}
+
 function migrateLegacyAlbumEntries<T extends { photos?: unknown }>(entity: T): T {
   if (!Array.isArray(entity.photos) || !entity.photos.some((entry) => typeof entry === 'string')) {
     return entity;
@@ -79,16 +117,40 @@ function migrateLegacyAlbumEntries<T extends { photos?: unknown }>(entity: T): T
 }
 
 function migrateHomePhotoAlbums(home: HomeResource): HomeResource {
-  if (!home.stories?.length) return home;
+  const migratedHomeAlbum = migrateAlbumEntryNotes(home.album);
+  let nextHome = migratedHomeAlbum.changed
+    ? { ...home, album: migratedHomeAlbum.album }
+    : home;
+
+  if (!home.stories?.length) return nextHome;
 
   let changed = false;
   const stories = home.stories.map((story) => {
     let nextStory = migrateLegacyAlbumEntries(story);
     if (nextStory !== story) changed = true;
 
+    const migratedStoryPhotos = migrateAlbumEntryNotes(nextStory.photos);
+    if (migratedStoryPhotos.changed) {
+      nextStory = {
+        ...nextStory,
+        photos: migratedStoryPhotos.album,
+      };
+      changed = true;
+    }
+
     const rooms = story.rooms.map((room) => {
-      const nextRoom = migrateLegacyAlbumEntries(room);
+      let nextRoom = migrateLegacyAlbumEntries(room);
       if (nextRoom !== room) changed = true;
+
+      const migratedRoomPhotos = migrateAlbumEntryNotes(nextRoom.photos);
+      if (migratedRoomPhotos.changed) {
+        nextRoom = {
+          ...nextRoom,
+          photos: migratedRoomPhotos.album,
+        };
+        changed = true;
+      }
+
       return nextRoom;
     });
 
@@ -103,11 +165,24 @@ function migrateHomePhotoAlbums(home: HomeResource): HomeResource {
     return nextStory;
   });
 
-  if (!changed) return home;
+  if (!changed && nextHome === home) return home;
   return {
-    ...home,
+    ...nextHome,
     stories,
   };
+}
+
+function migrateResourceAlbumNotes(resource: Resource): Resource {
+  if (!('album' in resource)) {
+    return resource.type === 'home' ? migrateHomePhotoAlbums(resource) : resource;
+  }
+
+  const migratedAlbum = migrateAlbumEntryNotes(resource.album);
+  const nextResource = migratedAlbum.changed
+    ? ({ ...resource, album: migratedAlbum.album } as Resource)
+    : resource;
+
+  return nextResource.type === 'home' ? migrateHomePhotoAlbums(nextResource) : nextResource;
 }
 
 function getInverseContactRelationship(relationship: string): string {
@@ -280,9 +355,14 @@ function sanitizeResources(resources: Record<string, Resource>): Record<string, 
     || getItemTemplateByRef(refId) !== null;
 
   for (const [resourceId, resource] of Object.entries(resources)) {
-    if (isInventory(resource)) {
+    const migratedResource = migrateResourceAlbumNotes(resource);
+    if (migratedResource !== resource) {
+      changed = true;
+    }
+
+    if (isInventory(migratedResource)) {
       let resourceChanged = false;
-      const nextContainers = resource.containers?.map((container) => {
+      const nextContainers = migratedResource.containers?.map((container) => {
         let containerChanged = false;
         const nextLinks = container.links?.map((link) => {
           if (link.relationship !== 'location') return link;
@@ -337,31 +417,27 @@ function sanitizeResources(resources: Record<string, Resource>): Record<string, 
         };
       });
 
-      const nextItems = resource.items.length > 0 ? [] : resource.items;
-      if (nextItems !== resource.items) {
+      const nextItems = migratedResource.items.length > 0 ? [] : migratedResource.items;
+      if (nextItems !== migratedResource.items) {
         resourceChanged = true;
       }
 
       if (resourceChanged) {
         changed = true;
         nextResources[resourceId] = {
-          ...resource,
+          ...migratedResource,
           containers: nextContainers,
           items: nextItems,
         };
         continue;
       }
 
-      nextResources[resourceId] = resource;
+      nextResources[resourceId] = migratedResource;
       continue;
     }
 
-    if (isHome(resource)) {
-      const migratedHome = migrateHomePhotoAlbums(resource);
-      const homeResource = migratedHome;
-      if (homeResource !== resource) {
-        changed = true;
-      }
+    if (isHome(migratedResource)) {
+      const homeResource = migratedResource;
 
       let resourceChanged = false;
       const nextStories = homeResource.stories?.map((story) => {
@@ -471,7 +547,7 @@ function sanitizeResources(resources: Record<string, Resource>): Record<string, 
       }
     }
 
-    nextResources[resourceId] = resource;
+    nextResources[resourceId] = migratedResource;
   }
 
   return changed ? nextResources : resources;

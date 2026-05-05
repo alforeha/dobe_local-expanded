@@ -7,7 +7,7 @@
 
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { PlannedEvent, Event, EventAttachment, QuickActionsEvent, Task, TaskTemplate } from '../types';
+import type { EventAlbumEntry, NoteEntry, PlannedEvent, Event, EventAttachment, QuickActionsEvent, Task, TaskTemplate } from '../types';
 import { isTemplateQuestLocked } from '../utils/isTemplateQuestLocked';
 import { isOneOffEvent } from '../utils/isOneOffEvent';
 import { v4 as uuidv4 } from 'uuid';
@@ -115,6 +115,8 @@ function normalizeEventFields(event: Event | QuickActionsEvent): {
   const nextCoAttendees = Array.isArray(event.coAttendees) ? event.coAttendees : [];
   const normalizedAttachments = normalizeEventAttachments(event.attachments);
   const nextAttachments = normalizedAttachments.attachments;
+  const normalizedEventAlbum = normalizeEventAlbum(event.eventAlbum, nextAttachments);
+  const nextEventAlbum = normalizedEventAlbum.eventAlbum;
 
   return {
     event: {
@@ -122,12 +124,73 @@ function normalizeEventFields(event: Event | QuickActionsEvent): {
       sharedWith: nextSharedWith,
       coAttendees: nextCoAttendees,
       attachments: nextAttachments,
+      eventAlbum: nextEventAlbum,
     },
     changed:
       nextSharedWith !== event.sharedWith ||
       nextCoAttendees !== event.coAttendees ||
-      normalizedAttachments.changed,
+      normalizedAttachments.changed ||
+      normalizedEventAlbum.changed,
   };
+}
+
+function normalizeEventAlbum(
+  eventAlbum: Event['eventAlbum'] | undefined,
+  attachments: EventAttachment[],
+): {
+  eventAlbum: EventAlbumEntry[];
+  changed: boolean;
+} {
+  if (Array.isArray(eventAlbum)) {
+    let changed = false;
+    const nextEventAlbum = eventAlbum.map((entry) => {
+      const legacyNote = 'note' in entry && typeof (entry as EventAlbumEntry & { note?: unknown }).note === 'string'
+        ? ((entry as EventAlbumEntry & { note?: string }).note ?? '').trim()
+        : '';
+
+      if (!legacyNote) {
+        return entry;
+      }
+
+      changed = true;
+      const { note: _note, ...rest } = entry as EventAlbumEntry & { note?: string };
+      const notes: NoteEntry[] = [{
+        id: crypto.randomUUID(),
+        authorRef: 'me',
+        text: legacyNote,
+        createdAt: `${entry.date}T00:00:00.000Z`,
+      }];
+
+      return {
+        ...rest,
+        notes,
+      };
+    });
+
+    return { eventAlbum: changed ? nextEventAlbum : eventAlbum, changed };
+  }
+
+  if (attachments.length > 0) {
+    return {
+      eventAlbum: attachments.map((attachment) => ({
+        id: attachment.id,
+        date: attachment.createdAt.split('T')[0],
+        photoUri: attachment.uri,
+        location: attachment.location
+          ? {
+              latitude: attachment.location.latitude,
+              longitude: attachment.location.longitude,
+              ...(attachment.location.placeName ? { placeName: attachment.location.placeName } : {}),
+            }
+          : undefined,
+        contactRefs: [],
+        taskRef: undefined,
+      })),
+      changed: true,
+    };
+  }
+
+  return { eventAlbum: [], changed: true };
 }
 
 function normalizeEventAttachments(attachments: Event['attachments'] | string[] | undefined): {
