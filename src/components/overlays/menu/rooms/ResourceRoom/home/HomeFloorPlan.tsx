@@ -7,15 +7,15 @@ import { ColorPicker } from '../../../../../shared/ColorPicker';
 import { IconPicker } from '../../../../../shared/IconPicker';
 import { IconDisplay } from '../../../../../shared/IconDisplay';
 import { isImageIcon, resolveIcon } from '../../../../../../constants/iconMap';
-import { ATTACHMENT_MAX_BYTES } from '../../../../../../storage/storageBudget';
 import { useResourceStore } from '../../../../../../stores/useResourceStore';
 import { useScheduleStore } from '../../../../../../stores/useScheduleStore';
 import { useUserStore } from '../../../../../../stores/useUserStore';
-import type { AlbumEntry, FloorPlanRoom, FloorPlanSegment, FloorPlanSegmentKind, HomeStory, InventoryContainer, InventoryItemTemplate, InventoryResource, ItemInstance, ItemRecurringTask, PlacedInstance, RecurrenceDayOfWeek, ResourceRecurrenceRule, SegmentDirection } from '../../../../../../types/resource';
-import { makeDefaultRecurrenceRule, normalizeRecurrenceMode } from '../../../../../../types/resource';
+import type { AlbumEntry, FloorPlanRoom, FloorPlanSegment, FloorPlanSegmentKind, HomeResource, HomeStory, InventoryContainer, InventoryItemTemplate, InventoryResource, ItemInstance, ItemRecurringTask, PlacedInstance, RecurrenceDayOfWeek, ResourceRecurrenceRule, SegmentDirection } from '../../../../../../types/resource';
+import { isHome, makeDefaultRecurrenceRule, normalizeRecurrenceMode } from '../../../../../../types/resource';
 import type { Task } from '../../../../../../types/task';
 import type { ConsumeEntry, ConsumeInputFields, TextInputFields } from '../../../../../../types/taskTemplate';
 import { createAlbumEntry } from '../../../../../../utils/albumHelpers';
+import { capturePhoto } from '../../../../../../utils/photoCapture';
 import { getUserInventoryItemTemplates, mergeInventoryItemTemplates, resolveInventoryItemTemplate } from '../../../../../../utils/inventoryItems';
 import { getPointDistance, getPointsBounds, pointsMatch, segmentsToPoints } from '../../../../../../utils/floorPlan';
 import { AddItemPanel } from '../inventory/AddItemPanel';
@@ -408,21 +408,6 @@ function getSegmentLines(origin: { x: number; y: number }, segments: FloorPlanSe
 		start: points[index] ?? origin,
 		end: points[index + 1] ?? points[index] ?? origin,
 	}));
-}
-
-function readFileAsDataUrl(file: File): Promise<string> {
-	return new Promise((resolve, reject) => {
-		const reader = new FileReader();
-		reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : '');
-		reader.onerror = () => reject(reader.error ?? new Error('Unable to read file.'));
-		reader.readAsDataURL(file);
-	});
-}
-
-function estimateDataUrlSizeBytes(dataUrl: string): number {
-	const base64 = dataUrl.split(',')[1] ?? '';
-	const padding = base64.endsWith('==') ? 2 : base64.endsWith('=') ? 1 : 0;
-	return Math.max(0, Math.floor((base64.length * 3) / 4) - padding);
 }
 
 export function HomeFloorPlan({
@@ -2108,56 +2093,55 @@ export function HomeFloorPlan({
 	}
 	void addLooseItemToRoom;
 
-	async function handlePhotoSelection(scopeId: string, roomId: string | null, files: FileList | null) {
-		if (!files || files.length === 0) return;
-		if ((roomId && !onUpdateRoomPhotos) || (!roomId && !onUpdateStoryPhotos)) return;
+	function getCurrentHome(): HomeResource | null {
+		if (!homeId) return null;
+		const candidate = resources[homeId];
+		return candidate && isHome(candidate) ? candidate : null;
+	}
+
+	async function captureAndAppendToHomeAlbum(
+		scopeId: string,
+		sourceRef: string | undefined,
+		sourceKind: NonNullable<AlbumEntry['sourceKind']>,
+	): Promise<AlbumEntry | null> {
+		const home = getCurrentHome();
+		if (!home) {
+			setPhotoStatusByScope((current) => ({ ...current, [scopeId]: 'Photo album unavailable.' }));
+			return null;
+		}
 
 		setPhotoUploadBusyByScope((current) => ({ ...current, [scopeId]: true }));
 		setPhotoStatusByScope((current) => ({ ...current, [scopeId]: '' }));
 
-		const existingPhotos = roomId
-			? (story.rooms.find((entry) => entry.id === roomId)?.photos ?? [])
-			: (story.photos ?? []);
-		const nextPhotos = [...existingPhotos];
-		let addedCount = 0;
-		let oversizedCount = 0;
-		let failedCount = 0;
-
-		for (const file of Array.from(files)) {
-			if (file.size > ATTACHMENT_MAX_BYTES) {
-				oversizedCount += 1;
-				continue;
+		try {
+			const result = await capturePhoto();
+			if (!result) {
+				setPhotoStatusByScope((current) => ({ ...current, [scopeId]: 'No photo captured.' }));
+				return null;
 			}
 
-			try {
-				const dataUrl = await readFileAsDataUrl(file);
-				if (!dataUrl || estimateDataUrlSizeBytes(dataUrl) > ATTACHMENT_MAX_BYTES) {
-					oversizedCount += 1;
-					continue;
-				}
-				nextPhotos.push(createAlbumEntry({ photoUri: dataUrl }));
-				addedCount += 1;
-			} catch {
-				failedCount += 1;
-			}
+			const entry = createAlbumEntry({
+				photoUri: result.uri,
+				location: result.location,
+				sourceRef,
+				sourceKind,
+			});
+
+			const nextAlbum = [...(home.album ?? []), entry];
+			setResource({
+				...home,
+				updatedAt: new Date().toISOString(),
+				album: nextAlbum,
+			});
+
+			setPhotoStatusByScope((current) => ({ ...current, [scopeId]: 'Photo saved to home album.' }));
+			return entry;
+		} catch {
+			setPhotoStatusByScope((current) => ({ ...current, [scopeId]: 'Unable to capture photo.' }));
+			return null;
+		} finally {
+			setPhotoUploadBusyByScope((current) => ({ ...current, [scopeId]: false }));
 		}
-
-		if (addedCount > 0) {
-			if (roomId) {
-				onUpdateRoomPhotos?.(roomId, nextPhotos);
-			} else {
-				onUpdateStoryPhotos?.(nextPhotos);
-			}
-		}
-
-		const messages: string[] = [];
-		if (addedCount > 0) messages.push(`${addedCount} photo${addedCount === 1 ? '' : 's'} added.`);
-		if (oversizedCount > 0) messages.push(`${oversizedCount} too large.`);
-		if (failedCount > 0) messages.push(`${failedCount} failed to load.`);
-		if (messages.length === 0) messages.push('No photos added.');
-
-		setPhotoStatusByScope((current) => ({ ...current, [scopeId]: messages.join(' ') }));
-		setPhotoUploadBusyByScope((current) => ({ ...current, [scopeId]: false }));
 	}
 
 	function removePhoto(scopeId: string, roomId: string | null, photoIndex: number) {
@@ -2211,22 +2195,17 @@ export function HomeFloorPlan({
 				)}
 				{editable ? (
 					<div className="space-y-2">
-						<label className="inline-flex cursor-pointer items-center rounded-full bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-100 dark:bg-blue-900/30 dark:text-blue-200 dark:hover:bg-blue-900/50">
-							<span>{isBusy ? 'Adding photo...' : 'Add photo'}</span>
-							<input
-								type="file"
-								accept="image/*"
-								capture="environment"
-								multiple
-								className="hidden"
-								onChange={(event) => {
-									const selectedFiles = event.target.files;
-									event.target.value = '';
-									void handlePhotoSelection(scopeId, roomId, selectedFiles);
-								}}
-							/>
-						</label>
-						<div className="text-[11px] text-gray-500 dark:text-gray-400">Photos are stored with this home layout. Max {Math.round(ATTACHMENT_MAX_BYTES / 1024)} KB each.</div>
+						<button
+							type="button"
+							disabled={isBusy}
+							onClick={() => {
+								void captureAndAppendToHomeAlbum(scopeId, roomId ?? undefined, 'manual');
+							}}
+							className="inline-flex items-center rounded-full bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-100 disabled:opacity-50 dark:bg-blue-900/30 dark:text-blue-200 dark:hover:bg-blue-900/50"
+						>
+							{isBusy ? 'Adding photo...' : 'Take Photo'}
+						</button>
+						<div className="text-[11px] text-gray-500 dark:text-gray-400">New photos are saved to this home&apos;s album.</div>
 						{status ? <div className="text-[11px] text-gray-500 dark:text-gray-400">{status}</div> : null}
 					</div>
 				) : null}
@@ -2342,8 +2321,25 @@ export function HomeFloorPlan({
 													>
 														View
 													</button>
+													{(() => {
+														const placedScopeId = `placed-container:${entry.placement.id}`;
+														const isPhotoBusy = photoUploadBusyByScope[placedScopeId] === true;
+														return (
+															<button
+																type="button"
+																disabled={isPhotoBusy}
+																onClick={() => { void captureAndAppendToHomeAlbum(placedScopeId, entry.placement.id, 'placed-container'); }}
+																className="rounded-full bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-100 disabled:opacity-50 dark:bg-blue-900/30 dark:text-blue-200 dark:hover:bg-blue-900/50"
+															>
+																{isPhotoBusy ? 'Adding photo...' : 'Take Photo'}
+															</button>
+														);
+													})()}
 													<button type="button" onClick={() => removePlacedItem(room.id, entry.placement.id)} className="rounded-full bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-100 dark:bg-red-900/20 dark:text-red-300">Remove</button>
 												</div>
+												{photoStatusByScope[`placed-container:${entry.placement.id}`] ? (
+													<div className="mt-2 text-[11px] text-gray-500 dark:text-gray-400">{photoStatusByScope[`placed-container:${entry.placement.id}`]}</div>
+												) : null}
 											</div>
 										) : null}
 									</div>
@@ -2605,8 +2601,25 @@ export function HomeFloorPlan({
 												)}
 												<div className="mt-3 flex flex-wrap items-center gap-2">
 													<div className="text-[11px] text-gray-500 dark:text-gray-400">Drag the selected footprint on the canvas to move it.</div>
+													{(() => {
+														const placedScopeId = `placed-item:${entry.placement.id}`;
+														const isPhotoBusy = photoUploadBusyByScope[placedScopeId] === true;
+														return (
+															<button
+																type="button"
+																disabled={isPhotoBusy}
+																onClick={() => { void captureAndAppendToHomeAlbum(placedScopeId, entry.placement.id, 'placed-item'); }}
+																className="rounded-full bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-100 disabled:opacity-50 dark:bg-blue-900/30 dark:text-blue-200 dark:hover:bg-blue-900/50"
+															>
+																{isPhotoBusy ? 'Adding photo...' : 'Take Photo'}
+															</button>
+														);
+													})()}
 													<button type="button" onClick={() => removePlacedItem(room.id, entry.placement.id)} className="rounded-full bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-100 dark:bg-red-900/20 dark:text-red-300">Remove</button>
 												</div>
+												{photoStatusByScope[`placed-item:${entry.placement.id}`] ? (
+													<div className="mt-2 text-[11px] text-gray-500 dark:text-gray-400">{photoStatusByScope[`placed-item:${entry.placement.id}`]}</div>
+												) : null}
 											</div>
 										) : null}
 									</div>
