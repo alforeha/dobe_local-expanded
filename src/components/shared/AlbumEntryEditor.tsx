@@ -282,7 +282,7 @@ export function AlbumEntryEditor({
     ? location.placeName?.trim()
       ? location.placeName.trim()
       : formatCoordinates(location.latitude, location.longitude)
-    : 'No location set';
+    : 'Set Location';
 
   const showContacts = Boolean(contactOptions?.length);
 
@@ -417,7 +417,7 @@ export function AlbumEntryEditor({
                     className="flex min-w-0 flex-1 items-center gap-2 rounded-full border border-gray-200 bg-white px-3 py-2 text-left shadow-sm hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:hover:bg-gray-700"
                   >
                     <span className="text-sm text-gray-500 dark:text-gray-400">📍</span>
-                    <span className="truncate text-xs font-medium text-gray-700 dark:text-gray-200">{locationLabel}</span>
+                    <span className="min-w-0 flex-1 truncate text-xs font-medium text-gray-700 dark:text-gray-200">{locationLabel}</span>
                   </button>
                 </div>
 
@@ -570,6 +570,7 @@ export function AlbumEntryEditor({
       {isLocationPickerOpen ? (
         <AlbumLocationPicker
           initialLocation={location ?? undefined}
+          photoUri={photoUri}
           onCancel={() => setIsLocationPickerOpen(false)}
           onConfirm={(nextLocation) => {
             setLocation(nextLocation);
