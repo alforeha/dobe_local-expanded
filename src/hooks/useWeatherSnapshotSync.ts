@@ -14,7 +14,7 @@
 import { useEffect, useRef } from 'react';
 import { useSystemStore } from '../stores/useSystemStore';
 import { useScheduleStore } from '../stores/useScheduleStore';
-import { fetchWeatherSummaryForDate } from '../utils/weatherService';
+import { buildQuickActionsWeatherSnapshot, fetchWeatherSummaryForDate } from '../utils/weatherService';
 import { getAppDate } from '../utils/dateUtils';
 import type { NamedLocation } from '../types';
 import type { QuickActionsEvent, QuickActionsWeatherSnapshot } from '../types/event';
@@ -86,12 +86,7 @@ export function useWeatherSnapshotSync(): void {
           try {
             const weather = await fetchWeatherSummaryForDate(loc.lat, loc.lng, today);
             if (!weather) return null;
-            const snapshot: QuickActionsWeatherSnapshot = {
-              icon: weather.icon,
-              high: weather.high,
-              low: weather.low,
-              ...(weather.precipitation !== undefined ? { precipitation: weather.precipitation } : {}),
-            };
+            const snapshot: QuickActionsWeatherSnapshot = buildQuickActionsWeatherSnapshot(weather);
             return [loc.id, snapshot] as [string, QuickActionsWeatherSnapshot];
           } catch {
             return null;

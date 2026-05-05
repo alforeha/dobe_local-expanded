@@ -32,6 +32,7 @@ import { autoCompleteSystemTask } from './resourceEngine';
 import { isWisdomTemplate } from './xpBoosts';
 import { syncDailyQuestProgressForTask } from './markerEngine';
 import { getCurrentAppNowMs, getTaskCooldownState } from '../utils/taskCooldown';
+import { createQuickActionsEvent } from '../utils/qaUtils';
 
 const STAT_GROUP_KEYS: StatGroupKey[] = ['health', 'strength', 'agility', 'defense', 'charisma', 'wisdom'];
 
@@ -501,14 +502,7 @@ export function completeManualGTDItem(
   // execution path and context bonuses as Quick Actions tasks.
   const existingQa = scheduleStore.activeEvents[qaId] as QuickActionsEvent | undefined;
   if (!existingQa) {
-    scheduleStore.setActiveEvent({
-      id: qaId,
-      eventType: 'quickActions',
-      date: today,
-      completions: [],
-      xpAwarded: 0,
-      sharedCompletions: null,
-    });
+    scheduleStore.setActiveEvent(createQuickActionsEvent(today));
   }
 
   const initialResultFields = {

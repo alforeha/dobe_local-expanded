@@ -6,11 +6,16 @@ import { useShallow } from 'zustand/react/shallow';
 import { EventBlock } from './EventBlock';
 import { QACompletionIcon } from './QACompletionIcon';
 import { QACompletionPopup } from './QACompletionPopup';
+import { WeatherCapturePopup } from './WeatherCapturePopup';
+import { IconDisplay } from '../../shared/IconDisplay';
 import { resolveTaskIcon, resolveTemplate, findQAEventForDate } from './qaUtils';
-import { format, hourLabel, isSameDay, getOffsetNow } from '../../../utils/dateUtils';
+import { createQuickActionsEvent } from '../../../utils/qaUtils';
+import { fetchWeatherForecast } from '../../../utils/weatherService';
+import { format, getAppDate, hourLabel, isSameDay, getOffsetNow } from '../../../utils/dateUtils';
 import { isOneOffEvent } from '../../../utils/isOneOffEvent';
 import { isPlannedEventDue } from '../../../engine/rollover';
-import type { Event, PlannedEvent, QuickActionsCompletion } from '../../../types';
+import type { Event, PlannedEvent, QAAlbumEntry, QuickActionsCompletion, QuickActionsEvent } from '../../../types';
+import type { WeatherDay } from '../../../utils/weatherService';
 import { ONBOARDING_GLOW } from '../../../constants/onboardingKeys';
 import { useGlows } from '../../../hooks/useOnboardingGlow';
 
@@ -278,6 +283,12 @@ interface DayViewBodyProps {
 
 export function DayViewBody({ date, onEventOpen, onEditPlanned }: DayViewBodyProps) {
   const [openCompletion, setOpenCompletion] = useState<QuickActionsCompletion | null>(null);
+  const [openAlbumEntry, setOpenAlbumEntry] = useState<QAAlbumEntry | null>(null);
+  const [weatherCaptureQa, setWeatherCaptureQa] = useState<QuickActionsEvent | null>(null);
+  const [todayWeatherState, setTodayWeatherState] = useState<{
+    locationId: string;
+    weather: WeatherDay | null;
+  } | null>(null);
   const welcomeEventGlows = useGlows(ONBOARDING_GLOW.WELCOME_EVENT_CARD);
 
   // Tick every minute so the time indicator stays accurate
@@ -301,6 +312,7 @@ export function DayViewBody({ date, onEventOpen, onEditPlanned }: DayViewBodyPro
 
   // ── Time range preference ─────────────────────────────────────────────────
   const timePreferences = useSystemStore((s) => s.settings?.timePreferences);
+  const locationPreferences = useSystemStore((s) => s.settings?.locationPreferences);
   const startHour = parseInt((timePreferences?.dayView?.startTime ?? '06:00').split(':')[0]);
   const endHour   = parseInt((timePreferences?.dayView?.endTime   ?? '23:00').split(':')[0]);
   const visibleHours = HOURS.filter((h) => h >= startHour && h <= endHour);
@@ -340,6 +352,9 @@ export function DayViewBody({ date, onEventOpen, onEditPlanned }: DayViewBodyPro
   // Uses robust finder that handles UTC vs local date key mismatch
   const qaEvent = findQAEventForDate(activeEvents, historyEvents, dateIso);
   const qaCompletions: QuickActionsCompletion[] = qaEvent?.completions ?? [];
+  const weatherCaptureEntries = isToday
+    ? (qaEvent?.album ?? []).filter((entry) => entry.weatherCapture)
+    : [];
 
   // Group QA completions by hour slot for rendering
   const qaByHour = new Map<number, QuickActionsCompletion[]>();
@@ -348,6 +363,39 @@ export function DayViewBody({ date, onEventOpen, onEditPlanned }: DayViewBodyPro
     if (!qaByHour.has(h)) qaByHour.set(h, []);
     qaByHour.get(h)!.push(c);
   }
+
+  const locations = locationPreferences?.locations ?? [];
+  const activeLocationId = locationPreferences?.activeLocationId ?? null;
+  const activeLocation = locations.find((location) => location.id === activeLocationId) ?? locations[0] ?? null;
+
+  useEffect(() => {
+    if (!isToday || !activeLocation) return;
+
+    let cancelled = false;
+    const locationId = activeLocation.id;
+
+    void fetchWeatherForecast(activeLocation.lat, activeLocation.lng, 1)
+      .then((forecast) => {
+        if (cancelled) return;
+        setTodayWeatherState({
+          locationId,
+          weather: forecast.find((day) => day.date === getAppDate()) ?? forecast[0] ?? null,
+        });
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setTodayWeatherState({ locationId, weather: null });
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeLocation, isToday]);
+
+  const todayWeather = isToday && activeLocation && todayWeatherState?.locationId === activeLocation.id
+    ? todayWeatherState.weather
+    : null;
 
   // ── Collect events ────────────────────────────────────────────────────────
   // dayEvents: events that START on this date — shown in the hour grid.
@@ -509,6 +557,21 @@ export function DayViewBody({ date, onEventOpen, onEditPlanned }: DayViewBodyPro
   const nowY = isToday
     ? scaledSlotTop[nowHour] + (nowMinutes / 60) * (scaledSlotTop[nowHour + 1] - scaledSlotTop[nowHour]) - clipOffsetPx
     : -1;
+  const sunriseHour = todayWeather?.sunrise ? new Date(todayWeather.sunrise).getHours() : null;
+  const sunsetHour = todayWeather?.sunset ? new Date(todayWeather.sunset).getHours() : null;
+  const weatherCaptureTopPx = nowY >= 0 ? nowY - 32 : Math.max(0, scaledSlotTop[startHour] - clipOffsetPx + 4);
+  const currentWeatherSnapshot = isToday ? (qaEvent?.weatherSnapshot ?? null) : null;
+
+  function handleOpenWeatherCapture() {
+    const todayIso = getAppDate();
+    const currentQa = findQAEventForDate(activeEvents, historyEvents, todayIso) ?? createQuickActionsEvent(todayIso);
+
+    if (!qaEvent) {
+      useScheduleStore.getState().setActiveEvent(currentQa);
+    }
+
+    setWeatherCaptureQa(currentQa);
+  }
 
   return (
     <div ref={scrollRef} className="flex-1 overflow-y-auto">
@@ -527,7 +590,11 @@ export function DayViewBody({ date, onEventOpen, onEditPlanned }: DayViewBodyPro
                 fontWeight: 900,
               }}
             >
-              {hourLabel(h)}
+              <div className="flex items-center gap-1">
+                <span>{hourLabel(h)}</span>
+                {isToday && sunriseHour === h && <span aria-hidden="true">🌅</span>}
+                {isToday && sunsetHour === h && <span aria-hidden="true">🌇</span>}
+              </div>
             </div>
           ))}
         </div>
@@ -559,13 +626,38 @@ export function DayViewBody({ date, onEventOpen, onEditPlanned }: DayViewBodyPro
           {/* Current time indicator */}
           {nowY >= 0 && (
             <div
-              className="absolute right-0 z-20 pointer-events-none"
+              className={`absolute right-0 z-20 ${isToday ? 'pointer-events-auto' : 'pointer-events-none'}`}
               style={{ top: nowY, left: '-3rem' }}
             >
               {/* Line renders first (bottom of stacking), chip on top centered on the line */}
               <div className="relative border-t-2 border-purple-500" />
-              <div className="absolute left-1.5 top-0 -translate-y-1/2 px-2 py-1.5 rounded border border-purple-500 bg-white dark:bg-gray-900 text-purple-600 dark:text-purple-400 font-semibold leading-none whitespace-nowrap" style={{ fontSize: '13px' }}>
-                {nowTimeLabel}
+              <div className="absolute left-1.5 top-0 z-20 -translate-y-1/2">
+                <div className="relative inline-flex items-center justify-center">
+                  {currentWeatherSnapshot && (
+                    <>
+                      <div className="pointer-events-none absolute left-1/2 top-0 z-10 -translate-x-1/2 -translate-y-[98%] rounded-full bg-white/80 p-0.5 text-purple-500 dark:bg-gray-900/80 dark:text-purple-300">
+                        <IconDisplay
+                          iconKey={currentWeatherSnapshot.icon}
+                          size={18}
+                          className="h-[18px] w-[18px] object-contain"
+                          alt=""
+                        />
+                      </div>
+                      <div className="pointer-events-none absolute left-1/2 top-full z-10 -translate-x-1/2 -translate-y-[10%] rounded-full bg-white/85 px-1.5 py-0.5 text-[11px] font-medium leading-none text-gray-500 shadow-sm dark:bg-gray-900/85 dark:text-gray-400">
+                        {currentWeatherSnapshot.high}°
+                      </div>
+                    </>
+                  )}
+                  <button
+                    type="button"
+                    onClick={isToday ? handleOpenWeatherCapture : undefined}
+                    disabled={!isToday}
+                    className="relative z-20 rounded border border-purple-500 bg-white px-2 py-1.5 font-semibold leading-none whitespace-nowrap text-purple-600 dark:bg-gray-900 dark:text-purple-400 disabled:cursor-default"
+                    style={{ fontSize: '13px' }}
+                  >
+                    {nowTimeLabel}
+                  </button>
+                </div>
               </div>
             </div>
           )}
@@ -666,13 +758,36 @@ export function DayViewBody({ date, onEventOpen, onEditPlanned }: DayViewBodyPro
               );
             })
           )}
+
+          {weatherCaptureEntries.map((entry, idx) => (
+            <QACompletionIcon
+              key={entry.id}
+              iconKey="camera"
+              photoUri={entry.photoUri}
+              weatherIconKey={entry.weatherSnapshot?.icon ?? undefined}
+              offsetIndex={(qaByHour.get(nowHour)?.length ?? 0) + idx}
+              topPx={weatherCaptureTopPx}
+              onClick={() => setOpenAlbumEntry(entry)}
+            />
+          ))}
         </div>
       </div>
 
-      {openCompletion && (
+      {(openCompletion || openAlbumEntry) && (
         <QACompletionPopup
-          completion={openCompletion}
-          onClose={() => setOpenCompletion(null)}
+          completion={openCompletion ?? undefined}
+          albumEntry={openAlbumEntry ?? undefined}
+          onClose={() => {
+            setOpenCompletion(null);
+            setOpenAlbumEntry(null);
+          }}
+        />
+      )}
+
+      {weatherCaptureQa && (
+        <WeatherCapturePopup
+          qaEvent={weatherCaptureQa}
+          onClose={() => setWeatherCaptureQa(null)}
         />
       )}
     </div>

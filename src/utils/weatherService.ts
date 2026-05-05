@@ -1,3 +1,5 @@
+import type { QuickActionsWeatherSnapshot } from '../types';
+
 export interface WeatherSummaryDay {
   date: string;
   icon: string;
@@ -5,6 +7,8 @@ export interface WeatherSummaryDay {
   low: number;
   /** Actual total precipitation in mm (recorded for past days, forecast for current/future) */
   precipitation?: number;
+  /** Max wind speed in km/h for the day. */
+  windSpeed?: number;
 }
 
 export interface WeatherDay extends WeatherSummaryDay {
@@ -72,6 +76,18 @@ function iconForWeatherCode(code: number): string {
   return WEATHER_ICON_MAP[code] ?? 'weather-unknown';
 }
 
+export function buildQuickActionsWeatherSnapshot(
+  day: Pick<WeatherSummaryDay, 'icon' | 'high' | 'low' | 'precipitation' | 'windSpeed'>,
+): QuickActionsWeatherSnapshot {
+  return {
+    icon: day.icon,
+    high: day.high,
+    low: day.low,
+    ...(day.precipitation !== undefined ? { precipitation: day.precipitation } : {}),
+    ...(day.windSpeed !== undefined ? { windSpeed: day.windSpeed } : { windSpeed: undefined }),
+  };
+}
+
 export async function fetchWeatherSummaryForDate(
   lat: number,
   lng: number,
@@ -95,6 +111,7 @@ export async function fetchWeatherSummaryForDate(
     high: day.high,
     low: day.low,
     precipitation: day.precipitation,
+    windSpeed: day.windSpeed,
   };
 }
 

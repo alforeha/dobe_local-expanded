@@ -29,7 +29,7 @@ import { computeGTDList } from './resourceEngine';
 import { ribbet } from '../coach/ribbet';
 import { appendFeedEntry, FEED_SOURCE } from './feedEngine';
 import { localISODate, addDays, getAppDate } from '../utils/dateUtils';
-import { fetchWeatherSummaryForDate } from '../utils/weatherService';
+import { buildQuickActionsWeatherSnapshot, fetchWeatherSummaryForDate } from '../utils/weatherService';
 
 // ── DATE HELPERS ────────────────────────────────────────────────────────────────────────────────
 
@@ -379,12 +379,7 @@ async function step9_coachReview(newDate: string): Promise<void> {
       try {
         const weather = await fetchWeatherSummaryForDate(loc.lat, loc.lng, newDate);
         if (!weather) return null;
-        const snapshot: QuickActionsWeatherSnapshot = {
-          icon: weather.icon,
-          high: weather.high,
-          low: weather.low,
-          ...(weather.precipitation !== undefined ? { precipitation: weather.precipitation } : {}),
-        };
+        const snapshot: QuickActionsWeatherSnapshot = buildQuickActionsWeatherSnapshot(weather);
         return [loc.id, snapshot] as [string, QuickActionsWeatherSnapshot];
       } catch {
         return null;
@@ -418,6 +413,7 @@ async function step9_coachReview(newDate: string): Promise<void> {
     xpAwarded: existingQa?.xpAwarded ?? 0,
     weatherSnapshot,
     locationSnapshots: Object.keys(locationSnapshots).length > 0 ? locationSnapshots : null,
+    album: existingQa?.album ?? [],
     sharedCompletions: null,
   };
 

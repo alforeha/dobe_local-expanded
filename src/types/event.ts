@@ -113,6 +113,23 @@ export interface QuickActionsWeatherSnapshot {
   low: number;
   /** Actual total precipitation in mm (recorded for past days, forecast for current/future) */
   precipitation?: number;
+  /** Max wind speed in km/h for the day. */
+  windSpeed?: number;
+}
+
+export interface QAAlbumEntry {
+  id: string;
+  date: string;
+  photoUri?: string;
+  notes?: NoteEntry[];
+  location?: {
+    latitude: number;
+    longitude: number;
+    placeName?: string;
+  };
+  taskRef?: string;
+  weatherCapture?: boolean;
+  weatherSnapshot?: QuickActionsWeatherSnapshot;
 }
 
 export interface QuickActionsEvent {
@@ -129,6 +146,8 @@ export interface QuickActionsEvent {
   weatherSnapshot?: QuickActionsWeatherSnapshot | null;
   /** Per-location weather snapshots captured at rollover, keyed by NamedLocation.id. */
   locationSnapshots?: Record<string, QuickActionsWeatherSnapshot> | null;
+  /** Daily quick-actions album entries. */
+  album?: QAAlbumEntry[];
   /** STUB: MULTI-USER — stores shared Quick Actions completions once the MULTI-USER chapter is enabled. */
   sharedCompletions: SharedCompletionsStub;
 }

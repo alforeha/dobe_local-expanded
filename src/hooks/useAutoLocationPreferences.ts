@@ -3,7 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { useSystemStore } from '../stores/useSystemStore';
 import { useScheduleStore } from '../stores/useScheduleStore';
 import { reverseGeocode } from '../utils/geocode';
-import { fetchWeatherSummaryForDate } from '../utils/weatherService';
+import { buildQuickActionsWeatherSnapshot, fetchWeatherSummaryForDate } from '../utils/weatherService';
 import { getAppDate } from '../utils/dateUtils';
 import type { NamedLocation, QuickActionsEvent } from '../types';
 
@@ -18,22 +18,13 @@ async function backfillTodayWeather(location: NamedLocation): Promise<void> {
   try {
     const weather = await fetchWeatherSummaryForDate(location.lat, location.lng, today);
     if (weather) {
+      const snapshot = buildQuickActionsWeatherSnapshot(weather);
       scheduleStore.setActiveEvent({
         ...(qa as QuickActionsEvent),
-        weatherSnapshot: {
-          icon: weather.icon,
-          high: weather.high,
-          low: weather.low,
-          ...(weather.precipitation !== undefined ? { precipitation: weather.precipitation } : {}),
-        },
+        weatherSnapshot: snapshot,
         locationSnapshots: {
           ...(qa as QuickActionsEvent).locationSnapshots,
-          [location.id]: {
-            icon: weather.icon,
-            high: weather.high,
-            low: weather.low,
-            ...(weather.precipitation !== undefined ? { precipitation: weather.precipitation } : {}),
-          },
+          [location.id]: snapshot,
         },
       });
     }

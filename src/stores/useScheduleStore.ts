@@ -7,7 +7,17 @@
 
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { EventAlbumEntry, NoteEntry, PlannedEvent, Event, EventAttachment, QuickActionsEvent, Task, TaskTemplate } from '../types';
+import type {
+  EventAlbumEntry,
+  NoteEntry,
+  PlannedEvent,
+  Event,
+  EventAttachment,
+  QuickActionsEvent,
+  QuickActionsWeatherSnapshot,
+  Task,
+  TaskTemplate,
+} from '../types';
 import { isTemplateQuestLocked } from '../utils/isTemplateQuestLocked';
 import { isOneOffEvent } from '../utils/isOneOffEvent';
 import { v4 as uuidv4 } from 'uuid';
@@ -108,7 +118,28 @@ function normalizeEventFields(event: Event | QuickActionsEvent): {
   changed: boolean;
 } {
   if (event.eventType === 'quickActions') {
-    return { event, changed: false };
+    const quickActionsEvent = event as QuickActionsEvent;
+    const normalizedWeatherSnapshot = normalizeQuickActionsWeatherSnapshot(quickActionsEvent.weatherSnapshot);
+    const normalizedLocationSnapshots = normalizeQuickActionsLocationSnapshots(quickActionsEvent.locationSnapshots);
+    const nextAlbum = Array.isArray(quickActionsEvent.album) ? quickActionsEvent.album : [];
+
+    if (
+      !normalizedWeatherSnapshot.changed &&
+      !normalizedLocationSnapshots.changed &&
+      Array.isArray(quickActionsEvent.album)
+    ) {
+      return { event, changed: false };
+    }
+
+    return {
+      event: {
+        ...quickActionsEvent,
+        weatherSnapshot: normalizedWeatherSnapshot.snapshot,
+        locationSnapshots: normalizedLocationSnapshots.snapshots,
+        album: nextAlbum,
+      },
+      changed: true,
+    };
   }
 
   const nextSharedWith = Array.isArray(event.sharedWith) ? event.sharedWith : [];
@@ -131,6 +162,61 @@ function normalizeEventFields(event: Event | QuickActionsEvent): {
       nextCoAttendees !== event.coAttendees ||
       normalizedAttachments.changed ||
       normalizedEventAlbum.changed,
+  };
+}
+
+function normalizeQuickActionsWeatherSnapshot(
+  snapshot: QuickActionsEvent['weatherSnapshot'],
+): {
+  snapshot: QuickActionsEvent['weatherSnapshot'];
+  changed: boolean;
+} {
+  if (snapshot == null) {
+    return { snapshot, changed: false };
+  }
+
+  if ('windSpeed' in snapshot) {
+    return { snapshot, changed: false };
+  }
+
+  return {
+    snapshot: {
+      ...snapshot,
+      windSpeed: snapshot.windSpeed,
+    },
+    changed: true,
+  };
+}
+
+function normalizeQuickActionsLocationSnapshots(
+  snapshots: QuickActionsEvent['locationSnapshots'],
+): {
+  snapshots: QuickActionsEvent['locationSnapshots'];
+  changed: boolean;
+} {
+  if (!snapshots) {
+    return { snapshots, changed: false };
+  }
+
+  let changed = false;
+  const nextEntries = Object.entries(snapshots).map(([locationId, snapshot]) => {
+    if ('windSpeed' in snapshot) {
+      return [locationId, snapshot] as const;
+    }
+
+    changed = true;
+    return [
+      locationId,
+      {
+        ...snapshot,
+        windSpeed: (snapshot as QuickActionsWeatherSnapshot).windSpeed,
+      },
+    ] as const;
+  });
+
+  return {
+    snapshots: changed ? Object.fromEntries(nextEntries) : snapshots,
+    changed,
   };
 }
 
