@@ -19,7 +19,7 @@ export function Footer({ activeView, onViewChange, onCoachOpen, onMenuOpen }: Fo
   const menuButtonGlows = useGlows(ONBOARDING_GLOW.MENU_BUTTON);
 
   return (
-    <footer className="shrink-0 flex items-stretch h-20 border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
+    <footer className="relative z-30 shrink-0 flex h-[4.5rem] items-stretch overflow-visible border-t border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900 sm:h-20">
       {/* LEFT — Coach button, full height, right separator */}
       <div className="w-14 shrink-0 border-r border-gray-200 dark:border-gray-700">
         <GlowRing active={coachButtonGlows} rounded="lg" className="block h-full w-full">
@@ -28,7 +28,7 @@ export function Footer({ activeView, onViewChange, onCoachOpen, onMenuOpen }: Fo
       </div>
 
       {/* CENTRE — D/W/M tabs (top) + coach comment (bottom) */}
-      <div className="flex flex-1 flex-col justify-center min-w-0">
+      <div className="relative flex min-w-0 flex-1 flex-col justify-end pt-3 sm:pt-[18px]">
         <TimeViewTabs activeView={activeView} onViewChange={onViewChange} />
         <CoachComment />
       </div>

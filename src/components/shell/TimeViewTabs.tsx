@@ -19,7 +19,7 @@ export function TimeViewTabs({ activeView, onViewChange }: TimeViewTabsProps) {
   const monthViewGlows = useGlows(ONBOARDING_GLOW.MONTH_VIEW_NAV);
 
   return (
-    <div className="flex items-end gap-2 px-3 pt-2 pb-0">
+    <div className="absolute left-0 right-0 top-[-14px] z-10 flex items-end gap-2 px-3 pb-0">
       {TABS.map(({ view, label }) => (
         <GlowRing
           key={view}

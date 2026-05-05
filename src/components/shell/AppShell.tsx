@@ -372,7 +372,7 @@ export function AppShell() {
   }
 
   return (
-    <div className="flex h-dvh flex-col overflow-hidden bg-gray-50 dark:bg-gray-900">
+    <div className="flex h-dvh flex-col overflow-x-hidden bg-gray-50 dark:bg-gray-900">
       <Header onProfileOpen={() => setOverlay('profile')} />
       <Body
         activeView={activeView}
