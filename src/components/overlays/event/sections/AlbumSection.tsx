@@ -9,11 +9,10 @@ import { AlbumViewer } from '../../../shared/AlbumViewer';
 
 interface AlbumSectionProps {
   event: Event;
-  isEditMode: boolean;
   addRequestNonce?: number;
 }
 
-export function AlbumSection({ event, isEditMode, addRequestNonce = 0 }: AlbumSectionProps) {
+export function AlbumSection({ event, addRequestNonce = 0 }: AlbumSectionProps) {
   const updateEvent = useScheduleStore((state) => state.updateEvent);
   const tasks = useScheduleStore((state) => state.tasks);
   const taskTemplates = useScheduleStore((state) => state.taskTemplates);
@@ -53,11 +52,6 @@ export function AlbumSection({ event, isEditMode, addRequestNonce = 0 }: AlbumSe
   const getTaskLabel = useCallback((task: (typeof taskOptions)[number]) => (
     resolveTaskDisplayName(task, taskTemplates, taskTemplateLibrary)
   ), [taskTemplates, taskOptions]);
-
-  const handleAddEntry = useCallback(() => {
-    setEditingEntry(null);
-    setIsCreatingEntry(true);
-  }, []);
 
   const handleEditEntry = useCallback((entry: AlbumEntry) => {
     setIsCreatingEntry(false);
@@ -100,9 +94,8 @@ export function AlbumSection({ event, isEditMode, addRequestNonce = 0 }: AlbumSe
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-3 py-3">
         <AlbumViewer
           entries={albumEntries}
-          onAdd={isEditMode ? handleAddEntry : undefined}
-          onEdit={isEditMode ? handleEditEntry : undefined}
-          onDelete={isEditMode ? handleDeleteEntry : undefined}
+          onEdit={handleEditEntry}
+          onDelete={handleDeleteEntry}
           title="Album"
         />
       </div>

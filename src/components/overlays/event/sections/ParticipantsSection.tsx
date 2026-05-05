@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { IconDisplay } from '../../../shared/IconDisplay';
+import { PopupShell } from '../../../shared/popups/PopupShell';
 import { useResourceStore } from '../../../../stores/useResourceStore';
 import { useScheduleStore } from '../../../../stores/useScheduleStore';
 import { isContact, type Event } from '../../../../types';
@@ -12,8 +14,9 @@ interface ParticipantsSectionProps {
 export function ParticipantsSection({ event, isEditMode, addRequestNonce }: ParticipantsSectionProps) {
   const updateEvent = useScheduleStore((state) => state.updateEvent);
   const resources = useResourceStore((state) => state.resources);
-  const addSelectRef = useRef<HTMLSelectElement | null>(null);
-  const [selectedContactId, setSelectedContactId] = useState('');
+  const [showAddPopup, setShowAddPopup] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const lastHandledAddRequestRef = useRef(addRequestNonce);
 
   const availableContacts = useMemo(() => {
     const existingContactIds = new Set(event.coAttendees.map((attendee) => attendee.contactId));
@@ -24,20 +27,30 @@ export function ParticipantsSection({ event, isEditMode, addRequestNonce }: Part
       .sort((left, right) => (left.displayName || left.name).localeCompare(right.displayName || right.name));
   }, [event.coAttendees, resources]);
 
-  const effectiveSelectedContactId = useMemo(() => {
-    if (availableContacts.length === 0) return '';
-    return availableContacts.some((contact) => contact.id === selectedContactId)
-      ? selectedContactId
-      : (availableContacts[0]?.id ?? '');
-  }, [availableContacts, selectedContactId]);
+  const filteredContacts = useMemo(() => {
+    const normalizedQuery = searchQuery.trim().toLocaleLowerCase();
+    if (!normalizedQuery) return availableContacts;
+
+    return availableContacts.filter((contact) => (
+      (contact.displayName || contact.name).toLocaleLowerCase().includes(normalizedQuery)
+    ));
+  }, [availableContacts, searchQuery]);
 
   useEffect(() => {
-    if (!isEditMode || addRequestNonce === 0) return;
-    addSelectRef.current?.focus();
-  }, [addRequestNonce, isEditMode]);
+    if (addRequestNonce > lastHandledAddRequestRef.current) {
+      setShowAddPopup(true);
+    }
 
-  const handleAddParticipant = () => {
-    const selectedContact = availableContacts.find((contact) => contact.id === effectiveSelectedContactId);
+    lastHandledAddRequestRef.current = addRequestNonce;
+  }, [addRequestNonce]);
+
+  const handleClosePopup = () => {
+    setShowAddPopup(false);
+    setSearchQuery('');
+  };
+
+  const handleAddParticipant = (contactId: string) => {
+    const selectedContact = availableContacts.find((contact) => contact.id === contactId);
     if (!selectedContact) return;
 
     updateEvent(event.id, {
@@ -49,6 +62,7 @@ export function ParticipantsSection({ event, isEditMode, addRequestNonce }: Part
         },
       ],
     });
+    handleClosePopup();
   };
 
   const handleRemoveParticipant = (contactId: string) => {
@@ -89,43 +103,49 @@ export function ParticipantsSection({ event, isEditMode, addRequestNonce }: Part
             ))}
           </div>
         )}
+      </div>
 
-        {isEditMode && (
-          <div className="mt-auto rounded-xl border border-gray-200 bg-gray-50 px-3 py-3 dark:border-gray-700 dark:bg-gray-800/70">
-            <label className="mb-2 block text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
-              Add participant
-            </label>
+      {showAddPopup ? (
+        <PopupShell title="Add Participant" onClose={handleClosePopup}>
+          <div className="space-y-3">
+            <input
+              type="search"
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder="Search contacts"
+              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-purple-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
+            />
 
-            {availableContacts.length === 0 ? (
-              <p className="text-sm text-gray-500 dark:text-gray-400">All contacts are already added.</p>
+            {filteredContacts.length === 0 ? (
+              <p className="rounded-xl border border-dashed border-gray-300 px-4 py-6 text-center text-sm text-gray-500 dark:border-gray-700 dark:text-gray-400">
+                No contacts found — add contacts in the Resources room
+              </p>
             ) : (
-              <div className="flex flex-col gap-2 sm:flex-row">
-                <select
-                  ref={addSelectRef}
-                  value={effectiveSelectedContactId}
-                  onChange={(event) => setSelectedContactId(event.target.value)}
-                  className="flex-1 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-purple-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
-                >
-                  {availableContacts.map((contact) => (
-                    <option key={contact.id} value={contact.id}>
+              <div className="space-y-2">
+                {filteredContacts.map((contact) => (
+                  <button
+                    key={contact.id}
+                    type="button"
+                    onClick={() => handleAddParticipant(contact.id)}
+                    className="flex w-full items-center gap-3 rounded-xl border border-gray-200 px-3 py-2 text-left transition-colors hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-700/60"
+                  >
+                    {contact.icon ? (
+                      <IconDisplay iconKey={contact.icon} size={18} className="h-[18px] w-[18px] shrink-0 object-contain" alt="" />
+                    ) : (
+                      <div className="flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full bg-gray-200 text-[10px] font-semibold text-gray-600 dark:bg-gray-700 dark:text-gray-200">
+                        {(contact.displayName || contact.name).slice(0, 1).toUpperCase()}
+                      </div>
+                    )}
+                    <span className="min-w-0 flex-1 truncate text-sm text-gray-800 dark:text-gray-100">
                       {contact.displayName || contact.name}
-                    </option>
-                  ))}
-                </select>
-
-                <button
-                  type="button"
-                  onClick={handleAddParticipant}
-                  disabled={!effectiveSelectedContactId}
-                  className="rounded-lg bg-purple-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-purple-700 disabled:opacity-50"
-                >
-                  Add participant
-                </button>
+                    </span>
+                  </button>
+                ))}
               </div>
             )}
           </div>
-        )}
-      </div>
+        </PopupShell>
+      ) : null}
     </div>
   );
 }

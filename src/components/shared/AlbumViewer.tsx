@@ -1,6 +1,6 @@
 // AlbumViewer — shared grid + full-screen viewer for AlbumEntry collections.
 // Used by HomeMetaView (and future: VehicleMetaView, ContactMetaView) to display
-// a resource's album of photos with optional grouping, add/edit/delete actions,
+// a resource's album of photos with optional grouping and edit/delete actions,
 // and a full-screen lightbox with left/right navigation.
 
 import { useEffect, useMemo, useState } from 'react';
@@ -10,7 +10,6 @@ import { IconDisplay } from './IconDisplay';
 
 interface AlbumViewerProps {
   entries: AlbumEntry[];
-  onAdd?: () => void;
   onEdit?: (entry: AlbumEntry) => void;
   onDelete?: (entryId: string) => void;
   groupBy?: (entry: AlbumEntry) => string;
@@ -253,7 +252,7 @@ function FullScreenViewer({ entries, startIndex, onClose, onEdit, onDelete }: Fu
   );
 }
 
-export function AlbumViewer({ entries, onAdd, onEdit, onDelete, groupBy, title }: AlbumViewerProps) {
+export function AlbumViewer({ entries, onEdit, onDelete, groupBy, title }: AlbumViewerProps) {
   const [viewerStart, setViewerStart] = useState<number | null>(null);
 
   const grouped = useMemo<GroupedEntries[] | null>(() => {
@@ -337,15 +336,6 @@ export function AlbumViewer({ entries, onAdd, onEdit, onDelete, groupBy, title }
             {totalCount} {totalCount === 1 ? 'entry' : 'entries'}
           </div>
         </div>
-        {onAdd ? (
-          <button
-            type="button"
-            onClick={onAdd}
-            className="rounded-full bg-blue-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-600"
-          >
-            + Add Entry
-          </button>
-        ) : null}
       </div>
 
       {totalCount === 0 ? (

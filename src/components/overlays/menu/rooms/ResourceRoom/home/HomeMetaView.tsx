@@ -239,11 +239,19 @@ export function HomeMetaView({ resource }: HomeMetaViewProps) {
 
   const albumContent = (
     <div className="mb-1">
+      <div className="mb-3 flex items-center justify-end">
+        <button
+          type="button"
+          onClick={handleAddEntry}
+          className="rounded-full bg-blue-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-600"
+        >
+          + Add Entry
+        </button>
+      </div>
       <AlbumViewer
         entries={album}
         title="Photo album"
         groupBy={groupAlbumEntry}
-        onAdd={handleAddEntry}
         onEdit={handleEditEntry}
         onDelete={handleDeleteEntry}
       />

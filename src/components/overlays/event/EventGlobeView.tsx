@@ -74,7 +74,7 @@ function createPhotoIcon(photoUri?: string): L.DivIcon {
       </div>
     `,
     iconSize: [44, 56],
-    iconAnchor: [22, 54],
+    iconAnchor: [22, 56],
     popupAnchor: [0, -46],
   });
 }

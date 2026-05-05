@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import { AlbumLocationPicker } from '../../../../components/shared/AlbumLocationPicker';
+import { IconDisplay } from '../../../../components/shared/IconDisplay';
 import { useResourceStore } from '../../../../stores/useResourceStore';
 import { useScheduleStore } from '../../../../stores/useScheduleStore';
 import { forwardGeocode } from '../../../../utils/geocode';
@@ -11,6 +13,7 @@ interface LocationSectionProps {
   event: Event;
   isEditMode: boolean;
   addRequestNonce: number;
+  embedded?: boolean;
 }
 
 interface ResourceLocationOption {
@@ -18,6 +21,7 @@ interface ResourceLocationOption {
   label: string;
   address: string;
   placeName: string;
+  icon: string;
 }
 
 function formatCoordinateLabel(location: EventLocation): string {
@@ -77,14 +81,17 @@ function StaticLocationMap({ location }: { location: EventLocation }) {
   return <div ref={containerRef} className="h-40 w-full overflow-hidden rounded-xl border border-gray-200 dark:border-gray-700" />;
 }
 
-export function LocationSection({ event, isEditMode, addRequestNonce }: LocationSectionProps) {
+export function LocationSection({ event, isEditMode, addRequestNonce, embedded = false }: LocationSectionProps) {
   const updateEvent = useScheduleStore((state) => state.updateEvent);
   const resources = useResourceStore((state) => state.resources);
   const addressInputRef = useRef<HTMLInputElement | null>(null);
+  const embeddedPickerRef = useRef<HTMLDivElement | null>(null);
   const [selectedResourceId, setSelectedResourceId] = useState('');
   const [manualAddress, setManualAddress] = useState('');
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [isResourcePickerOpen, setIsResourcePickerOpen] = useState(false);
+  const [isMapPickerOpen, setIsMapPickerOpen] = useState(false);
 
   const resourceOptions = useMemo<ResourceLocationOption[]>(() => {
     const homes = Object.values(resources)
@@ -95,6 +102,7 @@ export function LocationSection({ event, isEditMode, addRequestNonce }: Location
         label: `${home.name} (Home)`,
         address: home.address!.trim(),
         placeName: home.name,
+        icon: home.icon,
       }));
 
     const contacts = Object.values(resources)
@@ -105,6 +113,7 @@ export function LocationSection({ event, isEditMode, addRequestNonce }: Location
         label: `${contact.displayName || contact.name} (Contact)`,
         address: contact.address!.trim(),
         placeName: contact.displayName || contact.name,
+        icon: contact.icon,
       }));
 
     return [...homes, ...contacts].sort((left, right) => left.label.localeCompare(right.label));
@@ -120,6 +129,18 @@ export function LocationSection({ event, isEditMode, addRequestNonce }: Location
     if (!isEditMode || addRequestNonce === 0) return;
     addressInputRef.current?.focus();
   }, [addRequestNonce, isEditMode]);
+
+  useEffect(() => {
+    if (!embedded || !isResourcePickerOpen) return undefined;
+
+    const handlePointerDown = (event: MouseEvent) => {
+      if (embeddedPickerRef.current?.contains(event.target as Node)) return;
+      setIsResourcePickerOpen(false);
+    };
+
+    document.addEventListener('mousedown', handlePointerDown);
+    return () => document.removeEventListener('mousedown', handlePointerDown);
+  }, [embedded, isResourcePickerOpen]);
 
   const saveLocation = async (address: string, fallbackPlaceName: string, displayName?: string) => {
     setIsSaving(true);
@@ -152,6 +173,11 @@ export function LocationSection({ event, isEditMode, addRequestNonce }: Location
     await saveLocation(selectedResource.address, selectedResource.placeName, selectedResource.placeName);
   };
 
+  const handleEmbeddedResourceSelect = async (option: ResourceLocationOption) => {
+    setIsResourcePickerOpen(false);
+    await saveLocation(option.address, option.placeName, option.placeName);
+  };
+
   const handleManualSubmit = async (submitEvent: FormEvent<HTMLFormElement>) => {
     submitEvent.preventDefault();
     const trimmedAddress = manualAddress.trim();
@@ -168,13 +194,118 @@ export function LocationSection({ event, isEditMode, addRequestNonce }: Location
     setStatusMessage('Location cleared.');
   };
 
-  return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <div className="border-b border-gray-200 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:border-gray-700 dark:text-gray-400">
-        Location
-      </div>
+  const containerClassName = embedded
+    ? 'flex flex-col gap-3 rounded-2xl border border-gray-200 bg-gray-50/80 p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800/60'
+    : 'flex min-h-0 flex-1 flex-col';
 
-      <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-3 py-3">
+  const contentClassName = embedded
+    ? 'flex flex-col gap-3'
+    : 'flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-3 py-3';
+
+  if (embedded) {
+    return (
+      <div className={containerClassName} ref={embeddedPickerRef}>
+        <div className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+          Location
+        </div>
+
+        <div className={contentClassName}>
+          {event.location ? (
+            <div className="flex items-center justify-between gap-3 rounded-xl border border-gray-200 bg-white px-3 py-3 dark:border-gray-700 dark:bg-gray-800/70">
+              <div className="min-w-0 flex items-center gap-2 text-sm text-gray-800 dark:text-gray-100">
+                <span aria-hidden="true">📍</span>
+                <span className="truncate">{event.location.placeName?.trim() || formatCoordinateLabel(event.location)}</span>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleClearLocation}
+                className="shrink-0 rounded-lg border border-red-300 px-3 py-2 text-sm font-medium text-red-600 transition-colors hover:bg-red-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-900/20"
+              >
+                Clear
+              </button>
+            </div>
+          ) : (
+            <>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <button
+                  type="button"
+                  onClick={() => setIsResourcePickerOpen((current) => !current)}
+                  className="rounded-xl border border-gray-300 bg-white px-4 py-3 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+                >
+                  Set from Resource
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setIsMapPickerOpen(true)}
+                  className="rounded-xl border border-gray-300 bg-white px-4 py-3 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+                >
+                  Set from Map
+                </button>
+              </div>
+
+              {isResourcePickerOpen ? (
+                <div className="rounded-xl border border-gray-200 bg-white p-2 shadow-sm dark:border-gray-700 dark:bg-gray-800/80">
+                  {resourceOptions.length === 0 ? (
+                    <p className="px-3 py-4 text-sm text-gray-500 dark:text-gray-400">No resources with addresses found.</p>
+                  ) : (
+                    <div className="max-h-64 space-y-2 overflow-y-auto pr-1">
+                      {resourceOptions.map((option) => (
+                        <button
+                          key={option.id}
+                          type="button"
+                          onClick={() => void handleEmbeddedResourceSelect(option)}
+                          disabled={isSaving}
+                          className="flex w-full items-start gap-3 rounded-xl border border-gray-200 px-3 py-2 text-left transition-colors hover:bg-gray-50 disabled:opacity-60 dark:border-gray-700 dark:hover:bg-gray-700/60"
+                        >
+                          <IconDisplay iconKey={option.icon} size={18} className="mt-0.5 h-[18px] w-[18px] shrink-0 object-contain" alt="" />
+                          <div className="min-w-0 flex-1">
+                            <div className="truncate text-sm font-medium text-gray-800 dark:text-gray-100">{option.placeName}</div>
+                            <div className="truncate text-xs text-gray-500 dark:text-gray-400">{option.address}</div>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ) : null}
+            </>
+          )}
+
+          {statusMessage ? (
+            <span className="text-xs text-gray-500 dark:text-gray-400">{statusMessage}</span>
+          ) : null}
+        </div>
+
+        {isMapPickerOpen ? (
+          <AlbumLocationPicker
+            initialLocation={event.location ?? undefined}
+            onCancel={() => setIsMapPickerOpen(false)}
+            onConfirm={(nextLocation) => {
+              updateEvent(event.id, { location: nextLocation ?? null });
+              setStatusMessage(nextLocation ? 'Location saved.' : 'Location cleared.');
+              setIsMapPickerOpen(false);
+            }}
+          />
+        ) : null}
+      </div>
+    );
+  }
+
+  return (
+    <div className={containerClassName}>
+      {embedded ? (
+        <div className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+          Location
+        </div>
+      ) : (
+        <div className="border-b border-gray-200 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:border-gray-700 dark:text-gray-400">
+          Location
+        </div>
+      )}
+
+      <div className={contentClassName}>
         {event.location ? (
           <div className="flex flex-col gap-3 rounded-xl border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-800/70">
             <div>
