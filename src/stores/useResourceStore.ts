@@ -122,7 +122,7 @@ function migrateLegacyAlbumEntries<T extends { photos?: unknown }>(entity: T): T
 
 function migrateHomePhotoAlbums(home: HomeResource): HomeResource {
   const migratedHomeAlbum = migrateAlbumEntryNotes(home.album);
-  let nextHome = migratedHomeAlbum.changed
+  const nextHome = migratedHomeAlbum.changed
     ? { ...home, album: migratedHomeAlbum.album }
     : home;
 

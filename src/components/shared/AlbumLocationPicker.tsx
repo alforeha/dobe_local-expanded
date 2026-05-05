@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -194,10 +194,10 @@ export function AlbumLocationPicker({ initialLocation, photoUri, onConfirm, onCa
   const [isSaving, setIsSaving] = useState(false);
   const [isClearConfirmOpen, setIsClearConfirmOpen] = useState(false);
 
-  function handleRequestClearLocation() {
+  const handleRequestClearLocation = useCallback(() => {
     if (!selectedLocation) return;
     setIsClearConfirmOpen(true);
-  }
+  }, [selectedLocation]);
 
   function handleConfirmClearLocation() {
     setIsClearConfirmOpen(false);
@@ -345,7 +345,7 @@ export function AlbumLocationPicker({ initialLocation, photoUri, onConfirm, onCa
     }
 
     leafletMap.panTo(latLng, { animate: true });
-  }, [photoUri, selectedLocation]);
+  }, [handleRequestClearLocation, photoUri, selectedLocation]);
 
   function focusActiveLocation() {
     if (!mapRef.current) return;

@@ -20,7 +20,7 @@ export function AlbumSection({ event, addRequestNonce = 0 }: AlbumSectionProps) 
   const [editingEntry, setEditingEntry] = useState<EventAlbumEntry | null>(null);
   const lastHandledAddRequestRef = useRef(addRequestNonce);
 
-  const albumEntries = event.eventAlbum ?? [];
+  const albumEntries = useMemo(() => event.eventAlbum ?? [], [event.eventAlbum]);
   const taskOptions = useMemo(
     () => event.tasks.map((taskId) => tasks[taskId]).filter((task): task is NonNullable<typeof task> => Boolean(task)),
     [event.tasks, tasks],
@@ -51,7 +51,7 @@ export function AlbumSection({ event, addRequestNonce = 0 }: AlbumSectionProps) 
 
   const getTaskLabel = useCallback((task: (typeof taskOptions)[number]) => (
     resolveTaskDisplayName(task, taskTemplates, taskTemplateLibrary)
-  ), [taskTemplates, taskOptions]);
+  ), [taskTemplates]);
 
   const handleEditEntry = useCallback((entry: AlbumEntry) => {
     setIsCreatingEntry(false);

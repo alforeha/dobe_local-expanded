@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { IconDisplay } from '../../../shared/IconDisplay';
 import { PopupShell } from '../../../shared/popups/PopupShell';
 import { useResourceStore } from '../../../../stores/useResourceStore';
@@ -14,9 +14,9 @@ interface ParticipantsSectionProps {
 export function ParticipantsSection({ event, isEditMode, addRequestNonce }: ParticipantsSectionProps) {
   const updateEvent = useScheduleStore((state) => state.updateEvent);
   const resources = useResourceStore((state) => state.resources);
-  const [showAddPopup, setShowAddPopup] = useState(false);
+  const [dismissedAddRequestNonce, setDismissedAddRequestNonce] = useState(addRequestNonce);
   const [searchQuery, setSearchQuery] = useState('');
-  const lastHandledAddRequestRef = useRef(addRequestNonce);
+  const showAddPopup = addRequestNonce > dismissedAddRequestNonce;
 
   const availableContacts = useMemo(() => {
     const existingContactIds = new Set(event.coAttendees.map((attendee) => attendee.contactId));
@@ -36,16 +36,8 @@ export function ParticipantsSection({ event, isEditMode, addRequestNonce }: Part
     ));
   }, [availableContacts, searchQuery]);
 
-  useEffect(() => {
-    if (addRequestNonce > lastHandledAddRequestRef.current) {
-      setShowAddPopup(true);
-    }
-
-    lastHandledAddRequestRef.current = addRequestNonce;
-  }, [addRequestNonce]);
-
   const handleClosePopup = () => {
-    setShowAddPopup(false);
+    setDismissedAddRequestNonce(addRequestNonce);
     setSearchQuery('');
   };
 

@@ -70,13 +70,43 @@ function AlbumPhoto({
   placeholderClassName: string;
   placeholderTextClassName?: string;
 }) {
+  if (!photoUri) {
+    return (
+      <PhotoUnavailablePlaceholder
+        className={placeholderClassName}
+        textClassName={placeholderTextClassName}
+      />
+    );
+  }
+
+  return (
+    <AlbumPhotoImage
+      key={photoUri}
+      photoUri={photoUri}
+      alt={alt}
+      className={className}
+      placeholderClassName={placeholderClassName}
+      placeholderTextClassName={placeholderTextClassName}
+    />
+  );
+}
+
+function AlbumPhotoImage({
+  photoUri,
+  alt,
+  className,
+  placeholderClassName,
+  placeholderTextClassName,
+}: {
+  photoUri: string;
+  alt: string;
+  className: string;
+  placeholderClassName: string;
+  placeholderTextClassName?: string;
+}) {
   const [hasError, setHasError] = useState(false);
 
-  useEffect(() => {
-    setHasError(false);
-  }, [photoUri]);
-
-  if (!photoUri || hasError) {
+  if (hasError) {
     return (
       <PhotoUnavailablePlaceholder
         className={placeholderClassName}
