@@ -3,7 +3,6 @@ import { useUserStore } from '../../stores/useUserStore';
 import { xpProgress } from '../../engine/awardPipeline';
 import { ProfileNavButton } from './ProfileNavButton';
 import { XPBar } from './XPBar';
-import { StatRow } from './StatRow';
 import { BoostRow } from './BoostRow';
 import { FloatingDelta } from './FloatingDelta';
 import { GlowRing } from '../shared/GlowRing';
@@ -47,19 +46,18 @@ export function Header({ onProfileOpen }: HeaderProps) {
   };
 
   return (
-    <header className="relative flex shrink-0 items-stretch gap-2 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2">
-      <GlowRing active={profileButtonGlows} rounded="lg" className="flex shrink-0 self-stretch">
+    <header className="relative flex shrink-0 items-stretch gap-0 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2">
+      <GlowRing active={profileButtonGlows} rounded="lg" className="relative z-20 flex shrink-0 self-stretch">
         <ProfileNavButton onOpen={handleProfileOpen} />
       </GlowRing>
 
-      <div className="flex flex-1 flex-col gap-1 min-w-0">
+      <div className="flex min-w-0 flex-1 flex-col gap-2">
         <XPBar
           displayName={user?.system?.displayName ?? '—'}
           level={level}
           current={xpSinceLastLevel}
           max={xpForThisLevel}
         />
-        <StatRow />
         <BoostRow />
       </div>
 

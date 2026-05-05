@@ -49,17 +49,17 @@ export function DayViewHeader({ date, weather, hasLocation, weatherLoading, onWe
   }
 
   return (
-    <div className={`flex shrink-0 items-stretch border-b ${isToday ? 'border-purple-200 bg-purple-50 dark:border-purple-700/60 dark:bg-purple-900/20' : 'border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900'}`}>
+    <div className={`relative shrink-0 overflow-visible border-b ${isToday ? 'border-purple-200 bg-purple-50 dark:border-purple-700/60 dark:bg-purple-900/20' : 'border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900'}`}>
       <button
         type="button"
         aria-label="Previous day"
         onClick={onBack}
-        className={`flex w-[15%] items-center justify-center rounded-l-full text-xl transition-colors hover:bg-black/5 dark:hover:bg-white/10 ${isToday ? 'text-purple-500 dark:text-purple-400' : 'text-gray-500 dark:text-gray-400'}`}
+        className={`absolute left-0 top-[-10px] z-10 flex h-full w-[15%] items-center justify-center rounded-l-full text-xl shadow-sm transition-colors hover:bg-black/5 dark:hover:bg-white/10 ${isToday ? 'text-purple-500 dark:text-purple-400' : 'text-gray-500 dark:text-gray-400'}`}
       >
         {'<'}
       </button>
 
-      <div className="flex min-w-0 flex-1 items-center justify-between gap-3 px-3 py-2">
+      <div className="mx-[15%] flex min-w-0 items-center justify-between gap-3 px-3 py-2">
         <div className="min-w-0">
           <div className={`text-sm font-semibold ${isToday ? 'text-purple-700 dark:text-purple-300' : 'text-gray-800 dark:text-gray-100'}`}>
             {DAY_NAMES[date.getDay()]} {MONTH_NAMES[date.getMonth()]} {date.getDate()}
@@ -136,7 +136,7 @@ export function DayViewHeader({ date, weather, hasLocation, weatherLoading, onWe
         type="button"
         aria-label="Next day"
         onClick={onForward}
-        className={`flex w-[15%] items-center justify-center rounded-r-full text-xl transition-colors hover:bg-black/5 dark:hover:bg-white/10 ${isToday ? 'text-purple-500 dark:text-purple-400' : 'text-gray-500 dark:text-gray-400'}`}
+        className={`absolute right-0 top-[-10px] z-10 flex h-full w-[15%] items-center justify-center rounded-r-full text-xl shadow-sm transition-colors hover:bg-black/5 dark:hover:bg-white/10 ${isToday ? 'text-purple-500 dark:text-purple-400' : 'text-gray-500 dark:text-gray-400'}`}
       >
         {'>'}
       </button>

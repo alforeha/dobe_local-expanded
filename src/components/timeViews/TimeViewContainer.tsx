@@ -25,7 +25,7 @@ interface TimeViewContainerProps {
 /** Single source of truth for active time view. Footer TimeViewTabs dispatches to AppShell which passes here. */
 export function TimeViewContainer({ activeView, onEventOpen, onResourceOpen, onWeekSelect, weekViewSeed, onDaySelect, dayViewSeed, onEditPlanned, todaySignals }: TimeViewContainerProps) {
   return (
-    <div className="h-full overflow-hidden">
+    <div className="h-full overflow-visible">
       {activeView === 'day' && <DayView key={dayViewSeed?.toISOString() ?? 'default'} onEventOpen={onEventOpen} onResourceOpen={onResourceOpen} onEditPlanned={onEditPlanned} todaySignal={todaySignals?.day} initialDate={dayViewSeed ?? undefined} />}
       {activeView === 'week' && <WeekView initialWeekStart={weekViewSeed ?? undefined} todaySignal={todaySignals?.week} onDaySelect={onDaySelect} />}
       {activeView === 'explorer' && <WeekExplorer onWeekSelect={onWeekSelect} todaySignal={todaySignals?.explorer} />}

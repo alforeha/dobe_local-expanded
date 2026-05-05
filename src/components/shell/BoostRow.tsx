@@ -28,33 +28,33 @@ export function BoostRow() {
     <div className="flex items-center justify-between">
       <div className="flex items-center gap-2">
         {standardBoosts.earlyBirdActive && (
-          <span className="flex items-center gap-1 text-xs text-amber-500" title="Early bird boost active">
-            <IconDisplay iconKey="boost-early-bird" />
-            <span>{formatMultiplier(EARLY_BIRD_MULTIPLIER)}</span>
+          <span className="inline-flex items-center gap-1 text-sm leading-none text-amber-500" title="Early bird boost active">
+            <IconDisplay iconKey="boost-early-bird" size={16} className="h-4 w-4 object-contain" />
+            <span className="self-center leading-none">{formatMultiplier(EARLY_BIRD_MULTIPLIER)}</span>
           </span>
         )}
         {wisdomBoosts.lateNightActive && (
-          <span className="flex items-center gap-1 text-xs font-semibold text-indigo-600" title="Late night wisdom boost active">
-            <IconDisplay iconKey="boost-late-night" />
-            <span>{formatMultiplier(LATE_NIGHT_MULTIPLIER)}</span>
+          <span className="inline-flex items-center gap-1 text-sm font-semibold leading-none text-indigo-600" title="Late night wisdom boost active">
+            <IconDisplay iconKey="boost-late-night" size={16} className="h-4 w-4 object-contain" />
+            <span className="self-center leading-none">{formatMultiplier(LATE_NIGHT_MULTIPLIER)}</span>
           </span>
         )}
         {standardBoosts.streak > 0 && (
-          <span className="flex items-center gap-1 text-xs text-orange-500" title="Current streak boost">
-            <IconDisplay iconKey="boost-streak" />
-            <span>{formatMultiplier(standardBoosts.streakMultiplier)}</span>
+          <span className="inline-flex items-center gap-1 text-sm leading-none text-orange-500" title="Current streak boost">
+            <IconDisplay iconKey="boost-streak" size={16} className="h-4 w-4 object-contain" />
+            <span className="self-center leading-none">{formatMultiplier(standardBoosts.streakMultiplier)}</span>
           </span>
         )}
         {standardBoosts.roll && (
-          <span className="flex items-center gap-1 text-xs font-semibold text-purple-600" title="Daily roll bonus">
-            <IconDisplay iconKey="boost-roll" />
-            <span>{standardBoosts.roll.display}</span>
+          <span className="inline-flex items-center gap-1 text-sm font-semibold leading-none text-purple-600" title="Daily roll bonus">
+            <IconDisplay iconKey="boost-roll" size={16} className="h-4 w-4 object-contain" />
+            <span className="self-center leading-none">{standardBoosts.roll.display}</span>
           </span>
         )}
       </div>
-      <span className="flex items-center gap-1 text-xs font-semibold text-yellow-600">
-        <IconDisplay iconKey="gold" />
-        <span>{gold}</span>
+      <span className="inline-flex items-center gap-1 text-sm font-semibold leading-none text-yellow-600">
+        <IconDisplay iconKey="gold" size={16} className="h-4 w-4 object-contain" />
+        <span className="self-center leading-none">{gold}</span>
       </span>
     </div>
   );

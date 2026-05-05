@@ -31,17 +31,17 @@ export function WeekViewHeader({ weekStart, onBack, onForward }: WeekViewHeaderP
   const isCurrentWeek = weekStart.getTime() === currentWeekStart.getTime();
 
   return (
-    <div className={`flex shrink-0 items-stretch border-b ${isCurrentWeek ? 'border-purple-200 bg-purple-50 dark:border-purple-700/60 dark:bg-purple-900/20' : 'border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900'}`}>
+    <div className={`relative shrink-0 overflow-visible border-b ${isCurrentWeek ? 'border-purple-200 bg-purple-50 dark:border-purple-700/60 dark:bg-purple-900/20' : 'border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900'}`}>
       <button
         type="button"
         aria-label="Previous week"
         onClick={onBack}
-        className={`flex w-[15%] items-center justify-center rounded-l-full text-xl transition-colors hover:bg-black/5 dark:hover:bg-white/10 ${isCurrentWeek ? 'text-purple-500 dark:text-purple-400' : 'text-gray-500 dark:text-gray-400'}`}
+        className={`absolute left-0 top-[-10px] z-10 flex h-full w-[15%] items-center justify-center rounded-l-full text-xl shadow-sm transition-colors hover:bg-black/5 dark:hover:bg-white/10 ${isCurrentWeek ? 'text-purple-500 dark:text-purple-400' : 'text-gray-500 dark:text-gray-400'}`}
       >
         {'<'}
       </button>
 
-      <div className="min-w-0 flex-1 py-2 text-center">
+      <div className="mx-[15%] min-w-0 py-2 text-center">
         <div className={`text-sm font-semibold ${isCurrentWeek ? 'text-purple-700 dark:text-purple-300' : 'text-gray-800 dark:text-gray-100'}`}>
           {formatHeaderDate(weekStart)} {'->'} {formatHeaderDate(weekEnd)}
         </div>
@@ -52,7 +52,7 @@ export function WeekViewHeader({ weekStart, onBack, onForward }: WeekViewHeaderP
         type="button"
         aria-label="Next week"
         onClick={onForward}
-        className={`flex w-[15%] items-center justify-center rounded-r-full text-xl transition-colors hover:bg-black/5 dark:hover:bg-white/10 ${isCurrentWeek ? 'text-purple-500 dark:text-purple-400' : 'text-gray-500 dark:text-gray-400'}`}
+        className={`absolute right-0 top-[-10px] z-10 flex h-full w-[15%] items-center justify-center rounded-r-full text-xl shadow-sm transition-colors hover:bg-black/5 dark:hover:bg-white/10 ${isCurrentWeek ? 'text-purple-500 dark:text-purple-400' : 'text-gray-500 dark:text-gray-400'}`}
       >
         {'>'}
       </button>

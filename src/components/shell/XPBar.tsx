@@ -9,10 +9,9 @@ export function XPBar({ displayName, level, current, max }: XPBarProps) {
   const pct = max > 0 ? Math.min(100, Math.round((current / max) * 100)) : 0;
 
   return (
-    <div className="relative h-6 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
-      {/* fill */}
+    <div className="relative h-6 w-full overflow-hidden bg-gray-200 dark:bg-gray-700">
       <div
-        className="absolute inset-y-0 left-0 rounded-full bg-purple-500 transition-all duration-300"
+        className="absolute inset-y-0 left-0 bg-purple-500 transition-all duration-300"
         style={{ width: `${pct}%` }}
         role="progressbar"
         aria-valuenow={pct}

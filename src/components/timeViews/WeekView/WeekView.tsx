@@ -70,7 +70,7 @@ export function WeekView({ initialWeekStart, todaySignal, onDaySelect }: WeekVie
   }, [locationPreferences, storedWeatherByDate, todayISO, weather, weekStart]);
 
   return (
-    <div className="flex h-full flex-col overflow-hidden">
+    <div className="flex h-full flex-col overflow-visible">
       <WeekViewHeader
         weekStart={weekStart}
         onBack={goBack}

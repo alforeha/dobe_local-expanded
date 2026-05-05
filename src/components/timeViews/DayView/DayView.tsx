@@ -118,7 +118,7 @@ export function DayView({ onEventOpen, onResourceOpen, onEditPlanned, todaySigna
   );
 
   return (
-    <div className="flex h-full flex-col overflow-hidden">
+    <div className="flex h-full flex-col overflow-visible">
       <DayViewHeader
         date={currentDate}
         weather={selectedWeather}
