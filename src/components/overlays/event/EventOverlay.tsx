@@ -257,14 +257,14 @@ export function EventOverlay({ eventId, onClose }: EventOverlayProps) {
   const activeCustomColor = event.color ?? DEFAULT_EVENT_COLOR;
   const customColorRgb = hexToRgb(activeCustomColor);
 
-  const handleCustomColorChannelChange = useCallback((channel: 'r' | 'g' | 'b', rawValue: number) => {
+  const handleCustomColorChannelChange = (channel: 'r' | 'g' | 'b', rawValue: number) => {
     const nextValue = clampChannel(rawValue);
     const nextRgb = {
       ...customColorRgb,
       [channel]: nextValue,
     };
     updateEvent(eventId, { color: rgbToHex(nextRgb.r, nextRgb.g, nextRgb.b) });
-  }, [customColorRgb, eventId, updateEvent]);
+  };
 
   return (
     <div
