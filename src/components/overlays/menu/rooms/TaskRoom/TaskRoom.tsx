@@ -1,14 +1,11 @@
 import { useEffect, useState } from 'react';
-import { useScheduleStore } from '../../../../../stores/useScheduleStore';
 import { TaskRoomHeader } from './TaskRoomHeader';
-import { TaskRoomBody } from './TaskRoomBody';
+import { TaskRoomBody, type TaskRoomBodyMode } from './TaskRoomBody';
 import { ResourceTasksTab } from './ResourceTasksTab';
 import { TaskTemplatePopup } from './TaskTemplatePopup';
 import type { TaskTemplate } from '../../../../../types';
 import { autoCompleteSystemTask } from '../../../../../engine/resourceEngine';
 import type { ResourceType } from '../../../../../types/resource';
-
-type TaskTab = 'stat' | 'resource';
 
 type PopupState =
   | { mode: 'add' }
@@ -20,22 +17,12 @@ interface TaskRoomProps {
 }
 
 export function TaskRoom({ onGoToResource }: TaskRoomProps) {
-  const [tab, setTab] = useState<TaskTab>('stat');
+  const [tab, setTab] = useState<TaskRoomBodyMode>('userTasks');
   const [popup, setPopup] = useState<PopupState>(null);
-  const taskTemplates = useScheduleStore((s) => s.taskTemplates);
 
   useEffect(() => {
     autoCompleteSystemTask('task-sys-explore-task-room');
   }, []);
-
-  // Filter out system/onboarding tasks and legacy resource-derived template refs.
-  // Resource task refs use the 'resource-task:' prefix and should stay hidden.
-  const filtered: [string, TaskTemplate, boolean][] =
-    tab === 'stat'
-      ? Object.entries(taskTemplates)
-          .filter(([k, t]) => t.isSystem !== true && !k.startsWith('resource-task:'))
-          .map(([k, t]): [string, TaskTemplate, boolean] => [k, t, t.isCustom === true])
-      : [];
 
   function handleEdit(key: string, template: TaskTemplate) {
     setPopup({ mode: 'edit', key, template });
@@ -43,9 +30,12 @@ export function TaskRoom({ onGoToResource }: TaskRoomProps) {
 
   return (
     <div className="flex flex-col h-full">
-      <TaskRoomHeader activeTab={tab} onTabChange={setTab} onAdd={() => setPopup({ mode: 'add' })} />
-      {tab === 'stat' && <TaskRoomBody templates={filtered} onEdit={handleEdit} />}
-      {tab === 'resource' && <ResourceTasksTab onGoToResource={onGoToResource} />}
+      <TaskRoomHeader activeTab={tab} onTabChange={setTab} />
+      {tab === 'resourceTasks' ? (
+        <ResourceTasksTab onGoToResource={onGoToResource} />
+      ) : (
+        <TaskRoomBody mode={tab} onAdd={() => setPopup({ mode: 'add' })} onEdit={handleEdit} />
+      )}
       {popup && (
         <TaskTemplatePopup
           editKey={popup.mode === 'edit' ? popup.key : null}
