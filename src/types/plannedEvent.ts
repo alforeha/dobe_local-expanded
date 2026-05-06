@@ -6,6 +6,7 @@
 // Same-day creation triggers immediate materialisation.
 // ─────────────────────────────────────────
 
+import type { EventAttendee } from './event';
 import type { RecurrenceRule } from './taskTemplate';
 
 // ── EVENT LOCATION ────────────────────────────────────────────────────────────
@@ -30,6 +31,30 @@ export type PlannedEventSharedWithStub = null;
 /** STUB: APP-STORE — reserved for scheduled local/device reminder metadata once the APP-STORE chapter ships. */
 export type PushReminderStub = null;
 
+export type TaskEntryKind = 'template' | 'resource';
+
+export interface TemplateTaskEntry {
+  kind: 'template';
+  id: string;
+  templateRef: string;
+}
+
+export interface ResourceTaskEntry {
+  kind: 'resource';
+  id: string;
+  resourceId: string;
+  taskId: string;
+  resourceType: string;
+  taskName: string;
+}
+
+export type TaskEntry = TemplateTaskEntry | ResourceTaskEntry;
+
+export interface TaskSet {
+  id: string;
+  entries: TaskEntry[];
+}
+
 // ── PLANNED EVENT ROOT ────────────────────────────────────────────────────────
 
 export interface PlannedEvent {
@@ -50,11 +75,11 @@ export interface PlannedEvent {
   /** RecurrenceRule ref (D37) — seedDate is the anchor */
   recurrenceInterval: RecurrenceRule;
   activeState: PlannedEventActiveState;
-  /** D07 — full set of interchangeable TaskTemplate refs */
-  taskPool: string[];
+  /** D07 — interchangeable task groups for the event. */
+  pools: TaskSet[];
   /**
    * Current rotation pulled from pool.
-   * Index into taskPool[] — advances and wraps at pool end (D47).
+   * Index into pools[] — advances and wraps at pool end (D47).
    */
   taskPoolCursor: number;
   /** Current rotation pulled from pool — snapshot of templateRefs for the materialised day */
@@ -67,6 +92,7 @@ export interface PlannedEvent {
   isOvernight?: boolean;
   /** STUB: LOCATION-SHARING — reserved for saved venue/location metadata once the LOCATION-SHARING chapter is enabled. */
   location: EventLocation | null;
+  coAttendees: EventAttendee[];
   /** STUB: MULTI-USER — stores invitees and shared ownership once the MULTI-USER chapter is enabled. */
   sharedWith: PlannedEventSharedWithStub;
   /** STUB: APP-STORE — stores reminder scheduling/config once the APP-STORE chapter is enabled. */

@@ -123,6 +123,11 @@ export const ICON_MAP: Record<string, string> = {
   'event-nav-participants': '👥',
   'event-nav-album': '📷',
   'event-nav-globe': '🌍',
+  // SCHEDULE ROOM TABS
+  'schedule-tab-routines': '🔄',
+  'schedule-tab-events': '📌',
+  'schedule-tab-resources': '🏠',
+  'schedule-tab-leagues': '🏆',
   // gear slots
   head: '🧢',
   body: '👕',

@@ -1,34 +1,30 @@
 import { useMemo, useState } from 'react';
-import type { DragEvent, ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { PopupShell } from '../../../../shared/popups/PopupShell';
+import { AlbumLocationPicker } from '../../../../shared/AlbumLocationPicker';
 import { IconPicker } from '../../../../shared/IconPicker';
 import { ColorPicker } from '../../../../shared/ColorPicker';
 import { IconDisplay } from '../../../../shared/IconDisplay';
-import { TaskTemplateIcon } from '../../../../shared/TaskTemplateIcon';
 import { useScheduleStore } from '../../../../../stores/useScheduleStore';
+import { useResourceStore } from '../../../../../stores/useResourceStore';
 import { materialisePlannedEvent } from '../../../../../engine/materialise';
 import { storageDelete, storageKey } from '../../../../../storage';
 import { localISODate } from '../../../../../utils/dateUtils';
-import type { PlannedEvent, ConflictMode } from '../../../../../types/plannedEvent';
-import type { TaskTemplate, TaskType } from '../../../../../types/taskTemplate';
-import type { StatGroupKey } from '../../../../../types/user';
+import { forwardGeocode } from '../../../../../utils/geocode';
+import { getLibraryTemplatePool } from '../../../../../utils/resolveTaskTemplate';
+import { clampTaskPoolCursor, ensureTaskPools } from '../../../../../utils/taskPools';
+import { isContact, isHome } from '../../../../../types';
+import type { EventAttendee } from '../../../../../types/event';
+import type { PlannedEvent, ConflictMode, EventLocation, TaskSet } from '../../../../../types/plannedEvent';
+import type { TaskTemplate } from '../../../../../types/taskTemplate';
+import { TaskPoolEditor } from './TaskPoolEditor';
 
 const CONFLICT_MODES: { value: ConflictMode; label: string }[] = [
   { value: 'concurrent', label: 'Concurrent' },
   { value: 'override', label: 'Override' },
   { value: 'shift', label: 'Shift' },
   { value: 'truncate', label: 'Truncate' },
-];
-
-const STAT_PILLS: { key: 'all' | StatGroupKey; label: string; iconKey?: string }[] = [
-  { key: 'all', label: 'All' },
-  { key: 'health', label: '', iconKey: 'health' },
-  { key: 'strength', label: '', iconKey: 'strength' },
-  { key: 'agility', label: '', iconKey: 'agility' },
-  { key: 'defense', label: '', iconKey: 'defense' },
-  { key: 'charisma', label: '', iconKey: 'charisma' },
-  { key: 'wisdom', label: '', iconKey: 'wisdom' },
 ];
 
 function todayISO(): string {
@@ -43,54 +39,6 @@ function addHour(time: string): string {
   return `${String(nextHours).padStart(2, '0')}:${String(nextMinutes).padStart(2, '0')}`;
 }
 
-function getPrimaryStat(template: TaskTemplate): StatGroupKey {
-  const groups: StatGroupKey[] = ['health', 'strength', 'agility', 'defense', 'charisma', 'wisdom'];
-  let best: StatGroupKey = 'health';
-  let bestValue = -1;
-
-  for (const group of groups) {
-    const value = template.xpAward[group] ?? 0;
-    if (value > bestValue) {
-      best = group;
-      bestValue = value;
-    }
-  }
-
-  return bestValue > 0 ? best : 'wisdom';
-}
-
-function getTaskTypeIconKey(taskType: TaskType): string {
-  const map: Record<TaskType, string> = {
-    CHECK: 'check',
-    COUNTER: 'counter',
-    SETS_REPS: 'sets_reps',
-    CIRCUIT: 'circuit',
-    DURATION: 'duration',
-    TIMER: 'timer',
-    RATING: 'rating',
-    TEXT: 'text',
-    FORM: 'form',
-    CHOICE: 'choice',
-    CHECKLIST: 'checklist',
-    SCAN: 'scan',
-    LOG: 'log',
-    LOCATION_POINT: 'location_point',
-    LOCATION_TRAIL: 'location_trail',
-    ROLL: 'roll',
-    CONSUME: 'consume',
-  };
-
-  return map[taskType];
-}
-
-function reorderList<T>(list: T[], from: number, to: number): T[] {
-  if (from === to || from < 0 || to < 0) return list;
-  const next = [...list];
-  const [moved] = next.splice(from, 1);
-  if (moved === undefined) return list;
-  next.splice(to, 0, moved);
-  return next;
-}
 
 interface OneOffEventPopupProps {
   editEvent: PlannedEvent | null;
@@ -114,131 +62,292 @@ function Field({ label, hint, children, className }: FieldProps) {
   );
 }
 
-interface ScheduleTaskPoolProps {
-  templates: { id: string; template: TaskTemplate }[];
-  taskPool: string[];
-  setTaskPool: React.Dispatch<React.SetStateAction<string[]>>;
+interface ResourceLocationOption {
+  id: string;
+  address: string;
+  icon: string;
+  placeName: string;
 }
 
-function ScheduleTaskPool({ templates, taskPool, setTaskPool }: ScheduleTaskPoolProps) {
-  const [statFilter, setStatFilter] = useState<'all' | StatGroupKey>('all');
-  const [orderMode, setOrderMode] = useState(false);
-  const [draggedId, setDraggedId] = useState<string | null>(null);
+function formatCoordinateLabel(location: EventLocation): string {
+  return `${location.latitude.toFixed(5)}, ${location.longitude.toFixed(5)}`;
+}
 
-  const templateMap = useMemo(
-    () => Object.fromEntries(templates.map((entry) => [entry.id, entry.template])),
-    [templates],
-  );
+interface ParticipantsEditorProps {
+  coAttendees: EventAttendee[];
+  setCoAttendees: React.Dispatch<React.SetStateAction<EventAttendee[]>>;
+}
 
-  const filteredTemplates = useMemo(() => {
-    const alphabetized = [...templates].sort((a, b) => a.template.name.localeCompare(b.template.name));
-    return alphabetized.filter(({ template }) => statFilter === 'all' || getPrimaryStat(template) === statFilter);
-  }, [statFilter, templates]);
+function ParticipantsEditor({ coAttendees, setCoAttendees }: ParticipantsEditorProps) {
+  const resources = useResourceStore((state) => state.resources);
+  const [isPickerOpen, setIsPickerOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
 
-  const selectedTemplates = useMemo(() => {
-    return taskPool
-      .map((id) => {
-        const template = templateMap[id];
-        return template ? { id, template } : null;
-      })
-      .filter((entry): entry is { id: string; template: TaskTemplate } => entry !== null);
-  }, [taskPool, templateMap]);
+  const availableContacts = useMemo(() => {
+    const existingContactIds = new Set(coAttendees.map((attendee) => attendee.contactId));
 
-  function togglePoolItem(id: string) {
-    setTaskPool((prev) => (
-      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
+    return Object.values(resources)
+      .filter(isContact)
+      .filter((contact) => !existingContactIds.has(contact.id))
+      .sort((left, right) => (left.displayName || left.name).localeCompare(right.displayName || right.name));
+  }, [coAttendees, resources]);
+
+  const filteredContacts = useMemo(() => {
+    const normalizedQuery = searchQuery.trim().toLocaleLowerCase();
+    if (!normalizedQuery) return availableContacts;
+
+    return availableContacts.filter((contact) => (
+      (contact.displayName || contact.name).toLocaleLowerCase().includes(normalizedQuery)
     ));
+  }, [availableContacts, searchQuery]);
+
+  function handleAddParticipant(contactId: string) {
+    const selectedContact = availableContacts.find((contact) => contact.id === contactId);
+    if (!selectedContact) return;
+
+    setCoAttendees((prev) => [
+      ...prev,
+      {
+        contactId: selectedContact.id,
+        displayName: selectedContact.displayName || selectedContact.name,
+      },
+    ]);
+    setSearchQuery('');
+    setIsPickerOpen(false);
   }
 
-  function moveSelectedItem(targetId: string) {
-    if (!draggedId || draggedId === targetId) return;
-    setTaskPool((prev) => reorderList(prev, prev.indexOf(draggedId), prev.indexOf(targetId)));
+  function handleRemoveParticipant(contactId: string) {
+    setCoAttendees((prev) => prev.filter((attendee) => attendee.contactId !== contactId));
   }
-
-  const rows = orderMode ? selectedTemplates : filteredTemplates;
 
   return (
-    <div className="flex h-full min-h-0 flex-col rounded-xl border border-gray-200 bg-gray-50/60 p-3 dark:border-gray-700 dark:bg-gray-900/20">
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap items-center gap-2">
-          {!orderMode && STAT_PILLS.map((pill) => (
-            <button
-              key={pill.key}
-              type="button"
-              onClick={() => setStatFilter(pill.key)}
-              className={`inline-flex items-center justify-center gap-2 rounded-full border px-3 py-1 text-sm transition-colors ${
-                statFilter === pill.key
-                  ? 'border-purple-500 bg-purple-500 text-white'
-                  : 'border-gray-300 bg-white text-gray-600 hover:border-purple-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300'
-              }`}
-            >
-              {pill.iconKey ? <IconDisplay iconKey={pill.iconKey} size={14} className="h-3.5 w-3.5 object-contain" alt="" /> : null}
-              {pill.label}
-            </button>
-          ))}
-        </div>
+    <div className="rounded-xl border border-gray-200 bg-gray-50/60 p-4 dark:border-gray-700 dark:bg-gray-900/20">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <div className="text-xs font-medium uppercase tracking-[0.12em] text-gray-500 dark:text-gray-400">Participants</div>
         <button
           type="button"
-          onClick={() => setOrderMode((current) => !current)}
-          className={`rounded-lg border px-3 py-1.5 text-sm transition-colors ${
-            orderMode
-              ? 'border-purple-500 bg-purple-500 text-white'
-              : 'border-gray-300 bg-white text-gray-600 hover:border-purple-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300'
-          }`}
+          onClick={() => setIsPickerOpen((current) => !current)}
+          className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
         >
-          {orderMode ? 'Select tasks' : 'Order tasks'}
+          Add Participant
         </button>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
-        {rows.length === 0 && (
-          <div className="flex h-full min-h-24 items-center justify-center px-4 text-sm text-gray-400">
-            {orderMode ? 'No tasks selected yet.' : 'No templates match this filter.'}
+      {coAttendees.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-gray-300 px-4 py-4 text-sm text-gray-500 dark:border-gray-700 dark:text-gray-400">
+          No participants added.
+        </div>
+      ) : (
+        <div className="mb-3 flex flex-wrap gap-2">
+          {coAttendees.map((attendee) => (
+            <div
+              key={attendee.contactId}
+              className="inline-flex items-center gap-2 rounded-full border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-700 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+            >
+              <span>{attendee.displayName}</span>
+              <button
+                type="button"
+                onClick={() => handleRemoveParticipant(attendee.contactId)}
+                className="rounded-full px-1 text-xs font-medium text-red-600 transition-colors hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"
+                aria-label={`Remove ${attendee.displayName}`}
+              >
+                x
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {isPickerOpen ? (
+        <div className="space-y-3 rounded-xl border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-800/80">
+          <input
+            type="search"
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
+            placeholder="Search contacts"
+            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-800 focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200"
+          />
+
+          {filteredContacts.length === 0 ? (
+            <p className="rounded-xl border border-dashed border-gray-300 px-4 py-6 text-center text-sm text-gray-500 dark:border-gray-700 dark:text-gray-400">
+              No matching contacts found.
+            </p>
+          ) : (
+            <div className="max-h-56 space-y-2 overflow-y-auto pr-1">
+              {filteredContacts.map((contact) => (
+                <button
+                  key={contact.id}
+                  type="button"
+                  onClick={() => handleAddParticipant(contact.id)}
+                  className="flex w-full items-center gap-3 rounded-xl border border-gray-200 px-3 py-2 text-left transition-colors hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-700/60"
+                >
+                  {contact.icon ? (
+                    <IconDisplay iconKey={contact.icon} size={18} className="h-[18px] w-[18px] shrink-0 object-contain" alt="" />
+                  ) : (
+                    <div className="flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full bg-gray-200 text-[10px] font-semibold text-gray-600 dark:bg-gray-700 dark:text-gray-200">
+                      {(contact.displayName || contact.name).slice(0, 1).toUpperCase()}
+                    </div>
+                  )}
+                  <span className="min-w-0 flex-1 truncate text-sm text-gray-800 dark:text-gray-100">
+                    {contact.displayName || contact.name}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+interface LocationEditorProps {
+  location: EventLocation | null;
+  setLocation: React.Dispatch<React.SetStateAction<EventLocation | null>>;
+}
+
+function LocationEditor({ location, setLocation }: LocationEditorProps) {
+  const resources = useResourceStore((state) => state.resources);
+  const [isResourcePickerOpen, setIsResourcePickerOpen] = useState(false);
+  const [isMapPickerOpen, setIsMapPickerOpen] = useState(false);
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+
+  const resourceOptions = useMemo<ResourceLocationOption[]>(() => {
+    const homes = Object.values(resources)
+      .filter(isHome)
+      .filter((home) => Boolean(home.address?.trim()))
+      .map((home) => ({
+        id: `home:${home.id}`,
+        address: home.address!.trim(),
+        icon: home.icon,
+        placeName: home.name,
+      }));
+
+    const contacts = Object.values(resources)
+      .filter(isContact)
+      .filter((contact) => Boolean(contact.address?.trim()))
+      .map((contact) => ({
+        id: `contact:${contact.id}`,
+        address: contact.address!.trim(),
+        icon: contact.icon,
+        placeName: contact.displayName || contact.name,
+      }));
+
+    return [...homes, ...contacts].sort((left, right) => left.placeName.localeCompare(right.placeName));
+  }, [resources]);
+
+  async function handleResourceSelect(option: ResourceLocationOption) {
+    setIsSaving(true);
+    setStatusMessage(null);
+
+    try {
+      const result = await forwardGeocode(option.address);
+      if (!result) {
+        setStatusMessage('Unable to resolve that address.');
+        return;
+      }
+
+      setLocation({
+        latitude: result.lat,
+        longitude: result.lng,
+        placeName: option.placeName,
+      });
+      setIsResourcePickerOpen(false);
+      setStatusMessage('Location saved.');
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  function handleClearLocation() {
+    setLocation(null);
+    setStatusMessage('Location cleared.');
+  }
+
+  return (
+    <>
+      <div className="rounded-xl border border-gray-200 bg-gray-50/60 p-4 dark:border-gray-700 dark:bg-gray-900/20">
+        <div className="mb-3 text-xs font-medium uppercase tracking-[0.12em] text-gray-500 dark:text-gray-400">Location</div>
+
+        {location ? (
+          <div className="flex items-center justify-between gap-3 rounded-xl border border-gray-200 bg-white px-3 py-3 dark:border-gray-700 dark:bg-gray-800/70">
+            <div className="min-w-0">
+              <div className="truncate text-sm font-medium text-gray-800 dark:text-gray-100">
+                {location.placeName?.trim() || formatCoordinateLabel(location)}
+              </div>
+              <div className="text-xs text-gray-500 dark:text-gray-400">{formatCoordinateLabel(location)}</div>
+            </div>
+            <button
+              type="button"
+              onClick={handleClearLocation}
+              className="shrink-0 rounded-lg border border-red-300 px-3 py-2 text-sm font-medium text-red-600 transition-colors hover:bg-red-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-900/20"
+            >
+              Clear
+            </button>
           </div>
+        ) : (
+          <>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <button
+                type="button"
+                onClick={() => setIsResourcePickerOpen((current) => !current)}
+                className="rounded-xl border border-gray-300 bg-white px-4 py-3 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+              >
+                Set from Resource
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsMapPickerOpen(true)}
+                className="rounded-xl border border-gray-300 bg-white px-4 py-3 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+              >
+                Set from Map
+              </button>
+            </div>
+
+            {isResourcePickerOpen ? (
+              <div className="mt-3 rounded-xl border border-gray-200 bg-white p-2 shadow-sm dark:border-gray-700 dark:bg-gray-800/80">
+                {resourceOptions.length === 0 ? (
+                  <p className="px-3 py-4 text-sm text-gray-500 dark:text-gray-400">No home or contact resources with addresses found.</p>
+                ) : (
+                  <div className="max-h-64 space-y-2 overflow-y-auto pr-1">
+                    {resourceOptions.map((option) => (
+                      <button
+                        key={option.id}
+                        type="button"
+                        onClick={() => { void handleResourceSelect(option); }}
+                        disabled={isSaving}
+                        className="flex w-full items-start gap-3 rounded-xl border border-gray-200 px-3 py-2 text-left transition-colors hover:bg-gray-50 disabled:opacity-60 dark:border-gray-700 dark:hover:bg-gray-700/60"
+                      >
+                        <IconDisplay iconKey={option.icon} size={18} className="mt-0.5 h-[18px] w-[18px] shrink-0 object-contain" alt="" />
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-sm font-medium text-gray-800 dark:text-gray-100">{option.placeName}</div>
+                          <div className="truncate text-xs text-gray-500 dark:text-gray-400">{option.address}</div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : null}
+          </>
         )}
 
-        <div className="divide-y divide-gray-100 dark:divide-gray-700">
-          {rows.map(({ id, template }) => {
-            const checked = taskPool.includes(id);
-            const primaryStat = getPrimaryStat(template);
-
-            return (
-              <div
-                key={id}
-                draggable={orderMode}
-                onDragStart={() => setDraggedId(id)}
-                onDragOver={(event) => {
-                  if (orderMode) {
-                    event.preventDefault();
-                  }
-                }}
-                onDrop={(event: DragEvent<HTMLDivElement>) => {
-                  event.preventDefault();
-                  moveSelectedItem(id);
-                }}
-                onDragEnd={() => setDraggedId(null)}
-                className="flex items-center gap-3 px-3 py-2"
-              >
-                {orderMode ? (
-                  <span className="w-5 text-center text-sm text-gray-400">☰</span>
-                ) : (
-                  <input
-                    type="checkbox"
-                    checked={checked}
-                    onChange={() => togglePoolItem(id)}
-                    className="h-4 w-4 accent-purple-500"
-                  />
-                )}
-                <span className="w-6 text-center text-base" aria-hidden="true"><IconDisplay iconKey={primaryStat} size={16} className="mx-auto h-4 w-4 object-contain" alt="" /></span>
-                <span className="w-6 text-center text-base" aria-hidden="true"><IconDisplay iconKey={getTaskTypeIconKey(template.taskType)} size={16} className="mx-auto h-4 w-4 object-contain" alt="" /></span>
-                <span className="w-6 text-center text-base" aria-hidden="true"><TaskTemplateIcon iconKey={template.icon} size={16} className="mx-auto h-4 w-4 object-contain" alt="" /></span>
-                <span className="min-w-0 flex-1 truncate text-sm text-gray-700 dark:text-gray-200">{template.name}</span>
-              </div>
-            );
-          })}
-        </div>
+        {statusMessage ? <p className="mt-3 text-xs text-gray-500 dark:text-gray-400">{statusMessage}</p> : null}
       </div>
-    </div>
+
+      {isMapPickerOpen ? (
+        <AlbumLocationPicker
+          initialLocation={location ?? undefined}
+          onCancel={() => setIsMapPickerOpen(false)}
+          onConfirm={(nextLocation) => {
+            setLocation(nextLocation ?? null);
+            setStatusMessage(nextLocation ? 'Location saved.' : 'Location cleared.');
+            setIsMapPickerOpen(false);
+          }}
+        />
+      ) : null}
+    </>
   );
 }
 
@@ -246,16 +355,11 @@ export function OneOffEventPopup({ editEvent, onClose }: OneOffEventPopupProps) 
   const setPlannedEvent = useScheduleStore((s) => s.setPlannedEvent);
   const removePlannedEvent = useScheduleStore((s) => s.removePlannedEvent);
   const archiveEvent = useScheduleStore((s) => s.archiveEvent);
-  const taskTemplates = useScheduleStore((s) => s.taskTemplates);
+  const libraryTemplates = useMemo(() => getLibraryTemplatePool(), []);
 
   const isEditMode = editEvent !== null;
   const initialStartDate = isEditMode ? editEvent.seedDate : todayISO();
-
-  const allTemplates = useMemo(() => {
-    return Object.entries(taskTemplates)
-      .filter(([, template]) => template.isSystem !== true)
-      .map(([id, template]) => ({ id, template }));
-  }, [taskTemplates]);
+  const initialPools = ensureTaskPools(isEditMode ? editEvent.pools : undefined);
 
   const [name, setName] = useState(isEditMode ? editEvent.name : '');
   const [iconKey, setIconKey] = useState(isEditMode ? editEvent.icon : 'event');
@@ -264,9 +368,12 @@ export function OneOffEventPopup({ editEvent, onClose }: OneOffEventPopupProps) 
   const [endDate, setEndDate] = useState(isEditMode ? (editEvent.dieDate ?? editEvent.seedDate) : initialStartDate);
   const [endTime, setEndTime] = useState(isEditMode ? editEvent.endTime : addHour('09:00'));
   const [color, setColor] = useState(isEditMode ? editEvent.color : '#6366f1');
-  const [taskPool, setTaskPool] = useState<string[]>(isEditMode ? editEvent.taskPool : []);
+  const [pools, setPools] = useState<TaskSet[]>(initialPools);
+  const [taskPoolCursor, setTaskPoolCursor] = useState<number>(clampTaskPoolCursor(initialPools, isEditMode ? editEvent.taskPoolCursor : 0));
   const [conflictMode, setConflictMode] = useState<ConflictMode>(isEditMode ? editEvent.conflictMode : 'concurrent');
   const [description, setDescription] = useState(isEditMode ? editEvent.description : '');
+  const [coAttendees, setCoAttendees] = useState<EventAttendee[]>(isEditMode ? (editEvent.coAttendees ?? []) : []);
+  const [location, setLocation] = useState<EventLocation | null>(isEditMode ? (editEvent.location ?? null) : null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [error, setError] = useState('');
   const [dateError, setDateError] = useState('');
@@ -318,13 +425,22 @@ export function OneOffEventPopup({ editEvent, onClose }: OneOffEventPopupProps) 
         conflictMode,
         startTime,
         endTime,
-        taskPool,
+        pools,
+        taskPoolCursor,
+        location,
+        coAttendees,
       };
       setPlannedEvent(updated);
 
       if (shouldMaterialiseImmediately) {
         const currentTemplates = useScheduleStore.getState().taskTemplates;
-        const { event } = materialisePlannedEvent(updated, startDate, currentTemplates);
+        const materialiseTemplates = Object.fromEntries([
+          ...libraryTemplates
+            .filter((template): template is TaskTemplate & { id: string } => !!template.id)
+            .map((template) => [template.id, template] as const),
+          ...Object.entries(currentTemplates),
+        ]);
+        const { event } = materialisePlannedEvent(updated, startDate, materialiseTemplates);
         if (isHistoricalEvent) {
           archiveEvent(event.id);
         }
@@ -344,13 +460,14 @@ export function OneOffEventPopup({ editEvent, onClose }: OneOffEventPopupProps) 
         dieDate: endDate,
         recurrenceInterval,
         activeState: 'active',
-        taskPool,
-        taskPoolCursor: 0,
+        pools,
+        taskPoolCursor,
         taskList: [],
         conflictMode,
         startTime,
         endTime,
-        location: null,
+        location,
+        coAttendees,
         sharedWith: null,
         pushReminder: null,
       };
@@ -359,7 +476,13 @@ export function OneOffEventPopup({ editEvent, onClose }: OneOffEventPopupProps) 
         // Materialise immediately — no need to keep in plannedEvents
         setPlannedEvent(newEvent);
         const currentTemplates = useScheduleStore.getState().taskTemplates;
-        const { event } = materialisePlannedEvent(newEvent, startDate, currentTemplates);
+        const materialiseTemplates = Object.fromEntries([
+          ...libraryTemplates
+            .filter((template): template is TaskTemplate & { id: string } => !!template.id)
+            .map((template) => [template.id, template] as const),
+          ...Object.entries(currentTemplates),
+        ]);
+        const { event } = materialisePlannedEvent(newEvent, startDate, materialiseTemplates);
         if (isHistoricalEvent) {
           archiveEvent(event.id);
         }
@@ -411,65 +534,74 @@ export function OneOffEventPopup({ editEvent, onClose }: OneOffEventPopupProps) 
         </div>
 
         <div className="grid grid-cols-2 gap-3 sm:gap-4">
-          <Field label="Start date">
-            <input
-              type="date"
-              value={startDate}
-              onChange={(event) => {
-                const nextDate = event.target.value;
-                setStartDate(nextDate);
-                if (endDate < nextDate) {
-                  setEndDate(nextDate);
-                }
-                setError('');
-                setDateError('');
-              }}
-              className={inputCls}
-            />
-          </Field>
-          <Field label="Start time">
-            <input
-              type="time"
-              value={startTime}
-              onChange={(event) => {
-                const nextTime = event.target.value;
-                setStartTime(nextTime);
-                if (!isEditMode && startDate === endDate) {
-                  setEndTime(addHour(nextTime));
-                }
-                setDateError('');
-              }}
-              className={inputCls}
-            />
-          </Field>
-        </div>
+          <div className="min-w-0 space-y-3">
+            <label className="text-xs font-medium uppercase tracking-[0.12em] text-gray-500 dark:text-gray-400">Start</label>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Date</label>
+              <input
+                type="date"
+                value={startDate}
+                onChange={(event) => {
+                  const nextDate = event.target.value;
+                  setStartDate(nextDate);
+                  if (endDate < nextDate) {
+                    setEndDate(nextDate);
+                  }
+                  setError('');
+                  setDateError('');
+                }}
+                className={inputCls}
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Time</label>
+              <input
+                type="time"
+                value={startTime}
+                onChange={(event) => {
+                  const nextTime = event.target.value;
+                  setStartTime(nextTime);
+                  if (!isEditMode && startDate === endDate) {
+                    setEndTime(addHour(nextTime));
+                  }
+                  setDateError('');
+                }}
+                className={inputCls}
+              />
+            </div>
+          </div>
 
-        <div className="grid grid-cols-2 gap-3 sm:gap-4">
-          <Field label="End date">
-            <input
-              type="date"
-              value={endDate}
-              min={startDate}
-              onChange={(event) => {
-                setEndDate(event.target.value);
-                setError('');
-                setDateError('');
-              }}
-              className={inputCls}
-            />
-          </Field>
-          <Field label="End time" hint={!endsAfterStart ? 'End date/time must be after the start.' : undefined}>
-            <input
-              type="time"
-              value={endTime}
-              onChange={(event) => {
-                setEndTime(event.target.value);
-                setError('');
-                setDateError('');
-              }}
-              className={inputCls}
-            />
-          </Field>
+          <div className="min-w-0 space-y-3">
+            <label className="text-xs font-medium uppercase tracking-[0.12em] text-gray-500 dark:text-gray-400">End</label>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Date</label>
+              <input
+                type="date"
+                value={endDate}
+                min={startDate}
+                onChange={(event) => {
+                  setEndDate(event.target.value);
+                  setError('');
+                  setDateError('');
+                }}
+                className={inputCls}
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Time</label>
+              <input
+                type="time"
+                value={endTime}
+                onChange={(event) => {
+                  setEndTime(event.target.value);
+                  setError('');
+                  setDateError('');
+                }}
+                className={inputCls}
+              />
+              {!endsAfterStart && <p className="text-xs text-gray-400 italic">End date/time must be after the start.</p>}
+            </div>
+          </div>
         </div>
 
         {dateError && <p className="text-sm text-red-500">{dateError}</p>}
@@ -480,11 +612,22 @@ export function OneOffEventPopup({ editEvent, onClose }: OneOffEventPopupProps) 
             hint="Filter by stat, toggle selected-only, and drag rows to control task order."
             className="h-full min-h-0"
           >
-            <ScheduleTaskPool templates={allTemplates} taskPool={taskPool} setTaskPool={setTaskPool} />
+            <TaskPoolEditor
+              pools={pools}
+              activeCursor={taskPoolCursor}
+              onChange={(nextPools, nextCursor) => {
+                setPools(nextPools);
+                setTaskPoolCursor(nextCursor);
+              }}
+            />
           </Field>
         </div>
 
-        <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-3 sm:gap-4">
+        <ParticipantsEditor coAttendees={coAttendees} setCoAttendees={setCoAttendees} />
+
+        <LocationEditor location={location} setLocation={setLocation} />
+
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
           <Field label="Conflict mode">
             <select
               value={conflictMode}
@@ -510,34 +653,38 @@ export function OneOffEventPopup({ editEvent, onClose }: OneOffEventPopupProps) 
 
         {error && <p className="text-sm text-red-500">{error}</p>}
 
-        <div className="flex items-center justify-end gap-2">
-          {isEditMode && (
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-2">
+            {isEditMode && (
+              <button
+                type="button"
+                onClick={handleDelete}
+                className={`rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                  confirmDelete
+                    ? 'bg-red-600 text-white'
+                    : 'border border-red-300 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20'
+                }`}
+              >
+                {confirmDelete ? 'Confirm Delete' : 'Delete'}
+              </button>
+            )}
+          </div>
+          <div className="flex flex-wrap items-center justify-end gap-2">
             <button
               type="button"
-              onClick={handleDelete}
-              className={`rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
-                confirmDelete
-                  ? 'bg-red-600 text-white'
-                  : 'border border-red-300 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20'
-              }`}
+              onClick={onClose}
+              className="rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-600 transition-colors hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
             >
-              {confirmDelete ? 'Confirm Delete' : 'Delete'}
+              Cancel
             </button>
-          )}
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-600 transition-colors hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={handleSave}
-            className="rounded-lg bg-purple-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-purple-700"
-          >
-            Save
-          </button>
+            <button
+              type="button"
+              onClick={handleSave}
+              className="rounded-lg bg-purple-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-purple-700"
+            >
+              Save
+            </button>
+          </div>
         </div>
       </div>
     </PopupShell>

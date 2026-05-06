@@ -8,6 +8,7 @@ import { useScheduleStore } from '../../../../stores/useScheduleStore';
 import { useUserStore } from '../../../../stores/useUserStore';
 import { localISODate } from '../../../../utils/dateUtils';
 import { getLibraryTemplatePool } from '../../../../utils/resolveTaskTemplate';
+import { getAllTemplateRefs } from '../../../../utils/taskPools';
 import { ColorPicker } from '../../../shared/ColorPicker';
 import { IconDisplay } from '../../../shared/IconDisplay';
 import { IconPicker } from '../../../shared/IconPicker';
@@ -196,16 +197,17 @@ function RoutineExpandedEditor({ routine }: { routine: PrebuiltRoutine }) {
   const [error, setError] = useState('');
 
   const routineTemplates = useMemo(() => {
+    const templateRefs = getAllTemplateRefs(routine.pools);
     const bundledById = new Map(
       libraryTemplates
         .filter((template): template is TaskTemplate & { id: string } => !!template.id)
         .map((template) => [template.id, template]),
     );
 
-    return routine.taskPool
+    return templateRefs
       .map((templateId) => taskTemplates[templateId] ?? bundledById.get(templateId) ?? null)
       .filter((template): template is TaskTemplate => template !== null);
-  }, [libraryTemplates, routine.taskPool, taskTemplates]);
+  }, [libraryTemplates, routine.pools, taskTemplates]);
 
   function handleAddToSchedule() {
     if (!name.trim()) {
@@ -223,7 +225,7 @@ function RoutineExpandedEditor({ routine }: { routine: PrebuiltRoutine }) {
       dieDate: null,
       recurrenceInterval: routine.recurrenceInterval,
       activeState: 'active',
-      taskPool: routine.taskPool,
+      pools: routine.pools,
       taskPoolCursor: 0,
       taskList: [],
       conflictMode: 'concurrent',
@@ -231,6 +233,7 @@ function RoutineExpandedEditor({ routine }: { routine: PrebuiltRoutine }) {
       endTime,
       isOvernight: routine.isOvernight === true || endTime < startTime,
       location: null,
+      coAttendees: [],
       sharedWith: null,
       pushReminder: null,
     };

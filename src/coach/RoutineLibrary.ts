@@ -5,6 +5,7 @@
 // When the user taps "Add to Schedule", RoutinePopup opens pre-filled.
 // -----------------------------------------------------------------------------
 
+import type { TaskSet } from '../types/plannedEvent';
 import type { RecurrenceRule } from '../types/taskTemplate';
 
 export type RoutineTag =
@@ -28,10 +29,21 @@ export interface PrebuiltRoutine {
   startTime: string;
   endTime: string;
   isOvernight?: boolean;
-  /** Task template IDs from TaskTemplateLibrary / StarterQuestLibrary */
-  taskPool: string[];
+  /** Task groups from TaskTemplateLibrary / StarterQuestLibrary */
+  pools: TaskSet[];
   recurrenceInterval: RecurrenceRule;
   tags: RoutineTag[];
+}
+
+function makeTemplatePool(id: string, templateRefs: string[]): TaskSet[] {
+  return [{
+    id: `${id}-pool-1`,
+    entries: templateRefs.map((templateRef, index) => ({
+      kind: 'template' as const,
+      id: `${id}-entry-${index + 1}`,
+      templateRef,
+    })),
+  }];
 }
 
 export const routineLibrary: PrebuiltRoutine[] = [
@@ -43,11 +55,11 @@ export const routineLibrary: PrebuiltRoutine[] = [
     color: '#f59e0b',
     startTime: '07:00',
     endTime: '07:30',
-    taskPool: [
+    pools: makeTemplatePool('prebuilt-routine-morning-moves', [
       'task-hlth-drink-water',
       'task-hlth-body-scan',
       'task-hlth-brush-teeth',
-    ],
+    ]),
     recurrenceInterval: {
       frequency: 'daily',
       days: [],
@@ -65,11 +77,11 @@ export const routineLibrary: PrebuiltRoutine[] = [
     color: '#8b5cf6',
     startTime: '20:00',
     endTime: '21:00',
-    taskPool: [
+    pools: makeTemplatePool('prebuilt-routine-evening-relax', [
       'task-wis-meditation-timer',
       'task-wis-journal-entry',
       'task-chr-give-gratitude',
-    ],
+    ]),
     recurrenceInterval: {
       frequency: 'daily',
       days: [],
@@ -88,9 +100,9 @@ export const routineLibrary: PrebuiltRoutine[] = [
     startTime: '22:00',
     endTime: '07:00',
     isOvernight: true,
-    taskPool: [
+    pools: makeTemplatePool('prebuilt-routine-sleep-window', [
       'task-hlth-track-sleep',
-    ],
+    ]),
     recurrenceInterval: {
       frequency: 'daily',
       days: [],
@@ -108,11 +120,11 @@ export const routineLibrary: PrebuiltRoutine[] = [
     color: '#ef4444',
     startTime: '06:00',
     endTime: '07:00',
-    taskPool: [
+    pools: makeTemplatePool('prebuilt-routine-morning-workout', [
       'task-def-warm-up-session',
       'task-str-full-body-circuit',
       'task-def-cooldown-session',
-    ],
+    ]),
     recurrenceInterval: {
       frequency: 'weekly',
       days: ['mon', 'wed', 'fri'],
@@ -130,10 +142,10 @@ export const routineLibrary: PrebuiltRoutine[] = [
     color: '#3b82f6',
     startTime: '09:00',
     endTime: '12:00',
-    taskPool: [
+    pools: makeTemplatePool('prebuilt-routine-work-block', [
       'task-agi-clear-inbox',
       'task-wis-study-session',
-    ],
+    ]),
     recurrenceInterval: {
       frequency: 'weekly',
       days: ['mon', 'tue', 'wed', 'thu', 'fri'],
@@ -151,10 +163,10 @@ export const routineLibrary: PrebuiltRoutine[] = [
     color: '#10b981',
     startTime: '17:00',
     endTime: '18:30',
-    taskPool: [
+    pools: makeTemplatePool('prebuilt-routine-meal-prep', [
       'task-str-cook-meal',
       'task-hlth-log-meal',
-    ],
+    ]),
     recurrenceInterval: {
       frequency: 'weekly',
       days: ['sun'],
@@ -172,10 +184,10 @@ export const routineLibrary: PrebuiltRoutine[] = [
     color: '#6366f1',
     startTime: '18:00',
     endTime: '19:00',
-    taskPool: [
+    pools: makeTemplatePool('prebuilt-routine-weekly-review', [
       'task-agi-clear-inbox',
       'task-wis-journal-entry',
-    ],
+    ]),
     recurrenceInterval: {
       frequency: 'weekly',
       days: ['sun'],

@@ -6,6 +6,7 @@ import { ResourceTasksTab } from './ResourceTasksTab';
 import { TaskTemplatePopup } from './TaskTemplatePopup';
 import type { TaskTemplate } from '../../../../../types';
 import { autoCompleteSystemTask } from '../../../../../engine/resourceEngine';
+import type { ResourceType } from '../../../../../types/resource';
 
 type TaskTab = 'stat' | 'resource';
 
@@ -15,7 +16,7 @@ type PopupState =
   | null;
 
 interface TaskRoomProps {
-  onGoToResource?: (resourceId: string, resourceType: string) => void;
+  onGoToResource?: (resourceId: string, resourceType: ResourceType) => void;
 }
 
 export function TaskRoom({ onGoToResource }: TaskRoomProps) {

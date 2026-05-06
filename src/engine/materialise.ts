@@ -10,11 +10,12 @@
 // ─────────────────────────────────────────
 
 import { v4 as uuidv4 } from 'uuid';
-import type { PlannedEvent } from '../types/plannedEvent';
+import type { PlannedEvent, ResourceTaskEntry } from '../types/plannedEvent';
 import type { Event } from '../types/event';
 import type { Task } from '../types/task';
-import type { TaskTemplate, TaskSecondaryTag } from '../types/taskTemplate';
+import type { InputFields, TaskSecondaryTag, TaskTemplate, TaskType } from '../types/taskTemplate';
 import { useScheduleStore } from '../stores/useScheduleStore';
+import { useResourceStore } from '../stores/useResourceStore';
 import { isOneOffEvent } from '../utils/isOneOffEvent';
 import { storageDelete } from '../storage';
 import { storageKey } from '../storage/storageKeys';
@@ -35,22 +36,23 @@ export interface MaterialiseResult {
 // ── CURSOR ADVANCE (D47) ──────────────────────────────────────────────────────
 
 /**
- * Read the current cursor, return the templateRef at that position,
+ * Read the current cursor, return the pool index at that position,
  * and compute the next cursor (wraps at pool end).
- * Returns null for templateRef when taskPool is empty.
+ * Returns null when no task pools exist.
  */
 export function advanceCursor(pe: PlannedEvent): {
+  poolIndex: number | null;
   templateRef: string | null;
   nextCursor: number;
 } {
-  if (pe.taskPool.length === 0) {
-    return { templateRef: null, nextCursor: 0 };
+  if (pe.pools.length === 0) {
+    return { poolIndex: null, templateRef: null, nextCursor: 0 };
   }
-  const cursor = pe.taskPoolCursor ?? 0;
-  const safeIndex = cursor % pe.taskPool.length;
-  const templateRef = pe.taskPool[safeIndex];
-  const nextCursor = (safeIndex + 1) % pe.taskPool.length;
-  return { templateRef, nextCursor };
+  const cursor = typeof pe.taskPoolCursor === 'number' ? pe.taskPoolCursor : 0;
+  const safeIndex = cursor >= 0 && cursor < pe.pools.length ? cursor : 0;
+  const templateRef = pe.pools[safeIndex]?.entries.find((entry) => entry.kind === 'template')?.templateRef ?? null;
+  const nextCursor = pe.pools.length > 0 ? (safeIndex + 1) % pe.pools.length : 0;
+  return { poolIndex: safeIndex, templateRef, nextCursor };
 }
 
 // ── TASK INSTANTIATION ────────────────────────────────────────────────────────
@@ -73,6 +75,101 @@ function instantiateTask(templateRef: string, secondaryTag: TaskSecondaryTag | n
     questRef: null,
     actRef: null,
     secondaryTag,
+  };
+}
+
+function buildUniqueResourceTaskInputFields(
+  taskType: TaskType,
+  title: string,
+  inputFields?: Partial<InputFields> | null,
+): Partial<InputFields> {
+  switch (taskType) {
+    case 'COUNTER':
+      return { target: 1, unit: 'count', step: 1, ...(inputFields ?? {}) };
+    case 'DURATION':
+      {
+        const durationFields = (inputFields ?? {}) as {
+          targetDuration?: number;
+          unit?: 'seconds' | 'minutes' | 'hours' | null;
+        };
+      return {
+        ...(inputFields ?? {}),
+        targetDuration: typeof durationFields.targetDuration === 'number' ? durationFields.targetDuration : 300,
+        unit: durationFields.unit === 'seconds' || durationFields.unit === 'minutes' || durationFields.unit === 'hours'
+          ? durationFields.unit
+          : 'minutes',
+      };
+      }
+    case 'TIMER':
+      return { countdownFrom: 300, ...(inputFields ?? {}) };
+    case 'RATING':
+      return { scale: 5, label: title, ...(inputFields ?? {}) };
+    case 'TEXT':
+      return { prompt: title, maxLength: null, ...(inputFields ?? {}) };
+    case 'LOG':
+      return { prompt: title, ...(inputFields ?? {}) };
+    case 'CONSUME':
+      return { label: title, entries: [], ...(inputFields ?? {}) };
+    case 'CHECK':
+    default:
+      return { label: title, ...(inputFields ?? {}) };
+  }
+}
+
+function findResourceTaskConfig(entry: ResourceTaskEntry): {
+  taskType: TaskType;
+  inputFields?: Partial<InputFields> | null;
+} {
+  const resource = useResourceStore.getState().resources[entry.resourceId];
+  if (!resource) {
+    return { taskType: 'CHECK' };
+  }
+
+  if (resource.type === 'home') {
+    const task = (resource.chores ?? []).find((chore) => chore.id === entry.taskId);
+    return { taskType: ((task?.taskType as TaskType | undefined) ?? 'CHECK') };
+  }
+
+  if (resource.type === 'vehicle') {
+    const task = (resource.maintenanceTasks ?? []).find((maintenanceTask) => maintenanceTask.id === entry.taskId);
+    return { taskType: ((task?.taskType as TaskType | undefined) ?? 'CHECK'), inputFields: task?.inputFields ?? null };
+  }
+
+  if (resource.type === 'account') {
+    const task = (resource.accountTasks ?? []).find((accountTask) => accountTask.id === entry.taskId);
+    return { taskType: ((task?.taskType as TaskType | undefined) ?? 'CHECK') };
+  }
+
+  if (resource.type === 'inventory') {
+    const inventoryTasks = [
+      ...resource.items.flatMap((item) => item.recurringTasks ?? []),
+      ...(resource.containers ?? []).flatMap((container) => container.items.flatMap((item) => item.recurringTasks ?? [])),
+    ];
+    const task = inventoryTasks.find((inventoryTask) => inventoryTask.id === entry.taskId);
+    return { taskType: ((task?.taskType as TaskType | undefined) ?? 'CHECK'), inputFields: task?.inputFields ?? null };
+  }
+
+  return { taskType: 'CHECK' };
+}
+
+function instantiateResourceTask(entry: ResourceTaskEntry): Task {
+  const config = findResourceTaskConfig(entry);
+  return {
+    id: uuidv4(),
+    templateRef: null,
+    isUnique: true,
+    title: entry.taskName,
+    taskType: config.taskType,
+    completionState: 'pending',
+    completedAt: null,
+    resultFields: buildUniqueResourceTaskInputFields(config.taskType, entry.taskName, config.inputFields),
+    attachmentRef: null,
+    resourceRef: entry.resourceId,
+    location: null,
+    sharedWith: null,
+    questRef: null,
+    actRef: null,
+    secondaryTag: null,
   };
 }
 
@@ -112,7 +209,7 @@ function findQuestRefForTemplate(
 /**
  * Convert a PlannedEvent into a concrete Event for the given date.
  *
- * Reads   — pe.taskPool, pe.taskPoolCursor, taskTemplates map (for validation)
+ * Reads   — pe.pools, pe.taskPoolCursor, taskTemplates map (for validation)
  * Writes  — useScheduleStore (event + tasks), storageLayer (event, tasks, plannedEvent)
  *
  * @param pe            The PlannedEvent to materialise
@@ -127,31 +224,37 @@ export function materialisePlannedEvent(
   forDate: string,
   taskTemplates: Record<string, TaskTemplate>,
 ): MaterialiseResult {
-  // All events (one-off and recurring routines) materialise ALL pool tasks at once.
-  // The cursor is kept in sync but not used to limit which tasks appear.
-  const templateRefs: string[] = [...pe.taskPool];
-  const nextCursor = pe.taskPoolCursor ?? 0;
+  const { poolIndex, nextCursor } = advanceCursor(pe);
+  const activeEntries = poolIndex === null ? [] : (pe.pools[poolIndex]?.entries ?? []);
+
+  if (pe.pools.length === 0) {
+    console.warn(`[materialise] PlannedEvent "${pe.id}" has no task pools; materialising with no tasks.`);
+  }
 
   // Build task list for this event instance
   const tasks: Task[] = [];
-  for (const templateRef of templateRefs) {
-    // Validate the template exists — skip gracefully if missing (e.g. deleted template)
-    const templateExists = templateRef in taskTemplates;
-    if (templateExists) {
-      const tmpl = taskTemplates[templateRef];
-      const task = instantiateTask(templateRef, tmpl.secondaryTag ?? null);
-      // Populate questRef/actRef if this template matches an active Quest Marker
-      const questMatch = findQuestRefForTemplate(templateRef);
-      if (questMatch) {
-        task.questRef = questMatch.questRef;
-        task.actRef = questMatch.actId;
+  for (const entry of activeEntries) {
+    if (entry.kind === 'template') {
+      const templateRef = entry.templateRef;
+      const templateExists = templateRef in taskTemplates;
+      if (templateExists) {
+        const tmpl = taskTemplates[templateRef];
+        const task = instantiateTask(templateRef, tmpl.secondaryTag ?? null);
+        const questMatch = findQuestRefForTemplate(templateRef);
+        if (questMatch) {
+          task.questRef = questMatch.questRef;
+          task.actRef = questMatch.actId;
+        }
+        tasks.push(task);
+      } else {
+        console.warn(
+          `[materialise] TaskTemplate "${templateRef}" not found in store — task skipped for PlannedEvent "${pe.id}"`,
+        );
       }
-      tasks.push(task);
-    } else {
-      console.warn(
-        `[materialise] TaskTemplate "${templateRef}" not found in store — task skipped for PlannedEvent "${pe.id}"`,
-      );
+      continue;
     }
+
+    tasks.push(instantiateResourceTask(entry));
   }
 
   const taskRefs = tasks.map((t) => t.id);
@@ -184,12 +287,12 @@ export function materialisePlannedEvent(
     location: pe.location,
     note: null,
     sharedWith: [],
-    coAttendees: [],
+    coAttendees: pe.coAttendees ?? [],
   };
 
   const updatedPlannedEvent: PlannedEvent = {
     ...pe,
-    taskPoolCursor: nextCursor,
+    taskPoolCursor: isOneOffEvent(pe) ? pe.taskPoolCursor : nextCursor,
     taskList: taskRefs,
   };
 

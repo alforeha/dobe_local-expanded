@@ -57,7 +57,11 @@ function makePlannedEvent(overrides: Record<string, unknown> = {}): Record<strin
     dieDate: null,
     recurrenceInterval: { frequency: 'daily', interval: 1, days: [], endsOn: null },
     activeState: 'active',
-    taskPool: ['tmpl-a', 'tmpl-b', 'tmpl-c'],
+    pools: [
+      { id: 'pool-a', entries: [{ kind: 'template', id: 'entry-a', templateRef: 'tmpl-a' }] },
+      { id: 'pool-b', entries: [{ kind: 'template', id: 'entry-b', templateRef: 'tmpl-b' }] },
+      { id: 'pool-c', entries: [{ kind: 'template', id: 'entry-c', templateRef: 'tmpl-c' }] },
+    ],
     taskPoolCursor: 0,
     taskList: [],
     conflictMode: 'concurrent',
@@ -155,7 +159,7 @@ async function main(): Promise<void> {
 
   // ── A04 — Cursor wrap ───────────────────────────────────────────────────────
 
-  section('A04 — taskPool cursor wraps at pool end (3-item pool, 4 calls)');
+  section('A04 — task pool cursor wraps at pool end (3 pools, 4 calls)');
 
   useScheduleStore.getState().reset();
   useScheduleStore.setState({ taskTemplates: templates as never });
@@ -293,7 +297,7 @@ async function main(): Promise<void> {
     id: 'pe-weekly',
     seedDate: '2026-03-12',
     recurrenceInterval: { frequency: 'weekly', interval: 1, days: [dayOfWeek], endsOn: null },
-    taskPool: ['tmpl-b'],
+    pools: [{ id: 'pool-weekly', entries: [{ kind: 'template', id: 'entry-weekly', templateRef: 'tmpl-b' }] }],
     taskPoolCursor: 0,
   });
 

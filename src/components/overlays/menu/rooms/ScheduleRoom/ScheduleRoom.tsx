@@ -10,6 +10,7 @@ import { OneOffEventPopup } from './OneOffEventPopup';
 import { isOneOffEvent } from '../../../../../utils/isOneOffEvent';
 import type { PlannedEvent } from '../../../../../types';
 import { autoCompleteSystemTask } from '../../../../../engine/resourceEngine';
+import type { ResourceType } from '../../../../../types/resource';
 
 type ScheduleTab = 'routines' | 'events' | 'resources' | 'leagues';
 
@@ -20,7 +21,11 @@ type PopupState =
   | { mode: 'edit-event'; event: PlannedEvent }
   | null;
 
-export function ScheduleRoom() {
+interface ScheduleRoomProps {
+  onGoToResource?: (resourceId: string, resourceType: ResourceType) => void;
+}
+
+export function ScheduleRoom({ onGoToResource }: ScheduleRoomProps) {
   const [tab, setTab] = useState<ScheduleTab>('routines');
   const [routineFilter, setRoutineFilter] = useState('');
   const [eventFilter, setEventFilter] = useState('');
@@ -83,7 +88,7 @@ export function ScheduleRoom() {
           <ScheduleRoomBody events={filteredOneOffs} onEdit={handleEdit} />
         </>
       )}
-      {tab === 'resources' && <ResourceEventsTab />}
+      {tab === 'resources' && <ResourceEventsTab onGoToResource={onGoToResource} />}
       {tab === 'leagues' && <LeaguesTabStub />}
 
       {(popup?.mode === 'add-routine' || popup?.mode === 'edit-routine') && (

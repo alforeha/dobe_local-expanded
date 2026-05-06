@@ -4,6 +4,7 @@ import { useProgressionStore } from '../../../../stores/useProgressionStore';
 import { useScheduleStore } from '../../../../stores/useScheduleStore';
 import { useUserStore } from '../../../../stores/useUserStore';
 import { getLibraryTemplatePool } from '../../../../utils/resolveTaskTemplate';
+import { getAllTemplateRefs } from '../../../../utils/taskPools';
 import { normalizeCircuitInputFields, type InputFields, type TaskSecondaryTag, type TaskTemplate, type TaskType, type XpAward } from '../../../../types/taskTemplate';
 import type { StatGroupKey } from '../../../../types/user';
 import { IconDisplay } from '../../../shared/IconDisplay';
@@ -145,7 +146,7 @@ export function RecommendedTasksTab() {
   const usageByTemplateId = useMemo(() => {
     const usage: Record<string, string> = {};
     for (const plannedEvent of Object.values(plannedEvents)) {
-      for (const templateId of plannedEvent.taskPool) {
+      for (const templateId of getAllTemplateRefs(plannedEvent.pools)) {
         if (!usage[templateId]) usage[templateId] = plannedEvent.name;
       }
     }

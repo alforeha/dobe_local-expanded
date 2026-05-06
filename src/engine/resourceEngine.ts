@@ -38,6 +38,7 @@ import type { StatGroupKey, User } from '../types/user';
 import { getAppDate, getAppNowISO, localISODate } from '../utils/dateUtils';
 import type { QuickActionsEvent } from '../types/event';
 import { useScheduleStore } from '../stores/useScheduleStore';
+import { createTemplateTaskSet } from '../utils/taskPools';
 import { useUserStore } from '../stores/useUserStore';
 import { useResourceStore } from '../stores/useResourceStore';
 import { useProgressionStore } from '../stores/useProgressionStore';
@@ -1105,13 +1106,14 @@ function _genHomeSchedule(_resource: HomeResource): PlannedEvent[] {
         dieDate: null,
         recurrenceInterval: toPlannedEventRecurrence(recurringTask.recurrence),
         activeState: 'active',
-        taskPool: [recurringTask.taskTemplateRef],
+        pools: [createTemplateTaskSet([recurringTask.taskTemplateRef], uuidv4)],
         taskPoolCursor: 0,
         taskList: [recurringTask.taskTemplateRef],
         conflictMode: 'concurrent',
         startTime: '09:00',
         endTime: '09:30',
         location: null,
+        coAttendees: [],
         sharedWith: null,
         pushReminder: null,
       };
@@ -1154,13 +1156,14 @@ function _collectFacilityRecurringPlannedEvents(
           dieDate: null,
           recurrenceInterval: toPlannedEventRecurrence(recurringTask.recurrence),
           activeState: 'active',
-        taskPool: [taskTemplateRef],
+        pools: [createTemplateTaskSet([taskTemplateRef], uuidv4)],
         taskPoolCursor: 0,
         taskList: [taskTemplateRef],
         conflictMode: 'concurrent',
         startTime: '09:00',
         endTime: '09:30',
         location: null,
+        coAttendees: [],
         sharedWith: null,
           pushReminder: null,
         };
