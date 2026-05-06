@@ -123,7 +123,7 @@ function computeDayLayout(
     clusters.push(members);
   }
 
-  // ── Greedy column assignment within each cluster ───────────────────────────
+  // ── Greedy column assignment within each cluster ──────────────────────────
   const colOf = new Array<number>(n).fill(0);
   const colCountOf = new Array<number>(n).fill(1);
 
@@ -450,72 +450,75 @@ export function DayViewBody({ date, onEventOpen, onEditPlanned }: DayViewBodyPro
   }
 
   // Project planned events (future/planned recurrences)
-  const allPlanned = Object.values(plannedEvents);
-  for (const planned of allPlanned) {
-    const isOvernight = parseMinutesOfDay(planned.endTime) < parseMinutesOfDay(planned.startTime);
-    const dateISO = format(date, 'iso');
-    const previousDate = format(new Date(date.getFullYear(), date.getMonth(), date.getDate() - 1), 'iso');
-    const dueToday = isPlannedEventDue(planned, dateISO);
-    const dueYesterday = isPlannedEventDue(planned, previousDate);
-    const yesterdayIsDieDate = planned.dieDate === previousDate;
-    const coveredPlannedRefs = coveredPlannedRefsByDate.get(dateISO);
+  const dateISO = format(date, 'iso');
+  const showPlannedPreviews = dateISO >= getAppDate();
+  if (showPlannedPreviews) {
+    const allPlanned = Object.values(plannedEvents);
+    for (const planned of allPlanned) {
+      const isOvernight = parseMinutesOfDay(planned.endTime) < parseMinutesOfDay(planned.startTime);
+      const previousDate = format(new Date(date.getFullYear(), date.getMonth(), date.getDate() - 1), 'iso');
+      const dueToday = isPlannedEventDue(planned, dateISO);
+      const dueYesterday = isPlannedEventDue(planned, previousDate);
+      const yesterdayIsDieDate = planned.dieDate === previousDate;
+      const coveredPlannedRefs = coveredPlannedRefsByDate.get(dateISO);
 
-    if (isOvernight) {
-      // Deduplicate morning and evening blocks separately
-      // Check for materialized morning and evening blocks
-      let hasMaterializedMorning = false;
-      let hasMaterializedEvening = false;
-      if (coveredPlannedRefs && coveredPlannedRefs.has(planned.id)) {
-        for (const evRaw of allMaterialized) {
-          const ev = evRaw as Event;
-          if (
-            ev && typeof ev === 'object' &&
-            'plannedEventRef' in ev &&
-            ev.plannedEventRef === planned.id &&
-            'startTime' in ev &&
-            'startDate' in ev && 'endDate' in ev &&
-            ev.startDate <= dateISO && ev.endDate >= dateISO
-          ) {
-            // Suppress planned morning block if a materialized event started previous day at planned.startTime and ends today at planned.endTime
+      if (isOvernight) {
+        // Deduplicate morning and evening blocks separately
+        // Check for materialized morning and evening blocks
+        let hasMaterializedMorning = false;
+        let hasMaterializedEvening = false;
+        if (coveredPlannedRefs && coveredPlannedRefs.has(planned.id)) {
+          for (const evRaw of allMaterialized) {
+            const ev = evRaw as Event;
             if (
-              ev.startDate === previousDate &&
-              ev.endDate === dateISO &&
-              ev.startTime === planned.startTime &&
-              ev.endTime === planned.endTime
+              ev && typeof ev === 'object' &&
+              'plannedEventRef' in ev &&
+              ev.plannedEventRef === planned.id &&
+              'startTime' in ev &&
+              'startDate' in ev && 'endDate' in ev &&
+              ev.startDate <= dateISO && ev.endDate >= dateISO
             ) {
-              hasMaterializedMorning = true;
-            }
-            // Only count as materialized evening if this matches the planned startTime and starts today
-            if (ev.startTime === planned.startTime && ev.startDate === dateISO) {
-              hasMaterializedEvening = true;
+              // Suppress planned morning block if a materialized event started previous day at planned.startTime and ends today at planned.endTime
+              if (
+                ev.startDate === previousDate &&
+                ev.endDate === dateISO &&
+                ev.startTime === planned.startTime &&
+                ev.endTime === planned.endTime
+              ) {
+                hasMaterializedMorning = true;
+              }
+              // Only count as materialized evening if this matches the planned startTime and starts today
+              if (ev.startTime === planned.startTime && ev.startDate === dateISO) {
+                hasMaterializedEvening = true;
+              }
             }
           }
         }
-      }
-      // Project morning block if not covered, and avoid duplicate 'carry' block
-      if ((dueYesterday || yesterdayIsDieDate) && !hasMaterializedMorning) {
-        dayEvents.push({
-          ...planned,
-          id: `planned-${planned.id}:${dateISO}:morning`,
-          startTime: '00:00',
-          endTime: planned.endTime,
-        });
-        labelOverride.set(`planned-${planned.id}:${dateISO}:morning`, '↑ started yesterday');
-      }
-      // Project evening block if not covered
-      if (dueToday && !hasMaterializedEvening) {
-        dayEvents.push({
-          ...planned,
-          id: `planned-${planned.id}:${dateISO}:evening`,
-          startTime: planned.startTime,
-          endTime: '23:59',
-        });
-        labelOverride.set(`planned-${planned.id}:${dateISO}:evening`, '↓ continues');
-      }
-    } else {
-      // Non-overnight planned event: only show if not covered
-      if (dueToday && !(coveredPlannedRefs?.has(planned.id))) {
-        dayEvents.push(planned);
+        // Project morning block if not covered, and avoid duplicate 'carry' block
+        if ((dueYesterday || yesterdayIsDieDate) && !hasMaterializedMorning) {
+          dayEvents.push({
+            ...planned,
+            id: `planned-${planned.id}:${dateISO}:morning`,
+            startTime: '00:00',
+            endTime: planned.endTime,
+          });
+          labelOverride.set(`planned-${planned.id}:${dateISO}:morning`, '↑ started yesterday');
+        }
+        // Project evening block if not covered
+        if (dueToday && !hasMaterializedEvening) {
+          dayEvents.push({
+            ...planned,
+            id: `planned-${planned.id}:${dateISO}:evening`,
+            startTime: planned.startTime,
+            endTime: '23:59',
+          });
+          labelOverride.set(`planned-${planned.id}:${dateISO}:evening`, '↓ continues');
+        }
+      } else {
+        // Non-overnight planned event: only show if not covered
+        if (dueToday && !(coveredPlannedRefs?.has(planned.id))) {
+          dayEvents.push(planned);
+        }
       }
     }
   }
