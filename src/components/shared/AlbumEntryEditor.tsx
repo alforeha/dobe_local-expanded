@@ -89,6 +89,8 @@ export function AlbumEntryEditor({
   const [taskRef, setTaskRef] = useState<string>(selectedTaskRef ?? '');
   const [pendingNoteText, setPendingNoteText] = useState('');
   const [isNoteComposerOpen, setIsNoteComposerOpen] = useState(false);
+  const [noteOnlyText, setNoteOnlyText] = useState('');
+  const [isNoteOnlyMode, setIsNoteOnlyMode] = useState(false);
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
 
   const [isCapturing, setIsCapturing] = useState(false);
@@ -213,6 +215,7 @@ export function AlbumEntryEditor({
     setPhotoUri(undefined);
     setDate('');
     setLocation(undefined);
+    setIsNoteOnlyMode(false);
     setPhotoStatus('Photo removed.');
   }
 
@@ -259,20 +262,42 @@ export function AlbumEntryEditor({
   }
 
   function handleSave() {
+    const trimmedNoteOnlyText = noteOnlyText.trim();
+    const isSavingNoteOnlyEntry = isNoteOnlyMode && !photoUri;
+    const nextEntryKind: AlbumEntry['entryKind'] = isSavingNoteOnlyEntry
+      ? 'note'
+      : photoUri
+        ? 'photo'
+        : entry?.entryKind;
+    const nextNotes = isSavingNoteOnlyEntry && trimmedNoteOnlyText
+      ? [
+          ...notes,
+          {
+            id: crypto.randomUUID(),
+            authorRef: displayName,
+            text: trimmedNoteOnlyText,
+            createdAt: new Date().toISOString(),
+          },
+        ]
+      : notes;
     const next: AlbumEntry = entry
       ? {
           ...entry,
           date: date || todayIso(),
-          notes: notes.length > 0 ? notes : undefined,
-          photoUri,
+          entryKind: nextEntryKind,
+          notes: nextNotes.length > 0 ? nextNotes : undefined,
+          photoUri: isSavingNoteOnlyEntry ? undefined : photoUri,
           location,
         }
       : createAlbumEntry({
           date: date || todayIso(),
-          notes: notes.length > 0 ? notes : undefined,
-          photoUri,
+          notes: nextNotes.length > 0 ? nextNotes : undefined,
+          photoUri: isSavingNoteOnlyEntry ? undefined : photoUri,
           location,
         });
+    if (nextEntryKind) {
+      next.entryKind = nextEntryKind;
+    }
     onSave(
       next,
       contactOptions || taskOptions
@@ -359,7 +384,7 @@ export function AlbumEntryEditor({
       ) : (
         <>
           <div className="flex shrink-0 items-center justify-between border-b border-gray-200 px-4 py-3 dark:border-gray-800">
-            <div className="text-base font-semibold">{isEdit ? 'Edit Photo' : 'Add Photo'}</div>
+            <div className="text-base font-semibold">{isEdit ? 'Edit Entry' : 'Add Entry'}</div>
             <button
               type="button"
               onClick={onCancel}
@@ -394,25 +419,62 @@ export function AlbumEntryEditor({
               ) : (
                 <div className="flex h-full w-full items-center justify-center px-6">
                   <div className="flex w-full max-w-sm flex-col items-center gap-4">
-                  <button
-                    type="button"
-                    disabled={isCapturing}
-                    onClick={() => { void handleCapture(false); }}
-                    className="flex w-full items-center justify-center rounded-3xl bg-blue-500 px-6 py-4 text-base font-semibold text-white hover:bg-blue-600 disabled:opacity-50"
-                  >
-                    {isCapturing ? 'Working...' : 'Take Photo'}
-                  </button>
-                  <button
-                    type="button"
-                    disabled={isCapturing}
-                    onClick={() => {
-                      setPhotoStatus('');
-                      fileInputRef.current?.click();
-                    }}
-                    className="flex w-full items-center justify-center rounded-3xl bg-white px-6 py-4 text-base font-semibold text-gray-800 shadow-sm ring-1 ring-black/5 hover:bg-gray-50 disabled:opacity-50 dark:bg-gray-800 dark:text-gray-100 dark:hover:bg-gray-700"
-                  >
-                    Choose from Gallery
-                  </button>
+                    {isNoteOnlyMode ? (
+                      <div className="w-full rounded-3xl bg-white p-4 shadow-sm ring-1 ring-black/5 dark:bg-gray-800">
+                        <textarea
+                          rows={6}
+                          value={noteOnlyText}
+                          onChange={(event) => setNoteOnlyText(event.target.value)}
+                          placeholder="Write a note..."
+                          className={`${INPUT_CLS} resize-none`}
+                        />
+                        <div className="mt-3 flex justify-end">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setNoteOnlyText('');
+                              setIsNoteOnlyMode(false);
+                            }}
+                            className="rounded-full px-3 py-1.5 text-sm font-medium text-gray-500 hover:bg-gray-100 hover:text-gray-700 dark:text-gray-300 dark:hover:bg-gray-700"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <button
+                          type="button"
+                          disabled={isCapturing}
+                          onClick={() => { void handleCapture(false); }}
+                          className="flex w-full items-center justify-center rounded-3xl bg-blue-500 px-6 py-4 text-base font-semibold text-white hover:bg-blue-600 disabled:opacity-50"
+                        >
+                          {isCapturing ? 'Working...' : 'Take Photo'}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={isCapturing}
+                          onClick={() => {
+                            setPhotoStatus('');
+                            fileInputRef.current?.click();
+                          }}
+                          className="flex w-full items-center justify-center rounded-3xl bg-white px-6 py-4 text-base font-semibold text-gray-800 shadow-sm ring-1 ring-black/5 hover:bg-gray-50 disabled:opacity-50 dark:bg-gray-800 dark:text-gray-100 dark:hover:bg-gray-700"
+                        >
+                          Choose from Gallery
+                        </button>
+                        <button
+                          type="button"
+                          disabled={isCapturing}
+                          onClick={() => {
+                            setPhotoStatus('');
+                            setIsNoteOnlyMode(true);
+                          }}
+                          className="flex w-full items-center justify-center rounded-3xl bg-white px-6 py-4 text-base font-semibold text-gray-800 shadow-sm ring-1 ring-black/5 hover:bg-gray-50 disabled:opacity-50 dark:bg-gray-800 dark:text-gray-100 dark:hover:bg-gray-700"
+                        >
+                          Add Note
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
               )}
@@ -581,7 +643,8 @@ export function AlbumEntryEditor({
               <button
                 type="button"
                 onClick={handleSave}
-                className="w-full rounded-3xl bg-blue-500 px-4 py-3 text-base font-semibold text-white hover:bg-blue-600"
+                disabled={isNoteOnlyMode && !noteOnlyText.trim()}
+                className="w-full rounded-3xl bg-blue-500 px-4 py-3 text-base font-semibold text-white hover:bg-blue-600 disabled:opacity-50"
               >
                 Save
               </button>
