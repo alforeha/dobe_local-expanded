@@ -12,6 +12,7 @@ import { ContactMetaView } from './contact/ContactMetaView';
 import { HomeMetaView } from './home/HomeMetaView';
 import { HomeLayout } from './home/HomeLayout';
 import { VehicleMetaView } from './vehicle/VehicleMetaView';
+import { VehicleLayout } from './vehicle/VehicleLayout';
 import { AccountMetaView } from './account/AccountMetaView';
 import { InventoryMetaView } from './inventory/InventoryMetaView';
 import { DocMetaView } from './doc/DocMetaView';
@@ -254,7 +255,7 @@ export function ResourceBlockExpanded({ resource, onClose, onEdit }: ResourceBlo
             >
               Details
             </button>
-            {homeResource ? (
+            {homeResource || vehicleResource ? (
               <button
                 type="button"
                 onClick={() => setActiveTab('layout')}
@@ -297,6 +298,8 @@ export function ResourceBlockExpanded({ resource, onClose, onEdit }: ResourceBlo
         <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
           {activeTab === 'layout' && homeResource ? (
             <HomeLayout stories={homeResource.stories ?? []} homeId={homeResource.id} hideRoomList />
+          ) : activeTab === 'layout' && vehicleResource ? (
+            <VehicleLayout resource={vehicleResource} displayOnly />
           ) : activeTab === 'album' && canShowAlbum ? (
             <AlbumViewer
               entries={album}

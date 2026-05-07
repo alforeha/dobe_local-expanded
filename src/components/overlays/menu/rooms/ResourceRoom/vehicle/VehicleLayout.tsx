@@ -11,6 +11,7 @@ import { getVehicleLayoutDefinition } from './vehicleLayoutTemplates';
 
 interface VehicleLayoutProps {
   resource: VehicleResource;
+  displayOnly?: boolean;
   isEditMode?: boolean;
   onLayoutChange?: (layout: VehicleLayoutModel | undefined) => void;
 }
@@ -45,7 +46,7 @@ function estimateDataUrlSizeBytes(dataUrl: string): number {
   return Math.max(0, Math.floor((base64.length * 3) / 4) - padding);
 }
 
-export function VehicleLayout({ resource, isEditMode = false, onLayoutChange }: VehicleLayoutProps) {
+export function VehicleLayout({ resource, displayOnly = false, isEditMode = false, onLayoutChange }: VehicleLayoutProps) {
   const resources = useResourceStore((state) => state.resources);
   const setResource = useResourceStore((state) => state.setResource);
   const inspectionPhotoInputId = useId();
@@ -252,26 +253,28 @@ export function VehicleLayout({ resource, isEditMode = false, onLayoutChange }: 
 
   return (
     <div className="space-y-3">
-      <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 dark:border-sky-900/60 dark:bg-sky-950/30">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-sky-600 dark:text-sky-300">Overall inspection</p>
-            <h4 className="text-sm font-semibold text-sky-900 dark:text-sky-100">Run Full Inspection</h4>
-            <p className="text-xs text-sky-700/80 dark:text-sky-200/80">Queue the seeded CIRCUIT task for this vehicle.</p>
+      {!displayOnly ? (
+        <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 dark:border-sky-900/60 dark:bg-sky-950/30">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-sky-600 dark:text-sky-300">Overall inspection</p>
+              <h4 className="text-sm font-semibold text-sky-900 dark:text-sky-100">Run Full Inspection</h4>
+              <p className="text-xs text-sky-700/80 dark:text-sky-200/80">Queue the seeded CIRCUIT task for this vehicle.</p>
+            </div>
+            <button
+              type="button"
+              disabled={!fullInspectionTask}
+              onClick={triggerFullInspection}
+              className="rounded-full bg-sky-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-sky-700 disabled:opacity-40"
+            >
+              Run Full Inspection
+            </button>
           </div>
-          <button
-            type="button"
-            disabled={!fullInspectionTask}
-            onClick={triggerFullInspection}
-            className="rounded-full bg-sky-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-sky-700 disabled:opacity-40"
-          >
-            Run Full Inspection
-          </button>
+          {fullInspectionState ? (
+            <p className="mt-2 text-xs text-sky-700 dark:text-sky-200">{fullInspectionState}</p>
+          ) : null}
         </div>
-        {fullInspectionState ? (
-          <p className="mt-2 text-xs text-sky-700 dark:text-sky-200">{fullInspectionState}</p>
-        ) : null}
-      </div>
+      ) : null}
 
       <div className="flex items-center justify-between gap-3">
         <div>
@@ -280,7 +283,7 @@ export function VehicleLayout({ resource, isEditMode = false, onLayoutChange }: 
         </div>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(18rem,2fr)]">
+      <div className={displayOnly ? 'min-h-[22rem]' : 'grid gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(18rem,2fr)]'}>
         <div className="min-h-[22rem]">
           <VehicleLayoutDiagram
             template={activeLayout.template}
@@ -291,252 +294,254 @@ export function VehicleLayout({ resource, isEditMode = false, onLayoutChange }: 
           />
         </div>
 
-        <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-900/40">
-          {!selectedArea || !definition ? (
-            <p className="text-sm text-gray-500 dark:text-gray-400">Tap a zone to view details.</p>
-          ) : (() => {
-            const areaContainers = selectedArea.containerIds.map((containerId) => containerLookup.get(containerId)).filter(Boolean);
-            const availableContainers = eligibleContainers.filter((entry) => {
-              if (selectedArea.containerIds.includes(entry.container.id)) return false;
-              const linkedAreaId = entry.locationLink?.targetAreaId;
-              return !linkedAreaId || activeLayout.areas.some((area) => area.zoneId === selectedArea.zoneId && area.containerIds.includes(entry.container.id));
-            });
-            const lastInspections = withTrimmedInspectionHistory(selectedArea.inspectionHistory ?? []);
+        {!displayOnly ? (
+          <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-900/40">
+            {!selectedArea || !definition ? (
+              <p className="text-sm text-gray-500 dark:text-gray-400">Tap a zone to view details.</p>
+            ) : (() => {
+              const areaContainers = selectedArea.containerIds.map((containerId) => containerLookup.get(containerId)).filter(Boolean);
+              const availableContainers = eligibleContainers.filter((entry) => {
+                if (selectedArea.containerIds.includes(entry.container.id)) return false;
+                const linkedAreaId = entry.locationLink?.targetAreaId;
+                return !linkedAreaId || activeLayout.areas.some((area) => area.zoneId === selectedArea.zoneId && area.containerIds.includes(entry.container.id));
+              });
+              const lastInspections = withTrimmedInspectionHistory(selectedArea.inspectionHistory ?? []);
 
-            return (
-              <div className="space-y-4">
-                <div className="flex items-start gap-3">
-                  <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gray-100 dark:bg-gray-800">
-                    <IconDisplay iconKey={selectedArea.icon || 'vehicle'} size={20} className="h-5 w-5 object-contain" alt="" />
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-500 dark:text-gray-400">Zone</p>
-                    <h5 className="text-base font-semibold text-gray-900 dark:text-gray-100">{selectedArea.name}</h5>
-                    <button
-                      type="button"
-                      onClick={() => openInspectionForm(selectedArea.zoneId)}
-                      className="mt-2 rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700 hover:border-blue-300 hover:bg-blue-100 dark:border-blue-900 dark:bg-blue-950/50 dark:text-blue-200"
-                    >
-                      Inspect {selectedArea.name}
-                    </button>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="text-xs font-medium text-gray-500 dark:text-gray-400">Containers</p>
-                    {isEditMode && selectedArea.allowsContainers ? (
+              return (
+                <div className="space-y-4">
+                  <div className="flex items-start gap-3">
+                    <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gray-100 dark:bg-gray-800">
+                      <IconDisplay iconKey={selectedArea.icon || 'vehicle'} size={20} className="h-5 w-5 object-contain" alt="" />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-500 dark:text-gray-400">Zone</p>
+                      <h5 className="text-base font-semibold text-gray-900 dark:text-gray-100">{selectedArea.name}</h5>
                       <button
                         type="button"
-                        onClick={() => setPendingContainerIdByZone((prev) => ({ ...prev, [selectedArea.zoneId]: prev[selectedArea.zoneId] ?? '' }))}
-                        className="text-xs font-medium text-blue-500 hover:text-blue-600"
+                        onClick={() => openInspectionForm(selectedArea.zoneId)}
+                        className="mt-2 rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700 hover:border-blue-300 hover:bg-blue-100 dark:border-blue-900 dark:bg-blue-950/50 dark:text-blue-200"
                       >
-                        Add container
+                        Inspect {selectedArea.name}
                       </button>
-                    ) : null}
+                    </div>
                   </div>
 
-                  {!selectedArea.allowsContainers ? (
-                    <p className="text-xs italic text-gray-400">Containers are not supported in this zone.</p>
-                  ) : (
-                    <>
-                      {isEditMode ? (
-                        <div className="flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-3 dark:border-gray-700 dark:bg-gray-800/60">
-                          <select
-                            value={pendingContainerIdByZone[selectedArea.zoneId] ?? ''}
-                            onChange={(event) => setPendingContainerIdByZone((prev) => ({ ...prev, [selectedArea.zoneId]: event.target.value }))}
-                            className="flex-1 rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100"
-                          >
-                            <option value="">Select container</option>
-                            {availableContainers.map((entry) => (
-                              <option key={entry.container.id} value={entry.container.id}>
-                                {entry.container.name} - {entry.inventoryName}
-                              </option>
-                            ))}
-                          </select>
-                          <button
-                            type="button"
-                            disabled={!pendingContainerIdByZone[selectedArea.zoneId]}
-                            onClick={() => {
-                              const containerId = pendingContainerIdByZone[selectedArea.zoneId];
-                              if (!containerId) return;
-                              assignContainerToArea(selectedArea.zoneId, containerId);
-                            }}
-                            className="rounded-md bg-blue-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-600 disabled:opacity-40"
-                          >
-                            Add
-                          </button>
-                        </div>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-xs font-medium text-gray-500 dark:text-gray-400">Containers</p>
+                      {isEditMode && selectedArea.allowsContainers ? (
+                        <button
+                          type="button"
+                          onClick={() => setPendingContainerIdByZone((prev) => ({ ...prev, [selectedArea.zoneId]: prev[selectedArea.zoneId] ?? '' }))}
+                          className="text-xs font-medium text-blue-500 hover:text-blue-600"
+                        >
+                          Add container
+                        </button>
                       ) : null}
+                    </div>
 
-                      {areaContainers.length === 0 ? (
-                        <p className="text-xs italic text-gray-400">No linked containers.</p>
-                      ) : areaContainers.map((entry) => {
-                        if (!entry) return null;
-                        return (
-                          <div key={entry.container.id} className="flex items-center gap-2 rounded-lg bg-gray-50 px-3 py-2 text-sm dark:bg-gray-800/70">
-                            <IconDisplay iconKey={entry.container.icon || 'resource-inventory'} size={14} className="h-3.5 w-3.5 shrink-0 object-contain" alt="" />
-                            <span className="flex-1 truncate text-gray-700 dark:text-gray-200">{entry.container.name}</span>
-                            <span className="text-xs text-gray-400">{entry.container.items.length} item{entry.container.items.length === 1 ? '' : 's'}</span>
-                            {isEditMode ? (
+                    {!selectedArea.allowsContainers ? (
+                      <p className="text-xs italic text-gray-400">Containers are not supported in this zone.</p>
+                    ) : (
+                      <>
+                        {isEditMode ? (
+                          <div className="flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-3 dark:border-gray-700 dark:bg-gray-800/60">
+                            <select
+                              value={pendingContainerIdByZone[selectedArea.zoneId] ?? ''}
+                              onChange={(event) => setPendingContainerIdByZone((prev) => ({ ...prev, [selectedArea.zoneId]: event.target.value }))}
+                              className="flex-1 rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100"
+                            >
+                              <option value="">Select container</option>
+                              {availableContainers.map((entry) => (
+                                <option key={entry.container.id} value={entry.container.id}>
+                                  {entry.container.name} - {entry.inventoryName}
+                                </option>
+                              ))}
+                            </select>
+                            <button
+                              type="button"
+                              disabled={!pendingContainerIdByZone[selectedArea.zoneId]}
+                              onClick={() => {
+                                const containerId = pendingContainerIdByZone[selectedArea.zoneId];
+                                if (!containerId) return;
+                                assignContainerToArea(selectedArea.zoneId, containerId);
+                              }}
+                              className="rounded-md bg-blue-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-600 disabled:opacity-40"
+                            >
+                              Add
+                            </button>
+                          </div>
+                        ) : null}
+
+                        {areaContainers.length === 0 ? (
+                          <p className="text-xs italic text-gray-400">No linked containers.</p>
+                        ) : areaContainers.map((entry) => {
+                          if (!entry) return null;
+                          return (
+                            <div key={entry.container.id} className="flex items-center gap-2 rounded-lg bg-gray-50 px-3 py-2 text-sm dark:bg-gray-800/70">
+                              <IconDisplay iconKey={entry.container.icon || 'resource-inventory'} size={14} className="h-3.5 w-3.5 shrink-0 object-contain" alt="" />
+                              <span className="flex-1 truncate text-gray-700 dark:text-gray-200">{entry.container.name}</span>
+                              <span className="text-xs text-gray-400">{entry.container.items.length} item{entry.container.items.length === 1 ? '' : 's'}</span>
+                              {isEditMode ? (
+                                <button
+                                  type="button"
+                                  onClick={() => removeContainerFromArea(selectedArea.zoneId, entry.container.id)}
+                                  className="text-xs text-gray-400 hover:text-red-400"
+                                >
+                                  Remove
+                                </button>
+                              ) : null}
+                            </div>
+                          );
+                        })}
+                      </>
+                    )}
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-xs font-medium text-gray-500 dark:text-gray-400">Inspection history</p>
+                      <button
+                        type="button"
+                        onClick={() => openInspectionForm(selectedArea.zoneId)}
+                        className="text-xs font-medium text-blue-500 hover:text-blue-600"
+                      >
+                        Add inspection
+                      </button>
+                    </div>
+
+                    {inspectionFormZoneId === selectedArea.zoneId ? (
+                      <div className="space-y-3 rounded-xl border border-gray-200 bg-gray-50 px-3 py-3 dark:border-gray-700 dark:bg-gray-800/60">
+                        <input
+                          id={inspectionPhotoInputId}
+                          ref={inspectionPhotoInputRef}
+                          type="file"
+                          accept="image/*"
+                          capture="environment"
+                          className="hidden"
+                          onChange={handleInspectionPhotoFileChange}
+                        />
+                        <div className="flex rounded-full bg-white p-1 dark:bg-gray-900">
+                          {(['pass', 'fail'] as const).map((result) => (
+                            <button
+                              key={result}
+                              type="button"
+                              onClick={() => setInspectionDraft((prev) => ({ ...prev, result }))}
+                              className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${inspectionDraft.result === result ? (result === 'pass' ? 'bg-green-500 text-white' : 'bg-red-500 text-white') : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'}`}
+                            >
+                              {result === 'pass' ? 'Pass' : 'Fail'}
+                            </button>
+                          ))}
+                        </div>
+                        <div className="space-y-3 rounded-lg border border-gray-200 bg-white px-3 py-3 dark:border-gray-700 dark:bg-gray-900/60">
+                          <div className="flex items-center justify-between gap-3">
+                            <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Photo</span>
+                            {inspectionDraft.photoUri ? (
                               <button
                                 type="button"
-                                onClick={() => removeContainerFromArea(selectedArea.zoneId, entry.container.id)}
+                                onClick={() => setInspectionDraft((prev) => ({ ...prev, photoUri: undefined }))}
                                 className="text-xs text-gray-400 hover:text-red-400"
                               >
                                 Remove
                               </button>
                             ) : null}
                           </div>
-                        );
-                      })}
-                    </>
-                  )}
-                </div>
 
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="text-xs font-medium text-gray-500 dark:text-gray-400">Inspection history</p>
-                    <button
-                      type="button"
-                      onClick={() => openInspectionForm(selectedArea.zoneId)}
-                      className="text-xs font-medium text-blue-500 hover:text-blue-600"
-                    >
-                      Add inspection
-                    </button>
-                  </div>
-
-                  {inspectionFormZoneId === selectedArea.zoneId ? (
-                    <div className="space-y-3 rounded-xl border border-gray-200 bg-gray-50 px-3 py-3 dark:border-gray-700 dark:bg-gray-800/60">
-                      <input
-                        id={inspectionPhotoInputId}
-                        ref={inspectionPhotoInputRef}
-                        type="file"
-                        accept="image/*"
-                        capture="environment"
-                        className="hidden"
-                        onChange={handleInspectionPhotoFileChange}
-                      />
-                      <div className="flex rounded-full bg-white p-1 dark:bg-gray-900">
-                        {(['pass', 'fail'] as const).map((result) => (
-                          <button
-                            key={result}
-                            type="button"
-                            onClick={() => setInspectionDraft((prev) => ({ ...prev, result }))}
-                            className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${inspectionDraft.result === result ? (result === 'pass' ? 'bg-green-500 text-white' : 'bg-red-500 text-white') : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'}`}
-                          >
-                            {result === 'pass' ? 'Pass' : 'Fail'}
-                          </button>
-                        ))}
-                      </div>
-                      <div className="space-y-3 rounded-lg border border-gray-200 bg-white px-3 py-3 dark:border-gray-700 dark:bg-gray-900/60">
-                        <div className="flex items-center justify-between gap-3">
-                          <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Photo</span>
                           {inspectionDraft.photoUri ? (
+                            <div className="overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-950">
+                              <img src={inspectionDraft.photoUri} alt="Inspection evidence" className="h-36 w-full object-cover" />
+                            </div>
+                          ) : (
+                            <div className="rounded-xl border border-dashed border-gray-300 px-4 py-5 text-sm text-gray-500 dark:border-gray-700 dark:text-gray-400">
+                              No photo selected
+                            </div>
+                          )}
+
+                          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
                             <button
                               type="button"
-                              onClick={() => setInspectionDraft((prev) => ({ ...prev, photoUri: undefined }))}
-                              className="text-xs text-gray-400 hover:text-red-400"
+                              onClick={() => inspectionPhotoInputRef.current?.click()}
+                              disabled={isInspectionPhotoBusy}
+                              className="rounded-lg bg-blue-500 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-600 disabled:opacity-50"
                             >
-                              Remove
+                              Upload photo
                             </button>
+                            <button
+                              type="button"
+                              onClick={() => void handleNativeInspectionPhoto('camera')}
+                              disabled={isInspectionPhotoBusy || !isNativePlatform}
+                              className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-100 disabled:opacity-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700"
+                            >
+                              Camera
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void handleNativeInspectionPhoto('gallery')}
+                              disabled={isInspectionPhotoBusy || !isNativePlatform}
+                              className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-100 disabled:opacity-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700"
+                            >
+                              Gallery
+                            </button>
+                          </div>
+
+                          {inspectionPhotoStatus ? (
+                            <p className="text-xs text-gray-500 dark:text-gray-400">{inspectionPhotoStatus}</p>
                           ) : null}
                         </div>
-
-                        {inspectionDraft.photoUri ? (
-                          <div className="overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-950">
-                            <img src={inspectionDraft.photoUri} alt="Inspection evidence" className="h-36 w-full object-cover" />
-                          </div>
-                        ) : (
-                          <div className="rounded-xl border border-dashed border-gray-300 px-4 py-5 text-sm text-gray-500 dark:border-gray-700 dark:text-gray-400">
-                            No photo selected
-                          </div>
-                        )}
-
-                        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+                        <textarea
+                          value={inspectionDraft.notes}
+                          onChange={(event) => setInspectionDraft((prev) => ({ ...prev, notes: event.target.value }))}
+                          placeholder="Optional notes"
+                          rows={3}
+                          className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-purple-500 focus:outline-none dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100"
+                        />
+                        <div className="flex justify-end gap-2">
                           <button
                             type="button"
-                            onClick={() => inspectionPhotoInputRef.current?.click()}
-                            disabled={isInspectionPhotoBusy}
-                            className="rounded-lg bg-blue-500 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-600 disabled:opacity-50"
+                            onClick={() => setInspectionFormZoneId(null)}
+                            className="rounded-md px-3 py-1.5 text-xs font-medium text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
                           >
-                            Upload photo
+                            Cancel
                           </button>
                           <button
                             type="button"
-                            onClick={() => void handleNativeInspectionPhoto('camera')}
-                            disabled={isInspectionPhotoBusy || !isNativePlatform}
-                            className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-100 disabled:opacity-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700"
+                            onClick={() => saveInspection(selectedArea.zoneId)}
+                            className="rounded-md bg-blue-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-600"
                           >
-                            Camera
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => void handleNativeInspectionPhoto('gallery')}
-                            disabled={isInspectionPhotoBusy || !isNativePlatform}
-                            className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-100 disabled:opacity-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700"
-                          >
-                            Gallery
+                            Save inspection
                           </button>
                         </div>
-
-                        {inspectionPhotoStatus ? (
-                          <p className="text-xs text-gray-500 dark:text-gray-400">{inspectionPhotoStatus}</p>
-                        ) : null}
                       </div>
-                      <textarea
-                        value={inspectionDraft.notes}
-                        onChange={(event) => setInspectionDraft((prev) => ({ ...prev, notes: event.target.value }))}
-                        placeholder="Optional notes"
-                        rows={3}
-                        className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-purple-500 focus:outline-none dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100"
-                      />
-                      <div className="flex justify-end gap-2">
-                        <button
-                          type="button"
-                          onClick={() => setInspectionFormZoneId(null)}
-                          className="rounded-md px-3 py-1.5 text-xs font-medium text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-                        >
-                          Cancel
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => saveInspection(selectedArea.zoneId)}
-                          className="rounded-md bg-blue-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-600"
-                        >
-                          Save inspection
-                        </button>
-                      </div>
-                    </div>
-                  ) : null}
+                    ) : null}
 
-                  {lastInspections.length === 0 ? (
-                    <p className="text-xs italic text-gray-400">No inspections recorded yet.</p>
-                  ) : (
-                    <div className="space-y-2">
-                      {lastInspections.map((entry) => (
-                        <div key={entry.id} className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 dark:border-gray-700 dark:bg-gray-800/70">
-                          <div className="flex items-center justify-between gap-3">
-                            <span className="text-xs font-medium text-gray-600 dark:text-gray-300">{formatInspectionDate(entry.date)}</span>
-                            <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${entry.result === 'pass' ? 'bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-200' : 'bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-200'}`}>
-                              {entry.result === 'pass' ? 'Pass' : 'Fail'}
-                            </span>
-                          </div>
-                          {entry.photoUri ? (
-                            <div className="mt-2 overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-950">
-                              <img src={entry.photoUri} alt={`${selectedArea.name} inspection`} className="h-28 w-full object-cover" />
+                    {lastInspections.length === 0 ? (
+                      <p className="text-xs italic text-gray-400">No inspections recorded yet.</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {lastInspections.map((entry) => (
+                          <div key={entry.id} className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 dark:border-gray-700 dark:bg-gray-800/70">
+                            <div className="flex items-center justify-between gap-3">
+                              <span className="text-xs font-medium text-gray-600 dark:text-gray-300">{formatInspectionDate(entry.date)}</span>
+                              <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${entry.result === 'pass' ? 'bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-200' : 'bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-200'}`}>
+                                {entry.result === 'pass' ? 'Pass' : 'Fail'}
+                              </span>
                             </div>
-                          ) : null}
-                          {entry.notes ? <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{entry.notes}</p> : null}
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                            {entry.photoUri ? (
+                              <div className="mt-2 overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-950">
+                                <img src={entry.photoUri} alt={`${selectedArea.name} inspection`} className="h-28 w-full object-cover" />
+                              </div>
+                            ) : null}
+                            {entry.notes ? <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{entry.notes}</p> : null}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
-            );
-          })()}
-        </div>
+              );
+            })()}
+          </div>
+        ) : null}
       </div>
     </div>
   );
