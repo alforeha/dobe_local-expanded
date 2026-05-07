@@ -32,8 +32,11 @@ interface StoryOutlineDraft {
 interface HomeFloorPlanProps {
 	story: HomeStory;
 	selectedRoomId: string | null;
+	selectedPlacedId?: string | null;
+	onPlacedItemSelect?: (placedId: string | null) => void;
 	onSelectRoom: (roomId: string | null) => void;
 	homeId?: string;
+	hideRoomList?: boolean;
 	editable?: boolean;
 	editingStoryOutline?: StoryOutlineDraft | null;
 	editingRoom?: FloorPlanRoom | null;
@@ -413,8 +416,11 @@ function getSegmentLines(origin: { x: number; y: number }, segments: FloorPlanSe
 export function HomeFloorPlan({
 	story,
 	selectedRoomId,
+	selectedPlacedId = null,
+	onPlacedItemSelect,
 	onSelectRoom,
 	homeId,
+	hideRoomList = false,
 	editable = false,
 	editingStoryOutline = null,
 	editingRoom = null,
@@ -925,6 +931,19 @@ export function HomeFloorPlan({
 			return () => window.clearTimeout(syncId);
 		}
 	}, [expandedPlacedContainerId, selectedPlacementId, selectedRoomSummary, story.placedItems]);
+
+	useEffect(() => {
+		if (selectedPlacedId === selectedPlacementId && selectedPlacedId === expandedPlacedContainerId) return;
+		const syncId = window.setTimeout(() => {
+			setExpandedPlacedContainerId(selectedPlacedId);
+			setSelectedPlacementId(selectedPlacedId);
+		}, 0);
+		return () => window.clearTimeout(syncId);
+	}, [expandedPlacedContainerId, selectedPlacedId, selectedPlacementId]);
+
+	useEffect(() => {
+		onPlacedItemSelect?.(selectedPlacementId);
+	}, [onPlacedItemSelect, selectedPlacementId]);
 
 	useEffect(() => {
 		if (!editingRoomId) {
@@ -2703,7 +2722,7 @@ export function HomeFloorPlan({
 		setInteraction({ type: 'idle' });
 	}
 
-	const outsideRoomsPanel = !editingRoom && !editingStoryOutline ? (
+	const outsideRoomsPanel = !hideRoomList && !editingRoom && !editingStoryOutline ? (
 		<div className="border-t border-gray-200 bg-gray-50/80 px-3 py-3 dark:border-gray-700 dark:bg-gray-950/40">
 			<div className="mx-auto w-full max-w-4xl space-y-2">
 				<div className="rounded-2xl bg-white/95 shadow-sm ring-1 ring-black/5 backdrop-blur dark:bg-gray-900/95">
@@ -3438,7 +3457,7 @@ export function HomeFloorPlan({
 					</div>
 				) : null}
 
-				{!editingRoom && !editingStoryOutline && roomSummaries.length > 0 ? (
+				{!hideRoomList && !editingRoom && !editingStoryOutline && roomSummaries.length > 0 ? (
 					<div className="border-t border-gray-200 bg-gray-50/80 px-3 py-3 dark:border-gray-700 dark:bg-gray-950/40">
 						<div className="mx-auto w-full max-w-4xl space-y-2">
 							<div className="px-1 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Rooms</div>

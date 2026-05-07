@@ -10,6 +10,7 @@ import { IconDisplay } from '../../../../shared/IconDisplay';
 
 import { ContactMetaView } from './contact/ContactMetaView';
 import { HomeMetaView } from './home/HomeMetaView';
+import { HomeLayout } from './home/HomeLayout';
 import { VehicleMetaView } from './vehicle/VehicleMetaView';
 import { AccountMetaView } from './account/AccountMetaView';
 import { InventoryMetaView } from './inventory/InventoryMetaView';
@@ -44,7 +45,7 @@ function buildRoomNameLookup(home: HomeResource): Map<string, string> {
 }
 
 export function ResourceBlockExpanded({ resource, onClose, onEdit }: ResourceBlockExpandedProps) {
-  const [activeTab, setActiveTab] = useState<'details' | 'relationships' | 'album'>('details');
+  const [activeTab, setActiveTab] = useState<'details' | 'layout' | 'relationships' | 'album'>('details');
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [editingEntry, setEditingEntry] = useState<AlbumEntry | null>(null);
   const [isCreatingEntry, setIsCreatingEntry] = useState(false);
@@ -253,6 +254,19 @@ export function ResourceBlockExpanded({ resource, onClose, onEdit }: ResourceBlo
             >
               Details
             </button>
+            {homeResource ? (
+              <button
+                type="button"
+                onClick={() => setActiveTab('layout')}
+                className={`pb-1 text-xs font-semibold transition-colors ${
+                  activeTab === 'layout'
+                    ? 'border-b-2 border-blue-500 text-gray-900 dark:text-gray-100'
+                    : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
+                }`}
+              >
+                Layout
+              </button>
+            ) : null}
             {contactResource ? (
               <button
                 type="button"
@@ -281,7 +295,9 @@ export function ResourceBlockExpanded({ resource, onClose, onEdit }: ResourceBlo
         ) : null}
 
         <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
-          {activeTab === 'album' && canShowAlbum ? (
+          {activeTab === 'layout' && homeResource ? (
+            <HomeLayout stories={homeResource.stories ?? []} homeId={homeResource.id} hideRoomList />
+          ) : activeTab === 'album' && canShowAlbum ? (
             <AlbumViewer
               entries={album}
               title={homeResource ? 'Home album' : contactResource ? 'Contact album' : 'Vehicle album'}

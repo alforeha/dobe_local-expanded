@@ -1,11 +1,9 @@
 // HomeMetaView - read-only display of HomeResource.
 
 import { useMemo } from 'react';
-import { normalizeRecurrenceMode, type HomeChore, type HomeResource } from '../../../../../../types/resource';
+import { isDoc, isInventory, normalizeRecurrenceMode, type HomeChore, type HomeResource, type Resource } from '../../../../../../types/resource';
 import { useResourceStore } from '../../../../../../stores/useResourceStore';
 import { IconDisplay } from '../../../../../shared/IconDisplay';
-import { ResourceMetaTabs } from '../shared/ResourceMetaTabs';
-import { HomeLayout } from './HomeLayout';
 
 interface HomeMetaViewProps {
   resource: HomeResource;
@@ -24,6 +22,133 @@ function getChoreSummary(chore: HomeChore) {
 
 function isPresent<T>(value: T | null | undefined): value is T {
   return Boolean(value);
+}
+
+function getLinkedTargets(resource: Resource, resources: Record<string, Resource>): Resource[] {
+  const targetIds = new Set<string>();
+
+  for (const link of resource.links ?? []) {
+    targetIds.add(link.targetResourceId);
+  }
+
+  if (resource.type === 'contact') {
+    if (resource.linkedHomeId) targetIds.add(resource.linkedHomeId);
+    for (const accountId of resource.linkedAccountIds ?? []) {
+      targetIds.add(accountId);
+    }
+
+    for (const entry of Object.values(resources)) {
+      if (entry.id === resource.id) continue;
+      for (const link of entry.links ?? []) {
+        if (link.targetResourceId === resource.id) {
+          targetIds.add(entry.id);
+        }
+      }
+      if (isDoc(entry) && (entry.linkedContactIds ?? []).includes(resource.id)) {
+        targetIds.add(entry.id);
+      }
+    }
+  }
+
+  if (resource.type === 'home') {
+    for (const accountId of resource.linkedAccountIds ?? []) {
+      targetIds.add(accountId);
+    }
+    for (const docId of resource.linkedDocIds ?? []) {
+      targetIds.add(docId);
+    }
+
+    for (const entry of Object.values(resources)) {
+      if (entry.id === resource.id) continue;
+      if (isDoc(entry)) {
+        if (entry.linkedResourceRef === resource.id || (entry.linkedResourceRefs ?? []).includes(resource.id)) {
+          targetIds.add(entry.id);
+        }
+      }
+      for (const link of entry.links ?? []) {
+        if (link.targetResourceId === resource.id) {
+          targetIds.add(entry.id);
+        }
+      }
+      if (isInventory(entry)) {
+        for (const container of entry.containers ?? []) {
+          for (const link of container.links ?? []) {
+            if (link.targetKind === 'home-room' && link.targetResourceId === resource.id) {
+              targetIds.add(entry.id);
+            }
+          }
+        }
+      }
+    }
+  }
+
+  if (isInventory(resource)) {
+    for (const container of resource.containers ?? []) {
+      for (const link of container.links ?? []) {
+        if (link.targetKind === 'vehicle' && link.targetResourceId) {
+          targetIds.add(link.targetResourceId);
+        }
+      }
+    }
+  }
+
+  if (resource.type === 'vehicle') {
+    for (const entry of Object.values(resources)) {
+      if (entry.id === resource.id) continue;
+      for (const link of entry.links ?? []) {
+        if (link.targetResourceId === resource.id) {
+          targetIds.add(entry.id);
+        }
+      }
+      if (isDoc(entry)) {
+        if (entry.linkedResourceRef === resource.id || (entry.linkedResourceRefs ?? []).includes(resource.id)) {
+          targetIds.add(entry.id);
+        }
+      }
+      if (isInventory(entry)) {
+        for (const container of entry.containers ?? []) {
+          for (const link of container.links ?? []) {
+            if (link.targetKind === 'vehicle' && link.targetResourceId === resource.id) {
+              targetIds.add(entry.id);
+            }
+          }
+        }
+      }
+    }
+  }
+
+  if (resource.type === 'account') {
+    for (const entry of Object.values(resources)) {
+      if (entry.id === resource.id) continue;
+      for (const link of entry.links ?? []) {
+        if (link.targetResourceId === resource.id) {
+          targetIds.add(entry.id);
+        }
+      }
+      if (isDoc(entry) && entry.linkedAccountId === resource.id) {
+        targetIds.add(entry.id);
+      }
+    }
+  }
+
+  if (resource.type === 'doc') {
+    if (resource.linkedResourceRef && resources[resource.linkedResourceRef]) {
+      targetIds.add(resource.linkedResourceRef);
+    }
+    for (const resourceId of resource.linkedResourceRefs ?? []) {
+      if (resources[resourceId]) targetIds.add(resourceId);
+    }
+    for (const contactId of resource.linkedContactIds ?? []) {
+      if (resources[contactId]) targetIds.add(contactId);
+    }
+    if (resource.linkedAccountId && resources[resource.linkedAccountId]) {
+      targetIds.add(resource.linkedAccountId);
+    }
+  }
+
+  return [...targetIds]
+    .map((id) => resources[id])
+    .filter((target): target is Resource => Boolean(target));
 }
 
 export function HomeMetaView({ resource }: HomeMetaViewProps) {
@@ -45,22 +170,31 @@ export function HomeMetaView({ resource }: HomeMetaViewProps) {
       .filter(isPresent);
   }, [allResources, liveHome]);
 
-  const linkedResources = [
-    ...(liveHome.linkedAccountIds ?? []),
-    ...(liveHome.linkedDocIds ?? []),
-  ]
-    .map((id) => allResources[id])
-    .filter(isPresent);
+  const linkedTargets = getLinkedTargets(liveHome, allResources);
+  const linkedResourcePills = linkedTargets.map((target) => {
+    const forwardRelationship =
+      liveHome.links?.find((link) => link.targetResourceId === target.id)?.relationship ?? '';
+    const reverseRelationship =
+      allResources[target.id]?.links?.find((link) => link.targetResourceId === liveHome.id)?.relationship ?? '';
+    const relationship = forwardRelationship || reverseRelationship;
+
+    return {
+      key: target.id,
+      icon: target.icon,
+      name: target.name,
+      relationship,
+    };
+  });
+  const hasLinkedResources = linkedResourcePills.length > 0;
 
   const hasAny =
     !!liveHome.address ||
     memberContacts.length > 0 ||
-    linkedResources.length > 0 ||
-    (liveHome.stories?.length ?? 0) > 0 ||
+    hasLinkedResources ||
     (liveHome.chores?.length ?? 0) > 0 ||
     (liveHome.notes?.length ?? 0) > 0;
 
-  const details = (
+  return (
     <div className="mb-1 space-y-1.5 text-xs text-gray-600 dark:text-gray-300">
       <div className="mb-2 flex items-center gap-2">
         <IconDisplay iconKey={liveHome.icon} size={20} className="h-5 w-5 shrink-0 object-contain" alt="" />
@@ -97,22 +231,27 @@ export function HomeMetaView({ resource }: HomeMetaViewProps) {
         </div>
       )}
 
-      {linkedResources.length > 0 && (
-        <div className="flex gap-2">
-          <span className="w-16 shrink-0 text-gray-400">Linked</span>
-          <div className="flex flex-wrap gap-1">
-            {linkedResources.map((linked) => (
+      {hasLinkedResources ? (
+        <div>
+          <p className="mt-2 mb-1 text-xs font-medium text-gray-500 dark:text-gray-400">
+            Linked Resources
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {linkedResourcePills.map((pill) => (
               <span
-                key={linked.id}
-                className="inline-flex items-center gap-1 rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-600 dark:bg-gray-600 dark:text-gray-300"
+                key={pill.key}
+                className="inline-flex items-center gap-1.5 rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-600 dark:bg-gray-800 dark:text-gray-300"
               >
-                <IconDisplay iconKey={linked.icon} size={14} className="h-3.5 w-3.5 object-contain" alt="" />
-                <span>{linked.name}</span>
+                <IconDisplay iconKey={pill.icon} size={12} className="h-3 w-3 object-contain" alt="" />
+                <span>{pill.name}</span>
+                {pill.relationship ? (
+                  <span className="ml-1 text-gray-400 dark:text-gray-500">· {pill.relationship}</span>
+                ) : null}
               </span>
             ))}
           </div>
         </div>
-      )}
+      ) : null}
 
       {liveHome.chores && liveHome.chores.length > 0 && (
         <div className="flex gap-2">
@@ -130,20 +269,6 @@ export function HomeMetaView({ resource }: HomeMetaViewProps) {
           </div>
         </div>
       )}
-
-      {liveHome.stories && liveHome.stories.length > 0 && (
-        <div className="space-y-2 pt-2">
-          <div className="flex items-center gap-2">
-            <span className="w-16 shrink-0 text-gray-400">Layout</span>
-            <span className="text-[11px] text-gray-400">
-              {liveHome.stories.length} stor{liveHome.stories.length === 1 ? 'y' : 'ies'} - {liveHome.stories.reduce((sum, story) => sum + story.rooms.length, 0)} rooms
-            </span>
-          </div>
-          <HomeLayout stories={liveHome.stories} />
-        </div>
-      )}
     </div>
   );
-
-  return <ResourceMetaTabs resource={liveHome} details={details} noteLabelWidth="w-16" />;
 }
