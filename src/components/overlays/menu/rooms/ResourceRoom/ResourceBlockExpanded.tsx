@@ -1,8 +1,11 @@
-﻿import { useState, useRef } from 'react';
-import type { Resource } from '../../../../../types/resource';
-import { isDoc, isInventory } from '../../../../../types/resource';
+import { useMemo, useRef, useState } from 'react';
+import type { ReactNode } from 'react';
+import type { AlbumEntry, HomeResource, Resource } from '../../../../../types/resource';
+import { isDoc, isHome, isInventory } from '../../../../../types/resource';
 import { useResourceStore } from '../../../../../stores/useResourceStore';
 import { useUserStore } from '../../../../../stores/useUserStore';
+import { AlbumEntryEditor } from '../../../../shared/AlbumEntryEditor';
+import { AlbumViewer } from '../../../../shared/AlbumViewer';
 import { IconDisplay } from '../../../../shared/IconDisplay';
 
 import { ContactMetaView } from './contact/ContactMetaView';
@@ -18,6 +21,8 @@ interface ResourceBlockExpandedProps {
   onEdit: (resource: Resource) => void;
 }
 
+const OUTSIDE_GROUP_LABEL = 'Outside / General';
+
 function daysUntil(isoDate: string): number | null {
   const today = new Date(new Date().toISOString().slice(0, 10) + 'T00:00:00');
   const target = new Date(isoDate.slice(0, 10) + 'T00:00:00');
@@ -25,13 +30,44 @@ function daysUntil(isoDate: string): number | null {
   return Math.round((target.getTime() - today.getTime()) / 86_400_000);
 }
 
+function buildRoomNameLookup(home: HomeResource): Map<string, string> {
+  const lookup = new Map<string, string>();
+  for (const story of home.stories ?? []) {
+    for (const room of story.rooms) {
+      lookup.set(room.id, room.name?.trim() || 'Unnamed room');
+    }
+  }
+  for (const room of home.rooms ?? []) {
+    lookup.set(room.id, room.name?.trim() || 'Unnamed room');
+  }
+  return lookup;
+}
+
 export function ResourceBlockExpanded({ resource, onClose, onEdit }: ResourceBlockExpandedProps) {
+  const [activeTab, setActiveTab] = useState<'details' | 'relationships' | 'album'>('details');
   const [deleteConfirm, setDeleteConfirm] = useState(false);
+  const [editingEntry, setEditingEntry] = useState<AlbumEntry | null>(null);
+  const [isCreatingEntry, setIsCreatingEntry] = useState(false);
   const resetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const resources = useResourceStore((s) => s.resources);
   const removeResource = useResourceStore((s) => s.removeResource);
+  const setResource = useResourceStore((s) => s.setResource);
+  const updateContactAlbum = useResourceStore((s) => s.updateContactAlbum);
+  const updateVehicleAlbum = useResourceStore((s) => s.updateVehicleAlbum);
   const setUser = useUserStore((s) => s.setUser);
   const user = useUserStore((s) => s.user);
+
+  const currentResource = resources[resource.id] ?? resource;
+  const homeResource = currentResource.type === 'home' ? currentResource : null;
+  const contactResource = currentResource.type === 'contact' ? currentResource : null;
+  const vehicleResource = currentResource.type === 'vehicle' ? currentResource : null;
+  const canShowAlbum = Boolean(homeResource || contactResource || vehicleResource);
+  const album = homeResource?.album ?? contactResource?.album ?? vehicleResource?.album ?? [];
+  const roomNameLookup = useMemo(
+    () => (homeResource ? buildRoomNameLookup(homeResource) : new Map<string, string>()),
+    [homeResource],
+  );
 
   function handleDelete() {
     if (!deleteConfirm) {
@@ -43,7 +79,7 @@ export function ResourceBlockExpanded({ resource, onClose, onEdit }: ResourceBlo
       return;
     }
     if (resetTimer.current) clearTimeout(resetTimer.current);
-    const deletedIds = removeResource(resource.id);
+    const deletedIds = removeResource(currentResource.id);
     if (user) {
       const updatedUser = {
         ...user,
@@ -61,111 +97,212 @@ export function ResourceBlockExpanded({ resource, onClose, onEdit }: ResourceBlo
     onClose();
   }
 
-  // Build GTD status badges
+  function persistAlbum(nextAlbum: AlbumEntry[]) {
+    if (homeResource) {
+      setResource({
+        ...homeResource,
+        updatedAt: new Date().toISOString(),
+        album: nextAlbum.length > 0 ? nextAlbum : undefined,
+      });
+      return;
+    }
+
+    if (contactResource) {
+      updateContactAlbum(contactResource.id, nextAlbum);
+      return;
+    }
+
+    if (vehicleResource) {
+      updateVehicleAlbum(vehicleResource.id, nextAlbum);
+    }
+  }
+
+  function handleAddEntry() {
+    setIsCreatingEntry(true);
+    setEditingEntry(null);
+  }
+
+  function handleEditEntry(entry: AlbumEntry) {
+    setIsCreatingEntry(false);
+    setEditingEntry(entry);
+  }
+
+  function handleDeleteEntry(entryId: string) {
+    persistAlbum(album.filter((entry) => entry.id !== entryId));
+  }
+
+  function handleSaveEntry(next: AlbumEntry) {
+    if (isCreatingEntry) {
+      persistAlbum([...album, next]);
+    } else if (editingEntry) {
+      persistAlbum(album.map((entry) => (entry.id === next.id ? next : entry)));
+    }
+    setIsCreatingEntry(false);
+    setEditingEntry(null);
+  }
+
+  function handleCancelEntry() {
+    setIsCreatingEntry(false);
+    setEditingEntry(null);
+  }
+
+  function groupAlbumEntry(entry: AlbumEntry): string {
+    if (!entry.sourceRef) return OUTSIDE_GROUP_LABEL;
+    return roomNameLookup.get(entry.sourceRef) ?? OUTSIDE_GROUP_LABEL;
+  }
+
   const badges: { iconKey: string; label: string; color: string }[] = [];
 
-  if (resource.type === 'vehicle') {
-    if (resource.insuranceExpiry) {
-      const d = daysUntil(resource.insuranceExpiry);
+  if (vehicleResource) {
+    if (vehicleResource.insuranceExpiry) {
+      const d = daysUntil(vehicleResource.insuranceExpiry);
       if (d !== null && d <= 30) {
         badges.push({ iconKey: 'act-defense', label: d <= 0 ? 'Insurance expired!' : `Insurance expires in ${d}d`, color: 'red' });
       }
     }
-    if (resource.serviceNextDate) {
-      const d = daysUntil(resource.serviceNextDate);
+    if (vehicleResource.serviceNextDate) {
+      const d = daysUntil(vehicleResource.serviceNextDate);
       if (d !== null && d <= 14) {
         badges.push({ iconKey: 'vehicle', label: d <= 0 ? 'Service overdue!' : `Service in ${d}d`, color: 'orange' });
       }
     }
   }
 
-  if (resource.type === 'account') {
-    if (resource.dueDate) {
-      const d = daysUntil(resource.dueDate);
-      if (d !== null && d <= 7) {
-        badges.push({ iconKey: 'resource-account', label: d <= 0 ? 'Payment overdue!' : `Payment due in ${d}d`, color: 'red' });
-      }
+  if (currentResource.type === 'account' && currentResource.dueDate) {
+    const d = daysUntil(currentResource.dueDate);
+    if (d !== null && d <= 7) {
+      badges.push({ iconKey: 'resource-account', label: d <= 0 ? 'Payment overdue!' : `Payment due in ${d}d`, color: 'red' });
     }
   }
 
-  if (isInventory(resource)) {
-    if (resource.items) {
-      const inventoryItems = (resource.containers ?? []).flatMap((container) => container.items);
-      const lowItems = (inventoryItems.length > 0 ? inventoryItems : resource.items).filter(
-        (item) => item.threshold != null && item.quantity != null && item.quantity <= item.threshold,
-      );
-      if (lowItems.length > 0) {
-        badges.push({ iconKey: 'resource-inventory', label: `${lowItems.length} item${lowItems.length > 1 ? 's' : ''} low stock`, color: 'amber' });
-      }
+  if (isInventory(currentResource) && currentResource.items) {
+    const inventoryItems = (currentResource.containers ?? []).flatMap((container) => container.items);
+    const lowItems = (inventoryItems.length > 0 ? inventoryItems : currentResource.items).filter(
+      (item) => item.threshold != null && item.quantity != null && item.quantity <= item.threshold,
+    );
+    if (lowItems.length > 0) {
+      badges.push({ iconKey: 'resource-inventory', label: `${lowItems.length} item${lowItems.length > 1 ? 's' : ''} low stock`, color: 'amber' });
     }
   }
 
-  if (isDoc(resource)) {
-    if (resource.expiryDate) {
-      const d = daysUntil(resource.expiryDate);
-      if (d !== null && d <= 30) {
-        badges.push({ iconKey: 'resource-doc', label: d <= 0 ? 'Document expired!' : `Expires in ${d}d`, color: 'red' });
-      }
+  if (isDoc(currentResource) && currentResource.expiryDate) {
+    const d = daysUntil(currentResource.expiryDate);
+    if (d !== null && d <= 30) {
+      badges.push({ iconKey: 'resource-doc', label: d <= 0 ? 'Document expired!' : `Expires in ${d}d`, color: 'red' });
     }
   }
 
   const colorMap: Record<string, string> = {
     amber: 'text-amber-700 bg-amber-50',
-    red:   'text-red-700 bg-red-50',
+    red: 'text-red-700 bg-red-50',
     orange: 'text-orange-700 bg-orange-50',
   };
 
-  let metaView: React.ReactNode = null;
-  switch (resource.type) {
+  let metaView: ReactNode = null;
+  switch (currentResource.type) {
     case 'contact':
-      metaView = <ContactMetaView resource={resource} />;
+      metaView = <ContactMetaView resource={currentResource} />;
       break;
     case 'home':
-      metaView = <HomeMetaView resource={resource} />;
+      metaView = <HomeMetaView resource={currentResource} />;
       break;
     case 'vehicle':
-      metaView = <VehicleMetaView resource={resource} />;
+      metaView = <VehicleMetaView resource={currentResource} />;
       break;
     case 'account':
-      metaView = <AccountMetaView resource={resource} />;
+      metaView = <AccountMetaView resource={currentResource} />;
       break;
     case 'inventory':
-      metaView = isInventory(resource) ? <InventoryMetaView resource={resource} /> : null;
+      metaView = isInventory(currentResource) ? <InventoryMetaView resource={currentResource} /> : null;
       break;
     case 'doc':
-      metaView = isDoc(resource) ? <DocMetaView resource={resource} /> : null;
+      metaView = isDoc(currentResource) ? <DocMetaView resource={currentResource} /> : null;
       break;
     default:
       metaView = (
-        <p className="text-xs text-gray-400 italic mb-2">
+        <p className="mb-2 text-xs italic text-gray-400">
           No details yet.
         </p>
       );
   }
 
   return (
-    <div className="w-full flex min-h-0 flex-1 flex-col">
+    <div className="flex min-h-0 w-full flex-1 flex-col">
       <div className="flex min-h-0 flex-1 flex-col p-3">
-        {/* GTD status badges */}
         {badges.length > 0 && (
           <div className="mb-2 flex flex-col gap-1">
-            {badges.map((b, i) => (
-              <div key={i} className={`flex items-center gap-1.5 text-xs rounded px-2 py-1 ${colorMap[b.color] ?? 'text-gray-600 bg-gray-100'}`}>
-                <IconDisplay iconKey={b.iconKey} size={14} className="h-3.5 w-3.5 object-contain" alt="" />
-                <span>{b.label}</span>
+            {badges.map((badge) => (
+              <div key={`${badge.iconKey}:${badge.label}`} className={`flex items-center gap-1.5 rounded px-2 py-1 text-xs ${colorMap[badge.color] ?? 'text-gray-600 bg-gray-100'}`}>
+                <IconDisplay iconKey={badge.iconKey} size={14} className="h-3.5 w-3.5 object-contain" alt="" />
+                <span>{badge.label}</span>
               </div>
             ))}
           </div>
         )}
 
+        {canShowAlbum ? (
+          <div className="mb-3 flex items-center gap-4 border-b border-gray-200 pb-2 dark:border-gray-700">
+            <button
+              type="button"
+              onClick={() => setActiveTab('details')}
+              className={`pb-1 text-xs font-semibold transition-colors ${
+                activeTab === 'details'
+                  ? 'border-b-2 border-blue-500 text-gray-900 dark:text-gray-100'
+                  : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
+              }`}
+            >
+              Details
+            </button>
+            {contactResource ? (
+              <button
+                type="button"
+                onClick={() => setActiveTab('relationships')}
+                className={`pb-1 text-xs font-semibold transition-colors ${
+                  activeTab === 'relationships'
+                    ? 'border-b-2 border-blue-500 text-gray-900 dark:text-gray-100'
+                    : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
+                }`}
+              >
+                Relationships
+              </button>
+            ) : null}
+            <button
+              type="button"
+              onClick={() => setActiveTab('album')}
+              className={`pb-1 text-xs font-semibold transition-colors ${
+                activeTab === 'album'
+                  ? 'border-b-2 border-blue-500 text-gray-900 dark:text-gray-100'
+                  : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
+              }`}
+            >
+              Album
+            </button>
+          </div>
+        ) : null}
+
         <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
-          {metaView}
+          {activeTab === 'album' && canShowAlbum ? (
+            <AlbumViewer
+              entries={album}
+              title={homeResource ? 'Home album' : contactResource ? 'Contact album' : 'Vehicle album'}
+              groupBy={isHome(currentResource) ? groupAlbumEntry : undefined}
+              onAdd={handleAddEntry}
+              onEdit={handleEditEntry}
+              onDelete={handleDeleteEntry}
+            />
+          ) : activeTab === 'relationships' && contactResource ? (
+            <div className="flex h-full items-center justify-center text-sm text-gray-400">
+              Contact relationships coming soon
+            </div>
+          ) : (
+            metaView
+          )}
         </div>
 
         <div className="mt-3 flex flex-none items-center gap-3 border-t border-gray-200 pt-2 dark:border-gray-600">
           <button
             type="button"
-            onClick={() => onEdit(resource)}
+            onClick={() => onEdit(currentResource)}
             className="text-xs font-medium text-blue-500 hover:text-blue-600"
           >
             Edit
@@ -173,9 +310,9 @@ export function ResourceBlockExpanded({ resource, onClose, onEdit }: ResourceBlo
           <button
             type="button"
             onClick={handleDelete}
-            className={`text-xs font-medium ml-auto transition-colors ${
+            className={`ml-auto text-xs font-medium transition-colors ${
               deleteConfirm
-                ? 'text-red-600 font-bold'
+                ? 'font-bold text-red-600'
                 : 'text-red-400 hover:text-red-500'
             }`}
           >
@@ -183,6 +320,14 @@ export function ResourceBlockExpanded({ resource, onClose, onEdit }: ResourceBlo
           </button>
         </div>
       </div>
+
+      {canShowAlbum && (isCreatingEntry || editingEntry) ? (
+        <AlbumEntryEditor
+          entry={editingEntry ?? undefined}
+          onSave={handleSaveEntry}
+          onCancel={handleCancelEntry}
+        />
+      ) : null}
     </div>
   );
 }

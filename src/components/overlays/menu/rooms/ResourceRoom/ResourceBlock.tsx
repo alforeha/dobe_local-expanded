@@ -149,7 +149,18 @@ export function ResourceBlock({ resource, onEdit, isExpanded, onExpand, onCollap
   const homeResource = isHome(currentResource) ? currentResource : null;
   const vehicleResource = isVehicle(currentResource) ? currentResource : null;
   const accountResource = isAccount(currentResource) ? currentResource : null;
-  const contactGroups = contactResource?.groups ?? [];
+  const contactGroups = [
+    ...(contactResource?.groups ?? []),
+    ...(contactResource?.customGroups ?? []),
+  ];
+  const getContactGroupLabel = (group: unknown) => {
+    if (typeof group === 'string') return group;
+    if (group && typeof group === 'object') {
+      const maybeLabeledGroup = group as { name?: string; label?: string };
+      return maybeLabeledGroup.name ?? maybeLabeledGroup.label ?? '';
+    }
+    return '';
+  };
   const homeAddress = homeResource?.address ?? '';
   const vehicleMileage = vehicleResource?.mileage ?? null;
   const docResource = isDoc(currentResource) ? currentResource : null;
@@ -162,14 +173,22 @@ export function ResourceBlock({ resource, onEdit, isExpanded, onExpand, onCollap
   if (contactResource) {
     summaryContent = (
       <div className="flex items-center gap-1 max-w-full overflow-hidden">
-        {contactGroups.slice(0, 3).map((g) => (
+        {contactGroups.slice(0, 3).map((g) => {
+          const groupLabel = getContactGroupLabel(g);
+          return (
           <span
-            key={g}
+            key={groupLabel}
             className="text-xs px-1.5 py-0.5 rounded-full bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 font-medium whitespace-nowrap"
           >
-            {g}
+            {groupLabel}
           </span>
-        ))}
+          );
+        })}
+        {contactGroups.length > 3 ? (
+          <span className="text-[11px] font-medium text-gray-400 dark:text-gray-500">
+            +{contactGroups.length - 3}
+          </span>
+        ) : null}
       </div>
     );
   } else if (homeResource && homeAddress) {
@@ -254,11 +273,23 @@ export function ResourceBlock({ resource, onEdit, isExpanded, onExpand, onCollap
       </button>
 
       {isExpanded && (
-        <ResourceBlockExpanded
-          resource={resource}
-          onClose={onCollapse}
-          onEdit={onEdit}
-        />
+        <>
+          <div className="relative w-full">
+            <div className="w-full border-t border-gray-200 dark:border-gray-700" />
+            <div className="pointer-events-none absolute inset-x-0 top-0 flex -translate-y-1/2 justify-center">
+              <span className="rounded-full bg-white px-2 py-0.5 text-[10px] text-gray-400 dark:bg-gray-800 dark:text-gray-500">
+                ▼
+              </span>
+            </div>
+          </div>
+
+          <ResourceBlockExpanded
+            key={currentResource.id}
+            resource={currentResource}
+            onClose={onCollapse}
+            onEdit={onEdit}
+          />
+        </>
       )}
     </div>
   );

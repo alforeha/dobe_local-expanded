@@ -1,8 +1,3 @@
-// AlbumViewer — shared grid + full-screen viewer for AlbumEntry collections.
-// Used by HomeMetaView (and future: VehicleMetaView, ContactMetaView) to display
-// a resource's album of photos with optional grouping and edit/delete actions,
-// and a full-screen lightbox with left/right navigation.
-
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { AlbumEntry } from '../../types/resource';
@@ -10,6 +5,7 @@ import { IconDisplay } from './IconDisplay';
 
 interface AlbumViewerProps {
   entries: AlbumEntry[];
+  onAdd?: () => void;
   onEdit?: (entry: AlbumEntry) => void;
   onDelete?: (entryId: string) => void;
   groupBy?: (entry: AlbumEntry) => string;
@@ -23,7 +19,6 @@ interface GroupedEntries {
 
 function formatReadableDate(iso: string): string {
   if (!iso) return '';
-  // AlbumEntry.date is YYYY-MM-DD by convention.
   const parsed = new Date(`${iso.slice(0, 10)}T00:00:00`);
   if (Number.isNaN(parsed.getTime())) return iso;
   return parsed.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
@@ -35,9 +30,13 @@ function formatLocation(location: AlbumEntry['location']): string | null {
   return `${location.latitude.toFixed(4)}, ${location.longitude.toFixed(4)}`;
 }
 
-function getLatestNoteText(entry: AlbumEntry): string {
-  const latestNote = entry.notes?.[entry.notes.length - 1];
-  return latestNote?.text?.trim() ?? '';
+function getFirstNoteText(entry: AlbumEntry): string {
+  return entry.notes?.find((note) => note.text.trim())?.text.trim() ?? '';
+}
+
+function getAlbumEntryKind(entry: AlbumEntry): 'photo' | 'note' {
+  if (entry.entryKind) return entry.entryKind;
+  return entry.photoUri ? 'photo' : 'note';
 }
 
 const SOURCE_KIND_LABELS: Record<NonNullable<AlbumEntry['sourceKind']>, string> = {
@@ -53,6 +52,15 @@ function PhotoUnavailablePlaceholder({ className, textClassName }: { className?:
     <div className={`flex flex-col items-center justify-center gap-2 bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400 ${className ?? ''}`}>
       <IconDisplay iconKey="camera" size={28} className="h-7 w-7 object-contain opacity-40" alt="" />
       <span className={textClassName ?? 'text-xs font-medium'}>Photo not available</span>
+    </div>
+  );
+}
+
+function NotePill({ text, className }: { text: string; className?: string }) {
+  return (
+    <div className={`inline-flex max-w-full items-center rounded-full bg-white/90 px-3 py-2 text-xs font-medium text-amber-900 shadow-sm ring-1 ring-amber-200/70 dark:bg-gray-900/90 dark:text-amber-100 dark:ring-amber-700/60 ${className ?? ''}`}>
+      <span className="mr-1.5 shrink-0">{'\u{1F4DD}'}</span>
+      <span className="line-clamp-3 break-words">{text || 'No text'}</span>
     </div>
   );
 }
@@ -137,9 +145,6 @@ function FullScreenViewer({ entries, startIndex, onClose, onEdit, onDelete }: Fu
   const initialIndex = Math.min(Math.max(0, startIndex), Math.max(0, entries.length - 1));
   const [internalIndex, setInternalIndex] = useState(initialIndex);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
-  // Clamp at render time so deletions that shrink the entries list don't blow
-  // up. Resetting `confirmingDelete` is unnecessary because the parent closes
-  // (and remounts) the viewer after a successful delete.
   const index = Math.min(internalIndex, Math.max(0, entries.length - 1));
 
   useEffect(() => {
@@ -148,6 +153,7 @@ function FullScreenViewer({ entries, startIndex, onClose, onEdit, onDelete }: Fu
       else if (event.key === 'ArrowRight') setInternalIndex((current) => Math.min(entries.length - 1, current + 1));
       else if (event.key === 'ArrowLeft') setInternalIndex((current) => Math.max(0, current - 1));
     }
+
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
   }, [entries.length, onClose]);
@@ -159,6 +165,8 @@ function FullScreenViewer({ entries, startIndex, onClose, onEdit, onDelete }: Fu
   const dateLabel = formatReadableDate(entry.date);
   const locationLabel = formatLocation(entry.location);
   const sourceKind = entry.sourceKind && entry.sourceKind !== 'manual' ? entry.sourceKind : null;
+  const entryKind = getAlbumEntryKind(entry);
+  const noteText = getFirstNoteText(entry);
 
   function handleDeleteClick() {
     if (!onDelete) return;
@@ -175,7 +183,6 @@ function FullScreenViewer({ entries, startIndex, onClose, onEdit, onDelete }: Fu
       className="fixed inset-0 z-50 flex flex-col bg-black/90 text-white"
       onClick={onClose}
     >
-      {/* Top bar */}
       <div
         className="flex shrink-0 items-center justify-between gap-2 px-4 py-3"
         onClick={(event) => event.stopPropagation()}
@@ -188,6 +195,7 @@ function FullScreenViewer({ entries, startIndex, onClose, onEdit, onDelete }: Fu
             </span>
           ) : null}
         </div>
+
         <div className="flex items-center gap-2">
           {onEdit ? (
             <button
@@ -217,12 +225,11 @@ function FullScreenViewer({ entries, startIndex, onClose, onEdit, onDelete }: Fu
             onClick={onClose}
             className="rounded-full bg-white/10 p-1.5 hover:bg-white/20"
           >
-            ✕
+            x
           </button>
         </div>
       </div>
 
-      {/* Photo area with side nav arrows */}
       <div
         className="relative flex min-h-0 flex-1 items-center justify-center px-4"
         onClick={(event) => event.stopPropagation()}
@@ -230,37 +237,42 @@ function FullScreenViewer({ entries, startIndex, onClose, onEdit, onDelete }: Fu
         {entries.length > 1 ? (
           <button
             type="button"
-            aria-label="Previous photo"
+            aria-label="Previous entry"
             onClick={() => setInternalIndex((current) => Math.max(0, current - 1))}
             disabled={index <= 0}
             className="absolute left-2 top-1/2 -translate-y-1/2 rounded-full bg-white/10 px-3 py-2 text-base font-semibold hover:bg-white/20 disabled:opacity-30 disabled:hover:bg-white/10"
           >
-            ‹
+            {'<'}
           </button>
         ) : null}
 
-        <AlbumPhoto
-          photoUri={entry.photoUri}
-          alt={dateLabel}
-          className="max-h-full max-w-full object-contain"
-          placeholderClassName="h-full min-h-[16rem] w-full rounded-2xl bg-white/5 px-10 py-12 text-gray-300"
-          placeholderTextClassName="text-sm"
-        />
+        {entryKind === 'photo' ? (
+          <AlbumPhoto
+            photoUri={entry.photoUri}
+            alt={dateLabel}
+            className="max-h-full max-w-full object-contain"
+            placeholderClassName="h-full min-h-[16rem] w-full rounded-2xl bg-white/5 px-10 py-12 text-gray-300"
+            placeholderTextClassName="text-sm"
+          />
+        ) : (
+          <div className="flex min-h-[16rem] w-full items-center justify-center rounded-2xl bg-amber-100/10 px-6 py-10">
+            <NotePill text={noteText || 'No text'} className="max-w-2xl bg-amber-50 text-sm text-amber-950 dark:bg-gray-900 dark:text-amber-100" />
+          </div>
+        )}
 
         {entries.length > 1 ? (
           <button
             type="button"
-            aria-label="Next photo"
+            aria-label="Next entry"
             onClick={() => setInternalIndex((current) => Math.min(entries.length - 1, current + 1))}
             disabled={index >= entries.length - 1}
             className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full bg-white/10 px-3 py-2 text-base font-semibold hover:bg-white/20 disabled:opacity-30 disabled:hover:bg-white/10"
           >
-            ›
+            {'>'}
           </button>
         ) : null}
       </div>
 
-      {/* Bottom info area */}
       <div
         className="shrink-0 space-y-1 px-4 py-3"
         onClick={(event) => event.stopPropagation()}
@@ -269,7 +281,7 @@ function FullScreenViewer({ entries, startIndex, onClose, onEdit, onDelete }: Fu
         {entry.notes?.length ? (
           <div className="space-y-1">
             {entry.notes.map((note) => (
-              <div key={note.id} className="text-xs text-gray-200 whitespace-pre-wrap">{note.text}</div>
+              <div key={note.id} className="whitespace-pre-wrap text-xs text-gray-200">{note.text}</div>
             ))}
           </div>
         ) : null}
@@ -282,7 +294,7 @@ function FullScreenViewer({ entries, startIndex, onClose, onEdit, onDelete }: Fu
   );
 }
 
-export function AlbumViewer({ entries, onEdit, onDelete, groupBy, title }: AlbumViewerProps) {
+export function AlbumViewer({ entries, onAdd, onEdit, onDelete, groupBy, title }: AlbumViewerProps) {
   const [viewerStart, setViewerStart] = useState<number | null>(null);
 
   const grouped = useMemo<GroupedEntries[] | null>(() => {
@@ -295,14 +307,11 @@ export function AlbumViewer({ entries, onEdit, onDelete, groupBy, title }: Album
         buckets.set(label, []);
         order.push(label);
       }
-      buckets.get(label)!.push(entry);
+      buckets.get(label)?.push(entry);
     }
     return order.map((label) => ({ label, entries: buckets.get(label) ?? [] }));
   }, [entries, groupBy]);
 
-  // Flat ordered list matching display order — used to find a startIndex for the
-  // viewer and to drive viewer left/right navigation. When grouping is active,
-  // the viewer navigates within the tapped entry's group.
   const flatOrder = useMemo<AlbumEntry[]>(() => {
     if (!grouped) return entries;
     return grouped.flatMap((group) => group.entries);
@@ -323,7 +332,9 @@ export function AlbumViewer({ entries, onEdit, onDelete, groupBy, title }: Album
 
   function renderCard(entry: AlbumEntry, scope: AlbumEntry[]) {
     const dateLabel = formatReadableDate(entry.date);
-    const notePreview = getLatestNoteText(entry);
+    const notePreview = getFirstNoteText(entry);
+    const entryKind = getAlbumEntryKind(entry);
+
     return (
       <button
         key={entry.id}
@@ -331,19 +342,26 @@ export function AlbumViewer({ entries, onEdit, onDelete, groupBy, title }: Album
         onClick={() => openViewer(entry.id, scope)}
         className="group flex w-full flex-col overflow-hidden rounded-xl bg-white text-left ring-1 ring-black/5 transition-shadow hover:shadow-md dark:bg-gray-900/70"
       >
-        <div className="aspect-square w-full overflow-hidden">
-          <AlbumPhoto
-            photoUri={entry.photoUri}
-            alt={dateLabel}
-            className="h-full w-full object-cover transition-transform group-hover:scale-[1.02]"
-            placeholderClassName="h-full w-full"
-          />
-        </div>
+        {entryKind === 'photo' ? (
+          <div className="aspect-square w-full overflow-hidden">
+            <AlbumPhoto
+              photoUri={entry.photoUri}
+              alt={dateLabel}
+              className="h-full w-full object-cover transition-transform group-hover:scale-[1.02]"
+              placeholderClassName="h-full w-full"
+            />
+          </div>
+        ) : (
+          <div className="flex min-h-[8rem] items-center justify-center bg-amber-50 px-3 py-4 dark:bg-amber-950/20">
+            <NotePill text={notePreview || 'No text'} />
+          </div>
+        )}
+
         <div className="space-y-0.5 px-2 py-1.5">
           <div className="text-[11px] font-semibold text-gray-700 dark:text-gray-200">
             {dateLabel || 'No date'}
           </div>
-          {notePreview ? (
+          {entryKind === 'photo' && notePreview ? (
             <div className="truncate text-[11px] text-gray-500 dark:text-gray-400">{notePreview}</div>
           ) : null}
         </div>
@@ -366,6 +384,16 @@ export function AlbumViewer({ entries, onEdit, onDelete, groupBy, title }: Album
             {totalCount} {totalCount === 1 ? 'entry' : 'entries'}
           </div>
         </div>
+
+        {onAdd ? (
+          <button
+            type="button"
+            onClick={onAdd}
+            className="rounded-full bg-blue-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-600"
+          >
+            + Add Entry
+          </button>
+        ) : null}
       </div>
 
       {totalCount === 0 ? (

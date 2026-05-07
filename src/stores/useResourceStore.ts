@@ -32,6 +32,8 @@ interface ResourceState {
 
 interface ResourceActions {
   setResource: (resource: Resource) => void;
+  updateContactAlbum: (contactId: string, album: AlbumEntry[]) => void;
+  updateVehicleAlbum: (vehicleId: string, album: AlbumEntry[]) => void;
   removeResource: (id: string) => string[];
   addResourceLink: (sourceId: string, targetId: string, relationship: string) => void;
   updateResourceLink: (sourceId: string, linkId: string, relationship: string) => void;
@@ -567,6 +569,26 @@ export const useResourceStore = create<ResourceState & ResourceActions>()(
       setResource: (resource) => {
         set((state) => ({ resources: { ...state.resources, [resource.id]: resource } }));
         // TODO: MVP06 — storageSet(storageKey.resource(resource.id), resource)
+      },
+
+      updateContactAlbum: (contactId, album) => {
+        const resource = get().resources[contactId];
+        if (!resource || !isContact(resource)) return;
+        get().setResource({
+          ...resource,
+          updatedAt: new Date().toISOString(),
+          album: album.length > 0 ? album : undefined,
+        });
+      },
+
+      updateVehicleAlbum: (vehicleId, album) => {
+        const resource = get().resources[vehicleId];
+        if (!resource || !isVehicle(resource)) return;
+        get().setResource({
+          ...resource,
+          updatedAt: new Date().toISOString(),
+          album: album.length > 0 ? album : undefined,
+        });
       },
 
       removeResource: (id) => {

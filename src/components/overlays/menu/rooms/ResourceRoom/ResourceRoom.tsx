@@ -3,7 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { useResourceStore } from '../../../../../stores/useResourceStore';
 import { useUserStore } from '../../../../../stores/useUserStore';
 import { useSystemStore } from '../../../../../stores/useSystemStore';
-import type { InventoryResource, Resource, ResourceType } from '../../../../../types/resource';
+import type { ContactResource, InventoryResource, Resource, ResourceType } from '../../../../../types/resource';
 import { ResourceRoomHeader } from './ResourceRoomHeader';
 import { ResourceRoomSubHeader } from './ResourceRoomSubHeader';
 import { ResourceRoomBody } from './ResourceRoomBody';
@@ -43,6 +43,8 @@ export function ResourceRoom({ onOverlayActiveChange }: ResourceRoomProps) {
   const menuResourceTarget = useSystemStore((s) => s.menuResourceTarget);
   const clearMenuResourceTarget = useSystemStore((s) => s.clearMenuResourceTarget);
   const [activeType, setActiveType] = useState<ResourceType>(menuResourceTarget?.resourceType ?? 'contact');
+  const [contactSearch, setContactSearch] = useState('');
+  const [contactGroupFilter, setContactGroupFilter] = useState('');
   const [addStep, setAddStep] = useState<AddStep>('closed');
   const [editingResource, setEditingResource] = useState<Resource | null>(null);
   const [inventoryEditMode, setInventoryEditMode] = useState<'all' | 'item' | 'container'>('all');
@@ -54,7 +56,45 @@ export function ResourceRoom({ onOverlayActiveChange }: ResourceRoomProps) {
   const setResource = useResourceStore((s) => s.setResource);
   const user = useUserStore((s) => s.user);
   const setUser = useUserStore((s) => s.setUser);
-  const filtered = Object.values(resources).filter((r) => r.type === activeType);
+  const allResources = useMemo(() => Object.values(resources), [resources]);
+  const contactResources = useMemo(
+    () => allResources.filter((resource): resource is ContactResource => resource.type === 'contact'),
+    [allResources],
+  );
+  const contactGroupOptions = useMemo(() => {
+    const uniqueGroups = new Set<string>();
+    for (const resource of contactResources) {
+      for (const group of resource.groups) uniqueGroups.add(group);
+      for (const group of resource.customGroups ?? []) uniqueGroups.add(group);
+    }
+    return [...uniqueGroups].sort((left, right) =>
+      left.localeCompare(right, undefined, { sensitivity: 'base' }),
+    );
+  }, [contactResources]);
+  const filtered = useMemo(() => {
+    const typedResources = allResources.filter((resource) => resource.type === activeType);
+    if (activeType !== 'contact') return typedResources;
+
+    const normalizedSearch = contactSearch.trim().toLowerCase();
+    return typedResources.filter((resource): resource is ContactResource => resource.type === 'contact')
+      .filter((resource) => {
+        if (contactGroupFilter) {
+          const matchesGroup =
+            resource.groups.includes(contactGroupFilter as ContactResource['groups'][number]) ||
+            (resource.customGroups ?? []).includes(contactGroupFilter);
+          if (!matchesGroup) return false;
+        }
+
+        if (!normalizedSearch) return true;
+        const haystack = [
+          resource.displayName,
+          resource.name,
+          resource.phone ?? '',
+          resource.email ?? '',
+        ].join(' ').toLowerCase();
+        return haystack.includes(normalizedSearch);
+      });
+  }, [activeType, allResources, contactGroupFilter, contactSearch]);
   const overlayActive = useMemo(
     () => editingResource !== null || addStep !== 'closed' || activeExpandedResourceId !== null,
     [activeExpandedResourceId, addStep, editingResource],
@@ -187,7 +227,16 @@ export function ResourceRoom({ onOverlayActiveChange }: ResourceRoomProps) {
         }}
         onAdd={() => setAddStep('type-selector')}
       />
-      <ResourceRoomSubHeader type={activeType} />
+      {!activeExpandedResourceId ? (
+        <ResourceRoomSubHeader
+          type={activeType}
+          searchValue={contactSearch}
+          onSearchChange={setContactSearch}
+          selectedGroup={contactGroupFilter}
+          onGroupChange={setContactGroupFilter}
+          groupOptions={contactGroupOptions}
+        />
+      ) : null}
       <ResourceRoomBody
         resources={filtered}
         onEdit={(resource) => {
@@ -201,4 +250,3 @@ export function ResourceRoom({ onOverlayActiveChange }: ResourceRoomProps) {
     </div>
   );
 }
-

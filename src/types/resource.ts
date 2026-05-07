@@ -56,6 +56,7 @@ export interface ContactLink {
 export interface AlbumEntry {
   id: string;
   date: string;
+  entryKind?: 'photo' | 'note';
   notes?: NoteEntry[];
   photoUri?: string;
   location?: {
