@@ -48,6 +48,7 @@ interface TaskDraft {
   kind?: 'account-task' | 'transaction-log';
   taskType?: string;
   anticipatedValue: number | '';
+  evidenceRequired?: boolean;
   recurrenceMode: 'recurring' | 'never';
   recurrence: ResourceRecurrenceRule;
   reminderLeadDays: number;
@@ -70,7 +71,6 @@ const KIND_OPTIONS: { value: AccountKind; label: string }[] = [
   { value: 'income', label: 'Income' },
   { value: 'debt', label: 'Debt' },
   { value: 'allowance', label: 'Allowance' },
-  { value: 'crypto', label: 'Crypto' },
 ];
 
 const CRYPTO_WHOLE_SCALE = 100_000_000;
@@ -140,6 +140,7 @@ function buildTaskDraftSeed(
     name,
     taskType,
     anticipatedValue,
+    evidenceRequired: false,
     recurrenceMode,
     recurrence: cloneRecurrenceRule(recurrence),
     reminderLeadDays,
@@ -154,6 +155,7 @@ function makeTaskDraftFromSeed(seed: Omit<TaskDraft, 'id' | 'kind'>): TaskDraft 
     name: seed.name,
     taskType: seed.taskType,
     anticipatedValue: seed.anticipatedValue,
+    evidenceRequired: seed.evidenceRequired,
     recurrenceMode: seed.recurrenceMode,
     recurrence: cloneRecurrenceRule(seed.recurrence),
     reminderLeadDays: seed.reminderLeadDays,
@@ -168,6 +170,7 @@ function toTaskDraft(task: AccountTask): TaskDraft {
     kind: task.kind ?? 'account-task',
     taskType: task.taskType ?? (task.kind === 'transaction-log' ? 'TEXT' : 'CHECK'),
     anticipatedValue: task.anticipatedValue ?? '',
+    evidenceRequired: task.evidenceRequired ?? false,
     recurrenceMode: normalizeRecurrenceMode(task.recurrenceMode),
     recurrence: toRecurrenceRule(task.recurrence),
     reminderLeadDays: task.reminderLeadDays ?? 7,
@@ -186,6 +189,7 @@ function finaliseTaskDrafts(taskDrafts: TaskDraft[], ensureTransactionLog: boole
         kind: task.kind ?? 'account-task',
         taskType: task.taskType ?? (task.kind === 'transaction-log' ? 'TEXT' : 'CHECK'),
         anticipatedValue: task.anticipatedValue === '' ? undefined : task.anticipatedValue,
+        evidenceRequired: task.evidenceRequired === true ? true : undefined,
         recurrenceMode,
         recurrence: task.recurrence,
         reminderLeadDays: recurrenceMode === 'recurring' ? task.reminderLeadDays : -1,
@@ -425,11 +429,16 @@ export function AccountForm({ existing, onSaved, onCancel }: AccountFormProps) {
   const [iconKey, setIconKey] = useState<string>(existing?.icon ?? 'finance');
   const [displayName, setDisplayName] = useState(existing?.name ?? '');
   const [balance, setBalance] = useState<number | ''>(existing?.balance ?? '');
-  const [kind, setKind] = useState<AccountKind>(existing?.kind ?? 'bank');
+  const [kind, setKind] = useState<AccountKind>(existing?.kind === 'crypto' ? 'bank' : (existing?.kind ?? 'bank'));
   const [cryptoTicker, setCryptoTicker] = useState(existing?.cryptoTicker ?? '');
   const [cryptoUnit, setCryptoUnit] = useState<CryptoUnit>(existing?.cryptoUnit ?? 'whole');
+  const [isCryptoAccount, setIsCryptoAccount] = useState(Boolean(existing?.cryptoTicker) || existing?.kind === 'crypto');
   const [showAccountInfo, setShowAccountInfo] = useState(Boolean(existing?.institution));
   const [institution, setInstitution] = useState(existing?.institution ?? '');
+  const [pullFromAccountId, setPullFromAccountId] = useState(existing?.pullFromAccountId ?? '');
+  const [debtRate, setDebtRate] = useState<number | ''>(existing?.debtRate ?? '');
+  const [debtTerm, setDebtTerm] = useState<number | ''>(existing?.debtTerm ?? '');
+  const [debtStartDate, setDebtStartDate] = useState(existing?.debtStartDate ?? '');
   const [accountTasks, setAccountTasks] = useState<TaskDraft[]>(
     existing?.accountTasks?.map(toTaskDraft) ?? [makeTransactionLogTask()],
   );
@@ -437,6 +446,8 @@ export function AccountForm({ existing, onSaved, onCancel }: AccountFormProps) {
     existing?.allowanceTasks?.map(toTaskDraft) ?? [],
   );
   const [allowanceContactId, setAllowanceContactId] = useState(existing?.allowanceContactId ?? '');
+  const [allowanceStartDate, setAllowanceStartDate] = useState(existing?.allowanceStartDate ?? '');
+  const [allowanceEndDate, setAllowanceEndDate] = useState(existing?.allowanceEndDate ?? '');
   const [expandedAccountTaskId, setExpandedAccountTaskId] = useState<string | null>(null);
   const [expandedAllowanceTaskId, setExpandedAllowanceTaskId] = useState<string | null>(null);
   const [showAllowanceTaskSources, setShowAllowanceTaskSources] = useState(false);
@@ -452,6 +463,10 @@ export function AccountForm({ existing, onSaved, onCancel }: AccountFormProps) {
   const user = useUserStore((s) => s.user);
   const currentExisting = existing ? (resources[existing.id] as typeof existing | undefined) : undefined;
   const contactOptions = Object.values(resources).filter((resource): resource is ContactResource => resource.type === 'contact');
+  const bankAccountOptions = Object.values(resources).filter(
+    (resource): resource is AccountResource =>
+      resource.type === 'account' && resource.id !== existing?.id && resource.kind === 'bank',
+  );
   const inventoryTemplates = mergeInventoryItemTemplates(getUserInventoryItemTemplates(user), undefined);
   const existingResourceTaskOptions = collectExistingResourceTaskOptions(resources, inventoryTemplates, existing?.id);
   const libraryTaskOptions: AllowanceTaskSourceOption[] = getLibraryTemplatePool()
@@ -472,25 +487,27 @@ export function AccountForm({ existing, onSaved, onCancel }: AccountFormProps) {
   }));
 
   const canSave = displayName.trim().length > 0;
+  const supportsPullFrom = kind === 'bill' || kind === 'subscription' || kind === 'debt' || kind === 'allowance';
+  const isCryptoStyleBank = kind === 'bank' && isCryptoAccount;
 
   const displayedBalance =
-    kind === 'crypto' && cryptoUnit === 'whole' && balance !== ''
+    isCryptoStyleBank && cryptoUnit === 'whole' && balance !== ''
       ? Number((balance / CRYPTO_WHOLE_SCALE).toFixed(8))
       : balance;
   const balanceLabel =
-    kind === 'crypto'
+    isCryptoStyleBank
       ? cryptoUnit === 'sats'
         ? 'Balance (sats)'
         : `Balance (${cryptoTicker.trim().toUpperCase() || 'whole'})`
       : 'Balance';
-  const balanceStep = kind === 'crypto' ? (cryptoUnit === 'sats' ? 1 : 0.00000001) : 0.01;
+  const balanceStep = isCryptoStyleBank ? (cryptoUnit === 'sats' ? 1 : 0.00000001) : 0.01;
 
   function handleBalanceChange(value: number | '') {
     if (value === '') {
       setBalance('');
       return;
     }
-    if (kind !== 'crypto') {
+    if (!isCryptoStyleBank) {
       setBalance(value);
       return;
     }
@@ -530,7 +547,7 @@ export function AccountForm({ existing, onSaved, onCancel }: AccountFormProps) {
     section: 'account' | 'allowance',
     id: string,
     field: keyof TaskDraft,
-    value: string | number | ResourceRecurrenceRule,
+    value: string | number | boolean | ResourceRecurrenceRule,
   ) {
     const setTasks = section === 'account' ? setAccountTasks : setAllowanceTasks;
     setTasks((prev) =>
@@ -658,6 +675,18 @@ export function AccountForm({ existing, onSaved, onCancel }: AccountFormProps) {
                       ))}
                     </select>
                   </div>
+
+                  {section === 'allowance' && !isLockedTask ? (
+                    <label className="flex items-center gap-2 rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-600 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200">
+                      <input
+                        type="checkbox"
+                        checked={task.evidenceRequired === true}
+                        onChange={(event) => updateTask(section, task.id, 'evidenceRequired', event.target.checked)}
+                        className="h-4 w-4 rounded border-gray-300 text-blue-500 focus:ring-blue-500 dark:border-gray-500"
+                      />
+                      <span>Require photo evidence on completion</span>
+                    </label>
+                  ) : null}
 
                   <div className="flex items-end gap-2">
                     <div className="flex rounded-full bg-white p-1 dark:bg-gray-800">
@@ -881,8 +910,14 @@ export function AccountForm({ existing, onSaved, onCancel }: AccountFormProps) {
       kind,
       institution: showAccountInfo ? (institution.trim() || undefined) : undefined,
       balance: balance === '' ? undefined : balance,
-      cryptoUnit: kind === 'crypto' ? cryptoUnit : undefined,
-      cryptoTicker: kind === 'crypto' ? (cryptoTicker.trim().toUpperCase() || undefined) : undefined,
+      cryptoUnit: kind === 'bank' && isCryptoAccount ? cryptoUnit : undefined,
+      cryptoTicker: kind === 'bank' && isCryptoAccount ? (cryptoTicker.trim().toUpperCase() || undefined) : undefined,
+      pullFromAccountId: supportsPullFrom ? (pullFromAccountId || undefined) : undefined,
+      debtRate: kind === 'debt' && debtRate !== '' ? debtRate : undefined,
+      debtTerm: kind === 'debt' && debtTerm !== '' ? debtTerm : undefined,
+      debtStartDate: kind === 'debt' ? (debtStartDate || undefined) : undefined,
+      allowanceStartDate: kind === 'allowance' ? (allowanceStartDate || undefined) : undefined,
+      allowanceEndDate: kind === 'allowance' ? (allowanceEndDate || undefined) : undefined,
       dueDate: undefined,
       dueDateLeadDays: undefined,
       pendingTransactions: existing?.pendingTransactions ?? [],
@@ -966,7 +1001,13 @@ export function AccountForm({ existing, onSaved, onCancel }: AccountFormProps) {
             </label>
             <select
               value={kind}
-              onChange={(e) => setKind(e.target.value as AccountKind)}
+              onChange={(e) => {
+                const nextKind = e.target.value as AccountKind;
+                setKind(nextKind);
+                if (nextKind !== 'bank') {
+                  setIsCryptoAccount(false);
+                }
+              }}
               className={SELECT_CLS}
             >
               {KIND_OPTIONS.map((opt) => (
@@ -987,35 +1028,95 @@ export function AccountForm({ existing, onSaved, onCancel }: AccountFormProps) {
           </label>
         </div>
 
-        {kind === 'crypto' ? (
-          <div className="grid grid-cols-2 gap-3">
-            <TextInput
-              label="Ticker"
-              value={cryptoTicker}
-              onChange={setCryptoTicker}
-              placeholder="BTC"
-              maxLength={10}
+        {supportsPullFrom ? (
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Pulls from</label>
+            <select
+              value={pullFromAccountId}
+              onChange={(event) => setPullFromAccountId(event.target.value)}
+              className={SELECT_CLS}
+            >
+              <option value="">None</option>
+              {bankAccountOptions.map((account) => (
+                <option key={account.id} value={account.id}>
+                  {account.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : null}
+
+        {kind === 'debt' ? (
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <NumberInput
+              label="Interest Rate (% annual)"
+              value={debtRate}
+              onChange={setDebtRate}
+              placeholder="0"
+              step={0.01}
+            />
+            <NumberInput
+              label="Term (months)"
+              value={debtTerm}
+              onChange={setDebtTerm}
+              placeholder="0"
+              step={1}
             />
             <div className="flex flex-col gap-1">
-              <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Unit</label>
-              <div className="flex rounded-full bg-gray-100 p-1 dark:bg-gray-700">
-                {(['whole', 'sats'] as const).map((unit) => (
-                  <button
-                    key={unit}
-                    type="button"
-                    onClick={() => setCryptoUnit(unit)}
-                    className={`flex-1 rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
-                      cryptoUnit === unit
-                        ? 'bg-blue-500 text-white'
-                        : 'text-gray-500 hover:text-gray-700 dark:text-gray-300 dark:hover:text-gray-100'
-                    }`}
-                  >
-                    {unit === 'whole' ? 'Whole' : 'Sats'}
-                  </button>
-                ))}
-              </div>
+              <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Start Date</label>
+              <input
+                type="date"
+                value={debtStartDate}
+                onChange={(event) => setDebtStartDate(event.target.value)}
+                className={SELECT_CLS}
+              />
             </div>
           </div>
+        ) : null}
+
+        {kind === 'bank' ? (
+          <>
+            <label className="flex items-center gap-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-600 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200">
+              <input
+                type="checkbox"
+                checked={isCryptoAccount}
+                onChange={(event) => setIsCryptoAccount(event.target.checked)}
+                className="h-4 w-4 rounded border-gray-300 text-blue-500 focus:ring-blue-500 dark:border-gray-500"
+              />
+              <span>This is a crypto account</span>
+            </label>
+
+            {isCryptoAccount ? (
+              <div className="grid grid-cols-2 gap-3">
+                <TextInput
+                  label="Ticker"
+                  value={cryptoTicker}
+                  onChange={setCryptoTicker}
+                  placeholder="BTC"
+                  maxLength={10}
+                />
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Unit</label>
+                  <div className="flex rounded-full bg-gray-100 p-1 dark:bg-gray-700">
+                    {(['whole', 'sats'] as const).map((unit) => (
+                      <button
+                        key={unit}
+                        type="button"
+                        onClick={() => setCryptoUnit(unit)}
+                        className={`flex-1 rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
+                          cryptoUnit === unit
+                            ? 'bg-blue-500 text-white'
+                            : 'text-gray-500 hover:text-gray-700 dark:text-gray-300 dark:hover:text-gray-100'
+                        }`}
+                      >
+                        {unit === 'whole' ? 'Whole' : 'Sats'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ) : null}
+          </>
         ) : null}
 
         {showAccountInfo ? (
@@ -1047,6 +1148,26 @@ export function AccountForm({ existing, onSaved, onCancel }: AccountFormProps) {
                     </option>
                   ))}
                 </select>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Period Start</label>
+                <input
+                  type="date"
+                  value={allowanceStartDate}
+                  onChange={(event) => setAllowanceStartDate(event.target.value)}
+                  className={SELECT_CLS}
+                />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Period End</label>
+                <input
+                  type="date"
+                  value={allowanceEndDate}
+                  onChange={(event) => setAllowanceEndDate(event.target.value)}
+                  className={SELECT_CLS}
+                />
               </div>
             </div>
             <p className="text-xs italic text-gray-400">

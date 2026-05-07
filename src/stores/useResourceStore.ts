@@ -362,13 +362,22 @@ function sanitizeResources(resources: Record<string, Resource>): Record<string, 
 
   for (const [resourceId, resource] of Object.entries(resources)) {
     const migratedResource = migrateResourceAlbumNotes(resource);
+    let normalizedResource = migratedResource;
     if (migratedResource !== resource) {
       changed = true;
     }
 
-    if (isInventory(migratedResource)) {
+    if (isAccount(normalizedResource) && normalizedResource.kind === 'crypto') {
+      normalizedResource = {
+        ...normalizedResource,
+        kind: 'bank',
+      };
+      changed = true;
+    }
+
+    if (isInventory(normalizedResource)) {
       let resourceChanged = false;
-      const nextContainers = migratedResource.containers?.map((container) => {
+      const nextContainers = normalizedResource.containers?.map((container) => {
         let containerChanged = false;
         const nextLinks = container.links?.map((link) => {
           if (link.relationship !== 'location') return link;
@@ -423,27 +432,27 @@ function sanitizeResources(resources: Record<string, Resource>): Record<string, 
         };
       });
 
-      const nextItems = migratedResource.items.length > 0 ? [] : migratedResource.items;
-      if (nextItems !== migratedResource.items) {
+      const nextItems = normalizedResource.items.length > 0 ? [] : normalizedResource.items;
+      if (nextItems !== normalizedResource.items) {
         resourceChanged = true;
       }
 
       if (resourceChanged) {
         changed = true;
         nextResources[resourceId] = {
-          ...migratedResource,
+          ...normalizedResource,
           containers: nextContainers,
           items: nextItems,
         };
         continue;
       }
 
-      nextResources[resourceId] = migratedResource;
+      nextResources[resourceId] = normalizedResource;
       continue;
     }
 
-    if (isHome(migratedResource)) {
-      const homeResource = migratedResource;
+    if (isHome(normalizedResource)) {
+      const homeResource = normalizedResource;
 
       let resourceChanged = false;
       const nextStories = homeResource.stories?.map((story) => {
@@ -553,7 +562,7 @@ function sanitizeResources(resources: Record<string, Resource>): Record<string, 
       }
     }
 
-    nextResources[resourceId] = migratedResource;
+    nextResources[resourceId] = normalizedResource;
   }
 
   return changed ? nextResources : resources;

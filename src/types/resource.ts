@@ -391,6 +391,8 @@ export interface AccountTask {
   kind?: 'account-task' | 'transaction-log';
   taskType?: string;
   anticipatedValue?: number;
+  /** Requires photo evidence on completion. */
+  evidenceRequired?: boolean;
   recurrenceMode?: 'recurring' | 'never';
   recurrence: ResourceRecurrenceRule;
   /** Days before task triggers a GTD push. Default 7. -1 = never. */
@@ -531,6 +533,18 @@ export interface AccountResource {
   balance?: number;
   cryptoUnit?: CryptoUnit;
   cryptoTicker?: string;
+  /** Bank account this draws from (bill, subscription, debt, allowance). */
+  pullFromAccountId?: string;
+  /** Annual interest rate percentage. */
+  debtRate?: number;
+  /** Debt term length in months. */
+  debtTerm?: number;
+  /** ISO date string for the start of the debt. */
+  debtStartDate?: string;
+  /** ISO date string for the allowance start date. */
+  allowanceStartDate?: string;
+  /** ISO date string for the allowance end date. */
+  allowanceEndDate?: string;
   dueDate?: string;
   dueDateLeadDays?: number;
   pendingTransactions?: PendingTransaction[];
