@@ -48,6 +48,7 @@ export function ResourceRoom({ onOverlayActiveChange }: ResourceRoomProps) {
   const [inventoryEditMode, setInventoryEditMode] = useState<'all' | 'item' | 'container'>('all');
   const [editingInventoryContainerId, setEditingInventoryContainerId] = useState<string | null>(null);
   const [expandedResourceId, setExpandedResourceId] = useState<string | null>(menuResourceTarget?.resourceId ?? null);
+  const [activeExpandedResourceId, setActiveExpandedResourceId] = useState<string | null>(menuResourceTarget?.resourceId ?? null);
 
   const resources = useResourceStore((s) => s.resources);
   const setResource = useResourceStore((s) => s.setResource);
@@ -55,8 +56,8 @@ export function ResourceRoom({ onOverlayActiveChange }: ResourceRoomProps) {
   const setUser = useUserStore((s) => s.setUser);
   const filtered = Object.values(resources).filter((r) => r.type === activeType);
   const overlayActive = useMemo(
-    () => editingResource !== null || addStep !== 'closed',
-    [addStep, editingResource],
+    () => editingResource !== null || addStep !== 'closed' || activeExpandedResourceId !== null,
+    [activeExpandedResourceId, addStep, editingResource],
   );
 
   useEffect(() => {
@@ -75,6 +76,7 @@ export function ResourceRoom({ onOverlayActiveChange }: ResourceRoomProps) {
     const timer = window.setTimeout(() => {
       setActiveType(menuResourceTarget.resourceType);
       setExpandedResourceId(menuResourceTarget.resourceId);
+      setActiveExpandedResourceId(menuResourceTarget.resourceId);
       setAddStep('closed');
       clearMenuResourceTarget();
     }, 0);
@@ -181,6 +183,7 @@ export function ResourceRoom({ onOverlayActiveChange }: ResourceRoomProps) {
           setActiveType(t);
           setAddStep('closed');
           setExpandedResourceId(null);
+          setActiveExpandedResourceId(null);
         }}
         onAdd={() => setAddStep('type-selector')}
       />
@@ -193,6 +196,7 @@ export function ResourceRoom({ onOverlayActiveChange }: ResourceRoomProps) {
           setEditingResource(resource);
         }}
         expandedResourceId={expandedResourceId}
+        onExpandedChange={setActiveExpandedResourceId}
       />
     </div>
   );

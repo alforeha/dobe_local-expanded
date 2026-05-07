@@ -11,12 +11,12 @@ const RESOURCE_TYPES: ResourceType[] = [
 ];
 
 const TYPE_ICONS: Record<ResourceType, string> = {
-  contact: 'resource-contact',
-  home: 'resource-home',
-  vehicle: 'resource-vehicle',
-  account: 'resource-account',
-  inventory: 'resource-inventory',
-  doc: 'resource-doc',
+  contact: 'resource-tab-contacts',
+  home: 'resource-tab-homes',
+  vehicle: 'resource-tab-vehicles',
+  account: 'resource-tab-accounts',
+  inventory: 'resource-tab-inventory',
+  doc: 'resource-tab-docs',
 };
 
 interface ResourceRoomHeaderProps {
@@ -39,20 +39,21 @@ export function ResourceRoomHeader({ activeType, onTypeChange, onAdd }: Resource
           +
         </button>
       </div>
-      <div className="flex gap-1 overflow-x-auto">
+      <div className="flex items-center gap-1 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {RESOURCE_TYPES.map((type) => (
           <button
             key={type}
             type="button"
             onClick={() => onTypeChange(type)}
             aria-label={type}
-            className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-lg transition-colors ${
+            title={type}
+            className={`flex h-9 w-10 shrink-0 items-center justify-center rounded-full px-1 transition-colors ${
               activeType === type
                 ? 'bg-blue-500 text-white'
-                : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700'
+                : 'text-gray-500 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700'
             }`}
           >
-            <IconDisplay iconKey={TYPE_ICONS[type]} size={28} className="h-7 w-7 object-contain" alt="" />
+            <IconDisplay iconKey={TYPE_ICONS[type]} size={18} className="leading-none" alt="" />
           </button>
         ))}
       </div>

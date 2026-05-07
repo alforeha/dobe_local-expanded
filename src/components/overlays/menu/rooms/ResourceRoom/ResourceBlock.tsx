@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import type { ReactNode } from 'react';
 import type { Resource } from '../../../../../types/resource';
 import { isAccount, isContact, isDoc, isHome, isInventory, isVehicle } from '../../../../../types/resource';
 import { useResourceStore } from '../../../../../stores/useResourceStore';
@@ -8,7 +8,9 @@ import { IconDisplay } from '../../../../shared/IconDisplay';
 interface ResourceBlockProps {
   resource: Resource;
   onEdit: (resource: Resource) => void;
-  forceExpanded?: boolean;
+  isExpanded: boolean;
+  onExpand: (id: string) => void;
+  onCollapse: () => void;
 }
 
 function getLinkedTargets(resource: Resource, resources: Record<string, Resource>): Resource[] {
@@ -140,9 +142,7 @@ function getLinkedTargets(resource: Resource, resources: Record<string, Resource
     .filter((target): target is Resource => Boolean(target));
 }
 
-export function ResourceBlock({ resource, onEdit, forceExpanded = false }: ResourceBlockProps) {
-  const [expanded, setExpanded] = useState(forceExpanded);
-  const containerRef = useRef<HTMLDivElement>(null);
+export function ResourceBlock({ resource, onEdit, isExpanded, onExpand, onCollapse }: ResourceBlockProps) {
   const resources = useResourceStore((state) => state.resources);
   const currentResource = resources[resource.id] ?? resource;
   const contactResource = isContact(currentResource) ? currentResource : null;
@@ -152,105 +152,111 @@ export function ResourceBlock({ resource, onEdit, forceExpanded = false }: Resou
   const contactGroups = contactResource?.groups ?? [];
   const homeAddress = homeResource?.address ?? '';
   const vehicleMileage = vehicleResource?.mileage ?? null;
-  const inventoryResource = isInventory(currentResource) ? currentResource : null;
   const docResource = isDoc(currentResource) ? currentResource : null;
   const accountBalance = accountResource?.balance ?? null;
   const allLinkedTargets = getLinkedTargets(currentResource, resources);
   const linkedIconTargets = allLinkedTargets.slice(0, 4);
   const extraLinkedCount = Math.max(0, allLinkedTargets.length - linkedIconTargets.length);
 
-  useEffect(() => {
-    if (!forceExpanded) return;
-    const timer = window.setTimeout(() => {
-      setExpanded(true);
-      containerRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-    }, 0);
-    return () => window.clearTimeout(timer);
-  }, [forceExpanded]);
+  let summaryContent: ReactNode = null;
+  if (contactResource) {
+    summaryContent = (
+      <div className="flex items-center gap-1 max-w-full overflow-hidden">
+        {contactGroups.slice(0, 3).map((g) => (
+          <span
+            key={g}
+            className="text-xs px-1.5 py-0.5 rounded-full bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 font-medium whitespace-nowrap"
+          >
+            {g}
+          </span>
+        ))}
+      </div>
+    );
+  } else if (homeResource && homeAddress) {
+    summaryContent = (
+      <span className="truncate">
+        {homeAddress}
+      </span>
+    );
+  } else if (vehicleResource && vehicleMileage != null) {
+    summaryContent = <span>{vehicleMileage.toLocaleString()} km</span>;
+  } else if (accountResource && accountBalance != null && accountBalance !== 0) {
+    summaryContent = (
+      <span>
+        ${accountBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+      </span>
+    );
+  } else if (docResource) {
+    summaryContent = <span className="capitalize">{docResource.docType ?? ''}</span>;
+  }
 
   return (
     <div
-      ref={containerRef}
       className={`bg-white dark:bg-gray-800 border rounded-xl overflow-hidden ${
-        forceExpanded
+        isExpanded
+          ? 'flex min-h-0 flex-1 flex-col'
+          : ''
+      } ${
+        isExpanded
           ? 'border-purple-300 ring-2 ring-purple-100 dark:border-purple-500 dark:ring-purple-900/40'
           : 'border-gray-100 dark:border-gray-700'
       }`}
     >
-      {/* Collapsed row */}
       <button
         type="button"
-        onClick={() => setExpanded((e) => !e)}
-        className="w-full flex items-center gap-2 px-3 py-2.5 hover:bg-gray-50 dark:hover:bg-gray-700 text-left"
+        onClick={() => {
+          if (isExpanded) {
+            onCollapse();
+            return;
+          }
+          onExpand(resource.id);
+        }}
+        className="flex w-full items-center gap-3 px-3 py-2.5 text-left hover:bg-gray-50 dark:hover:bg-gray-700"
       >
-        {/* Icon */}
-        <IconDisplay iconKey={resource.icon} size={20} className="h-5 w-5 shrink-0 object-contain" alt="" />
+        <div className="flex h-10 w-10 min-h-10 min-w-10 shrink-0 items-center justify-center self-center overflow-visible rounded-lg">
+          <IconDisplay iconKey={resource.icon} size={38} className="h-10 w-10 shrink-0 object-contain" alt="" />
+        </div>
 
-        {/* Name */}
-        <span className="flex-1 text-sm text-gray-800 dark:text-gray-100 truncate min-w-0">
-          {resource.name}
-        </span>
+        <div className="flex min-w-0 flex-1 flex-col justify-center">
+          <div className="min-w-0">
+            <span className="block truncate text-sm font-semibold text-gray-800 dark:text-gray-100">
+              {resource.name}
+            </span>
+          </div>
 
-        {/* Right side: linked resource icons + summary */}
-        {linkedIconTargets.length > 0 ? (
-          <div className="flex items-center gap-1 shrink-0">
-            {linkedIconTargets.map((linked) => (
-              <span
-                key={linked.id}
-                title={linked.name}
-                className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gray-100 p-1 dark:bg-gray-700"
-              >
-                <span className="flex h-3.5 w-3.5 items-center justify-center overflow-hidden">
-                  <IconDisplay iconKey={linked.icon} size={12} className="block max-h-full max-w-full object-contain leading-none" alt="" />
-                </span>
-              </span>
-            ))}
-            {extraLinkedCount > 0 ? (
-              <span className="text-[11px] font-medium text-gray-400 dark:text-gray-500">
-                +{extraLinkedCount}
-              </span>
+          <div className="mt-1 flex min-w-0 items-center gap-2">
+            <div className="min-w-0 flex-1 text-xs text-gray-400 dark:text-gray-500">
+              {summaryContent}
+            </div>
+
+            {linkedIconTargets.length > 0 ? (
+              <div className="flex shrink-0 items-center gap-1">
+                {linkedIconTargets.map((linked) => (
+                  <span
+                    key={linked.id}
+                    title={linked.name}
+                    className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gray-100 p-1 dark:bg-gray-700"
+                  >
+                    <span className="flex h-3.5 w-3.5 items-center justify-center overflow-hidden">
+                      <IconDisplay iconKey={linked.icon} size={12} className="block max-h-full max-w-full object-contain leading-none" alt="" />
+                    </span>
+                  </span>
+                ))}
+                {extraLinkedCount > 0 ? (
+                  <span className="text-[11px] font-medium text-gray-400 dark:text-gray-500">
+                    +{extraLinkedCount}
+                  </span>
+                ) : null}
+              </div>
             ) : null}
           </div>
-        ) : null}
-
-        {/* Right side: group pills for contacts, address for homes, type badge for others */}
-        {contactResource ? (
-          <div className="flex items-center gap-1 shrink-0 max-w-[45%] overflow-hidden">
-            {contactGroups.slice(0, 3).map((g) => (
-              <span
-                key={g}
-                className="text-xs px-1.5 py-0.5 rounded-full bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 font-medium whitespace-nowrap"
-              >
-                {g}
-              </span>
-            ))}
-          </div>
-        ) : homeResource && homeAddress ? (
-          <span className="text-xs text-gray-400 dark:text-gray-500 truncate max-w-[40%] shrink-0">
-            {homeAddress}
-          </span>
-        ) : vehicleResource && vehicleMileage != null ? (
-          <span className="text-xs text-gray-400 dark:text-gray-500 shrink-0">
-            {vehicleMileage.toLocaleString()} km
-          </span>
-        ) : accountResource && accountBalance != null && accountBalance !== 0 ? (
-          <span className="text-xs text-gray-400 dark:text-gray-500 shrink-0">
-            ${accountBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-          </span>
-        ) : inventoryResource ? null : docResource ? (
-          <span className="text-xs text-gray-400 dark:text-gray-500 shrink-0 capitalize">
-            {docResource.docType ?? ''}
-          </span>
-        ) : null}
-
-        {/* Chevron */}
-        <span className="text-gray-400 text-xs shrink-0">{expanded ? '▲' : '▼'}</span>
+        </div>
       </button>
 
-      {expanded && (
+      {isExpanded && (
         <ResourceBlockExpanded
           resource={resource}
-          onClose={() => setExpanded(false)}
+          onClose={onCollapse}
           onEdit={onEdit}
         />
       )}

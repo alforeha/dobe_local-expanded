@@ -144,11 +144,11 @@ export function ResourceBlockExpanded({ resource, onClose, onEdit }: ResourceBlo
   }
 
   return (
-    <div className="px-3 pb-3">
-      <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-3">
+    <div className="w-full flex min-h-0 flex-1 flex-col">
+      <div className="flex min-h-0 flex-1 flex-col p-3">
         {/* GTD status badges */}
         {badges.length > 0 && (
-          <div className="flex flex-col gap-1 mb-2">
+          <div className="mb-2 flex flex-col gap-1">
             {badges.map((b, i) => (
               <div key={i} className={`flex items-center gap-1.5 text-xs rounded px-2 py-1 ${colorMap[b.color] ?? 'text-gray-600 bg-gray-100'}`}>
                 <IconDisplay iconKey={b.iconKey} size={14} className="h-3.5 w-3.5 object-contain" alt="" />
@@ -158,11 +158,11 @@ export function ResourceBlockExpanded({ resource, onClose, onEdit }: ResourceBlo
           </div>
         )}
 
-        {/* Type-specific meta view */}
-        {metaView}
+        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+          {metaView}
+        </div>
 
-        {/* Actions: Edit (all types) + Delete (all types) */}
-        <div className="flex items-center gap-3 mt-3 pt-2 border-t border-gray-200 dark:border-gray-600">
+        <div className="mt-3 flex flex-none items-center gap-3 border-t border-gray-200 pt-2 dark:border-gray-600">
           <button
             type="button"
             onClick={() => onEdit(resource)}

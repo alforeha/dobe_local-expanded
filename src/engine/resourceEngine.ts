@@ -607,7 +607,7 @@ function isRecurrenceOnDate(rule: ResourceRecurrenceRule, dateISO: string): bool
 
 function computeNextOccurrence(rule: ResourceRecurrenceRule, referenceDate: string): { date: string; days: number } {
   const start = parseISODate(referenceDate);
-  for (let offset = 1; offset <= 366 * 5; offset++) {
+  for (let offset = 0; offset <= 366 * 5; offset++) {
     const candidate = new Date(start);
     candidate.setDate(candidate.getDate() + offset);
     const candidateISO = localISODate(candidate);
@@ -897,23 +897,17 @@ function _genAccountGTD(resource: AccountResource, referenceDate: string): Task[
   const tasks: Task[] = [];
 
   for (const task of resource.accountTasks ?? []) {
-    if (task.kind === 'transaction-log') {
-      const templateKey = `resource-task:${resource.id}:account-task:${task.id}:transaction-log`;
-      clearPendingResourceTasks(templateKey, resource.id);
-      continue;
-    }
-
     const templateKey = `resource-task:${resource.id}:account-task:${task.id}`;
 
     if (normalizeRecurrenceMode(task.recurrenceMode) === 'never') {
       clearPendingResourceTasks(templateKey, resource.id);
       continue;
     }
-    if (task.reminderLeadDays === -1) {
+    if (task.reminderLeadDays == null || task.reminderLeadDays === -1) {
       clearPendingResourceTasks(templateKey, resource.id);
       continue;
     }
-    const leadDays = task.reminderLeadDays ?? 0;
+    const leadDays = task.reminderLeadDays;
     const next = computeNextOccurrence(task.recurrence, referenceDate);
     if (next.days < 0 || next.days > leadDays) {
       clearPendingResourceTasks(templateKey, resource.id);
@@ -1008,8 +1002,8 @@ function _genInventoryGTD(resource: InventoryResource, referenceDate: string): T
 
     for (const recurringTask of item.recurringTasks ?? []) {
       if (!isRecurringInventoryTask(recurringTask)) continue;
-      const reminderLeadDays = recurringTask.reminderLeadDays ?? 7;
-      if (reminderLeadDays === -1) continue;
+      if (recurringTask.reminderLeadDays == null || recurringTask.reminderLeadDays === -1) continue;
+      const reminderLeadDays = recurringTask.reminderLeadDays;
 
       const next = computeNextOccurrence(recurringTask.recurrence, referenceDate);
       if (next.days < 0 || next.days > reminderLeadDays) continue;
@@ -1035,8 +1029,8 @@ function _genInventoryGTD(resource: InventoryResource, referenceDate: string): T
     if (!carryTask) continue;
     if (normalizeRecurrenceMode(carryTask.recurrenceMode) === 'never') continue;
 
-    const reminderLeadDays = carryTask.reminderLeadDays ?? 0;
-    if (reminderLeadDays === -1) continue;
+    if (carryTask.reminderLeadDays == null || carryTask.reminderLeadDays === -1) continue;
+    const reminderLeadDays = carryTask.reminderLeadDays;
 
     const next = computeNextOccurrence(carryTask.recurrence, referenceDate);
     if (next.days < 0 || next.days > reminderLeadDays) continue;
@@ -1190,8 +1184,8 @@ function _genHomeGTD(resource: HomeResource, referenceDate: string): Task[] {
 
   for (const chore of resource.chores ?? []) {
     if (normalizeRecurrenceMode(chore.recurrenceMode) === 'never') continue;
-    const reminderLeadDays = chore.reminderLeadDays ?? 0;
-    if (reminderLeadDays === -1) continue;
+    if (chore.reminderLeadDays == null || chore.reminderLeadDays === -1) continue;
+    const reminderLeadDays = chore.reminderLeadDays;
     const next = computeNextOccurrence(chore.recurrence, referenceDate);
     if (next.days < 0 || next.days > reminderLeadDays) continue;
 
@@ -1224,8 +1218,8 @@ function _genHomeGTD(resource: HomeResource, referenceDate: string): Task[] {
       if (placement.kind !== 'item' || !template || template.kind !== 'facility') continue;
       for (const recurringTask of placement.recurringTasks ?? []) {
         if (!isRecurringInventoryTask(recurringTask)) continue;
-        const reminderLeadDays = recurringTask.reminderLeadDays ?? 7;
-        if (reminderLeadDays === -1) continue;
+        if (recurringTask.reminderLeadDays == null || recurringTask.reminderLeadDays === -1) continue;
+        const reminderLeadDays = recurringTask.reminderLeadDays;
         const next = computeNextOccurrence(recurringTask.recurrence, referenceDate);
         if (next.days < 0 || next.days > reminderLeadDays) continue;
         const templateKey = `resource-task:${resource.id}:home-placement:${placement.id}:${recurringTask.id}`;
@@ -1298,11 +1292,11 @@ function _genVehicleGTD(resource: VehicleResource, referenceDate: string): Task[
       clearPendingResourceTasks(templateKey, resource.id);
       continue;
     }
-    if (task.reminderLeadDays === -1) {
+    if (task.reminderLeadDays == null || task.reminderLeadDays === -1) {
       clearPendingResourceTasks(templateKey, resource.id);
       continue;
     }
-    const leadDays = task.reminderLeadDays ?? 0;
+    const leadDays = task.reminderLeadDays;
     const next = computeNextOccurrence(task.recurrence, referenceDate);
     if (next.days < 0 || next.days > leadDays) {
       clearPendingResourceTasks(templateKey, resource.id);

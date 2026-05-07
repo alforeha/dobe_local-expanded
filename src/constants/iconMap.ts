@@ -118,6 +118,12 @@ export const ICON_MAP: Record<string, string> = {
   'resource-inventory': resourceInventory,
   'resource-doc': resourceDocs,
   'resource-document': resourceDocs,
+  'resource-tab-contacts': '👥',
+  'resource-tab-homes': '🏠',
+  'resource-tab-vehicles': '🚗',
+  'resource-tab-accounts': '💳',
+  'resource-tab-inventory': '📦',
+  'resource-tab-docs': '📄',
   // EVENT OVERLAY NAV
   'event-nav-actions': '📋',
   'event-nav-participants': '👥',

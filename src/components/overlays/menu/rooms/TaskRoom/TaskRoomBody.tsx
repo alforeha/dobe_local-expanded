@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import type { TaskTemplate, TaskSecondaryTag, XpAward } from '../../../../../types';
 import type { StatGroupKey } from '../../../../../types/user';
 import { useScheduleStore } from '../../../../../stores/useScheduleStore';
@@ -69,7 +69,7 @@ function getModeEmptyMessage(mode: TaskRoomBodyMode): string {
   }
 }
 
-export function TaskRoomBody({ mode, onAdd, onEdit }: TaskRoomBodyProps) {
+function TaskRoomBodyContent({ mode, onAdd, onEdit }: TaskRoomBodyProps) {
   const [search, setSearch] = useState('');
   const [statFilter, setStatFilter] = useState<StatGroupKey | 'All'>('All');
   const [tagFilter, setTagFilter] = useState<TaskSecondaryTag | 'All'>('All');
@@ -143,16 +143,6 @@ export function TaskRoomBody({ mode, onAdd, onEdit }: TaskRoomBodyProps) {
     [expandedKey, visibleTemplates],
   );
 
-  useEffect(() => {
-    setExpandedKey(null);
-  }, [mode]);
-
-  useEffect(() => {
-    if (expandedKey && !visibleTemplates.some((entry) => entry.key === expandedKey)) {
-      setExpandedKey(null);
-    }
-  }, [expandedKey, visibleTemplates]);
-
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       {!expandedEntry && (
@@ -162,7 +152,10 @@ export function TaskRoomBody({ mode, onAdd, onEdit }: TaskRoomBodyProps) {
               <input
                 type="text"
                 value={search}
-                onChange={(e) => setSearch(e.target.value)}
+                onChange={(e) => {
+                  setSearch(e.target.value);
+                  setExpandedKey(null);
+                }}
                 placeholder="Search tasks..."
                 className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2.5 pr-9 text-sm text-gray-800 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
               />
@@ -170,7 +163,10 @@ export function TaskRoomBody({ mode, onAdd, onEdit }: TaskRoomBodyProps) {
                 <button
                   type="button"
                   aria-label="Clear search"
-                  onClick={() => setSearch('')}
+                  onClick={() => {
+                    setSearch('');
+                    setExpandedKey(null);
+                  }}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-lg leading-none text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
                 >
                   ×
@@ -198,7 +194,10 @@ export function TaskRoomBody({ mode, onAdd, onEdit }: TaskRoomBodyProps) {
               </span>
               <select
                 value={statFilter}
-                onChange={(e) => setStatFilter(e.target.value as StatGroupKey | 'All')}
+                onChange={(e) => {
+                  setStatFilter(e.target.value as StatGroupKey | 'All');
+                  setExpandedKey(null);
+                }}
                 aria-label="Filter by stat type"
                 className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
               >
@@ -216,7 +215,10 @@ export function TaskRoomBody({ mode, onAdd, onEdit }: TaskRoomBodyProps) {
               </span>
               <select
                 value={tagFilter}
-                onChange={(e) => setTagFilter(e.target.value as TaskSecondaryTag | 'All')}
+                onChange={(e) => {
+                  setTagFilter(e.target.value as TaskSecondaryTag | 'All');
+                  setExpandedKey(null);
+                }}
                 aria-label="Filter by category"
                 className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
               >
@@ -264,4 +266,8 @@ export function TaskRoomBody({ mode, onAdd, onEdit }: TaskRoomBodyProps) {
       </div>
     </div>
   );
+}
+
+export function TaskRoomBody(props: TaskRoomBodyProps) {
+  return <TaskRoomBodyContent key={props.mode} {...props} />;
 }
