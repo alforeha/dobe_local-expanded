@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { taskTemplateLibrary } from '../../../../../../coach';
 import { CUSTOM_ITEM_TEMPLATE_PREFIX, getItemTaskTemplateMeta } from '../../../../../../coach/ItemLibrary';
@@ -6,6 +6,7 @@ import type {
   AccountKind,
   AccountResource,
   AccountTask,
+  AlbumEntry,
   ContactResource,
   CryptoUnit,
   HomeResource,
@@ -13,7 +14,6 @@ import type {
   InventoryResource,
   RecurrenceDayOfWeek,
   Resource,
-  ResourceNote,
   ResourceRecurrenceRule,
   VehicleResource,
 } from '../../../../../../types/resource';
@@ -23,6 +23,7 @@ import {
   normalizeRecurrenceMode,
   toRecurrenceRule,
 } from '../../../../../../types/resource';
+import type { QuickActionsEvent } from '../../../../../../types/event';
 import { useResourceStore } from '../../../../../../stores/useResourceStore';
 import { useScheduleStore } from '../../../../../../stores/useScheduleStore';
 import { useUserStore } from '../../../../../../stores/useUserStore';
@@ -33,9 +34,12 @@ import { TextInput } from '../../../../../shared/inputs/TextInput';
 import { NumberInput } from '../../../../../shared/inputs/NumberInput';
 import { IconPicker } from '../../../../../shared/IconPicker';
 import { IconDisplay } from '../../../../../shared/IconDisplay';
-import { NotesLogEditor } from '../../../../../shared/NotesLogEditor';
+import { ResourceFormShell, type ResourceFormTab } from '../../../../../shared/ResourceFormShell';
+import { ResourceLinksTabNew } from '../../../../../shared/ResourceLinksTabNew';
+import { AlbumViewer } from '../../../../../shared/AlbumViewer';
+import { AlbumEntryEditor } from '../../../../../shared/AlbumEntryEditor';
 
-interface AccountFormProps {
+interface AccountFormNewProps {
   existing?: AccountResource;
   onSaved: () => void;
   onCancel: () => void;
@@ -54,8 +58,6 @@ interface TaskDraft {
   reminderLeadDays: number;
 }
 
-const RESOURCE_TASK_TYPE_OPTIONS = ['CHECK', 'COUNTER', 'DURATION', 'TIMER', 'RATING', 'TEXT'] as const;
-
 interface AllowanceTaskSourceOption {
   value: string;
   label: string;
@@ -63,6 +65,16 @@ interface AllowanceTaskSourceOption {
   detail?: string;
   seed: Omit<TaskDraft, 'id' | 'kind'>;
 }
+
+const tabs: ResourceFormTab[] = [
+  { key: 'details', label: 'Details' },
+  { key: 'tasks', label: 'Tasks' },
+  { key: 'links', label: 'Links' },
+  { key: 'album', label: 'Album' },
+  { key: 'log', label: 'Log' },
+];
+
+const RESOURCE_TASK_TYPE_OPTIONS = ['CHECK', 'COUNTER', 'DURATION', 'TIMER', 'RATING', 'TEXT'] as const;
 
 const KIND_OPTIONS: { value: AccountKind; label: string }[] = [
   { value: 'bank', label: 'Bank' },
@@ -73,8 +85,6 @@ const KIND_OPTIONS: { value: AccountKind; label: string }[] = [
   { value: 'allowance', label: 'Allowance' },
 ];
 
-const CRYPTO_WHOLE_SCALE = 100_000_000;
-
 const DOW_LABELS: { key: RecurrenceDayOfWeek; label: string }[] = [
   { key: 'sun', label: 'Su' },
   { key: 'mon', label: 'Mo' },
@@ -84,6 +94,8 @@ const DOW_LABELS: { key: RecurrenceDayOfWeek; label: string }[] = [
   { key: 'fri', label: 'Fr' },
   { key: 'sat', label: 'Sa' },
 ];
+
+const CRYPTO_WHOLE_SCALE = 100_000_000;
 
 const SELECT_CLS =
   'w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-purple-500 focus:outline-none dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100';
@@ -425,7 +437,18 @@ function collectExistingResourceTaskOptions(
   return options.sort((left, right) => left.label.localeCompare(right.label));
 }
 
-export function AccountForm({ existing, onSaved, onCancel }: AccountFormProps) {
+function formatCompletionDateTime(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return iso;
+  return `${date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })} ${date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}`;
+}
+
+function allowsDueDate(kind: AccountKind): boolean {
+  return kind === 'bill' || kind === 'subscription' || kind === 'debt';
+}
+
+export function AccountFormNew({ existing, onSaved, onCancel }: AccountFormNewProps) {
+  const [activeTab, setActiveTab] = useState('details');
   const [iconKey, setIconKey] = useState<string>(existing?.icon ?? 'finance');
   const [displayName, setDisplayName] = useState(existing?.name ?? '');
   const [balance, setBalance] = useState<number | ''>(existing?.balance ?? '');
@@ -439,6 +462,8 @@ export function AccountForm({ existing, onSaved, onCancel }: AccountFormProps) {
   const [debtRate, setDebtRate] = useState<number | ''>(existing?.debtRate ?? '');
   const [debtTerm, setDebtTerm] = useState<number | ''>(existing?.debtTerm ?? '');
   const [debtStartDate, setDebtStartDate] = useState(existing?.debtStartDate ?? '');
+  const [dueDate, setDueDate] = useState(existing?.dueDate ?? '');
+  const [dueDateLeadDays, setDueDateLeadDays] = useState<number | ''>(existing?.dueDateLeadDays ?? 7);
   const [accountTasks, setAccountTasks] = useState<TaskDraft[]>(
     existing?.accountTasks?.map(toTaskDraft) ?? [makeTransactionLogTask()],
   );
@@ -454,13 +479,19 @@ export function AccountForm({ existing, onSaved, onCancel }: AccountFormProps) {
   const [selectedAllowanceResourceTask, setSelectedAllowanceResourceTask] = useState('');
   const [selectedAllowanceLibraryTask, setSelectedAllowanceLibraryTask] = useState('');
   const [selectedAllowanceUserTemplate, setSelectedAllowanceUserTemplate] = useState('');
-  const [notes, setNotes] = useState<ResourceNote[]>(existing?.notes ?? []);
+  const [album, setAlbum] = useState<AlbumEntry[]>(existing?.album ?? []);
+  const [editingEntry, setEditingEntry] = useState<AlbumEntry | null>(null);
+  const [isCreatingEntry, setIsCreatingEntry] = useState(false);
 
   const resources = useResourceStore((s) => s.resources);
   const setResource = useResourceStore((s) => s.setResource);
   const userTaskTemplates = useScheduleStore((s) => s.taskTemplates);
+  const activeEvents = useScheduleStore((s) => s.activeEvents);
+  const historyEvents = useScheduleStore((s) => s.historyEvents);
+  const scheduleTasks = useScheduleStore((s) => s.tasks);
   const setUser = useUserStore((s) => s.setUser);
   const user = useUserStore((s) => s.user);
+
   const currentExisting = existing ? (resources[existing.id] as typeof existing | undefined) : undefined;
   const contactOptions = Object.values(resources).filter((resource): resource is ContactResource => resource.type === 'contact');
   const bankAccountOptions = Object.values(resources).filter(
@@ -495,12 +526,47 @@ export function AccountForm({ existing, onSaved, onCancel }: AccountFormProps) {
       ? Number((balance / CRYPTO_WHOLE_SCALE).toFixed(8))
       : balance;
   const balanceLabel =
-    isCryptoStyleBank
-      ? cryptoUnit === 'sats'
-        ? 'Balance (sats)'
-        : `Balance (${cryptoTicker.trim().toUpperCase() || 'whole'})`
-      : 'Balance';
+    kind === 'bill' || kind === 'subscription'
+      ? 'Amount'
+      : isCryptoStyleBank
+        ? cryptoUnit === 'sats'
+          ? 'Balance (sats)'
+          : `Balance (${cryptoTicker.trim().toUpperCase() || 'whole'})`
+        : 'Balance';
   const balanceStep = isCryptoStyleBank ? (cryptoUnit === 'sats' ? 1 : 0.00000001) : 0.01;
+
+  const transactionLogTask = accountTasks.find((task) => task.kind === 'transaction-log');
+  const transactionResourceTaskId =
+    existing && transactionLogTask
+      ? `resource-task:${existing.id}:account-task:${transactionLogTask.id}`
+      : null;
+  const showLoggedAmounts = transactionLogTask?.anticipatedValue !== '';
+
+  const transactionCompletions = useMemo(() => {
+    if (!transactionResourceTaskId) return [];
+
+    const qaEvents = [...Object.values(activeEvents), ...Object.values(historyEvents)]
+      .filter((event): event is QuickActionsEvent => event.eventType === 'quickActions');
+
+    return qaEvents
+      .flatMap((event) =>
+        event.completions
+          .map((completion) => {
+            const task = scheduleTasks[completion.taskRef];
+            if (!task) return null;
+            const resultFields = task.resultFields as Record<string, unknown>;
+            if (resultFields.resourceTaskId !== transactionResourceTaskId) return null;
+            return {
+              key: `${event.id}:${completion.taskRef}:${completion.completedAt}`,
+              completedAt: completion.completedAt,
+              value: typeof resultFields.value === 'string' ? resultFields.value : '',
+              amount: typeof resultFields.amount === 'number' ? resultFields.amount : null,
+            };
+          })
+          .filter((entry): entry is { key: string; completedAt: string; value: string; amount: number | null } => Boolean(entry)),
+      )
+      .sort((left, right) => right.completedAt.localeCompare(left.completedAt));
+  }, [activeEvents, historyEvents, scheduleTasks, transactionResourceTaskId]);
 
   function handleBalanceChange(value: number | '') {
     if (value === '') {
@@ -594,6 +660,36 @@ export function AccountForm({ existing, onSaved, onCancel }: AccountFormProps) {
     setExpandedTaskId((prev) => (prev === id ? null : prev));
   }
 
+  function handleAddEntry() {
+    setIsCreatingEntry(true);
+    setEditingEntry(null);
+  }
+
+  function handleEditEntry(entry: AlbumEntry) {
+    setIsCreatingEntry(false);
+    setEditingEntry(entry);
+  }
+
+  function handleDeleteEntry(entryId: string) {
+    setAlbum((prev) => prev.filter((entry) => entry.id !== entryId));
+  }
+
+  function handleSaveEntry(next: AlbumEntry) {
+    if (isCreatingEntry) {
+      setAlbum((prev) => [...prev, next]);
+    } else if (editingEntry) {
+      setAlbum((prev) => prev.map((entry) => (entry.id === next.id ? next : entry)));
+    }
+
+    setIsCreatingEntry(false);
+    setEditingEntry(null);
+  }
+
+  function handleCancelEntry() {
+    setIsCreatingEntry(false);
+    setEditingEntry(null);
+  }
+
   function renderTaskSection(
     section: 'account' | 'allowance',
     title: string,
@@ -603,6 +699,10 @@ export function AccountForm({ existing, onSaved, onCancel }: AccountFormProps) {
     const tasks = section === 'account' ? accountTasks : allowanceTasks;
     const expandedTaskId = section === 'account' ? expandedAccountTaskId : expandedAllowanceTaskId;
     const setExpandedTaskId = section === 'account' ? setExpandedAccountTaskId : setExpandedAllowanceTaskId;
+
+    const sortedTasks = section === 'account'
+      ? [...tasks].sort((left, right) => Number(right.kind === 'transaction-log') - Number(left.kind === 'transaction-log'))
+      : tasks;
 
     return (
       <div className="flex flex-col gap-2">
@@ -616,7 +716,7 @@ export function AccountForm({ existing, onSaved, onCancel }: AccountFormProps) {
             {actionLabel}
           </button>
         </div>
-        {tasks.map((task) => {
+        {sortedTasks.map((task) => {
           const isExpanded = expandedTaskId === task.id;
           const isLockedTask = section === 'account' && task.kind === 'transaction-log';
           return (
@@ -898,6 +998,8 @@ export function AccountForm({ existing, onSaved, onCancel }: AccountFormProps) {
 
     const finalTasks = finaliseTaskDrafts(accountTasks, true);
     const finalAllowanceTasks = finaliseTaskDrafts(allowanceTasks, false);
+    const nextDueDateAllowed = allowsDueDate(kind);
+    const trimmedAlbum = album.length > 0 ? album : undefined;
 
     const now = new Date().toISOString();
     const resource: AccountResource = {
@@ -918,13 +1020,14 @@ export function AccountForm({ existing, onSaved, onCancel }: AccountFormProps) {
       debtStartDate: kind === 'debt' ? (debtStartDate || undefined) : undefined,
       allowanceStartDate: kind === 'allowance' ? (allowanceStartDate || undefined) : undefined,
       allowanceEndDate: kind === 'allowance' ? (allowanceEndDate || undefined) : undefined,
-      dueDate: undefined,
-      dueDateLeadDays: undefined,
+      dueDate: nextDueDateAllowed ? (dueDate || undefined) : undefined,
+      dueDateLeadDays: nextDueDateAllowed && dueDateLeadDays !== '' ? dueDateLeadDays : undefined,
       pendingTransactions: existing?.pendingTransactions ?? [],
       accountTasks: finalTasks,
       allowanceTasks: kind === 'allowance' && finalAllowanceTasks.length > 0 ? finalAllowanceTasks : undefined,
       allowanceContactId: kind === 'allowance' ? (allowanceContactId || undefined) : undefined,
-      notes,
+      album: trimmedAlbum,
+      notes: currentExisting?.notes ?? existing?.notes,
       links: currentExisting?.links ?? existing?.links,
       linkedHomeId: existing?.linkedHomeId,
       linkedContactId: existing?.linkedContactId,
@@ -951,189 +1054,170 @@ export function AccountForm({ existing, onSaved, onCancel }: AccountFormProps) {
   }
 
   return (
-    <div className="flex h-full flex-col">
-      <div className="flex items-center gap-2 border-b border-gray-100 px-4 py-3 dark:border-gray-700 shrink-0">
-        <button
-          type="button"
-          onClick={onCancel}
-          className="text-sm text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
-        >
-          Back
-        </button>
-        <h3 className="flex-1 text-sm font-semibold text-gray-700 dark:text-gray-200">
-          {existing ? 'Edit Account' : 'New Account'}
-        </h3>
-        <button
-          type="button"
-          onClick={handleSave}
-          disabled={!canSave}
-          className={`text-sm font-semibold transition-colors ${
-            canSave ? 'text-blue-500 hover:text-blue-600' : 'text-gray-300'
-          }`}
-        >
-          Save
-        </button>
-      </div>
-
-      <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
-        <div className="grid grid-cols-[auto_1fr] items-end gap-3">
-          <IconPicker value={iconKey} onChange={setIconKey} />
-          <TextInput
-            label="Name *"
-            value={displayName}
-            onChange={setDisplayName}
-            placeholder="e.g. Checking Account"
-            maxLength={100}
-          />
-        </div>
-
-        <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] items-end gap-3">
-          <NumberInput
-            label={balanceLabel}
-            value={displayedBalance}
-            onChange={handleBalanceChange}
-            placeholder="0.00"
-            step={balanceStep}
-          />
-          <div className="flex flex-col gap-1">
-            <label className="text-xs font-medium text-gray-500 dark:text-gray-400">
-              Kind
-            </label>
-            <select
-              value={kind}
-              onChange={(e) => {
-                const nextKind = e.target.value as AccountKind;
-                setKind(nextKind);
-                if (nextKind !== 'bank') {
-                  setIsCryptoAccount(false);
-                }
-              }}
-              className={SELECT_CLS}
-            >
-              {KIND_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
-          </div>
-          <label className="flex items-center gap-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-600 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200">
-            <input
-              type="checkbox"
-              checked={showAccountInfo}
-              onChange={(event) => setShowAccountInfo(event.target.checked)}
-              className="h-4 w-4 rounded border-gray-300 text-blue-500 focus:ring-blue-500 dark:border-gray-500"
+    <ResourceFormShell
+      title={existing ? 'Edit Account' : 'New Account'}
+      onSave={handleSave}
+      onCancel={onCancel}
+      tabs={tabs}
+      activeTab={activeTab}
+      onTabChange={setActiveTab}
+      isSaving={!canSave}
+    >
+      {activeTab === 'details' ? (
+        <div className="space-y-3 px-4 py-3">
+          <div className="grid grid-cols-[auto_1fr] items-end gap-3">
+            <IconPicker value={iconKey} onChange={setIconKey} />
+            <TextInput
+              label="Name *"
+              value={displayName}
+              onChange={setDisplayName}
+              placeholder="e.g. Checking Account"
+              maxLength={100}
             />
-            <span>Add account info</span>
-          </label>
-        </div>
-
-        {supportsPullFrom ? (
-          <div className="flex flex-col gap-1">
-            <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Pulls from</label>
-            <select
-              value={pullFromAccountId}
-              onChange={(event) => setPullFromAccountId(event.target.value)}
-              className={SELECT_CLS}
-            >
-              <option value="">None</option>
-              {bankAccountOptions.map((account) => (
-                <option key={account.id} value={account.id}>
-                  {account.name}
-                </option>
-              ))}
-            </select>
           </div>
-        ) : null}
 
-        {kind === 'debt' ? (
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] items-end gap-3">
             <NumberInput
-              label="Interest Rate (% annual)"
-              value={debtRate}
-              onChange={setDebtRate}
-              placeholder="0"
-              step={0.01}
-            />
-            <NumberInput
-              label="Term (months)"
-              value={debtTerm}
-              onChange={setDebtTerm}
-              placeholder="0"
-              step={1}
+              label={balanceLabel}
+              value={displayedBalance}
+              onChange={handleBalanceChange}
+              placeholder="0.00"
+              step={balanceStep}
             />
             <div className="flex flex-col gap-1">
-              <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Start Date</label>
-              <input
-                type="date"
-                value={debtStartDate}
-                onChange={(event) => setDebtStartDate(event.target.value)}
+              <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Kind</label>
+              <select
+                value={kind}
+                onChange={(e) => {
+                  const nextKind = e.target.value as AccountKind;
+                  setKind(nextKind);
+                  if (nextKind !== 'bank') {
+                    setIsCryptoAccount(false);
+                  }
+                }}
                 className={SELECT_CLS}
-              />
+              >
+                {KIND_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
             </div>
-          </div>
-        ) : null}
-
-        {kind === 'bank' ? (
-          <>
             <label className="flex items-center gap-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-600 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200">
               <input
                 type="checkbox"
-                checked={isCryptoAccount}
-                onChange={(event) => setIsCryptoAccount(event.target.checked)}
+                checked={showAccountInfo}
+                onChange={(event) => setShowAccountInfo(event.target.checked)}
                 className="h-4 w-4 rounded border-gray-300 text-blue-500 focus:ring-blue-500 dark:border-gray-500"
               />
-              <span>This is a crypto account</span>
+              <span>Add account info</span>
             </label>
+          </div>
 
-            {isCryptoAccount ? (
-              <div className="grid grid-cols-2 gap-3">
-                <TextInput
-                  label="Ticker"
-                  value={cryptoTicker}
-                  onChange={setCryptoTicker}
-                  placeholder="BTC"
-                  maxLength={10}
+          {kind === 'bank' ? (
+            <>
+              <label className="flex items-center gap-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-600 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200">
+                <input
+                  type="checkbox"
+                  checked={isCryptoAccount}
+                  onChange={(event) => setIsCryptoAccount(event.target.checked)}
+                  className="h-4 w-4 rounded border-gray-300 text-blue-500 focus:ring-blue-500 dark:border-gray-500"
                 />
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Unit</label>
-                  <div className="flex rounded-full bg-gray-100 p-1 dark:bg-gray-700">
-                    {(['whole', 'sats'] as const).map((unit) => (
-                      <button
-                        key={unit}
-                        type="button"
-                        onClick={() => setCryptoUnit(unit)}
-                        className={`flex-1 rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
-                          cryptoUnit === unit
-                            ? 'bg-blue-500 text-white'
-                            : 'text-gray-500 hover:text-gray-700 dark:text-gray-300 dark:hover:text-gray-100'
-                        }`}
-                      >
-                        {unit === 'whole' ? 'Whole' : 'Sats'}
-                      </button>
-                    ))}
+                <span>This is a crypto account</span>
+              </label>
+
+              {isCryptoAccount ? (
+                <div className="grid grid-cols-2 gap-3">
+                  <TextInput
+                    label="Ticker"
+                    value={cryptoTicker}
+                    onChange={setCryptoTicker}
+                    placeholder="BTC"
+                    maxLength={10}
+                  />
+                  <div className="flex flex-col gap-1">
+                    <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Unit</label>
+                    <div className="flex rounded-full bg-gray-100 p-1 dark:bg-gray-700">
+                      {(['whole', 'sats'] as const).map((unit) => (
+                        <button
+                          key={unit}
+                          type="button"
+                          onClick={() => setCryptoUnit(unit)}
+                          className={`flex-1 rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
+                            cryptoUnit === unit
+                              ? 'bg-blue-500 text-white'
+                              : 'text-gray-500 hover:text-gray-700 dark:text-gray-300 dark:hover:text-gray-100'
+                          }`}
+                        >
+                          {unit === 'whole' ? 'Whole' : 'Sats'}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 </div>
+              ) : null}
+            </>
+          ) : null}
+
+          {showAccountInfo ? (
+            <TextInput
+              label="Institution"
+              value={institution}
+              onChange={setInstitution}
+              placeholder="e.g. Chase"
+              maxLength={100}
+            />
+          ) : null}
+
+          {supportsPullFrom ? (
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Pulls from</label>
+              <select
+                value={pullFromAccountId}
+                onChange={(event) => setPullFromAccountId(event.target.value)}
+                className={SELECT_CLS}
+              >
+                <option value="">None</option>
+                {bankAccountOptions.map((account) => (
+                  <option key={account.id} value={account.id}>
+                    {account.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : null}
+
+          {kind === 'debt' ? (
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <NumberInput
+                label="Interest Rate (% annual)"
+                value={debtRate}
+                onChange={setDebtRate}
+                placeholder="0"
+                step={0.01}
+              />
+              <NumberInput
+                label="Term (months)"
+                value={debtTerm}
+                onChange={setDebtTerm}
+                placeholder="0"
+                step={1}
+              />
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Start Date</label>
+                <input
+                  type="date"
+                  value={debtStartDate}
+                  onChange={(event) => setDebtStartDate(event.target.value)}
+                  className={SELECT_CLS}
+                />
               </div>
-            ) : null}
-          </>
-        ) : null}
+            </div>
+          ) : null}
 
-        {showAccountInfo ? (
-          <TextInput
-            label="Institution"
-            value={institution}
-            onChange={setInstitution}
-            placeholder="e.g. Chase"
-            maxLength={100}
-          />
-        ) : null}
-
-        {renderTaskSection('account', 'Transaction tasks', '+ Add task')}
-
-        {kind === 'allowance' ? (
-          <>
-            <div className="grid grid-cols-2 gap-3">
+          {kind === 'allowance' ? (
+            <>
               <div className="flex flex-col gap-1">
                 <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Recipient</label>
                 <select
@@ -1149,148 +1233,245 @@ export function AccountForm({ existing, onSaved, onCancel }: AccountFormProps) {
                   ))}
                 </select>
               </div>
-            </div>
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Period Start</label>
+                  <input
+                    type="date"
+                    value={allowanceStartDate}
+                    onChange={(event) => setAllowanceStartDate(event.target.value)}
+                    className={SELECT_CLS}
+                  />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Period End</label>
+                  <input
+                    type="date"
+                    value={allowanceEndDate}
+                    onChange={(event) => setAllowanceEndDate(event.target.value)}
+                    className={SELECT_CLS}
+                  />
+                </div>
+              </div>
+            </>
+          ) : null}
+
+          {allowsDueDate(kind) ? (
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="flex flex-col gap-1">
-                <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Period Start</label>
+                <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Due Date</label>
                 <input
                   type="date"
-                  value={allowanceStartDate}
-                  onChange={(event) => setAllowanceStartDate(event.target.value)}
+                  value={dueDate}
+                  onChange={(event) => setDueDate(event.target.value)}
                   className={SELECT_CLS}
                 />
               </div>
-              <div className="flex flex-col gap-1">
-                <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Period End</label>
-                <input
-                  type="date"
-                  value={allowanceEndDate}
-                  onChange={(event) => setAllowanceEndDate(event.target.value)}
-                  className={SELECT_CLS}
-                />
-              </div>
+              <NumberInput
+                label="Lead Days"
+                value={dueDateLeadDays}
+                onChange={setDueDateLeadDays}
+                placeholder="7"
+                step={1}
+              />
             </div>
-            <p className="text-xs italic text-gray-400">
-              Allowance push available in multi-user.
-            </p>
-            {showAllowanceTaskSources ? (
-              <div className="space-y-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-3 dark:border-gray-600 dark:bg-gray-800/50">
-                <p className="text-xs text-gray-500 dark:text-gray-400">
-                  Add an allowance task from existing resource tasks, the built-in library, or your saved templates.
-                </p>
+          ) : null}
 
-                <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
-                  <select
-                    value={selectedAllowanceResourceTask}
-                    onChange={(event) => setSelectedAllowanceResourceTask(event.target.value)}
-                    className={SELECT_CLS}
+          {(existing?.pendingTransactions?.length ?? 0) > 0 ? (
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-medium text-gray-500 dark:text-gray-400">
+                Pending Transactions ({existing?.pendingTransactions?.length ?? 0})
+              </label>
+              <div className="space-y-1">
+                {(existing?.pendingTransactions ?? []).map((transaction) => (
+                  <div
+                    key={transaction.id}
+                    className="flex items-center justify-between rounded bg-gray-50 px-2 py-1.5 text-xs dark:bg-gray-700"
                   >
-                    <option value="">Existing tasks in your resources</option>
-                    {existingResourceTaskOptions.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    type="button"
-                    onClick={() => addAllowanceTaskFromSelection(selectedAllowanceResourceTask, existingResourceTaskOptions, setSelectedAllowanceResourceTask)}
-                    disabled={!selectedAllowanceResourceTask}
-                    className="rounded-md bg-blue-500 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    Add
-                  </button>
-                </div>
-
-                <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
-                  <select
-                    value={selectedAllowanceLibraryTask}
-                    onChange={(event) => setSelectedAllowanceLibraryTask(event.target.value)}
-                    className={SELECT_CLS}
-                  >
-                    <option value="">Built-in library tasks</option>
-                    {libraryTaskOptions.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    type="button"
-                    onClick={() => addAllowanceTaskFromSelection(selectedAllowanceLibraryTask, libraryTaskOptions, setSelectedAllowanceLibraryTask)}
-                    disabled={!selectedAllowanceLibraryTask}
-                    className="rounded-md bg-blue-500 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    Add
-                  </button>
-                </div>
-
-                <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
-                  <select
-                    value={selectedAllowanceUserTemplate}
-                    onChange={(event) => setSelectedAllowanceUserTemplate(event.target.value)}
-                    className={SELECT_CLS}
-                  >
-                    <option value="">Your saved task templates</option>
-                    {userTemplateOptions.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    type="button"
-                    onClick={() => addAllowanceTaskFromSelection(selectedAllowanceUserTemplate, userTemplateOptions, setSelectedAllowanceUserTemplate)}
-                    disabled={!selectedAllowanceUserTemplate}
-                    className="rounded-md bg-blue-500 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    Add
-                  </button>
-                </div>
+                    <span className="flex-1 truncate text-gray-700 dark:text-gray-200">
+                      {transaction.description}
+                    </span>
+                    <span className="ml-2 shrink-0 text-gray-500">{transaction.status}</span>
+                  </div>
+                ))}
               </div>
-            ) : null}
-
-            {renderTaskSection(
-              'allowance',
-              'Tasks for allowance recipient',
-              showAllowanceTaskSources ? 'Hide sources' : '+ Add task',
-              () => setShowAllowanceTaskSources((prev) => !prev),
-            )}
-          </>
-        ) : null}
-
-        {(existing?.pendingTransactions?.length ?? 0) > 0 ? (
-          <div className="flex flex-col gap-1">
-            <label className="text-xs font-medium text-gray-500 dark:text-gray-400">
-              Pending Transactions ({existing?.pendingTransactions?.length ?? 0})
-            </label>
-            <div className="space-y-1">
-              {(existing?.pendingTransactions ?? []).map((transaction) => (
-                <div
-                  key={transaction.id}
-                  className="flex items-center justify-between rounded px-2 py-1.5 text-xs bg-gray-50 dark:bg-gray-700"
-                >
-                  <span className="flex-1 truncate text-gray-700 dark:text-gray-200">
-                    {transaction.description}
-                  </span>
-                  <span className="ml-2 shrink-0 text-gray-500">{transaction.status}</span>
-                </div>
-              ))}
+              <p className="text-xs italic text-gray-400">
+                Written by shopping list - not editable here.
+              </p>
             </div>
-            <p className="text-xs italic text-gray-400">
-              Written by shopping list - not editable here.
-            </p>
+          ) : null}
+        </div>
+      ) : null}
+
+      {activeTab === 'tasks' ? (
+        <div className="space-y-4 px-4 py-3">
+          {renderTaskSection('account', 'Account tasks', '+ Add Task')}
+
+          {kind === 'allowance' ? (
+            <>
+              {showAllowanceTaskSources ? (
+                <div className="space-y-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-3 dark:border-gray-600 dark:bg-gray-800/50">
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    Add an allowance task from existing resource tasks, the built-in library, or your saved templates.
+                  </p>
+
+                  <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
+                    <select
+                      value={selectedAllowanceResourceTask}
+                      onChange={(event) => setSelectedAllowanceResourceTask(event.target.value)}
+                      className={SELECT_CLS}
+                    >
+                      <option value="">Existing tasks in your resources</option>
+                      {existingResourceTaskOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => addAllowanceTaskFromSelection(selectedAllowanceResourceTask, existingResourceTaskOptions, setSelectedAllowanceResourceTask)}
+                      disabled={!selectedAllowanceResourceTask}
+                      className="rounded-md bg-blue-500 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      Add
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
+                    <select
+                      value={selectedAllowanceLibraryTask}
+                      onChange={(event) => setSelectedAllowanceLibraryTask(event.target.value)}
+                      className={SELECT_CLS}
+                    >
+                      <option value="">Built-in library tasks</option>
+                      {libraryTaskOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => addAllowanceTaskFromSelection(selectedAllowanceLibraryTask, libraryTaskOptions, setSelectedAllowanceLibraryTask)}
+                      disabled={!selectedAllowanceLibraryTask}
+                      className="rounded-md bg-blue-500 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      Add
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
+                    <select
+                      value={selectedAllowanceUserTemplate}
+                      onChange={(event) => setSelectedAllowanceUserTemplate(event.target.value)}
+                      className={SELECT_CLS}
+                    >
+                      <option value="">Your saved task templates</option>
+                      {userTemplateOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => addAllowanceTaskFromSelection(selectedAllowanceUserTemplate, userTemplateOptions, setSelectedAllowanceUserTemplate)}
+                      disabled={!selectedAllowanceUserTemplate}
+                      className="rounded-md bg-blue-500 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      Add
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+
+              {renderTaskSection(
+                'allowance',
+                'Allowance tasks',
+                showAllowanceTaskSources ? 'Hide Sources' : '+ Add Task',
+                () => setShowAllowanceTaskSources((prev) => !prev),
+              )}
+            </>
+          ) : null}
+        </div>
+      ) : null}
+
+      {activeTab === 'links' ? (
+        existing ? (
+          <div className="px-4 py-3">
+            <ResourceLinksTabNew resource={existing} />
           </div>
-        ) : null}
+        ) : (
+          <div className="px-4 py-3">
+            <div className="rounded-lg bg-gray-50 px-3 py-4 text-center dark:bg-gray-800/60">
+              <p className="text-xs italic text-gray-400">Save the account first to add links.</p>
+            </div>
+          </div>
+        )
+      ) : null}
 
-        <NotesLogEditor
-          notes={notes}
-          onChange={setNotes}
-          resource={existing}
-          linkTabLabel="Links"
-          allowedLinkTypes={['contact', 'home', 'vehicle', 'account']}
+      {activeTab === 'album' ? (
+        existing ? (
+          <div className="px-4 py-3">
+            <AlbumViewer
+              entries={album}
+              title="Account album"
+              onAdd={handleAddEntry}
+              onEdit={handleEditEntry}
+              onDelete={handleDeleteEntry}
+            />
+          </div>
+        ) : (
+          <div className="px-4 py-3">
+            <div className="rounded-lg bg-gray-50 px-3 py-4 text-center dark:bg-gray-800/60">
+              <p className="text-xs italic text-gray-400">Save the account first to add album entries.</p>
+            </div>
+          </div>
+        )
+      ) : null}
+
+      {activeTab === 'log' ? (
+        <div className="space-y-3 px-4 py-3">
+          {!existing ? (
+            <div className="rounded-lg bg-gray-50 px-3 py-4 text-center dark:bg-gray-800/60">
+              <p className="text-xs italic text-gray-400">Save the account first to view transaction logs.</p>
+            </div>
+          ) : transactionCompletions.length === 0 ? (
+            <div className="rounded-lg bg-gray-50 px-3 py-4 text-center dark:bg-gray-800/60">
+              <p className="text-xs italic text-gray-400">No transactions logged yet.</p>
+            </div>
+          ) : (
+            transactionCompletions.map((entry) => (
+              <div
+                key={entry.key}
+                className="rounded-lg border border-gray-200 bg-white px-3 py-3 dark:border-gray-700 dark:bg-gray-800/70"
+              >
+                <div className="text-xs text-gray-400 dark:text-gray-500">
+                  {formatCompletionDateTime(entry.completedAt)}
+                </div>
+                <div className="mt-1 text-sm text-gray-800 dark:text-gray-100">
+                  {entry.value || 'No result text'}
+                </div>
+                {showLoggedAmounts && entry.amount != null ? (
+                  <div className="mt-1 text-xs font-medium text-gray-500 dark:text-gray-400">
+                    Amount: {formatCurrency(entry.amount)}
+                  </div>
+                ) : null}
+              </div>
+            ))
+          )}
+        </div>
+      ) : null}
+
+      {existing && (isCreatingEntry || editingEntry) ? (
+        <AlbumEntryEditor
+          entry={editingEntry ?? undefined}
+          onSave={handleSaveEntry}
+          onCancel={handleCancelEntry}
         />
-      </div>
-    </div>
+      ) : null}
+    </ResourceFormShell>
   );
 }

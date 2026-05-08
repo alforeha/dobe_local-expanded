@@ -11,7 +11,7 @@ import { TypeSelectorSheet } from './TypeSelectorSheet';
 import { ContactForm } from './contact/ContactForm';
 import { HomeForm } from './home/HomeForm';
 import { VehicleForm } from './vehicle/VehicleForm';
-import { AccountForm } from './account/AccountForm';
+import { AccountFormNew } from './account/AccountFormNew';
 import { InventoryForm } from './inventory/InventoryForm';
 import { DocForm } from './doc/DocForm';
 import { autoCompleteSystemTask } from '../../../../../engine/resourceEngine';
@@ -167,7 +167,7 @@ export function ResourceRoom({ onOverlayActiveChange }: ResourceRoomProps) {
       <div className="flex flex-col h-full">
         {editingResource.type === 'home'      && <HomeForm      existing={editingResource} onSaved={onDone} onCancel={onDone} />}
         {editingResource.type === 'vehicle'   && <VehicleForm   existing={editingResource} onSaved={onDone} onCancel={onDone} />}
-        {editingResource.type === 'account'   && <AccountForm   existing={editingResource} onSaved={onDone} onCancel={onDone} />}
+        {editingResource.type === 'account'   && <AccountFormNew   existing={editingResource} onSaved={onDone} onCancel={onDone} />}
         {editingResource.type === 'inventory' && <InventoryForm existing={editingResource} onSaved={onDone} onCancel={onDone} editorMode={inventoryEditMode} editingContainerId={editingInventoryContainerId} />}
         {editingResource.type === 'doc'       && <DocForm       existing={editingResource} onSaved={onDone} onCancel={onDone} />}
         {editingResource.type === 'contact'   && <ContactForm   existing={editingResource} onSaved={onDone} onCancel={onDone} />}
@@ -205,7 +205,7 @@ export function ResourceRoom({ onOverlayActiveChange }: ResourceRoomProps) {
     return <div className="flex flex-col h-full"><VehicleForm   onSaved={onAdded} onCancel={backToSelector} /></div>;
   }
   if (addStep === 'account-form') {
-    return <div className="flex flex-col h-full"><AccountForm   onSaved={onAdded} onCancel={backToSelector} /></div>;
+    return <div className="flex flex-col h-full"><AccountFormNew   onSaved={onAdded} onCancel={backToSelector} /></div>;
   }
   if (addStep === 'inventory-form') {
     return <div className="flex flex-col h-full"><InventoryForm onSaved={onAdded} onCancel={backToSelector} /></div>;

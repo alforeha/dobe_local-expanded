@@ -551,6 +551,7 @@ export interface AccountResource {
   accountTasks?: AccountTask[];
   allowanceTasks?: AccountTask[];
   allowanceContactId?: string;
+  album?: AlbumEntry[];
   notes?: ResourceNote[];
   links?: ResourceLink[];
   linkedHomeId?: string;
