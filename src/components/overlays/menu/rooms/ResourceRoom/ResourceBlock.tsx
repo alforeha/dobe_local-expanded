@@ -165,6 +165,10 @@ export function ResourceBlock({ resource, onEdit, isExpanded, onExpand, onCollap
   const vehicleMileage = vehicleResource?.mileage ?? null;
   const docResource = isDoc(currentResource) ? currentResource : null;
   const accountBalance = accountResource?.balance ?? null;
+  const debtPaymentAmount =
+    accountResource?.kind === 'debt'
+      ? accountResource.accountTasks?.find((task) => task.kind === 'transaction-log')?.anticipatedValue ?? null
+      : null;
   const allLinkedTargets = getLinkedTargets(currentResource, resources);
   const linkedIconTargets = allLinkedTargets.slice(0, 4);
   const extraLinkedCount = Math.max(0, allLinkedTargets.length - linkedIconTargets.length);
@@ -199,12 +203,21 @@ export function ResourceBlock({ resource, onEdit, isExpanded, onExpand, onCollap
     );
   } else if (vehicleResource && vehicleMileage != null) {
     summaryContent = <span>{vehicleMileage.toLocaleString()} km</span>;
-  } else if (accountResource && accountBalance != null && accountBalance !== 0) {
+  } else if (
+    accountResource &&
+    (
+      (accountResource.kind === 'debt' && (typeof debtPaymentAmount === 'number' || accountBalance != null))
+      || (accountBalance != null && accountBalance !== 0)
+    )
+  ) {
     const kind = accountResource.kind;
-    const amount = accountBalance;
+    const amount = accountBalance ?? 0;
 
     let balanceDisplay = '';
-    if (kind === 'bill' || kind === 'subscription') {
+    if (kind === 'debt') {
+      const debtDisplayAmount = typeof debtPaymentAmount === 'number' ? debtPaymentAmount : amount;
+      balanceDisplay = `- ${Math.round(debtDisplayAmount).toLocaleString()}`;
+    } else if (kind === 'bill' || kind === 'subscription') {
       balanceDisplay = `- ${Math.round(amount).toLocaleString()}`;
     } else if (kind === 'income') {
       balanceDisplay = `+ ${Math.round(amount).toLocaleString()}`;

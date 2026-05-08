@@ -18,6 +18,10 @@ function formatBalance(amount: number, ticker?: string): string {
   return `${ticker?.trim() || '$'} ${amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
+function formatNegativeAmount(amount: number): string {
+  return `- ${Math.abs(amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
 function formatCryptoBalance(amount: number, ticker: string | undefined, unit: AccountResource['cryptoUnit']): string {
   const normalizedTicker = ticker?.trim().toUpperCase() || 'CRYPTO';
 
@@ -33,6 +37,10 @@ function formatCryptoBalance(amount: number, ticker: string | undefined, unit: A
 }
 
 function formatExpandedBalance(resource: AccountResource): string {
+  if (resource.kind === 'debt') {
+    return `- ${Math.abs(resource.balance ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  }
+
   if (resource.kind === 'bill' || resource.kind === 'subscription') {
     return `- ${Math.abs(resource.balance ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   }
@@ -83,6 +91,34 @@ function formatPeriod(startDate?: string, endDate?: string): string {
   const start = startDate ? formatDate(startDate) : 'Open';
   const end = endDate ? formatDate(endDate) : 'Open';
   return `${start} -> ${end}`;
+}
+
+function addMonthsToIsoDate(isoDate: string, monthsToAdd: number): string | null {
+  const [yearPart, monthPart, dayPart] = isoDate.split('-').map(Number);
+  if (!yearPart || !monthPart || !dayPart) return null;
+
+  const firstOfTargetMonth = new Date(yearPart, monthPart - 1 + monthsToAdd, 1);
+  if (Number.isNaN(firstOfTargetMonth.getTime())) return null;
+
+  const lastDayOfTargetMonth = new Date(firstOfTargetMonth.getFullYear(), firstOfTargetMonth.getMonth() + 1, 0).getDate();
+  const adjustedDate = new Date(firstOfTargetMonth.getFullYear(), firstOfTargetMonth.getMonth(), Math.min(dayPart, lastDayOfTargetMonth));
+  return Number.isNaN(adjustedDate.getTime()) ? null : adjustedDate.toISOString().slice(0, 10);
+}
+
+function computeDebtMinimumPayment(resource: AccountResource): number | null {
+  if (resource.kind !== 'debt') return null;
+  if (resource.debtTerm == null || resource.debtTerm <= 0) {
+    if (resource.balance == null) return null;
+    return resource.balance * 0.02;
+  }
+  if (resource.debtStartingBalance == null || resource.debtRate == null) return null;
+
+  const principal = resource.debtStartingBalance;
+  const monthlyRate = resource.debtRate / 12 / 100;
+  const months = resource.debtTerm;
+  if (monthlyRate === 0) return principal / months;
+  const factor = (1 + monthlyRate) ** months;
+  return principal * ((monthlyRate * factor) / (factor - 1));
 }
 
 function getLinkedTargets(resource: Resource, resources: Record<string, Resource>): Resource[] {
@@ -247,10 +283,29 @@ export function AccountMetaView({ resource }: AccountMetaViewProps) {
     };
   });
   const hasLinkedResources = linkedResourcePills.length > 0;
+  const isDebtCreditCardMode = resource.kind === 'debt' && (resource.debtTerm == null || resource.debtTerm <= 0);
+  const debtMinimumPayment = computeDebtMinimumPayment(resource);
+  const debtPaymentAmount =
+    resource.kind === 'debt'
+      ? resource.accountTasks?.find((task) => task.kind === 'transaction-log')?.anticipatedValue
+      : undefined;
+  const debtEstimatedInterest =
+    resource.kind === 'debt' &&
+    debtMinimumPayment != null &&
+    resource.debtStartingBalance != null &&
+    resource.debtTerm != null &&
+    resource.debtTerm > 0
+      ? (debtMinimumPayment * resource.debtTerm) - resource.debtStartingBalance
+      : null;
+  const debtEstimatedEndDate =
+    resource.kind === 'debt' && resource.debtStartDate && resource.debtTerm != null && resource.debtTerm > 0
+      ? addMonthsToIsoDate(resource.debtStartDate, resource.debtTerm)
+      : null;
   const hasAny =
     !!resource.kind ||
     !!resource.institution ||
     resource.balance != null ||
+    resource.debtStartingBalance != null ||
     !!resource.pullFromAccountId ||
     resource.debtRate != null ||
     resource.debtTerm != null ||
@@ -283,6 +338,13 @@ export function AccountMetaView({ resource }: AccountMetaViewProps) {
         <span>{capitalise(resource.kind)}</span>
       </div>
 
+      {resource.kind === 'debt' && typeof debtPaymentAmount === 'number' ? (
+        <div className="flex gap-2">
+          <span className="text-gray-400 w-16 shrink-0">Payment</span>
+          <span>{formatNegativeAmount(debtPaymentAmount)}</span>
+        </div>
+      ) : null}
+
       {resource.institution && (
         <div className="flex gap-2">
           <span className="text-gray-400 w-16 shrink-0">Institution</span>
@@ -290,7 +352,21 @@ export function AccountMetaView({ resource }: AccountMetaViewProps) {
         </div>
       )}
 
-      {resource.balance != null && (
+      {resource.kind === 'debt' && resource.balance != null ? (
+        <div className="flex gap-2">
+          <span className="text-gray-400 w-16 shrink-0">Current Balance</span>
+          <span>{formatExpandedBalance(resource)}</span>
+        </div>
+      ) : null}
+
+      {resource.kind === 'debt' && resource.debtStartingBalance != null ? (
+        <div className="flex gap-2">
+          <span className="text-gray-400 w-16 shrink-0">Starting Balance</span>
+          <span>{formatNegativeAmount(resource.debtStartingBalance)}</span>
+        </div>
+      ) : null}
+
+      {resource.kind !== 'debt' && resource.balance != null && (
         <div className="flex gap-2">
           <span className="text-gray-400 w-16 shrink-0">{getBalanceLabel(resource.kind)}</span>
           <span>
@@ -324,6 +400,27 @@ export function AccountMetaView({ resource }: AccountMetaViewProps) {
         <div className="flex gap-2">
           <span className="text-gray-400 w-16 shrink-0">Start Date</span>
           <span>{formatDate(resource.debtStartDate)}</span>
+        </div>
+      ) : null}
+
+      {resource.kind === 'debt' ? (
+        <div className="flex gap-2">
+          <span className="text-gray-400 w-16 shrink-0">{isDebtCreditCardMode ? 'Est. minimum payment' : 'Est. payment'}</span>
+          <span>{debtMinimumPayment == null ? '--' : `${formatNegativeAmount(debtMinimumPayment)}/m`}</span>
+        </div>
+      ) : null}
+
+      {resource.kind === 'debt' ? (
+        <div className="flex gap-2">
+          <span className="text-gray-400 w-16 shrink-0">Est. interest</span>
+          <span>{debtEstimatedInterest == null ? '--' : formatNegativeAmount(debtEstimatedInterest)}</span>
+        </div>
+      ) : null}
+
+      {resource.kind === 'debt' ? (
+        <div className="flex gap-2">
+          <span className="text-gray-400 w-16 shrink-0">Est. end</span>
+          <span>{debtEstimatedEndDate == null ? '--' : formatDate(debtEstimatedEndDate)}</span>
         </div>
       ) : null}
 

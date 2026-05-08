@@ -537,6 +537,10 @@ export interface AccountResource {
   cryptoTicker?: string;
   /** Bank account this draws from (bill, subscription, debt, allowance). */
   pullFromAccountId?: string;
+  /** Original debt principal captured separately from current balance. */
+  debtStartingBalance?: number;
+  /** Credit-card style minimum payment percentage. */
+  minPaymentPercent?: number;
   /** Annual interest rate percentage. */
   debtRate?: number;
   /** Debt term length in months. */

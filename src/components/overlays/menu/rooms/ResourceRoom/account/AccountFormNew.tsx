@@ -610,12 +610,114 @@ function addMonthsToIsoDate(isoDate: string, monthsToAdd: number): string | null
   return Number.isNaN(adjustedDate.getTime()) ? null : adjustedDate.toISOString().slice(0, 10);
 }
 
+function computeDebtMinimumPayment(
+  debtMode: 'loan' | 'credit',
+  startingBalance: number | '',
+  currentBalance: number | '',
+  minPaymentPercent: number | '',
+  debtRate: number | '',
+  debtTerm: number | '',
+): number | null {
+  if (debtMode === 'credit') {
+    if (currentBalance === '') return null;
+    const percent = minPaymentPercent === '' ? 2 : minPaymentPercent;
+    return currentBalance * (percent / 100);
+  }
+
+  if (startingBalance === '' || debtRate === '' || debtTerm === '' || debtTerm <= 0) return null;
+
+  const principal = startingBalance;
+  const monthlyRate = debtRate / 12 / 100;
+  const months = debtTerm;
+  if (monthlyRate === 0) return principal / months;
+  const factor = (1 + monthlyRate) ** months;
+  return principal * ((monthlyRate * factor) / (factor - 1));
+}
+
+function simulateDebtPayoff(
+  startingBalance: number | '',
+  currentBalance: number | '',
+  debtRate: number | '',
+  minimumPayment: number | null,
+  myPayment: number | '',
+): { totalInterest: number; months: number; effectivePayment: number; usingCustomPayment: boolean } | null {
+  if (startingBalance === '' || minimumPayment == null) return null;
+
+  const monthlyRate = (debtRate === '' ? 0 : debtRate) / 12 / 100;
+  const initialBalance = currentBalance !== '' ? currentBalance : startingBalance;
+  const monthlyInterest = initialBalance * monthlyRate;
+  const usingCustomPayment = myPayment !== '' && myPayment > monthlyInterest && myPayment > minimumPayment;
+  const effectivePayment = usingCustomPayment
+    ? myPayment
+    : minimumPayment;
+
+  let balance = initialBalance;
+  let totalInterest = 0;
+  let months = 0;
+
+  while (balance > 0.000001 && months < 600) {
+    const interest = balance * monthlyRate;
+    const principal = Math.min(effectivePayment - interest, balance);
+    if (principal <= 0) return null;
+    totalInterest += interest;
+    balance -= principal;
+    months += 1;
+  }
+
+  if (months === 0) return null;
+
+  return {
+    totalInterest,
+    months,
+    effectivePayment,
+    usingCustomPayment,
+  };
+}
+
+function simulateCreditPayoff(
+  currentBalance: number | '',
+  debtRate: number | '',
+  myPayment: number | '',
+): { totalInterest: number; months: number; effectivePayment: number } | null {
+  if (currentBalance === '' || myPayment === '') return null;
+
+  const monthlyRate = (debtRate === '' ? 0 : debtRate) / 12 / 100;
+  const monthlyInterest = currentBalance * monthlyRate;
+  if (myPayment <= monthlyInterest) return null;
+
+  let balance = currentBalance;
+  let totalInterest = 0;
+  let months = 0;
+
+  while (balance > 0.000001 && months < 600) {
+    const interest = balance * monthlyRate;
+    const principal = Math.min(myPayment - interest, balance);
+    if (principal <= 0) break;
+    totalInterest += interest;
+    balance -= principal;
+    months += 1;
+  }
+
+  if (months === 0 || balance > 0.000001) return null;
+
+  return {
+    totalInterest,
+    months,
+    effectivePayment: myPayment,
+  };
+}
+
 export function AccountFormNew({ existing, onSaved, onCancel }: AccountFormNewProps) {
   const initialKind = existing?.kind === 'crypto' ? 'bank' : (existing?.kind ?? 'bank');
+  const initialDebtExpectedPayment = existing?.accountTasks?.find((task) => task.kind === 'transaction-log')?.anticipatedValue ?? '';
+  const initialDebtMode: 'loan' | 'credit' = existing?.debtTerm ? 'loan' : 'credit';
   const [activeTab, setActiveTab] = useState('details');
   const [iconKey, setIconKey] = useState<string>(existing?.icon ?? 'finance');
   const [displayName, setDisplayName] = useState(existing?.name ?? '');
   const [balance, setBalance] = useState<number | ''>(existing?.balance ?? '');
+  const [debtStartingBalance, setDebtStartingBalance] = useState<number | ''>(existing?.debtStartingBalance ?? '');
+  const [debtExpectedPayment, setDebtExpectedPayment] = useState<number | ''>(initialDebtExpectedPayment);
+  const [debtMode, setDebtMode] = useState<'loan' | 'credit'>(initialDebtMode);
   const [kind, setKind] = useState<AccountKind>(initialKind);
   const [pendingKind, setPendingKind] = useState<AccountKind | null>(existing ? initialKind : null);
   const [showKindChangeConfirm, setShowKindChangeConfirm] = useState(false);
@@ -624,6 +726,7 @@ export function AccountFormNew({ existing, onSaved, onCancel }: AccountFormNewPr
   const [cryptoUnit, setCryptoUnit] = useState<AccountResource['cryptoUnit']>(existing?.cryptoUnit ?? 'whole');
   const [institution, setInstitution] = useState(existing?.institution ?? '');
   const [pullFromAccountId, setPullFromAccountId] = useState(existing?.pullFromAccountId ?? '');
+  const [minPaymentPercent, setMinPaymentPercent] = useState<number | ''>(existing?.minPaymentPercent ?? 2);
   const [debtRate, setDebtRate] = useState<number | ''>(existing?.debtRate ?? '');
   const [debtTerm, setDebtTerm] = useState<number | ''>(existing?.debtTerm ?? '');
   const [debtStartDate, setDebtStartDate] = useState(existing?.debtStartDate ?? '');
@@ -704,6 +807,9 @@ export function AccountFormNew({ existing, onSaved, onCancel }: AccountFormNewPr
   const bankBalancePillLabel = currentBalanceValue == null
     ? 'Set balance'
     : formatBankBalancePill(currentBalanceValue, normalizedTicker, cryptoUnit);
+  const debtBalancePillLabel = currentBalanceValue == null
+    ? 'Set current balance'
+    : formatAmountWithTicker(currentBalanceValue, '$');
   const accountSeedYear = useMemo(() => (
     getYearOfDate(kind === 'debt' ? debtStartDate : kind === 'allowance' ? allowanceStartDate : null)
     ?? getYearOfDate(existing?.createdAt)
@@ -716,20 +822,36 @@ export function AccountFormNew({ existing, onSaved, onCancel }: AccountFormNewPr
         ? 'Starting Balance'
         : 'Balance';
   const minimumPayment =
-    kind === 'debt' && balance !== '' && debtRate !== '' && debtTerm !== '' && debtTerm > 0
-      ? (() => {
-          const principal = balance;
-          const monthlyRate = debtRate / 12 / 100;
-          const months = debtTerm;
-          if (monthlyRate === 0) return principal / months;
-          const factor = (1 + monthlyRate) ** months;
-          return principal * ((monthlyRate * factor) / (factor - 1));
-        })()
+    kind === 'debt'
+      ? computeDebtMinimumPayment(debtMode, debtStartingBalance, balance, minPaymentPercent, debtRate, debtTerm)
+      : null;
+  const debtPayoffSimulation =
+    kind === 'debt' && debtMode === 'loan'
+      ? simulateDebtPayoff(debtStartingBalance, balance, debtRate, minimumPayment, debtExpectedPayment)
+      : null;
+  const creditMonthlyRate = (debtRate === '' ? 0 : debtRate) / 12 / 100;
+  const creditMonthlyInterest = currentBalanceValue == null ? null : currentBalanceValue * creditMonthlyRate;
+  const creditPayoffSimulation =
+    kind === 'debt' && debtMode === 'credit'
+      ? simulateCreditPayoff(balance, debtRate, debtExpectedPayment)
       : null;
   const estimatedInterest =
-    minimumPayment != null && balance !== '' && debtTerm !== '' ? (minimumPayment * debtTerm) - balance : null;
-  const estimatedEndDate =
-    kind === 'debt' && debtStartDate && debtTerm !== '' && debtTerm > 0 ? addMonthsToIsoDate(debtStartDate, debtTerm) : null;
+    debtMode === 'credit'
+      ? creditPayoffSimulation?.totalInterest ?? null
+      : debtPayoffSimulation?.totalInterest ?? null;
+  const estimatedEndDate = kind === 'debt' && (debtMode === 'credit' ? creditPayoffSimulation : debtPayoffSimulation)
+    ? addMonthsToIsoDate(
+        debtMode === 'loan' ? (debtStartDate || new Date().toISOString().slice(0, 10)) : new Date().toISOString().slice(0, 10),
+        (debtMode === 'credit' ? creditPayoffSimulation : debtPayoffSimulation)?.months ?? 0,
+      )
+    : null;
+  const showCustomPaymentEstimateNote = kind === 'debt' && debtPayoffSimulation?.usingCustomPayment === true;
+  const showCreditPaymentWarning =
+    kind === 'debt' &&
+    debtMode === 'credit' &&
+    debtExpectedPayment !== '' &&
+    creditMonthlyInterest != null &&
+    debtExpectedPayment <= creditMonthlyInterest;
 
   const transactionLogTask = accountTasks.find((task) => task.kind === 'transaction-log');
   const anyExpandedTaskId = expandedAccountTaskId ?? expandedAllowanceTaskId;
@@ -782,7 +904,7 @@ export function AccountFormNew({ existing, onSaved, onCancel }: AccountFormNewPr
   }, [activeTab, isChangingKind, kind]);
 
   useEffect(() => {
-    if (!['bill', 'subscription', 'income', 'debt'].includes(kind)) return;
+    if (!['bill', 'subscription', 'income'].includes(kind)) return;
 
     const timeoutId = window.setTimeout(() => {
       setAccountTasks((prev) => {
@@ -804,11 +926,37 @@ export function AccountFormNew({ existing, onSaved, onCancel }: AccountFormNewPr
     return () => window.clearTimeout(timeoutId);
   }, [balance, kind]);
 
+  useEffect(() => {
+    if (kind !== 'debt') return;
+
+    const timeoutId = window.setTimeout(() => {
+      setAccountTasks((prev) => {
+        let changed = false;
+        const nextTasks = prev.map((task) => {
+          if (task.kind !== 'transaction-log' || task.anticipatedValue === debtExpectedPayment) {
+            return task;
+          }
+
+          changed = true;
+          return { ...task, anticipatedValue: debtExpectedPayment };
+        });
+
+        return changed ? nextTasks : prev;
+      });
+    }, 0);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [debtExpectedPayment, kind]);
+
   function handleBalanceChange(value: number | '') {
     setBalance(value);
   }
 
-  function createBalanceTransactionLogEntry(nextBalance: number, difference: number) {
+  function createBalanceTransactionLogEntry(
+    nextBalance: number,
+    difference: number,
+    options?: { resultValue?: string; transactionAmount?: number },
+  ) {
     if (!existing || !transactionLogTask) return;
 
     const now = new Date().toISOString();
@@ -827,10 +975,10 @@ export function AccountFormNew({ existing, onSaved, onCancel }: AccountFormNewPr
             sharedCompletions: null,
           };
     const taskId = uuidv4();
-    const transactionAmount = isOpeningBalance ? nextBalance : difference;
-    const resultValue = isOpeningBalance
+    const transactionAmount = options?.transactionAmount ?? (isOpeningBalance ? nextBalance : difference);
+    const resultValue = options?.resultValue ?? (isOpeningBalance
       ? `Opening balance set to ${formatBankBalancePill(nextBalance, normalizedTicker, cryptoUnit)}`
-      : `Balance adjusted by ${formatBankBalanceAdjustment(difference, normalizedTicker, cryptoUnit)} to ${formatBankBalancePill(nextBalance, normalizedTicker, cryptoUnit)}`;
+      : `Balance adjusted by ${formatBankBalanceAdjustment(difference, normalizedTicker, cryptoUnit)} to ${formatBankBalancePill(nextBalance, normalizedTicker, cryptoUnit)}`);
     const completedTask: Task = {
       id: taskId,
       templateRef: null,
@@ -865,6 +1013,11 @@ export function AccountFormNew({ existing, onSaved, onCancel }: AccountFormNewPr
     setIsEditingBalance(true);
   }
 
+  function handleStartDebtBalanceEdit() {
+    setPendingBalance(balance === '' ? '' : balance);
+    setIsEditingBalance(true);
+  }
+
   function handleCancelBalanceEdit() {
     setPendingBalance('');
     setIsEditingBalance(false);
@@ -872,6 +1025,40 @@ export function AccountFormNew({ existing, onSaved, onCancel }: AccountFormNewPr
 
   function handleConfirmBalanceEdit() {
     if (pendingBalance === '') return;
+
+    if (kind === 'debt') {
+      const nextBalance = pendingBalance;
+      const difference = nextBalance - (currentBalanceValue ?? 0);
+
+      setBalance(nextBalance);
+
+      if (existing) {
+        const now = new Date().toISOString();
+        const persistedExisting = resources[existing.id];
+        if (persistedExisting?.type === 'account') {
+          setResource({
+            ...persistedExisting,
+            balance: nextBalance,
+            updatedAt: now,
+          });
+        }
+
+        if (difference !== 0 || isOpeningBalance) {
+          const signedDifference = `${difference > 0 ? '+' : difference < 0 ? '-' : ''}${formatAmountWithTicker(Math.abs(difference))}`;
+          const resultValue = isOpeningBalance
+            ? `Balance adjusted to ${formatAmountWithTicker(nextBalance)}`
+            : `Correction: ${signedDifference} (balance adjusted to ${formatAmountWithTicker(nextBalance)})`;
+          createBalanceTransactionLogEntry(nextBalance, difference, {
+            resultValue,
+            transactionAmount: difference,
+          });
+        }
+      }
+
+      setPendingBalance('');
+      setIsEditingBalance(false);
+      return;
+    }
 
     const nextBalance = pendingBalance;
     const difference = nextBalance - (currentBalanceValue ?? 0);
@@ -903,6 +1090,10 @@ export function AccountFormNew({ existing, onSaved, onCancel }: AccountFormNewPr
     setPendingKind(nextKind);
     setIsKindConfirmed(true);
     setBalance('');
+    setDebtStartingBalance('');
+    setDebtExpectedPayment('');
+    setDebtMode(nextKind === 'debt' ? 'credit' : initialDebtMode);
+    setMinPaymentPercent(2);
     setCryptoTicker('');
     setCryptoUnit('whole');
     setInstitution('');
@@ -1673,9 +1864,13 @@ export function AccountFormNew({ existing, onSaved, onCancel }: AccountFormNewPr
       cryptoUnit: kind === 'bank' ? cryptoUnit : undefined,
       cryptoTicker: kind === 'bank' ? (cryptoTicker.trim().toUpperCase() || undefined) : undefined,
       pullFromAccountId: supportsPullFrom || supportsPushTo ? (pullFromAccountId || undefined) : undefined,
+      debtStartingBalance: kind === 'debt' && debtStartingBalance !== '' ? debtStartingBalance : undefined,
+      minPaymentPercent: kind === 'debt' && debtMode === 'credit'
+        ? (minPaymentPercent === '' ? 2 : minPaymentPercent)
+        : undefined,
       debtRate: kind === 'debt' && debtRate !== '' ? debtRate : undefined,
-      debtTerm: kind === 'debt' && debtTerm !== '' ? debtTerm : undefined,
-      debtStartDate: kind === 'debt' ? (debtStartDate || undefined) : undefined,
+      debtTerm: kind === 'debt' && debtMode === 'loan' && debtTerm !== '' ? debtTerm : undefined,
+      debtStartDate: kind === 'debt' && debtMode === 'loan' ? (debtStartDate || undefined) : undefined,
       allowanceStartDate: kind === 'allowance' ? (allowanceStartDate || undefined) : undefined,
       allowanceEndDate: kind === 'allowance' ? (allowanceEndDate || undefined) : undefined,
       dueDate: undefined,
@@ -1805,21 +2000,23 @@ export function AccountFormNew({ existing, onSaved, onCancel }: AccountFormNewPr
             </div>
           ) : (
             <>
-              {kind === 'bank' && isEditingBalance ? (
+              {(kind === 'bank' || kind === 'debt') && isEditingBalance ? (
                 <div className="space-y-4 rounded-xl border border-gray-200 bg-gray-50 px-4 py-4 dark:border-gray-600 dark:bg-gray-800/70">
                   <NumberInput
                     label="New Balance"
                     value={pendingBalance}
                     onChange={setPendingBalance}
                     placeholder="0.00"
-                    step={cryptoUnit === 'sats' ? 1 : 0.01}
+                    step={kind === 'bank' && cryptoUnit === 'sats' ? 1 : 0.01}
                   />
                   <div className="rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-600 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200">
-                    {pendingBalance === ''
-                      ? 'Enter a balance'
-                      : isOpeningBalance
-                        ? `Opening Balance ${formatBankBalancePill(pendingBalance, normalizedTicker, cryptoUnit)}`
-                        : `${formatBankBalanceAdjustment(balanceDifference ?? 0, normalizedTicker, cryptoUnit)} adjustment`}
+                    {pendingBalance === '' ? 'Enter a balance' : (
+                      kind === 'debt'
+                        ? `${formatAmountWithTicker(pendingBalance - (currentBalanceValue ?? 0))} correction`
+                        : isOpeningBalance
+                          ? `Opening Balance ${formatBankBalancePill(pendingBalance, normalizedTicker, cryptoUnit)}`
+                          : `${formatBankBalanceAdjustment(balanceDifference ?? 0, normalizedTicker, cryptoUnit)} adjustment`
+                    )}
                   </div>
                   <div className="flex flex-wrap gap-2">
                     <button
@@ -1841,7 +2038,7 @@ export function AccountFormNew({ existing, onSaved, onCancel }: AccountFormNewPr
                 </div>
               ) : (
                 <>
-                  <div className="grid grid-cols-1 items-end gap-3 sm:grid-cols-[auto_minmax(0,1fr)]">
+                  <div className={kind === 'debt' ? 'grid grid-cols-2 gap-2' : 'grid grid-cols-1 items-end gap-3 sm:grid-cols-[auto_minmax(0,1fr)]'}>
                     {isKindConfirmed ? (
                       <div className="flex flex-col gap-1">
                         <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Kind</label>
@@ -1867,6 +2064,17 @@ export function AccountFormNew({ existing, onSaved, onCancel }: AccountFormNewPr
                           className="rounded-full border border-blue-300 bg-blue-50 px-3 py-2 text-left text-sm font-medium text-blue-700 hover:border-blue-400 hover:bg-blue-100 dark:border-blue-500/40 dark:bg-blue-500/10 dark:text-blue-100 dark:hover:border-blue-400 dark:hover:bg-blue-500/20"
                         >
                           {bankBalancePillLabel}
+                        </button>
+                      </div>
+                    ) : kind === 'debt' ? (
+                      <div className="flex flex-col gap-1">
+                        <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Current Balance</label>
+                        <button
+                          type="button"
+                          onClick={handleStartDebtBalanceEdit}
+                          className="rounded-full border border-blue-300 bg-blue-50 px-3 py-2 text-left text-sm font-medium text-blue-700 hover:border-blue-400 hover:bg-blue-100 dark:border-blue-500/40 dark:bg-blue-500/10 dark:text-blue-100 dark:hover:border-blue-400 dark:hover:bg-blue-500/20"
+                        >
+                          {debtBalancePillLabel}
                         </button>
                       </div>
                     ) : kind === 'allowance' ? (
@@ -1922,7 +2130,32 @@ export function AccountFormNew({ existing, onSaved, onCancel }: AccountFormNewPr
                     maxLength={100}
                   />
 
-                  {supportsPullFrom ? (
+                  {kind === 'debt' ? (
+                    <div className="grid grid-cols-2 gap-2">
+                      <NumberInput
+                        label="My Payment"
+                        value={debtExpectedPayment}
+                        onChange={setDebtExpectedPayment}
+                        placeholder="0.00"
+                        step={0.01}
+                      />
+                      <div className="flex flex-col gap-1">
+                        <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Pulls from</label>
+                        <select
+                          value={pullFromAccountId}
+                          onChange={(event) => setPullFromAccountId(event.target.value)}
+                          className={SELECT_CLS}
+                        >
+                          <option value="">None</option>
+                          {bankAccountOptions.map((account) => (
+                            <option key={account.id} value={account.id}>
+                              {account.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  ) : supportsPullFrom ? (
                     <div className="flex flex-col gap-1">
                       <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Pulls from</label>
                       <select
@@ -1960,45 +2193,131 @@ export function AccountFormNew({ existing, onSaved, onCancel }: AccountFormNewPr
 
                   {kind === 'debt' ? (
                     <>
-                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                        <NumberInput
-                          label="Interest Rate"
-                          value={debtRate}
-                          onChange={setDebtRate}
-                          placeholder="0"
-                          step={0.01}
-                        />
-                        <NumberInput
-                          label="Term (months)"
-                          value={debtTerm}
-                          onChange={setDebtTerm}
-                          placeholder="0"
-                          step={1}
-                        />
-                        <div className="flex flex-col gap-1">
-                          <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Start Date</label>
-                          <input
-                            type="date"
-                            value={debtStartDate}
-                            onChange={(event) => setDebtStartDate(event.target.value)}
-                            className={SELECT_CLS}
-                          />
+                      <div className="space-y-2">
+                        <div className="flex rounded-full bg-gray-100 p-1 dark:bg-gray-800">
+                          {(['loan', 'credit'] as const).map((mode) => (
+                            <button
+                              key={mode}
+                              type="button"
+                              onClick={() => setDebtMode(mode)}
+                              className={`flex-1 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
+                                debtMode === mode
+                                  ? 'bg-blue-500 text-white'
+                                  : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
+                              }`}
+                            >
+                              {mode === 'loan' ? 'Loan' : 'Credit'}
+                            </button>
+                          ))}
                         </div>
                       </div>
 
-                      <div className="space-y-2">
-                        <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-600 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200">
-                          Est. payment {minimumPayment == null ? '--' : `${formatCompactAmount(minimumPayment, amountTicker)}/m`}
-                        </div>
-                        <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-600 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200">
-                          Est. interest {estimatedInterest == null ? '--' : formatCompactAmount(estimatedInterest, amountTicker)}
-                        </div>
-                        {debtStartDate ? (
-                          <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-600 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200">
-                            Est. end {estimatedEndDate == null ? '--' : formatDate(estimatedEndDate)}
+                      {debtMode === 'loan' ? (
+                        <div className="space-y-2">
+                          <div className="grid grid-cols-2 gap-2">
+                            <NumberInput
+                              label="Interest Rate"
+                              value={debtRate}
+                              onChange={setDebtRate}
+                              placeholder="0"
+                              step={0.01}
+                            />
+                            <NumberInput
+                              label="Term (months)"
+                              value={debtTerm}
+                              onChange={setDebtTerm}
+                              placeholder="0"
+                              step={1}
+                            />
                           </div>
-                        ) : null}
-                      </div>
+                          <div className="grid grid-cols-2 gap-2">
+                            <div className="flex flex-col gap-1">
+                              <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Start Date</label>
+                              <input
+                                type="date"
+                                value={debtStartDate}
+                                onChange={(event) => setDebtStartDate(event.target.value)}
+                                className={SELECT_CLS}
+                              />
+                            </div>
+                            <NumberInput
+                              label="Loan Amount"
+                              value={debtStartingBalance}
+                              onChange={setDebtStartingBalance}
+                              placeholder="0.00"
+                              step={0.01}
+                            />
+                          </div>
+                          <div className="grid grid-cols-2 gap-2">
+                            <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-600 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200">
+                              Est. payment {minimumPayment == null ? '--' : `${formatCompactAmount(minimumPayment, amountTicker)}/m`}
+                            </div>
+                            <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-600 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200">
+                              Est. interest {estimatedInterest == null ? '--' : formatCompactAmount(estimatedInterest, amountTicker)}
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-2 gap-2">
+                            <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-600 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200">
+                              Est. end {estimatedEndDate == null ? '--' : formatDate(estimatedEndDate)}
+                            </div>
+                          </div>
+                          {showCustomPaymentEstimateNote ? (
+                            <p className="px-1 text-xs text-gray-400 dark:text-gray-500">
+                              Based on your payment of {formatAmountWithTicker(debtPayoffSimulation?.effectivePayment ?? 0)}.
+                            </p>
+                          ) : null}
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          <div className="grid grid-cols-2 gap-2">
+                            <NumberInput
+                              label="Min Payment %"
+                              value={minPaymentPercent}
+                              onChange={setMinPaymentPercent}
+                              placeholder="2"
+                              step={0.01}
+                            />
+                            <NumberInput
+                              label="Interest Rate"
+                              value={debtRate}
+                              onChange={setDebtRate}
+                              placeholder="0"
+                              step={0.01}
+                            />
+                          </div>
+                          <div className="grid grid-cols-2 gap-2">
+                            <NumberInput
+                              label="Credit Limit"
+                              value={debtStartingBalance}
+                              onChange={setDebtStartingBalance}
+                              placeholder="0.00"
+                              step={0.01}
+                            />
+                          </div>
+                          <div className="grid grid-cols-2 gap-2">
+                            <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-600 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200">
+                              Est. minimum: {minimumPayment == null ? '--' : formatCompactAmount(minimumPayment, amountTicker)}
+                            </div>
+                          </div>
+                          {creditPayoffSimulation ? (
+                            <>
+                              <div className="grid grid-cols-2 gap-2">
+                                <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-600 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200">
+                                  Est. interest: {estimatedInterest == null ? '--' : formatCompactAmount(estimatedInterest, amountTicker)}
+                                </div>
+                                <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-600 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200">
+                                  Est. end: {estimatedEndDate == null ? '--' : formatDate(estimatedEndDate)}
+                                </div>
+                              </div>
+                            </>
+                          ) : null}
+                          {showCreditPaymentWarning ? (
+                            <p className="px-1 text-xs text-amber-600 dark:text-amber-300">
+                              Payment does not cover interest - balance will grow.
+                            </p>
+                          ) : null}
+                        </div>
+                      )}
                     </>
                   ) : null}
 

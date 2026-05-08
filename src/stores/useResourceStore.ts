@@ -380,6 +380,19 @@ function sanitizeResources(resources: Record<string, Resource>): Record<string, 
       changed = true;
     }
 
+    if (
+      isAccount(normalizedResource) &&
+      normalizedResource.kind === 'debt' &&
+      normalizedResource.debtStartingBalance == null &&
+      normalizedResource.balance != null
+    ) {
+      normalizedResource = {
+        ...normalizedResource,
+        debtStartingBalance: normalizedResource.balance,
+      };
+      changed = true;
+    }
+
     if (isInventory(normalizedResource)) {
       let resourceChanged = false;
       const nextContainers = normalizedResource.containers?.map((container) => {
