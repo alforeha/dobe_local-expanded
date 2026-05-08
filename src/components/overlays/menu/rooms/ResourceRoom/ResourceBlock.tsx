@@ -200,9 +200,27 @@ export function ResourceBlock({ resource, onEdit, isExpanded, onExpand, onCollap
   } else if (vehicleResource && vehicleMileage != null) {
     summaryContent = <span>{vehicleMileage.toLocaleString()} km</span>;
   } else if (accountResource && accountBalance != null && accountBalance !== 0) {
+    const kind = accountResource.kind;
+    const amount = accountBalance;
+
+    let balanceDisplay = '';
+    if (kind === 'bill' || kind === 'subscription') {
+      balanceDisplay = `- ${Math.round(amount).toLocaleString()}`;
+    } else if (kind === 'income') {
+      balanceDisplay = `+ ${Math.round(amount).toLocaleString()}`;
+    } else {
+      const ticker = accountResource.cryptoTicker?.trim() || '$';
+      const unit = accountResource.cryptoUnit;
+      if (unit === 'sats') {
+        balanceDisplay = `${ticker} ${Math.round(amount).toLocaleString()} SAT`;
+      } else {
+        balanceDisplay = `${ticker} ${Math.round(amount).toLocaleString()}`;
+      }
+    }
+
     summaryContent = (
       <span>
-        ${accountBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+        {balanceDisplay}
       </span>
     );
   } else if (docResource) {

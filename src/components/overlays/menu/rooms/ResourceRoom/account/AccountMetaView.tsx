@@ -5,8 +5,6 @@ import { isDoc, isInventory, normalizeRecurrenceMode } from '../../../../../../t
 import { useResourceStore } from '../../../../../../stores/useResourceStore';
 import { IconDisplay } from '../../../../../shared/IconDisplay';
 
-const CRYPTO_WHOLE_SCALE = 100_000_000;
-
 interface AccountMetaViewProps {
   resource: AccountResource;
 }
@@ -16,23 +14,56 @@ function formatDate(isoDate: string): string {
   return date.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
 }
 
-function formatBalance(amount: number): string {
-  return '$' + amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+function formatBalance(amount: number, ticker?: string): string {
+  return `${ticker?.trim() || '$'} ${amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 function formatCryptoBalance(amount: number, ticker: string | undefined, unit: AccountResource['cryptoUnit']): string {
+  const normalizedTicker = ticker?.trim().toUpperCase() || 'CRYPTO';
+
   if (unit === 'sats') {
-    return `${Math.round(amount).toLocaleString()} sats`;
+    return `${normalizedTicker} ${Math.round(amount).toLocaleString()} SAT`;
   }
-  const wholeValue = (amount / CRYPTO_WHOLE_SCALE).toLocaleString(undefined, {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 8,
+
+  const wholeValue = amount.toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
   });
-  return `${wholeValue} ${ticker?.trim().toUpperCase() || 'CRYPTO'}`;
+  return `${normalizedTicker} ${wholeValue}`;
+}
+
+function formatExpandedBalance(resource: AccountResource): string {
+  if (resource.kind === 'bill' || resource.kind === 'subscription') {
+    return `- ${Math.abs(resource.balance ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  }
+
+  if (resource.kind === 'income') {
+    return `+ ${Math.abs(resource.balance ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  }
+
+  const normalizedTicker = resource.cryptoTicker?.trim().toUpperCase() || '';
+
+  if (resource.cryptoUnit === 'sats') {
+    return formatCryptoBalance(resource.balance ?? 0, resource.cryptoTicker, resource.cryptoUnit);
+  }
+
+  if ((resource.kind === 'bank' || resource.kind === 'crypto') && normalizedTicker && normalizedTicker !== '$') {
+    return formatCryptoBalance(resource.balance ?? 0, normalizedTicker, resource.cryptoUnit);
+  }
+
+  return formatBalance(resource.balance ?? 0, resource.cryptoTicker);
 }
 
 function capitalise(value: string): string {
   return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+function getBalanceLabel(kind: AccountResource['kind']): string {
+  if (kind === 'bill' || kind === 'subscription' || kind === 'income') {
+    return 'Amount';
+  }
+
+  return 'Balance';
 }
 
 const RECURRENCE_LABEL: Record<string, string> = {
@@ -190,7 +221,6 @@ export function AccountMetaView({ resource }: AccountMetaViewProps) {
   const pullFromAccountName = resource.pullFromAccountId
     ? allResources[resource.pullFromAccountId]?.name ?? 'Unknown account'
     : null;
-  const isCryptoStyleAccount = (resource.kind === 'crypto' || resource.kind === 'bank') && !!resource.cryptoTicker;
   const linkedTargets = getLinkedTargets(resource, allResources);
   const childAccounts = Object.values(allResources).filter(
     (entry): entry is AccountResource =>
@@ -262,28 +292,12 @@ export function AccountMetaView({ resource }: AccountMetaViewProps) {
 
       {resource.balance != null && (
         <div className="flex gap-2">
-          <span className="text-gray-400 w-16 shrink-0">Balance</span>
+          <span className="text-gray-400 w-16 shrink-0">{getBalanceLabel(resource.kind)}</span>
           <span>
-            {isCryptoStyleAccount
-              ? formatCryptoBalance(resource.balance, resource.cryptoTicker, resource.cryptoUnit)
-              : formatBalance(resource.balance)}
+            {formatExpandedBalance(resource)}
           </span>
         </div>
       )}
-
-      {isCryptoStyleAccount && resource.cryptoTicker ? (
-        <div className="flex gap-2">
-          <span className="text-gray-400 w-16 shrink-0">Ticker</span>
-          <span>{resource.cryptoTicker.trim().toUpperCase()}</span>
-        </div>
-      ) : null}
-
-      {isCryptoStyleAccount ? (
-        <div className="flex gap-2">
-          <span className="text-gray-400 w-16 shrink-0">Unit</span>
-          <span>{resource.cryptoUnit === 'sats' ? 'Sats' : 'Whole'}</span>
-        </div>
-      ) : null}
 
       {pullFromAccountName && (resource.kind === 'bill' || resource.kind === 'subscription' || resource.kind === 'debt' || resource.kind === 'allowance') ? (
         <div className="flex gap-2">

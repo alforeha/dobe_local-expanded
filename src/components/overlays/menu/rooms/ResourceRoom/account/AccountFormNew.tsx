@@ -24,6 +24,7 @@ import {
   toRecurrenceRule,
 } from '../../../../../../types/resource';
 import type { QuickActionsEvent } from '../../../../../../types/event';
+import type { Task } from '../../../../../../types/task';
 import { useResourceStore } from '../../../../../../stores/useResourceStore';
 import { useScheduleStore } from '../../../../../../stores/useScheduleStore';
 import { useUserStore } from '../../../../../../stores/useUserStore';
@@ -133,11 +134,11 @@ const KIND_BUTTON_CLS =
   'rounded-md border px-3 py-2 text-sm font-medium transition-colors';
 
 const AUTO_LINK_RELATIONSHIP_BY_KIND: Partial<Record<AccountKind, string>> = {
-  bill: 'rent',
-  subscription: 'direct transaction',
-  debt: 'mortgage',
-  allowance: 'direct transaction',
-  income: 'direct transaction',
+  bill: 'bill',
+  subscription: 'subscription',
+  debt: 'debt',
+  allowance: 'allowance',
+  income: 'income',
 };
 
 const AUTO_LINK_RELATIONSHIPS = new Set(Object.values(AUTO_LINK_RELATIONSHIP_BY_KIND));
@@ -275,7 +276,7 @@ function finaliseTaskDrafts(taskDrafts: TaskDraft[], ensureTransactionLog: boole
 }
 
 function formatAmountWithTicker(value: number, ticker = '$'): string {
-  return `${ticker}${value.toLocaleString(undefined, {
+  return `${ticker || '$'}${value.toLocaleString(undefined, {
     minimumFractionDigits: 2,
     maximumFractionDigits: 8,
   })}`;
@@ -285,6 +286,37 @@ function formatCompactAmount(value: number, prefix = ''): string {
   return `${prefix}${value.toLocaleString(undefined, {
     minimumFractionDigits: 0,
     maximumFractionDigits: 2,
+  })}`;
+}
+
+function getTransactionAmountPrefix(kind: AccountKind, cryptoTicker?: string): string {
+  if (kind === 'bill' || kind === 'subscription') return '- ';
+  if (kind === 'income') return '+ ';
+  return `${cryptoTicker?.trim() || '$'} `;
+}
+
+function formatBankBalancePill(amount: number, ticker: string, unit: AccountResource['cryptoUnit']): string {
+  if (unit === 'sats') {
+    return `${Math.round(amount).toLocaleString()} SAT`;
+  }
+
+  return `${ticker}${amount.toLocaleString(undefined, {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 8,
+  })}`;
+}
+
+function formatBankBalanceAdjustment(amount: number, ticker: string, unit: AccountResource['cryptoUnit']): string {
+  const sign = amount >= 0 ? '+' : '-';
+  const absoluteAmount = Math.abs(amount);
+
+  if (unit === 'sats') {
+    return `${sign}${Math.round(absoluteAmount).toLocaleString()} SAT`;
+  }
+
+  return `${sign}${ticker}${absoluteAmount.toLocaleString(undefined, {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 8,
   })}`;
 }
 
@@ -588,7 +620,7 @@ export function AccountFormNew({ existing, onSaved, onCancel }: AccountFormNewPr
   const [pendingKind, setPendingKind] = useState<AccountKind | null>(existing ? initialKind : null);
   const [showKindChangeConfirm, setShowKindChangeConfirm] = useState(false);
   const [isKindConfirmed, setIsKindConfirmed] = useState(Boolean(existing));
-  const [cryptoTicker, setCryptoTicker] = useState(existing?.cryptoTicker ?? '$');
+  const [cryptoTicker, setCryptoTicker] = useState(existing?.cryptoTicker ?? '');
   const [cryptoUnit, setCryptoUnit] = useState<AccountResource['cryptoUnit']>(existing?.cryptoUnit ?? 'whole');
   const [institution, setInstitution] = useState(existing?.institution ?? '');
   const [pullFromAccountId, setPullFromAccountId] = useState(existing?.pullFromAccountId ?? '');
@@ -615,6 +647,8 @@ export function AccountFormNew({ existing, onSaved, onCancel }: AccountFormNewPr
   const [linksCleared, setLinksCleared] = useState(false);
   const [editingEntry, setEditingEntry] = useState<AlbumEntry | null>(null);
   const [isCreatingEntry, setIsCreatingEntry] = useState(false);
+  const [isEditingBalance, setIsEditingBalance] = useState(false);
+  const [pendingBalance, setPendingBalance] = useState<number | ''>('');
 
   const resources = useResourceStore((s) => s.resources);
   const setResource = useResourceStore((s) => s.setResource);
@@ -624,6 +658,8 @@ export function AccountFormNew({ existing, onSaved, onCancel }: AccountFormNewPr
   const activeEvents = useScheduleStore((s) => s.activeEvents);
   const historyEvents = useScheduleStore((s) => s.historyEvents);
   const scheduleTasks = useScheduleStore((s) => s.tasks);
+  const setScheduleTask = useScheduleStore((s) => s.setTask);
+  const setActiveEvent = useScheduleStore((s) => s.setActiveEvent);
   const setUser = useUserStore((s) => s.setUser);
   const user = useUserStore((s) => s.user);
 
@@ -660,8 +696,14 @@ export function AccountFormNew({ existing, onSaved, onCancel }: AccountFormNewPr
   const pendingAutoLinkId = pullFromAccountId || undefined;
   const pendingAutoLinkRelationship = AUTO_LINK_RELATIONSHIP_BY_KIND[kind] ?? 'direct transaction';
   const normalizedTicker = (cryptoTicker.trim() || '$').toUpperCase();
-  const displayTicker = cryptoTicker.trim().toUpperCase();
   const amountTicker = kind === 'bank' ? normalizedTicker : '$';
+  const transactionAmountPrefix = getTransactionAmountPrefix(kind, cryptoTicker);
+  const currentBalanceValue = typeof balance === 'number' ? balance : null;
+  const isOpeningBalance = currentBalanceValue == null || currentBalanceValue === 0;
+  const balanceDifference = pendingBalance === '' ? null : pendingBalance - (currentBalanceValue ?? 0);
+  const bankBalancePillLabel = currentBalanceValue == null
+    ? 'Set balance'
+    : formatBankBalancePill(currentBalanceValue, normalizedTicker, cryptoUnit);
   const accountSeedYear = useMemo(() => (
     getYearOfDate(kind === 'debt' ? debtStartDate : kind === 'allowance' ? allowanceStartDate : null)
     ?? getYearOfDate(existing?.createdAt)
@@ -739,8 +781,120 @@ export function AccountFormNew({ existing, onSaved, onCancel }: AccountFormNewPr
     return () => window.clearTimeout(timeoutId);
   }, [activeTab, isChangingKind, kind]);
 
+  useEffect(() => {
+    if (!['bill', 'subscription', 'income', 'debt'].includes(kind)) return;
+
+    const timeoutId = window.setTimeout(() => {
+      setAccountTasks((prev) => {
+        const nextAmount: number | '' = balance === '' ? '' : balance;
+        let changed = false;
+        const nextTasks = prev.map((task) => {
+          if (task.kind !== 'transaction-log' || task.anticipatedValue === nextAmount) {
+            return task;
+          }
+
+          changed = true;
+          return { ...task, anticipatedValue: nextAmount };
+        });
+
+        return changed ? nextTasks : prev;
+      });
+    }, 0);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [balance, kind]);
+
   function handleBalanceChange(value: number | '') {
     setBalance(value);
+  }
+
+  function createBalanceTransactionLogEntry(nextBalance: number, difference: number) {
+    if (!existing || !transactionLogTask) return;
+
+    const now = new Date().toISOString();
+    const date = now.slice(0, 10);
+    const qaEventId = `qa-${date}`;
+    const existingQaEvent = activeEvents[qaEventId];
+    const qaEvent: QuickActionsEvent =
+      existingQaEvent && 'completions' in existingQaEvent
+        ? existingQaEvent
+        : {
+            id: qaEventId,
+            eventType: 'quickActions',
+            date,
+            completions: [],
+            xpAwarded: 0,
+            sharedCompletions: null,
+          };
+    const taskId = uuidv4();
+    const transactionAmount = isOpeningBalance ? nextBalance : difference;
+    const resultValue = isOpeningBalance
+      ? `Opening balance set to ${formatBankBalancePill(nextBalance, normalizedTicker, cryptoUnit)}`
+      : `Balance adjusted by ${formatBankBalanceAdjustment(difference, normalizedTicker, cryptoUnit)} to ${formatBankBalancePill(nextBalance, normalizedTicker, cryptoUnit)}`;
+    const completedTask: Task = {
+      id: taskId,
+      templateRef: null,
+      isUnique: true,
+      title: transactionLogTask.name,
+      taskType: 'TEXT',
+      completionState: 'complete',
+      completedAt: now,
+      resultFields: ({
+        resourceTaskId: `resource-task:${existing.id}:account-task:${transactionLogTask.id}`,
+        value: resultValue,
+        amount: transactionAmount,
+      } as unknown) as Task['resultFields'],
+      attachmentRef: null,
+      resourceRef: existing.id,
+      location: null,
+      sharedWith: null,
+      questRef: null,
+      actRef: null,
+      secondaryTag: null,
+    };
+
+    setScheduleTask(completedTask);
+    setActiveEvent({
+      ...qaEvent,
+      completions: [...qaEvent.completions, { taskRef: taskId, completedAt: now }],
+    });
+  }
+
+  function handleStartBalanceEdit() {
+    setPendingBalance(balance === '' ? '' : balance);
+    setIsEditingBalance(true);
+  }
+
+  function handleCancelBalanceEdit() {
+    setPendingBalance('');
+    setIsEditingBalance(false);
+  }
+
+  function handleConfirmBalanceEdit() {
+    if (pendingBalance === '') return;
+
+    const nextBalance = pendingBalance;
+    const difference = nextBalance - (currentBalanceValue ?? 0);
+    setBalance(nextBalance);
+
+    if (existing) {
+      const now = new Date().toISOString();
+      const persistedExisting = resources[existing.id];
+      if (persistedExisting?.type === 'account') {
+        setResource({
+          ...persistedExisting,
+          balance: nextBalance,
+          updatedAt: now,
+        });
+      }
+
+      if (difference !== 0 || isOpeningBalance) {
+        createBalanceTransactionLogEntry(nextBalance, difference);
+      }
+    }
+
+    setPendingBalance('');
+    setIsEditingBalance(false);
   }
 
   function resetKindSpecificFields(nextKind: AccountKind) {
@@ -749,7 +903,7 @@ export function AccountFormNew({ existing, onSaved, onCancel }: AccountFormNewPr
     setPendingKind(nextKind);
     setIsKindConfirmed(true);
     setBalance('');
-    setCryptoTicker('$');
+    setCryptoTicker('');
     setCryptoUnit('whole');
     setInstitution('');
     setPullFromAccountId('');
@@ -992,8 +1146,8 @@ export function AccountFormNew({ existing, onSaved, onCancel }: AccountFormNewPr
             <span className="truncate">
               {labelMode === 'transaction'
                 ? task.anticipatedValue !== ''
-                  ? formatAmountWithTicker(task.anticipatedValue, amountTicker)
-                  : `${amountTicker}0.00`
+                  ? `${transactionAmountPrefix}${Math.round(task.anticipatedValue).toLocaleString()}`
+                  : `${transactionAmountPrefix}0`
                 : describeCollapsedTaskRecurrence(task)}
             </span>
             {normalizeRecurrenceMode(task.recurrenceMode) === 'recurring' && task.reminderLeadDays > 0 ? (
@@ -1232,9 +1386,9 @@ export function AccountFormNew({ existing, onSaved, onCancel }: AccountFormNewPr
                         <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">{task.name}</div>
                       </div>
                       <div className="space-y-1">
-                        <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Expected Amount</label>
+                        <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Amount</label>
                         <div className="flex items-center rounded-md border border-gray-300 bg-white px-3 dark:border-gray-600 dark:bg-gray-800">
-                          <span className="shrink-0 pr-2 text-sm text-gray-500 dark:text-gray-400">{amountTicker}</span>
+                          <span className="shrink-0 pr-2 text-sm text-gray-500 dark:text-gray-400">{transactionAmountPrefix}</span>
                           <input
                             type="number"
                             value={task.anticipatedValue}
@@ -1517,7 +1671,7 @@ export function AccountFormNew({ existing, onSaved, onCancel }: AccountFormNewPr
       institution: institution.trim() || undefined,
       balance: balance === '' ? undefined : balance,
       cryptoUnit: kind === 'bank' ? cryptoUnit : undefined,
-      cryptoTicker: kind === 'bank' ? normalizedTicker : undefined,
+      cryptoTicker: kind === 'bank' ? (cryptoTicker.trim().toUpperCase() || undefined) : undefined,
       pullFromAccountId: supportsPullFrom || supportsPushTo ? (pullFromAccountId || undefined) : undefined,
       debtRate: kind === 'debt' && debtRate !== '' ? debtRate : undefined,
       debtTerm: kind === 'debt' && debtTerm !== '' ? debtTerm : undefined,
@@ -1651,173 +1805,222 @@ export function AccountFormNew({ existing, onSaved, onCancel }: AccountFormNewPr
             </div>
           ) : (
             <>
-              <div className="grid grid-cols-1 items-end gap-3 sm:grid-cols-[auto_minmax(0,1fr)]">
-                {isKindConfirmed ? (
-                  <div className="flex flex-col gap-1">
-                    <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Kind</label>
+              {kind === 'bank' && isEditingBalance ? (
+                <div className="space-y-4 rounded-xl border border-gray-200 bg-gray-50 px-4 py-4 dark:border-gray-600 dark:bg-gray-800/70">
+                  <NumberInput
+                    label="New Balance"
+                    value={pendingBalance}
+                    onChange={setPendingBalance}
+                    placeholder="0.00"
+                    step={cryptoUnit === 'sats' ? 1 : 0.01}
+                  />
+                  <div className="rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-600 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200">
+                    {pendingBalance === ''
+                      ? 'Enter a balance'
+                      : isOpeningBalance
+                        ? `Opening Balance ${formatBankBalancePill(pendingBalance, normalizedTicker, cryptoUnit)}`
+                        : `${formatBankBalanceAdjustment(balanceDifference ?? 0, normalizedTicker, cryptoUnit)} adjustment`}
+                  </div>
+                  <div className="flex flex-wrap gap-2">
                     <button
                       type="button"
-                      onClick={() => {
-                        setPendingKind(kind);
-                        setShowKindChangeConfirm(true);
-                      }}
-                      className="rounded-full border border-gray-300 bg-gray-50 px-3 py-1.5 text-sm font-medium text-gray-700 hover:border-amber-300 hover:text-amber-700 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:border-amber-500/50 dark:hover:text-amber-200"
+                      onClick={handleConfirmBalanceEdit}
+                      disabled={pendingBalance === ''}
+                      className="rounded-md bg-blue-500 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
                     >
-                      {KIND_OPTIONS.find((opt) => opt.value === kind)?.label ?? kind}
+                      Confirm
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleCancelBalanceEdit}
+                      className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+                    >
+                      Cancel
                     </button>
                   </div>
-                ) : null}
-
-                {kind === 'allowance' ? (
-                  <div className="flex flex-col gap-1">
-                    <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Balance</label>
-                    <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-600 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200">
-                      {balance === '' ? 'No balance yet' : formatAmountWithTicker(balance, '$')}
-                    </div>
-                  </div>
-                ) : (
-                  <NumberInput
-                    label={amountFieldLabel}
-                    value={balance}
-                    onChange={handleBalanceChange}
-                    placeholder="0.00"
-                    step={0.01}
-                  />
-                )}
-              </div>
-
-              {kind === 'bank' ? (
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <div className="flex flex-col gap-1">
-                    <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Ticker</label>
-                    <input
-                      type="text"
-                      value={cryptoTicker}
-                      onChange={(event) => setCryptoTicker(event.target.value.toUpperCase())}
-                      placeholder="$"
-                      maxLength={6}
-                      className={SELECT_CLS}
-                    />
-                  </div>
-                  <div className="flex flex-col gap-1">
-                    <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Unit</label>
-                    <select
-                      value={cryptoUnit}
-                      onChange={(event) => setCryptoUnit(event.target.value as AccountResource['cryptoUnit'])}
-                      className={SELECT_CLS}
-                    >
-                      <option value="whole">Standard (whole numbers)</option>
-                      <option value="sats">Sats (satoshi)</option>
-                    </select>
-                  </div>
                 </div>
-              ) : null}
-
-              <TextInput
-                label="Institution"
-                value={institution}
-                onChange={setInstitution}
-                placeholder="e.g. Chase"
-                maxLength={100}
-              />
-
-              {supportsPullFrom ? (
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Pulls from</label>
-                  <select
-                    value={pullFromAccountId}
-                    onChange={(event) => setPullFromAccountId(event.target.value)}
-                    className={SELECT_CLS}
-                  >
-                    <option value="">None</option>
-                    {bankAccountOptions.map((account) => (
-                      <option key={account.id} value={account.id}>
-                        {account.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              ) : null}
-
-              {supportsPushTo ? (
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Push to</label>
-                  <select
-                    value={pullFromAccountId}
-                    onChange={(event) => setPullFromAccountId(event.target.value)}
-                    className={SELECT_CLS}
-                  >
-                    <option value="">None</option>
-                    {bankAccountOptions.map((account) => (
-                      <option key={account.id} value={account.id}>
-                        {account.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              ) : null}
-
-              {kind === 'debt' ? (
+              ) : (
                 <>
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                    <NumberInput
-                      label="Interest Rate"
-                      value={debtRate}
-                      onChange={setDebtRate}
-                      placeholder="0"
-                      step={0.01}
-                    />
-                    <NumberInput
-                      label="Term (months)"
-                      value={debtTerm}
-                      onChange={setDebtTerm}
-                      placeholder="0"
-                      step={1}
-                    />
-                    <div className="flex flex-col gap-1">
-                      <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Start Date</label>
-                      <input
-                        type="date"
-                        value={debtStartDate}
-                        onChange={(event) => setDebtStartDate(event.target.value)}
-                        className={SELECT_CLS}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-600 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200">
-                      Est. payment {minimumPayment == null ? '--' : `${formatCompactAmount(minimumPayment, displayTicker)}/m`}
-                    </div>
-                    <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-600 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200">
-                      Est. interest {estimatedInterest == null ? '--' : formatCompactAmount(estimatedInterest, displayTicker)}
-                    </div>
-                    {debtStartDate ? (
-                      <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-600 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200">
-                        Est. end {estimatedEndDate == null ? '--' : formatDate(estimatedEndDate)}
+                  <div className="grid grid-cols-1 items-end gap-3 sm:grid-cols-[auto_minmax(0,1fr)]">
+                    {isKindConfirmed ? (
+                      <div className="flex flex-col gap-1">
+                        <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Kind</label>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setPendingKind(kind);
+                            setShowKindChangeConfirm(true);
+                          }}
+                          className="rounded-full border border-gray-300 bg-gray-50 px-3 py-1.5 text-sm font-medium text-gray-700 hover:border-amber-300 hover:text-amber-700 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:border-amber-500/50 dark:hover:text-amber-200"
+                        >
+                          {KIND_OPTIONS.find((opt) => opt.value === kind)?.label ?? kind}
+                        </button>
                       </div>
                     ) : null}
-                  </div>
-                </>
-              ) : null}
 
-              {kind === 'allowance' ? (
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Recipient</label>
-                  <select
-                    value={allowanceContactId}
-                    onChange={(event) => setAllowanceContactId(event.target.value)}
-                    className={SELECT_CLS}
-                  >
-                    <option value="">Select contact</option>
-                    {contactOptions.map((contact) => (
-                      <option key={contact.id} value={contact.id}>
-                        {contact.displayName || contact.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              ) : null}
+                    {kind === 'bank' ? (
+                      <div className="flex flex-col gap-1">
+                        <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Balance</label>
+                        <button
+                          type="button"
+                          onClick={handleStartBalanceEdit}
+                          className="rounded-full border border-blue-300 bg-blue-50 px-3 py-2 text-left text-sm font-medium text-blue-700 hover:border-blue-400 hover:bg-blue-100 dark:border-blue-500/40 dark:bg-blue-500/10 dark:text-blue-100 dark:hover:border-blue-400 dark:hover:bg-blue-500/20"
+                        >
+                          {bankBalancePillLabel}
+                        </button>
+                      </div>
+                    ) : kind === 'allowance' ? (
+                      <div className="flex flex-col gap-1">
+                        <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Balance</label>
+                        <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-600 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200">
+                          {balance === '' ? 'No balance yet' : formatAmountWithTicker(balance, '$')}
+                        </div>
+                      </div>
+                    ) : (
+                      <NumberInput
+                        label={amountFieldLabel}
+                        value={balance}
+                        onChange={handleBalanceChange}
+                        placeholder="0.00"
+                        step={0.01}
+                      />
+                    )}
+                  </div>
+
+                  {kind === 'bank' ? (
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <div className="flex flex-col gap-1">
+                        <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Ticker</label>
+                        <input
+                          type="text"
+                          value={cryptoTicker}
+                          onChange={(event) => setCryptoTicker(event.target.value.toUpperCase())}
+                          placeholder="$"
+                          maxLength={6}
+                          className={SELECT_CLS}
+                        />
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Unit</label>
+                        <select
+                          value={cryptoUnit}
+                          onChange={(event) => setCryptoUnit(event.target.value as AccountResource['cryptoUnit'])}
+                          className={SELECT_CLS}
+                        >
+                          <option value="whole">INT</option>
+                          <option value="sats">SAT</option>
+                        </select>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  <TextInput
+                    label="Institution"
+                    value={institution}
+                    onChange={setInstitution}
+                    placeholder="e.g. Chase"
+                    maxLength={100}
+                  />
+
+                  {supportsPullFrom ? (
+                    <div className="flex flex-col gap-1">
+                      <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Pulls from</label>
+                      <select
+                        value={pullFromAccountId}
+                        onChange={(event) => setPullFromAccountId(event.target.value)}
+                        className={SELECT_CLS}
+                      >
+                        <option value="">None</option>
+                        {bankAccountOptions.map((account) => (
+                          <option key={account.id} value={account.id}>
+                            {account.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  ) : null}
+
+                  {supportsPushTo ? (
+                    <div className="flex flex-col gap-1">
+                      <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Push to</label>
+                      <select
+                        value={pullFromAccountId}
+                        onChange={(event) => setPullFromAccountId(event.target.value)}
+                        className={SELECT_CLS}
+                      >
+                        <option value="">None</option>
+                        {bankAccountOptions.map((account) => (
+                          <option key={account.id} value={account.id}>
+                            {account.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  ) : null}
+
+                  {kind === 'debt' ? (
+                    <>
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                        <NumberInput
+                          label="Interest Rate"
+                          value={debtRate}
+                          onChange={setDebtRate}
+                          placeholder="0"
+                          step={0.01}
+                        />
+                        <NumberInput
+                          label="Term (months)"
+                          value={debtTerm}
+                          onChange={setDebtTerm}
+                          placeholder="0"
+                          step={1}
+                        />
+                        <div className="flex flex-col gap-1">
+                          <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Start Date</label>
+                          <input
+                            type="date"
+                            value={debtStartDate}
+                            onChange={(event) => setDebtStartDate(event.target.value)}
+                            className={SELECT_CLS}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="space-y-2">
+                        <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-600 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200">
+                          Est. payment {minimumPayment == null ? '--' : `${formatCompactAmount(minimumPayment, amountTicker)}/m`}
+                        </div>
+                        <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-600 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200">
+                          Est. interest {estimatedInterest == null ? '--' : formatCompactAmount(estimatedInterest, amountTicker)}
+                        </div>
+                        {debtStartDate ? (
+                          <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-600 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200">
+                            Est. end {estimatedEndDate == null ? '--' : formatDate(estimatedEndDate)}
+                          </div>
+                        ) : null}
+                      </div>
+                    </>
+                  ) : null}
+
+                  {kind === 'allowance' ? (
+                    <div className="flex flex-col gap-1">
+                      <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Recipient</label>
+                      <select
+                        value={allowanceContactId}
+                        onChange={(event) => setAllowanceContactId(event.target.value)}
+                        className={SELECT_CLS}
+                      >
+                        <option value="">Select contact</option>
+                        {contactOptions.map((contact) => (
+                          <option key={contact.id} value={contact.id}>
+                            {contact.displayName || contact.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  ) : null}
+                </>
+              )}
             </>
           )}
 
