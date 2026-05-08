@@ -137,7 +137,7 @@ function findResourceTaskConfig(entry: ResourceTaskEntry): {
 
   if (resource.type === 'account') {
     const task = (resource.accountTasks ?? []).find((accountTask) => accountTask.id === entry.taskId);
-    return { taskType: ((task?.taskType as TaskType | undefined) ?? 'CHECK') };
+    return { taskType: ((task?.taskType as TaskType | undefined) ?? 'CHECK'), inputFields: task?.inputFields ?? null };
   }
 
   if (resource.type === 'inventory') {

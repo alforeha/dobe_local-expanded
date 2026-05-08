@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { taskTemplateLibrary } from '../../../../../../coach';
 import { CUSTOM_ITEM_TEMPLATE_PREFIX, getItemTaskTemplateMeta } from '../../../../../../coach/ItemLibrary';
@@ -8,7 +8,6 @@ import type {
   AccountTask,
   AlbumEntry,
   ContactResource,
-  CryptoUnit,
   HomeResource,
   InventoryItemTemplate,
   InventoryResource,
@@ -18,6 +17,7 @@ import type {
   VehicleResource,
 } from '../../../../../../types/resource';
 import {
+  getRelationshipOptions,
   isInventory,
   makeDefaultRecurrenceRule,
   normalizeRecurrenceMode,
@@ -38,6 +38,7 @@ import { ResourceFormShell, type ResourceFormTab } from '../../../../../shared/R
 import { ResourceLinksTabNew } from '../../../../../shared/ResourceLinksTabNew';
 import { AlbumViewer } from '../../../../../shared/AlbumViewer';
 import { AlbumEntryEditor } from '../../../../../shared/AlbumEntryEditor';
+import type { InputFields, TaskType } from '../../../../../../types/taskTemplate';
 
 interface AccountFormNewProps {
   existing?: AccountResource;
@@ -51,6 +52,7 @@ interface TaskDraft {
   name: string;
   kind?: 'account-task' | 'transaction-log';
   taskType?: string;
+  inputFields?: Partial<InputFields>;
   anticipatedValue: number | '';
   evidenceRequired?: boolean;
   recurrenceMode: 'recurring' | 'never';
@@ -74,7 +76,18 @@ const tabs: ResourceFormTab[] = [
   { key: 'log', label: 'Log' },
 ];
 
-const RESOURCE_TASK_TYPE_OPTIONS = ['CHECK', 'COUNTER', 'DURATION', 'TIMER', 'RATING', 'TEXT'] as const;
+type ResourceDraftTaskType = Extract<TaskType, 'CHECK' | 'COUNTER' | 'DURATION' | 'TIMER' | 'RATING' | 'TEXT' | 'CONSUME'> | 'USE';
+
+const RESOURCE_TASK_TYPE_OPTIONS: Array<{ value: ResourceDraftTaskType; label: string }> = [
+  { value: 'CHECK', label: 'Check' },
+  { value: 'COUNTER', label: 'Counter' },
+  { value: 'DURATION', label: 'Duration' },
+  { value: 'TIMER', label: 'Timer' },
+  { value: 'RATING', label: 'Rating' },
+  { value: 'TEXT', label: 'Text' },
+  { value: 'CONSUME', label: 'Consume' },
+  { value: 'USE', label: 'Use' },
+];
 
 const KIND_OPTIONS: { value: AccountKind; label: string }[] = [
   { value: 'bank', label: 'Bank' },
@@ -95,13 +108,39 @@ const DOW_LABELS: { key: RecurrenceDayOfWeek; label: string }[] = [
   { key: 'sat', label: 'Sa' },
 ];
 
-const CRYPTO_WHOLE_SCALE = 100_000_000;
+const MONTH_OPTIONS = [
+  { value: 1, label: 'January' },
+  { value: 2, label: 'February' },
+  { value: 3, label: 'March' },
+  { value: 4, label: 'April' },
+  { value: 5, label: 'May' },
+  { value: 6, label: 'June' },
+  { value: 7, label: 'July' },
+  { value: 8, label: 'August' },
+  { value: 9, label: 'September' },
+  { value: 10, label: 'October' },
+  { value: 11, label: 'November' },
+  { value: 12, label: 'December' },
+] as const;
 
 const SELECT_CLS =
   'w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-purple-500 focus:outline-none dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100';
 
 const SMALL_INPUT_CLS =
   'rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 focus:border-purple-500 focus:outline-none dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100';
+
+const KIND_BUTTON_CLS =
+  'rounded-md border px-3 py-2 text-sm font-medium transition-colors';
+
+const AUTO_LINK_RELATIONSHIP_BY_KIND: Partial<Record<AccountKind, string>> = {
+  bill: 'rent',
+  subscription: 'direct transaction',
+  debt: 'mortgage',
+  allowance: 'direct transaction',
+  income: 'direct transaction',
+};
+
+const AUTO_LINK_RELATIONSHIPS = new Set(Object.values(AUTO_LINK_RELATIONSHIP_BY_KIND));
 
 function makeTransactionLogTask(): TaskDraft {
   return {
@@ -110,6 +149,7 @@ function makeTransactionLogTask(): TaskDraft {
     name: 'Transaction Log',
     kind: 'transaction-log',
     taskType: 'TEXT',
+    inputFields: { prompt: 'Add transaction details', maxLength: null },
     anticipatedValue: '',
     recurrenceMode: 'never',
     recurrence: makeDefaultRecurrenceRule(),
@@ -124,6 +164,7 @@ function makeBlankTaskDraft(): TaskDraft {
     name: '',
     kind: 'account-task',
     taskType: 'CHECK',
+    inputFields: { label: 'Done' },
     anticipatedValue: '',
     recurrenceMode: 'never',
     recurrence: makeDefaultRecurrenceRule(),
@@ -151,6 +192,7 @@ function buildTaskDraftSeed(
     icon,
     name,
     taskType,
+    inputFields: buildTaskInputFields(taskType, name),
     anticipatedValue,
     evidenceRequired: false,
     recurrenceMode,
@@ -166,6 +208,7 @@ function makeTaskDraftFromSeed(seed: Omit<TaskDraft, 'id' | 'kind'>): TaskDraft 
     icon: seed.icon,
     name: seed.name,
     taskType: seed.taskType,
+    inputFields: seed.inputFields,
     anticipatedValue: seed.anticipatedValue,
     evidenceRequired: seed.evidenceRequired,
     recurrenceMode: seed.recurrenceMode,
@@ -181,6 +224,7 @@ function toTaskDraft(task: AccountTask): TaskDraft {
     name: task.name,
     kind: task.kind ?? 'account-task',
     taskType: task.taskType ?? (task.kind === 'transaction-log' ? 'TEXT' : 'CHECK'),
+    inputFields: task.inputFields ?? buildTaskInputFields(task.taskType ?? (task.kind === 'transaction-log' ? 'TEXT' : 'CHECK'), task.name),
     anticipatedValue: task.anticipatedValue ?? '',
     evidenceRequired: task.evidenceRequired ?? false,
     recurrenceMode: normalizeRecurrenceMode(task.recurrenceMode),
@@ -189,21 +233,25 @@ function toTaskDraft(task: AccountTask): TaskDraft {
   };
 }
 
-function finaliseTaskDrafts(taskDrafts: TaskDraft[], ensureTransactionLog: boolean): AccountTask[] {
+function finaliseTaskDrafts(taskDrafts: TaskDraft[], ensureTransactionLog: boolean, defaultSeedYear: number): AccountTask[] {
   const finalTasks: AccountTask[] = taskDrafts
     .filter((task) => task.name.trim().length > 0)
     .map((task) => {
       const recurrenceMode = normalizeRecurrenceMode(task.recurrenceMode);
+      const recurrence = normalizeTaskRecurrenceForSave(task.recurrence, defaultSeedYear);
       return {
         id: task.id,
         icon: task.icon.trim(),
         name: task.name.trim(),
         kind: task.kind ?? 'account-task',
-        taskType: task.taskType ?? (task.kind === 'transaction-log' ? 'TEXT' : 'CHECK'),
+        taskType: task.kind === 'transaction-log'
+          ? 'TEXT'
+          : normaliseResourceTaskTypeForSave(task.taskType),
+        inputFields: task.inputFields,
         anticipatedValue: task.anticipatedValue === '' ? undefined : task.anticipatedValue,
         evidenceRequired: task.evidenceRequired === true ? true : undefined,
         recurrenceMode,
-        recurrence: task.recurrence,
+        recurrence,
         reminderLeadDays: recurrenceMode === 'recurring' ? task.reminderLeadDays : -1,
       };
     });
@@ -215,6 +263,7 @@ function finaliseTaskDrafts(taskDrafts: TaskDraft[], ensureTransactionLog: boole
       name: 'Transaction Log',
       kind: 'transaction-log',
       taskType: 'TEXT',
+      inputFields: { prompt: 'Add transaction details', maxLength: null },
       anticipatedValue: undefined,
       recurrenceMode: 'never',
       recurrence: makeDefaultRecurrenceRule(),
@@ -225,20 +274,76 @@ function finaliseTaskDrafts(taskDrafts: TaskDraft[], ensureTransactionLog: boole
   return finalTasks;
 }
 
-function formatCurrency(value: number): string {
-  return `$${value.toLocaleString(undefined, {
+function formatAmountWithTicker(value: number, ticker = '$'): string {
+  return `${ticker}${value.toLocaleString(undefined, {
     minimumFractionDigits: 2,
+    maximumFractionDigits: 8,
+  })}`;
+}
+
+function formatCompactAmount(value: number, prefix = ''): string {
+  return `${prefix}${value.toLocaleString(undefined, {
+    minimumFractionDigits: 0,
     maximumFractionDigits: 2,
   })}`;
 }
 
-function formatDayOfMonth(day: number): string {
-  const mod10 = day % 10;
-  const mod100 = day % 100;
-  if (mod10 === 1 && mod100 !== 11) return `${day}st`;
-  if (mod10 === 2 && mod100 !== 12) return `${day}nd`;
-  if (mod10 === 3 && mod100 !== 13) return `${day}rd`;
-  return `${day}th`;
+function normalizeResourceDraftTaskType(taskType?: string | null): ResourceDraftTaskType {
+  switch (taskType) {
+    case 'CHECK':
+    case 'COUNTER':
+    case 'DURATION':
+    case 'TIMER':
+    case 'RATING':
+    case 'TEXT':
+    case 'CONSUME':
+    case 'USE':
+      return taskType;
+    default:
+      return 'CHECK';
+  }
+}
+
+function normaliseResourceTaskTypeForSave(taskType?: string | null): TaskType {
+  const draftType = normalizeResourceDraftTaskType(taskType);
+  return draftType === 'USE' ? 'TEXT' : draftType;
+}
+
+function buildTaskInputFields(taskType: string, title: string, inputFields?: Partial<InputFields> | null): Partial<InputFields> {
+  const normalizedTaskType = normalizeResourceDraftTaskType(taskType);
+
+  switch (normalizedTaskType) {
+    case 'COUNTER':
+      return { target: 1, unit: 'count', step: 1, ...(inputFields ?? {}) };
+    case 'DURATION': {
+      const durationFields = (inputFields ?? {}) as {
+        targetDuration?: number;
+        unit?: 'seconds' | 'minutes' | 'hours';
+      };
+      return {
+        targetDuration: durationFields.targetDuration ?? 300,
+        unit: durationFields.unit ?? 'seconds',
+      };
+    }
+    case 'TIMER':
+      return { countdownFrom: 300, ...(inputFields ?? {}) };
+    case 'RATING':
+      return { scale: 5, label: title || 'Rate this', ...(inputFields ?? {}) };
+    case 'TEXT':
+      return { prompt: title || 'Add details', maxLength: null, ...(inputFields ?? {}) };
+    case 'CONSUME': {
+      const consumeFields = (inputFields ?? {}) as { label?: string; entries?: Array<{ itemTemplateRef: string; quantity: number }> };
+      return {
+        label: consumeFields.label ?? (title || 'Consume items'),
+        entries: consumeFields.entries?.length ? consumeFields.entries : [{ itemTemplateRef: '', quantity: 1 }],
+      };
+    }
+    case 'USE':
+      return { prompt: title ? `How will you use ${title}?` : 'Describe the procedure steps', maxLength: null, ...(inputFields ?? {}) };
+    case 'CHECK':
+    default:
+      return { label: title || 'Done', ...(inputFields ?? {}) };
+  }
 }
 
 function getDayOfMonth(isoDate: string): number {
@@ -246,39 +351,51 @@ function getDayOfMonth(isoDate: string): number {
   return Math.min(31, Math.max(1, parsed || 1));
 }
 
-function describeTaskRecurrence(rule: ResourceRecurrenceRule): string {
-  const interval = Math.max(1, rule.interval || 1);
-  switch (rule.frequency) {
+function getMonthOfYear(isoDate: string): number {
+  const parsed = Number(isoDate.split('-')[1] ?? 1);
+  return Math.min(12, Math.max(1, parsed || 1));
+}
+
+function getYearOfDate(isoDate?: string | null): number | null {
+  if (!isoDate) return null;
+  const parsed = Number(isoDate.split('-')[0] ?? '');
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+function getDaysInMonth(year: number, month: number): number {
+  return new Date(year, month, 0).getDate();
+}
+
+function buildSeedDateFromParts(year: number, month: number, day: number): string {
+  const safeMonth = Math.min(12, Math.max(1, month || 1));
+  const safeDay = Math.min(getDaysInMonth(year, safeMonth), Math.max(1, day || 1));
+  return `${String(year).padStart(4, '0')}-${String(safeMonth).padStart(2, '0')}-${String(safeDay).padStart(2, '0')}`;
+}
+
+function normalizeTaskRecurrenceForSave(rule: ResourceRecurrenceRule, defaultSeedYear: number): ResourceRecurrenceRule {
+  if (rule.frequency !== 'yearly') return rule;
+  return {
+    ...rule,
+    seedDate: buildSeedDateFromParts(defaultSeedYear, getMonthOfYear(rule.seedDate), getDayOfMonth(rule.seedDate)),
+  };
+}
+
+function describeCollapsedTaskRecurrence(task: TaskDraft): string {
+  if (!task.recurrence?.frequency) return 'On demand';
+  if (normalizeRecurrenceMode(task.recurrenceMode) === 'never') return 'On demand';
+
+  switch (task.recurrence.frequency) {
     case 'daily':
-      return interval === 1 ? 'Daily' : `Every ${interval} days`;
-    case 'weekly': {
-      const days = rule.days.length > 0
-        ? rule.days.map((day) => DOW_LABELS.find((entry) => entry.key === day)?.label ?? day).join(' ')
-        : 'Seed day';
-      return interval === 1 ? `Weekly - ${days}` : `Every ${interval} weeks - ${days}`;
-    }
-    case 'monthly': {
-      const day = rule.monthlyDay ?? getDayOfMonth(rule.seedDate);
-      return interval === 1 ? `Monthly - ${formatDayOfMonth(day)}` : `Every ${interval} months - ${formatDayOfMonth(day)}`;
-    }
+      return 'Daily';
+    case 'weekly':
+      return 'Weekly';
+    case 'monthly':
+      return 'Monthly';
     case 'yearly':
-      return interval === 1 ? 'Yearly' : `Every ${interval} years`;
+      return 'Yearly';
     default:
-      return 'Recurring';
+      return 'On demand';
   }
-}
-
-function describeTaskSchedule(task: TaskDraft): string {
-  return normalizeRecurrenceMode(task.recurrenceMode) === 'never'
-    ? 'Intermittent'
-    : describeTaskRecurrence(task.recurrence);
-}
-
-function describeReminder(leadDays: number): string {
-  if (leadDays < 0) return 'No reminder';
-  if (leadDays === 0) return 'Day of';
-  if (leadDays === 1) return '1 day before';
-  return `${leadDays} days before`;
 }
 
 function resolveInventoryTaskDisplay(
@@ -443,27 +560,41 @@ function formatCompletionDateTime(iso: string): string {
   return `${date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })} ${date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}`;
 }
 
-function allowsDueDate(kind: AccountKind): boolean {
-  return kind === 'bill' || kind === 'subscription' || kind === 'debt';
+function formatDate(isoDate: string): string {
+  const date = new Date(`${isoDate}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return isoDate;
+  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function addMonthsToIsoDate(isoDate: string, monthsToAdd: number): string | null {
+  const [yearPart, monthPart, dayPart] = isoDate.split('-').map(Number);
+  if (!yearPart || !monthPart || !dayPart) return null;
+
+  const firstOfTargetMonth = new Date(yearPart, monthPart - 1 + monthsToAdd, 1);
+  if (Number.isNaN(firstOfTargetMonth.getTime())) return null;
+
+  const lastDayOfTargetMonth = new Date(firstOfTargetMonth.getFullYear(), firstOfTargetMonth.getMonth() + 1, 0).getDate();
+  const adjustedDate = new Date(firstOfTargetMonth.getFullYear(), firstOfTargetMonth.getMonth(), Math.min(dayPart, lastDayOfTargetMonth));
+  return Number.isNaN(adjustedDate.getTime()) ? null : adjustedDate.toISOString().slice(0, 10);
 }
 
 export function AccountFormNew({ existing, onSaved, onCancel }: AccountFormNewProps) {
+  const initialKind = existing?.kind === 'crypto' ? 'bank' : (existing?.kind ?? 'bank');
   const [activeTab, setActiveTab] = useState('details');
   const [iconKey, setIconKey] = useState<string>(existing?.icon ?? 'finance');
   const [displayName, setDisplayName] = useState(existing?.name ?? '');
   const [balance, setBalance] = useState<number | ''>(existing?.balance ?? '');
-  const [kind, setKind] = useState<AccountKind>(existing?.kind === 'crypto' ? 'bank' : (existing?.kind ?? 'bank'));
-  const [cryptoTicker, setCryptoTicker] = useState(existing?.cryptoTicker ?? '');
-  const [cryptoUnit, setCryptoUnit] = useState<CryptoUnit>(existing?.cryptoUnit ?? 'whole');
-  const [isCryptoAccount, setIsCryptoAccount] = useState(Boolean(existing?.cryptoTicker) || existing?.kind === 'crypto');
-  const [showAccountInfo, setShowAccountInfo] = useState(Boolean(existing?.institution));
+  const [kind, setKind] = useState<AccountKind>(initialKind);
+  const [pendingKind, setPendingKind] = useState<AccountKind | null>(existing ? initialKind : null);
+  const [showKindChangeConfirm, setShowKindChangeConfirm] = useState(false);
+  const [isKindConfirmed, setIsKindConfirmed] = useState(Boolean(existing));
+  const [cryptoTicker, setCryptoTicker] = useState(existing?.cryptoTicker ?? '$');
+  const [cryptoUnit, setCryptoUnit] = useState<AccountResource['cryptoUnit']>(existing?.cryptoUnit ?? 'whole');
   const [institution, setInstitution] = useState(existing?.institution ?? '');
   const [pullFromAccountId, setPullFromAccountId] = useState(existing?.pullFromAccountId ?? '');
   const [debtRate, setDebtRate] = useState<number | ''>(existing?.debtRate ?? '');
   const [debtTerm, setDebtTerm] = useState<number | ''>(existing?.debtTerm ?? '');
   const [debtStartDate, setDebtStartDate] = useState(existing?.debtStartDate ?? '');
-  const [dueDate, setDueDate] = useState(existing?.dueDate ?? '');
-  const [dueDateLeadDays, setDueDateLeadDays] = useState<number | ''>(existing?.dueDateLeadDays ?? 7);
   const [accountTasks, setAccountTasks] = useState<TaskDraft[]>(
     existing?.accountTasks?.map(toTaskDraft) ?? [makeTransactionLogTask()],
   );
@@ -475,16 +606,20 @@ export function AccountFormNew({ existing, onSaved, onCancel }: AccountFormNewPr
   const [allowanceEndDate, setAllowanceEndDate] = useState(existing?.allowanceEndDate ?? '');
   const [expandedAccountTaskId, setExpandedAccountTaskId] = useState<string | null>(null);
   const [expandedAllowanceTaskId, setExpandedAllowanceTaskId] = useState<string | null>(null);
+  const [taskEditorTabs, setTaskEditorTabs] = useState<Record<string, 'schedule' | 'action'>>({});
   const [showAllowanceTaskSources, setShowAllowanceTaskSources] = useState(false);
   const [selectedAllowanceResourceTask, setSelectedAllowanceResourceTask] = useState('');
   const [selectedAllowanceLibraryTask, setSelectedAllowanceLibraryTask] = useState('');
   const [selectedAllowanceUserTemplate, setSelectedAllowanceUserTemplate] = useState('');
   const [album, setAlbum] = useState<AlbumEntry[]>(existing?.album ?? []);
+  const [linksCleared, setLinksCleared] = useState(false);
   const [editingEntry, setEditingEntry] = useState<AlbumEntry | null>(null);
   const [isCreatingEntry, setIsCreatingEntry] = useState(false);
 
   const resources = useResourceStore((s) => s.resources);
   const setResource = useResourceStore((s) => s.setResource);
+  const addResourceLink = useResourceStore((s) => s.addResourceLink);
+  const removeResourceLink = useResourceStore((s) => s.removeResourceLink);
   const userTaskTemplates = useScheduleStore((s) => s.taskTemplates);
   const activeEvents = useScheduleStore((s) => s.activeEvents);
   const historyEvents = useScheduleStore((s) => s.historyEvents);
@@ -517,25 +652,47 @@ export function AccountFormNew({ existing, onSaved, onCancel }: AccountFormNewPr
     seed: buildTaskDraftSeed(template.name, template.icon || 'task'),
   }));
 
-  const canSave = displayName.trim().length > 0;
+  const canSave = displayName.trim().length > 0 && isKindConfirmed && !showKindChangeConfirm;
+  const isChangingKind = showKindChangeConfirm;
+  const isSelectingKind = !isKindConfirmed || showKindChangeConfirm;
   const supportsPullFrom = kind === 'bill' || kind === 'subscription' || kind === 'debt' || kind === 'allowance';
-  const isCryptoStyleBank = kind === 'bank' && isCryptoAccount;
-
-  const displayedBalance =
-    isCryptoStyleBank && cryptoUnit === 'whole' && balance !== ''
-      ? Number((balance / CRYPTO_WHOLE_SCALE).toFixed(8))
-      : balance;
-  const balanceLabel =
-    kind === 'bill' || kind === 'subscription'
-      ? 'Amount'
-      : isCryptoStyleBank
-        ? cryptoUnit === 'sats'
-          ? 'Balance (sats)'
-          : `Balance (${cryptoTicker.trim().toUpperCase() || 'whole'})`
+  const supportsPushTo = kind === 'income';
+  const pendingAutoLinkId = pullFromAccountId || undefined;
+  const pendingAutoLinkRelationship = AUTO_LINK_RELATIONSHIP_BY_KIND[kind] ?? 'direct transaction';
+  const normalizedTicker = (cryptoTicker.trim() || '$').toUpperCase();
+  const displayTicker = cryptoTicker.trim().toUpperCase();
+  const amountTicker = kind === 'bank' ? normalizedTicker : '$';
+  const accountSeedYear = useMemo(() => (
+    getYearOfDate(kind === 'debt' ? debtStartDate : kind === 'allowance' ? allowanceStartDate : null)
+    ?? getYearOfDate(existing?.createdAt)
+    ?? new Date().getFullYear()
+  ), [allowanceStartDate, debtStartDate, existing?.createdAt, kind]);
+  const amountFieldLabel =
+    kind === 'bill' || kind === 'subscription' || kind === 'income'
+      ? 'Expected Amount'
+      : kind === 'debt'
+        ? 'Starting Balance'
         : 'Balance';
-  const balanceStep = isCryptoStyleBank ? (cryptoUnit === 'sats' ? 1 : 0.00000001) : 0.01;
+  const minimumPayment =
+    kind === 'debt' && balance !== '' && debtRate !== '' && debtTerm !== '' && debtTerm > 0
+      ? (() => {
+          const principal = balance;
+          const monthlyRate = debtRate / 12 / 100;
+          const months = debtTerm;
+          if (monthlyRate === 0) return principal / months;
+          const factor = (1 + monthlyRate) ** months;
+          return principal * ((monthlyRate * factor) / (factor - 1));
+        })()
+      : null;
+  const estimatedInterest =
+    minimumPayment != null && balance !== '' && debtTerm !== '' ? (minimumPayment * debtTerm) - balance : null;
+  const estimatedEndDate =
+    kind === 'debt' && debtStartDate && debtTerm !== '' && debtTerm > 0 ? addMonthsToIsoDate(debtStartDate, debtTerm) : null;
 
   const transactionLogTask = accountTasks.find((task) => task.kind === 'transaction-log');
+  const anyExpandedTaskId = expandedAccountTaskId ?? expandedAllowanceTaskId;
+  const hasExpandedTask = anyExpandedTaskId != null;
+  const previousActiveTabRef = useRef(activeTab);
   const transactionResourceTaskId =
     existing && transactionLogTask
       ? `resource-task:${existing.id}:account-task:${transactionLogTask.id}`
@@ -568,16 +725,74 @@ export function AccountFormNew({ existing, onSaved, onCancel }: AccountFormNewPr
       .sort((left, right) => right.completedAt.localeCompare(left.completedAt));
   }, [activeEvents, historyEvents, scheduleTasks, transactionResourceTaskId]);
 
+  useEffect(() => {
+    const previousActiveTab = previousActiveTabRef.current;
+    previousActiveTabRef.current = activeTab;
+
+    if (previousActiveTab === activeTab || !isChangingKind) return;
+
+    const timeoutId = window.setTimeout(() => {
+      setPendingKind(kind);
+      setShowKindChangeConfirm(false);
+    }, 0);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [activeTab, isChangingKind, kind]);
+
   function handleBalanceChange(value: number | '') {
-    if (value === '') {
-      setBalance('');
-      return;
-    }
-    if (!isCryptoStyleBank) {
-      setBalance(value);
-      return;
-    }
-    setBalance(cryptoUnit === 'sats' ? Math.round(value) : Math.round(value * CRYPTO_WHOLE_SCALE));
+    setBalance(value);
+  }
+
+  function resetKindSpecificFields(nextKind: AccountKind) {
+    const transactionLog = accountTasks.find((task) => task.kind === 'transaction-log');
+    setKind(nextKind);
+    setPendingKind(nextKind);
+    setIsKindConfirmed(true);
+    setBalance('');
+    setCryptoTicker('$');
+    setCryptoUnit('whole');
+    setInstitution('');
+    setPullFromAccountId('');
+    setDebtRate('');
+    setDebtTerm('');
+    setDebtStartDate('');
+    setAllowanceContactId('');
+    setAllowanceStartDate('');
+    setAllowanceEndDate('');
+    setAccountTasks(transactionLog ? [transactionLog] : [makeTransactionLogTask()]);
+    setAllowanceTasks([]);
+    setExpandedAccountTaskId(null);
+    setExpandedAllowanceTaskId(null);
+    setShowAllowanceTaskSources(false);
+    setSelectedAllowanceResourceTask('');
+    setSelectedAllowanceLibraryTask('');
+    setSelectedAllowanceUserTemplate('');
+    setLinksCleared(true);
+    setShowKindChangeConfirm(false);
+  }
+
+  function renderKindButtons(selectedKind: AccountKind, onSelect: (value: AccountKind) => void) {
+    return (
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+        {KIND_OPTIONS.map((opt) => {
+          const isSelected = selectedKind === opt.value;
+          return (
+            <button
+              key={opt.value}
+              type="button"
+              onClick={() => onSelect(opt.value)}
+              className={`${KIND_BUTTON_CLS} ${
+                isSelected
+                  ? 'border-blue-500 bg-blue-50 text-blue-700 dark:border-blue-400 dark:bg-blue-500/10 dark:text-blue-200'
+                  : 'border-gray-300 bg-white text-gray-700 hover:border-blue-300 hover:text-blue-600 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:border-blue-400 dark:hover:text-blue-200'
+              }`}
+            >
+              {opt.label}
+            </button>
+          );
+        })}
+      </div>
+    );
   }
 
   function addTask(section: 'account' | 'allowance') {
@@ -585,16 +800,20 @@ export function AccountFormNew({ existing, onSaved, onCancel }: AccountFormNewPr
     if (section === 'account') {
       setAccountTasks((prev) => [...prev, nextTask]);
       setExpandedAccountTaskId(nextTask.id);
+      setExpandedAllowanceTaskId(null);
       return;
     }
     setAllowanceTasks((prev) => [...prev, nextTask]);
+    setExpandedAccountTaskId(null);
     setExpandedAllowanceTaskId(nextTask.id);
   }
 
   function addAllowanceTaskFromOption(option: AllowanceTaskSourceOption) {
     const nextTask = makeTaskDraftFromSeed(option.seed);
     setAllowanceTasks((prev) => [...prev, nextTask]);
+    setExpandedAccountTaskId(null);
     setExpandedAllowanceTaskId(nextTask.id);
+    setTaskEditorTabs((prev) => ({ ...prev, [nextTask.id]: 'action' }));
     setShowAllowanceTaskSources(false);
   }
 
@@ -613,11 +832,21 @@ export function AccountFormNew({ existing, onSaved, onCancel }: AccountFormNewPr
     section: 'account' | 'allowance',
     id: string,
     field: keyof TaskDraft,
-    value: string | number | boolean | ResourceRecurrenceRule,
+    value: string | number | boolean | ResourceRecurrenceRule | Partial<InputFields>,
   ) {
     const setTasks = section === 'account' ? setAccountTasks : setAllowanceTasks;
     setTasks((prev) =>
-      prev.map((task) => (task.id === id ? { ...task, [field]: value } : task)),
+      prev.map((task) => {
+        if (task.id !== id) return task;
+        const nextTask = { ...task, [field]: value };
+        if (field === 'taskType' && typeof value === 'string') {
+          nextTask.inputFields = buildTaskInputFields(value, nextTask.name.trim());
+        }
+        if (field === 'name' && typeof value === 'string') {
+          nextTask.inputFields = buildTaskInputFields(nextTask.taskType ?? 'CHECK', value.trim(), nextTask.inputFields);
+        }
+        return nextTask;
+      }),
     );
   }
 
@@ -649,6 +878,12 @@ export function AccountFormNew({ existing, onSaved, onCancel }: AccountFormNewPr
     );
   }
 
+  function updateTaskYearlySeedDate(section: 'account' | 'allowance', id: string, month: number, day: number) {
+    updateTaskRecurrence(section, id, {
+      seedDate: buildSeedDateFromParts(accountSeedYear, month, day),
+    });
+  }
+
   function removeTask(section: 'account' | 'allowance', id: string) {
     const tasks = section === 'account' ? accountTasks : allowanceTasks;
     const taskToRemove = tasks.find((task) => task.id === id);
@@ -658,6 +893,37 @@ export function AccountFormNew({ existing, onSaved, onCancel }: AccountFormNewPr
     const setExpandedTaskId = section === 'account' ? setExpandedAccountTaskId : setExpandedAllowanceTaskId;
     setTasks((prev) => prev.filter((task) => task.id !== id));
     setExpandedTaskId((prev) => (prev === id ? null : prev));
+    setTaskEditorTabs((prev) => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+  }
+
+  function setExpandedTask(section: 'account' | 'allowance', id: string | null) {
+    if (section === 'account') {
+      setExpandedAccountTaskId(id);
+      setExpandedAllowanceTaskId(null);
+      return;
+    }
+    setExpandedAllowanceTaskId(id);
+    setExpandedAccountTaskId(null);
+  }
+
+  function renderTaskTabButton(taskId: string, tab: 'schedule' | 'action', label: string, activeTabKey: 'schedule' | 'action') {
+    return (
+      <button
+        type="button"
+        onClick={() => setTaskEditorTabs((prev) => ({ ...prev, [taskId]: tab }))}
+        className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
+          activeTabKey === tab
+            ? 'bg-blue-500 text-white'
+            : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600'
+        }`}
+      >
+        {label}
+      </button>
+    );
   }
 
   function handleAddEntry() {
@@ -696,210 +962,359 @@ export function AccountFormNew({ existing, onSaved, onCancel }: AccountFormNewPr
     actionLabel: string,
     onAddTask?: () => void,
   ) {
+    const hideAccountCustomTasks = section === 'account' && kind === 'allowance';
+    const disableTransactionExpand = section === 'account' && kind === 'allowance';
     const tasks = section === 'account' ? accountTasks : allowanceTasks;
     const expandedTaskId = section === 'account' ? expandedAccountTaskId : expandedAllowanceTaskId;
-    const setExpandedTaskId = section === 'account' ? setExpandedAccountTaskId : setExpandedAllowanceTaskId;
+    const transactionTask = section === 'account' ? tasks.find((task) => task.kind === 'transaction-log') ?? null : null;
+    const customTasks = section === 'account' ? tasks.filter((task) => task.kind !== 'transaction-log') : tasks;
+    const visibleTransactionTask = hasExpandedTask ? (expandedTaskId && transactionTask?.id === expandedTaskId ? transactionTask : null) : transactionTask;
+    const visibleCustomTasks = hideAccountCustomTasks
+      ? []
+      : hasExpandedTask
+        ? customTasks.filter((task) => task.id === expandedTaskId)
+        : customTasks;
 
-    const sortedTasks = section === 'account'
-      ? [...tasks].sort((left, right) => Number(right.kind === 'transaction-log') - Number(left.kind === 'transaction-log'))
-      : tasks;
-
-    return (
-      <div className="flex flex-col gap-2">
-        <div className="flex items-center justify-between">
-          <span className="text-xs font-medium text-gray-500 dark:text-gray-400">{title}</span>
-          <button
-            type="button"
-            onClick={onAddTask ?? (() => addTask(section))}
-            className="text-xs font-medium text-blue-500 hover:text-blue-600"
-          >
-            {actionLabel}
-          </button>
+    const renderCollapsedRow = (task: TaskDraft, labelMode: 'transaction' | 'custom') => {
+      const isDisabledTransactionRow = labelMode === 'transaction' && disableTransactionExpand;
+      const rowClassName = 'flex w-full items-center gap-3 rounded-xl bg-gray-50 px-3 py-3 text-left dark:bg-gray-700';
+      const content = (
+        <div className="shrink-0">
+          <IconDisplay iconKey={task.icon?.trim() || 'finance'} size={40} className="h-10 w-10 object-contain" alt="" />
         </div>
-        {sortedTasks.map((task) => {
-          const isExpanded = expandedTaskId === task.id;
-          const isLockedTask = section === 'account' && task.kind === 'transaction-log';
-          return (
-            <div key={task.id} className="rounded-lg bg-gray-50 px-3 py-2 dark:bg-gray-700">
-              <button
-                type="button"
-                onClick={() => setExpandedTaskId((prev) => (prev === task.id ? null : task.id))}
-                className="flex w-full items-center gap-3 text-left"
-              >
-                <span className="flex h-9 w-9 items-center justify-center rounded-md bg-white dark:bg-gray-800">
-                  <IconDisplay iconKey={task.icon?.trim() || 'finance'} size={20} className="h-5 w-5 object-contain" alt="" />
-                </span>
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-sm font-medium text-gray-800 dark:text-gray-100">
-                    {task.name.trim() || 'Untitled account task'}
+      );
+      const details = (
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-sm font-semibold text-gray-900 dark:text-gray-100">
+            {task.name.trim() || 'Untitled account task'}
+          </div>
+          <div className="mt-1 flex items-center justify-between gap-3 text-xs text-gray-500 dark:text-gray-400">
+            <span className="truncate">
+              {labelMode === 'transaction'
+                ? task.anticipatedValue !== ''
+                  ? formatAmountWithTicker(task.anticipatedValue, amountTicker)
+                  : `${amountTicker}0.00`
+                : describeCollapsedTaskRecurrence(task)}
+            </span>
+            {normalizeRecurrenceMode(task.recurrenceMode) === 'recurring' && task.reminderLeadDays > 0 ? (
+              <span className="shrink-0 text-sm leading-none">🔔</span>
+            ) : null}
+          </div>
+        </div>
+      );
+
+      if (isDisabledTransactionRow) {
+        return (
+          <div className={rowClassName}>
+            {content}
+            {details}
+          </div>
+        );
+      }
+
+      return (
+        <button
+          type="button"
+          onClick={() => setExpandedTask(section, task.id)}
+          className={rowClassName}
+        >
+          {content}
+          {details}
+        </button>
+      );
+    };
+
+    const renderExpandedTask = (task: TaskDraft) => {
+      const isTransactionLog = section === 'account' && task.kind === 'transaction-log';
+      const activeEditorTab = isTransactionLog ? 'schedule' : (taskEditorTabs[task.id] ?? 'schedule');
+      const selectedTaskType = normalizeResourceDraftTaskType(task.taskType);
+      const taskInputFields = buildTaskInputFields(selectedTaskType, task.name.trim(), task.inputFields);
+
+      const updateTaskInputFields = (patch: Partial<InputFields>) => {
+        updateTask(section, task.id, 'inputFields', {
+          ...taskInputFields,
+          ...patch,
+        });
+      };
+
+      const renderActionFieldLabel = (label: string) => (
+        <label className="text-xs font-medium text-gray-500 dark:text-gray-400">{label}</label>
+      );
+
+      const renderActionConfigFields = () => {
+        switch (selectedTaskType) {
+          case 'CHECK':
+            return (
+              <div className="rounded-lg border border-dashed border-gray-300 bg-white px-3 py-3 text-sm text-gray-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300">
+                Simple checkbox completion
+              </div>
+            );
+          case 'COUNTER': {
+            const counterFields = taskInputFields as { target?: number; unit?: string };
+            return (
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="space-y-1">
+                  {renderActionFieldLabel('Target count')}
+                  <input
+                    type="number"
+                    min={1}
+                    value={typeof counterFields.target === 'number' ? counterFields.target : 1}
+                    onChange={(event) => updateTaskInputFields({ target: Math.max(1, Number(event.target.value) || 1) })}
+                    className={SELECT_CLS}
+                  />
+                </div>
+                <div className="space-y-1">
+                  {renderActionFieldLabel('Unit label')}
+                  <input
+                    type="text"
+                    value={typeof counterFields.unit === 'string' ? counterFields.unit : ''}
+                    onChange={(event) => updateTaskInputFields({ unit: event.target.value })}
+                    placeholder="e.g. reps, pages"
+                    className={SELECT_CLS}
+                  />
+                </div>
+              </div>
+            );
+          }
+          case 'DURATION': {
+            const durationFields = taskInputFields as { targetDuration?: number };
+            return (
+              <div className="space-y-1">
+                {renderActionFieldLabel('Target duration (minutes)')}
+                <input
+                  type="number"
+                  min={1}
+                  value={Math.max(1, Math.round((typeof durationFields.targetDuration === 'number' ? durationFields.targetDuration : 300) / 60))}
+                  onChange={(event) => updateTaskInputFields({
+                    targetDuration: Math.max(1, Number(event.target.value) || 1) * 60,
+                    unit: 'seconds',
+                  })}
+                  className={SELECT_CLS}
+                />
+              </div>
+            );
+          }
+          case 'TIMER': {
+            const timerFields = taskInputFields as { countdownFrom?: number };
+            return (
+              <div className="space-y-1">
+                {renderActionFieldLabel('Time limit (minutes)')}
+                <input
+                  type="number"
+                  min={1}
+                  value={Math.max(1, Math.round((typeof timerFields.countdownFrom === 'number' ? timerFields.countdownFrom : 300) / 60))}
+                  onChange={(event) => updateTaskInputFields({ countdownFrom: Math.max(1, Number(event.target.value) || 1) * 60 })}
+                  className={SELECT_CLS}
+                />
+              </div>
+            );
+          }
+          case 'RATING': {
+            const ratingFields = taskInputFields as { scale?: number; label?: string };
+            return (
+              <div className="space-y-1">
+                {renderActionFieldLabel('Scale')}
+                <select
+                  value={Number(ratingFields.scale ?? 5) > 5 ? 10 : 5}
+                  onChange={(event) => updateTaskInputFields({ scale: Number(event.target.value), label: typeof ratingFields.label === 'string' ? ratingFields.label : (task.name.trim() || 'Rate this') })}
+                  className={SELECT_CLS}
+                >
+                  <option value={5}>1-5</option>
+                  <option value={10}>1-10</option>
+                </select>
+              </div>
+            );
+          }
+          case 'TEXT': {
+            const textFields = taskInputFields as { prompt?: string };
+            return (
+              <div className="space-y-1">
+                {renderActionFieldLabel('Prompt text')}
+                <input
+                  type="text"
+                  value={typeof textFields.prompt === 'string' ? textFields.prompt : ''}
+                  onChange={(event) => updateTaskInputFields({ prompt: event.target.value, maxLength: null })}
+                  placeholder="What will the user be asked to write?"
+                  className={SELECT_CLS}
+                />
+              </div>
+            );
+          }
+          case 'CONSUME': {
+            const consumeFields = taskInputFields as { entries?: Array<{ itemTemplateRef?: string; quantity?: number }> };
+            const entries = Array.isArray(consumeFields.entries) && consumeFields.entries.length > 0
+              ? consumeFields.entries
+              : [{ itemTemplateRef: '', quantity: 1 }];
+            return (
+              <div className="space-y-1">
+                {renderActionFieldLabel('Quantity to consume per completion')}
+                <input
+                  type="number"
+                  min={1}
+                  value={entries[0]?.quantity ?? 1}
+                  onChange={(event) => updateTaskInputFields({
+                    entries: [
+                      {
+                        itemTemplateRef: entries[0]?.itemTemplateRef ?? '',
+                        quantity: Math.max(1, Number(event.target.value) || 1),
+                      },
+                    ],
+                  })}
+                  className={SELECT_CLS}
+                />
+              </div>
+            );
+          }
+          case 'USE': {
+            const useFields = taskInputFields as { prompt?: string };
+            return (
+              <div className="space-y-1">
+                {renderActionFieldLabel('Procedure steps')}
+                <textarea
+                  value={typeof useFields.prompt === 'string' ? useFields.prompt : ''}
+                  onChange={(event) => updateTaskInputFields({ prompt: event.target.value, maxLength: null })}
+                  rows={5}
+                  placeholder="Describe the procedure steps"
+                  className={`${SELECT_CLS} resize-none`}
+                />
+              </div>
+            );
+          }
+          default:
+            return null;
+        }
+      };
+
+      return (
+        <div key={task.id} className="flex flex-1 flex-col rounded-xl bg-gray-50 px-3 py-3 dark:bg-gray-700">
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <button
+              type="button"
+              onClick={() => setExpandedTask(section, null)}
+              className="rounded-md px-2 py-1 text-sm font-medium text-blue-500 hover:text-blue-600"
+            >
+              ← Back
+            </button>
+            <div className="flex items-center gap-2">
+              {renderTaskTabButton(task.id, 'schedule', 'Schedule', activeEditorTab)}
+              {!isTransactionLog ? renderTaskTabButton(task.id, 'action', 'Action', activeEditorTab) : null}
+            </div>
+          </div>
+
+          <div className="flex-1 overflow-y-auto">
+            <div className="space-y-4">
+              {!isTransactionLog ? (
+                <div className="grid grid-cols-[auto_minmax(0,1fr)] items-end gap-3">
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Icon</label>
+                    <IconPicker value={task.icon || 'finance'} onChange={(value) => updateTask(section, task.id, 'icon', value)} align="left" />
                   </div>
-                  <div className="truncate text-xs text-gray-500 dark:text-gray-400">
-                    {normalizeRecurrenceMode(task.recurrenceMode) === 'recurring'
-                      ? `${describeTaskSchedule(task)} - ${describeReminder(task.reminderLeadDays)}${task.anticipatedValue !== '' ? ` - ${formatCurrency(task.anticipatedValue)}` : ''}`
-                      : `${describeTaskSchedule(task)}${task.anticipatedValue !== '' ? ` - ${formatCurrency(task.anticipatedValue)}` : ''}`}
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Task Name</label>
+                    <input
+                      type="text"
+                      value={task.name}
+                      onChange={(event) => updateTask(section, task.id, 'name', event.target.value)}
+                      placeholder="Task name"
+                      maxLength={80}
+                      className={SELECT_CLS}
+                    />
                   </div>
                 </div>
-                <span className="text-xs font-medium text-blue-500">{isExpanded ? 'Close' : 'Edit'}</span>
-              </button>
+              ) : null}
 
-              {isExpanded ? (
-                <div className="mt-3 space-y-3 border-t border-gray-200 pt-3 dark:border-gray-600">
-                  <div className="flex items-center gap-2">
-                    <IconPicker value={task.icon || 'finance'} onChange={(value) => updateTask(section, task.id, 'icon', value)} align="left" />
-                    {isLockedTask ? (
-                      <div className="flex-1 rounded-md border border-gray-200 bg-gray-100 px-2 py-1.5 text-sm text-gray-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300">
-                        {task.name}
+              {activeEditorTab === 'schedule' ? (
+                <>
+                  {isTransactionLog ? (
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-3">
+                        <IconPicker value={task.icon || 'finance'} onChange={(value) => updateTask(section, task.id, 'icon', value)} align="left" />
+                        <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">{task.name}</div>
                       </div>
-                    ) : (
-                      <input
-                        type="text"
-                        value={task.name}
-                        onChange={(event) => updateTask(section, task.id, 'name', event.target.value)}
-                        placeholder="Task name"
-                        maxLength={80}
-                        className="flex-1 rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 focus:border-purple-500 focus:outline-none dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
-                      />
-                    )}
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Task type</label>
-                    <select
-                      value={task.taskType ?? (isLockedTask ? 'TEXT' : 'CHECK')}
-                      onChange={(event) => updateTask(section, task.id, 'taskType', event.target.value)}
-                      disabled={isLockedTask}
-                      className={SMALL_INPUT_CLS}
-                    >
-                      {RESOURCE_TASK_TYPE_OPTIONS.map((taskType) => (
-                        <option key={taskType} value={taskType}>{taskType}</option>
-                      ))}
-                    </select>
-                  </div>
-
-                  {section === 'allowance' && !isLockedTask ? (
-                    <label className="flex items-center gap-2 rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-600 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200">
-                      <input
-                        type="checkbox"
-                        checked={task.evidenceRequired === true}
-                        onChange={(event) => updateTask(section, task.id, 'evidenceRequired', event.target.checked)}
-                        className="h-4 w-4 rounded border-gray-300 text-blue-500 focus:ring-blue-500 dark:border-gray-500"
-                      />
-                      <span>Require photo evidence on completion</span>
-                    </label>
+                      <div className="space-y-1">
+                        <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Expected Amount</label>
+                        <div className="flex items-center rounded-md border border-gray-300 bg-white px-3 dark:border-gray-600 dark:bg-gray-800">
+                          <span className="shrink-0 pr-2 text-sm text-gray-500 dark:text-gray-400">{amountTicker}</span>
+                          <input
+                            type="number"
+                            value={task.anticipatedValue}
+                            onChange={(event) => updateTask(section, task.id, 'anticipatedValue', event.target.value === '' ? '' : Number(event.target.value))}
+                            placeholder="0.00"
+                            step={0.01}
+                            className="w-full bg-transparent py-2 text-sm text-gray-900 focus:outline-none dark:text-gray-100"
+                          />
+                        </div>
+                      </div>
+                    </div>
                   ) : null}
 
-                  <div className="flex items-end gap-2">
+                  <div className="space-y-2">
+                    <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Recurrence</label>
                     <div className="flex rounded-full bg-white p-1 dark:bg-gray-800">
                       {(['recurring', 'never'] as const).map((mode) => (
                         <button
                           key={mode}
                           type="button"
                           onClick={() => updateTask(section, task.id, 'recurrenceMode', mode)}
-                          className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                          className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
                             normalizeRecurrenceMode(task.recurrenceMode) === mode
                               ? 'bg-blue-500 text-white'
                               : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
                           }`}
                         >
-                          {mode === 'recurring' ? 'Recurring' : 'Intermittent'}
+                          {mode === 'recurring' ? 'Recurring' : 'On demand'}
                         </button>
                       ))}
-                    </div>
-                    <div className="ml-auto w-36">
-                      <NumberInput
-                        label="Anticipated"
-                        value={task.anticipatedValue}
-                        onChange={(value) => updateTask(section, task.id, 'anticipatedValue', value)}
-                        placeholder="0.00"
-                        step={0.01}
-                      />
                     </div>
                   </div>
 
                   {normalizeRecurrenceMode(task.recurrenceMode) === 'recurring' ? (
-                    <div className="space-y-2 rounded-md border border-gray-200 bg-white px-3 py-3 dark:border-gray-600 dark:bg-gray-800/70">
-                      {task.recurrence.frequency === 'monthly' ? (
-                        <div className="space-y-2">
-                          <div className="grid grid-cols-2 gap-2">
-                            <div className="space-y-1">
-                              <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Every</label>
-                              <input
-                                type="number"
-                                min={1}
-                                max={99}
-                                value={task.recurrence.interval}
-                                onChange={(event) => updateTaskRecurrence(section, task.id, { interval: Math.max(1, Number(event.target.value) || 1) })}
-                                className={SMALL_INPUT_CLS}
-                              />
-                            </div>
-                            <div className="space-y-1">
-                              <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Day of month</label>
-                              <input
-                                type="number"
-                                min={1}
-                                max={31}
-                                value={task.recurrence.monthlyDay ?? getDayOfMonth(task.recurrence.seedDate)}
-                                onChange={(event) =>
-                                  updateTaskRecurrence(section, task.id, {
-                                    monthlyDay: Math.min(31, Math.max(1, Number(event.target.value) || 1)),
-                                  })
-                                }
-                                className={SMALL_INPUT_CLS}
-                              />
-                            </div>
-                          </div>
-                          <p className="text-[11px] text-gray-400 dark:text-gray-500">
-                            Days 29-31 use the last day of shorter months automatically.
-                          </p>
-                        </div>
-                      ) : (
-                        <div className="space-y-1">
-                          <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Interval</label>
-                          <input
-                            type="number"
-                            min={1}
-                            max={99}
-                            value={task.recurrence.interval}
-                            onChange={(event) => updateTaskRecurrence(section, task.id, { interval: Math.max(1, Number(event.target.value) || 1) })}
-                            className={SMALL_INPUT_CLS}
-                          />
-                        </div>
-                      )}
+                    <div className="space-y-3 rounded-xl border border-gray-200 bg-white px-3 py-3 dark:border-gray-600 dark:bg-gray-800/70">
+                      <div className="space-y-1">
+                        <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Frequency</label>
+                        <select
+                          value={task.recurrence.frequency}
+                          onChange={(event) =>
+                            updateTaskRecurrence(section, task.id, {
+                              frequency: event.target.value as ResourceRecurrenceRule['frequency'],
+                              days: event.target.value === 'weekly' ? task.recurrence.days : [],
+                              monthlyDay:
+                                event.target.value === 'monthly'
+                                  ? (task.recurrence.monthlyDay ?? getDayOfMonth(task.recurrence.seedDate))
+                                  : null,
+                            })
+                          }
+                          className={SELECT_CLS}
+                        >
+                          <option value="daily">Daily</option>
+                          <option value="weekly">Weekly</option>
+                          <option value="monthly">Monthly</option>
+                          <option value="yearly">Yearly</option>
+                        </select>
+                      </div>
 
-                      <div className="flex items-center gap-2">
-                        <div className="ml-auto">
-                          <select
-                            value={task.recurrence.frequency}
-                            onChange={(event) =>
-                              updateTaskRecurrence(section, task.id, {
-                                frequency: event.target.value as ResourceRecurrenceRule['frequency'],
-                                days: event.target.value === 'weekly' ? task.recurrence.days : [],
-                                monthlyDay:
-                                  event.target.value === 'monthly'
-                                    ? (task.recurrence.monthlyDay ?? getDayOfMonth(task.recurrence.seedDate))
-                                    : null,
-                              })
-                            }
-                            className={`w-36 ${SMALL_INPUT_CLS}`}
-                          >
-                            <option value="daily">Daily</option>
-                            <option value="weekly">Weekly</option>
-                            <option value="monthly">Monthly</option>
-                            <option value="yearly">Yearly</option>
-                          </select>
-                        </div>
+                      <div className="space-y-1">
+                        <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Interval</label>
+                        <input
+                          type="number"
+                          min={1}
+                          max={99}
+                          value={task.recurrence.interval}
+                          onChange={(event) => updateTaskRecurrence(section, task.id, { interval: Math.max(1, Number(event.target.value) || 1) })}
+                          className={`w-14 ${SMALL_INPUT_CLS}`}
+                        />
                       </div>
 
                       {task.recurrence.frequency === 'weekly' ? (
                         <div className="space-y-1">
                           <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Days</label>
-                          <div className="flex gap-1">
+                          <div className="flex flex-wrap gap-2">
                             {DOW_LABELS.map(({ key, label }) => (
                               <button
                                 key={key}
                                 type="button"
                                 onClick={() => toggleTaskDay(section, task.id, key)}
-                                className={`h-7 w-7 rounded text-xs font-medium transition-colors ${
+                                className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
                                   task.recurrence.days.includes(key)
                                     ? 'bg-blue-500 text-white'
                                     : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600'
@@ -912,83 +1327,168 @@ export function AccountFormNew({ existing, onSaved, onCancel }: AccountFormNewPr
                         </div>
                       ) : null}
 
-                      <div className="space-y-1">
-                        <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Start date</label>
-                        <input
-                          type="date"
-                          value={task.recurrence.seedDate}
-                          onChange={(event) =>
-                            updateTaskRecurrence(section, task.id, {
-                              seedDate: event.target.value,
-                              monthlyDay:
-                                task.recurrence.frequency === 'monthly'
-                                  ? (task.recurrence.monthlyDay ?? getDayOfMonth(event.target.value))
-                                  : task.recurrence.monthlyDay,
-                            })
-                          }
-                          className={SMALL_INPUT_CLS}
-                        />
-                      </div>
+                      {task.recurrence.frequency === 'monthly' ? (
+                        <div className="space-y-1">
+                          <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Day of month</label>
+                          <input
+                            type="number"
+                            min={1}
+                            max={31}
+                            value={task.recurrence.monthlyDay ?? getDayOfMonth(task.recurrence.seedDate)}
+                            onChange={(event) =>
+                              updateTaskRecurrence(section, task.id, {
+                                monthlyDay: Math.min(31, Math.max(1, Number(event.target.value) || 1)),
+                              })
+                            }
+                            className={`w-20 ${SMALL_INPUT_CLS}`}
+                          />
+                        </div>
+                      ) : null}
 
-                      <div className="space-y-1">
-                        <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Ends on</label>
-                        <input
-                          type="date"
-                          value={task.recurrence.endsOn ?? ''}
-                          onChange={(event) => updateTaskRecurrence(section, task.id, { endsOn: event.target.value || null })}
-                          className={SMALL_INPUT_CLS}
-                        />
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="rounded-md border border-dashed border-gray-200 bg-white px-3 py-3 text-xs text-gray-500 dark:border-gray-600 dark:bg-gray-800/70 dark:text-gray-300">
-                      Intermittent task. No date or reminder settings are needed.
-                    </div>
-                  )}
+                      {task.recurrence.frequency === 'yearly' ? (
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_auto]">
+                          <div className="space-y-1">
+                            <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Month</label>
+                            <select
+                              value={getMonthOfYear(task.recurrence.seedDate)}
+                              onChange={(event) =>
+                                updateTaskYearlySeedDate(
+                                  section,
+                                  task.id,
+                                  Number(event.target.value),
+                                  getDayOfMonth(task.recurrence.seedDate),
+                                )
+                              }
+                              className={SELECT_CLS}
+                            >
+                              {MONTH_OPTIONS.map((option) => (
+                                <option key={option.value} value={option.value}>{option.label}</option>
+                              ))}
+                            </select>
+                          </div>
 
-                  {normalizeRecurrenceMode(task.recurrenceMode) === 'recurring' ? (
-                    <div className="flex items-center gap-2">
-                      <span className="shrink-0 text-xs font-medium text-gray-500 dark:text-gray-400">Reminder:</span>
-                      <select
-                        value={task.reminderLeadDays}
-                        onChange={(event) => updateTask(section, task.id, 'reminderLeadDays', Number(event.target.value))}
-                        className="ml-auto w-40 rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs text-gray-900 focus:border-purple-500 focus:outline-none dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
-                      >
-                        <option value={-1}>No reminder</option>
-                        <option value={0}>Day of</option>
-                        <option value={3}>3 days before</option>
-                        <option value={7}>7 days before</option>
-                        <option value={14}>14 days before</option>
-                        <option value={30}>30 days before</option>
-                      </select>
+                          <div className="space-y-1">
+                            <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Day of month</label>
+                            <input
+                              type="number"
+                              min={1}
+                              max={31}
+                              value={getDayOfMonth(task.recurrence.seedDate)}
+                              onChange={(event) =>
+                                updateTaskYearlySeedDate(
+                                  section,
+                                  task.id,
+                                  getMonthOfYear(task.recurrence.seedDate),
+                                  Math.min(31, Math.max(1, Number(event.target.value) || 1)),
+                                )
+                              }
+                              className={`w-20 ${SMALL_INPUT_CLS}`}
+                            />
+                          </div>
+                        </div>
+                      ) : null}
                     </div>
                   ) : null}
 
-                  <div className="flex items-center justify-between pt-1">
-                    {isLockedTask ? (
-                      <span className="text-xs text-gray-400">Required task</span>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => removeTask(section, task.id)}
-                        className="text-xs text-gray-400 hover:text-red-400"
-                      >
-                        Remove
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => setExpandedTaskId(null)}
-                      className="rounded-md bg-blue-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-600"
+                  {normalizeRecurrenceMode(task.recurrenceMode) === 'recurring' ? (
+                    <NumberInput
+                      label="Reminder Lead Days"
+                      value={task.reminderLeadDays < 0 ? '' : task.reminderLeadDays}
+                      onChange={(value) => updateTask(section, task.id, 'reminderLeadDays', value === '' ? -1 : Math.max(0, Number(value)))}
+                      min={0}
+                      step={1}
+                    />
+                  ) : null}
+                </>
+              ) : (
+                <div className="space-y-4">
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Task Type</label>
+                    <select
+                      value={selectedTaskType}
+                      onChange={(event) => updateTask(section, task.id, 'taskType', event.target.value)}
+                      className={SELECT_CLS}
                     >
-                      Save
-                    </button>
+                      {RESOURCE_TASK_TYPE_OPTIONS.map((taskType) => (
+                        <option key={taskType.value} value={taskType.value}>{taskType.label}</option>
+                      ))}
+                    </select>
                   </div>
+
+                  <div className="space-y-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-3 dark:border-gray-600 dark:bg-gray-800/40">
+                    <div className="text-xs font-medium text-gray-500 dark:text-gray-400">Template configuration</div>
+                    {renderActionConfigFields()}
+                  </div>
+
+                  {section === 'allowance' ? (
+                    <label className="flex items-center gap-2 rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-600 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200">
+                      <input
+                        type="checkbox"
+                        checked={task.evidenceRequired === true}
+                        onChange={(event) => updateTask(section, task.id, 'evidenceRequired', event.target.checked)}
+                        className="h-4 w-4 rounded border-gray-300 text-blue-500 focus:ring-blue-500 dark:border-gray-500"
+                      />
+                      <span>Require photo evidence on completion</span>
+                    </label>
+                  ) : null}
                 </div>
-              ) : null}
+              )}
             </div>
-          );
-        })}
+          </div>
+
+          <div className="mt-4 flex items-center justify-between gap-2 border-t border-gray-200 pt-3 dark:border-gray-600">
+            {isTransactionLog ? <span /> : (
+              <button
+                type="button"
+                onClick={() => removeTask(section, task.id)}
+                className="text-xs font-medium text-gray-400 hover:text-red-400"
+              >
+                Remove
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => setExpandedTask(section, null)}
+              className="rounded-md bg-blue-500 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-600"
+            >
+              Save
+            </button>
+          </div>
+        </div>
+      );
+    };
+
+    return (
+      <div className="flex flex-1 flex-col gap-3">
+        {!hasExpandedTask && section === 'account' && visibleTransactionTask ? (
+          <>
+            <div className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Transaction Log</div>
+            {renderCollapsedRow(visibleTransactionTask, 'transaction')}
+          </>
+        ) : null}
+
+        {!hasExpandedTask && !hideAccountCustomTasks ? (
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+              {section === 'account' ? title : title}
+            </span>
+            <button
+              type="button"
+              onClick={onAddTask ?? (() => addTask(section))}
+              className="text-xs font-medium text-blue-500 hover:text-blue-600"
+            >
+              {actionLabel}
+            </button>
+          </div>
+        ) : null}
+
+        {visibleCustomTasks.map((task) => (
+          expandedTaskId === task.id
+            ? renderExpandedTask(task)
+            : renderCollapsedRow(task, 'custom')
+        ))}
+
+        {visibleTransactionTask && expandedTaskId === visibleTransactionTask.id ? renderExpandedTask(visibleTransactionTask) : null}
       </div>
     );
   }
@@ -996,12 +1496,16 @@ export function AccountFormNew({ existing, onSaved, onCancel }: AccountFormNewPr
   function handleSave() {
     if (!canSave) return;
 
-    const finalTasks = finaliseTaskDrafts(accountTasks, true);
-    const finalAllowanceTasks = finaliseTaskDrafts(allowanceTasks, false);
-    const nextDueDateAllowed = allowsDueDate(kind);
+    const finalTasks = finaliseTaskDrafts(accountTasks, true, accountSeedYear);
+    const finalAllowanceTasks = finaliseTaskDrafts(allowanceTasks, false, accountSeedYear);
     const trimmedAlbum = album.length > 0 ? album : undefined;
 
     const now = new Date().toISOString();
+    const shouldSyncAutoLink = supportsPullFrom || supportsPushTo;
+    const autoLinkTargetId = shouldSyncAutoLink ? pullFromAccountId.trim() : '';
+    const accountToAccountDefaultRelationship = getRelationshipOptions('account', 'account')[0] ?? 'sub-account';
+    const autoLinkRelationship = AUTO_LINK_RELATIONSHIP_BY_KIND[kind]
+      ?? accountToAccountDefaultRelationship;
     const resource: AccountResource = {
       id: existing?.id ?? uuidv4(),
       type: 'account',
@@ -1010,25 +1514,25 @@ export function AccountFormNew({ existing, onSaved, onCancel }: AccountFormNewPr
       createdAt: existing?.createdAt ?? now,
       updatedAt: now,
       kind,
-      institution: showAccountInfo ? (institution.trim() || undefined) : undefined,
+      institution: institution.trim() || undefined,
       balance: balance === '' ? undefined : balance,
-      cryptoUnit: kind === 'bank' && isCryptoAccount ? cryptoUnit : undefined,
-      cryptoTicker: kind === 'bank' && isCryptoAccount ? (cryptoTicker.trim().toUpperCase() || undefined) : undefined,
-      pullFromAccountId: supportsPullFrom ? (pullFromAccountId || undefined) : undefined,
+      cryptoUnit: kind === 'bank' ? cryptoUnit : undefined,
+      cryptoTicker: kind === 'bank' ? normalizedTicker : undefined,
+      pullFromAccountId: supportsPullFrom || supportsPushTo ? (pullFromAccountId || undefined) : undefined,
       debtRate: kind === 'debt' && debtRate !== '' ? debtRate : undefined,
       debtTerm: kind === 'debt' && debtTerm !== '' ? debtTerm : undefined,
       debtStartDate: kind === 'debt' ? (debtStartDate || undefined) : undefined,
       allowanceStartDate: kind === 'allowance' ? (allowanceStartDate || undefined) : undefined,
       allowanceEndDate: kind === 'allowance' ? (allowanceEndDate || undefined) : undefined,
-      dueDate: nextDueDateAllowed ? (dueDate || undefined) : undefined,
-      dueDateLeadDays: nextDueDateAllowed && dueDateLeadDays !== '' ? dueDateLeadDays : undefined,
+      dueDate: undefined,
+      dueDateLeadDays: undefined,
       pendingTransactions: existing?.pendingTransactions ?? [],
       accountTasks: finalTasks,
       allowanceTasks: kind === 'allowance' && finalAllowanceTasks.length > 0 ? finalAllowanceTasks : undefined,
       allowanceContactId: kind === 'allowance' ? (allowanceContactId || undefined) : undefined,
       album: trimmedAlbum,
       notes: currentExisting?.notes ?? existing?.notes,
-      links: currentExisting?.links ?? existing?.links,
+      links: linksCleared ? undefined : (currentExisting?.links ?? existing?.links),
       linkedHomeId: existing?.linkedHomeId,
       linkedContactId: existing?.linkedContactId,
       linkedAccountId: existing?.linkedAccountId,
@@ -1036,6 +1540,24 @@ export function AccountFormNew({ existing, onSaved, onCancel }: AccountFormNewPr
     };
 
     setResource(resource);
+
+    const { resources: latestResources } = useResourceStore.getState();
+    const persistedResource = latestResources[resource.id];
+    const existingAutoLinks = (persistedResource?.links ?? []).filter((link) => {
+      const target = latestResources[link.targetResourceId];
+      return (
+        target?.type === 'account' &&
+        (link.isPullLink === true || AUTO_LINK_RELATIONSHIPS.has(link.relationship))
+      );
+    });
+
+    for (const link of existingAutoLinks) {
+      removeResourceLink(resource.id, link.id);
+    }
+
+    if (shouldSyncAutoLink && autoLinkTargetId) {
+      addResourceLink(resource.id, autoLinkTargetId, autoLinkRelationship, { isPullLink: true });
+    }
 
     if (!existing && user) {
       setUser({
@@ -1058,6 +1580,18 @@ export function AccountFormNew({ existing, onSaved, onCancel }: AccountFormNewPr
       title={existing ? 'Edit Account' : 'New Account'}
       onSave={handleSave}
       onCancel={onCancel}
+      identityRow={(
+        <div className="grid grid-cols-[auto_minmax(0,1fr)] items-end gap-3">
+          <IconPicker value={iconKey} onChange={setIconKey} />
+          <TextInput
+            label="Name *"
+            value={displayName}
+            onChange={setDisplayName}
+            placeholder="e.g. Checking Account"
+            maxLength={100}
+          />
+        </div>
+      )}
       tabs={tabs}
       activeTab={activeTab}
       onTabChange={setActiveTab}
@@ -1065,220 +1599,229 @@ export function AccountFormNew({ existing, onSaved, onCancel }: AccountFormNewPr
     >
       {activeTab === 'details' ? (
         <div className="space-y-3 px-4 py-3">
-          <div className="grid grid-cols-[auto_1fr] items-end gap-3">
-            <IconPicker value={iconKey} onChange={setIconKey} />
-            <TextInput
-              label="Name *"
-              value={displayName}
-              onChange={setDisplayName}
-              placeholder="e.g. Checking Account"
-              maxLength={100}
-            />
-          </div>
+          {isSelectingKind ? (
+            <div className="space-y-3">
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Kind</label>
+                {renderKindButtons((pendingKind ?? kind) as AccountKind, (value) => setPendingKind(value))}
+              </div>
 
-          <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] items-end gap-3">
-            <NumberInput
-              label={balanceLabel}
-              value={displayedBalance}
-              onChange={handleBalanceChange}
-              placeholder="0.00"
-              step={balanceStep}
-            />
-            <div className="flex flex-col gap-1">
-              <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Kind</label>
-              <select
-                value={kind}
-                onChange={(e) => {
-                  const nextKind = e.target.value as AccountKind;
-                  setKind(nextKind);
-                  if (nextKind !== 'bank') {
-                    setIsCryptoAccount(false);
-                  }
-                }}
-                className={SELECT_CLS}
-              >
-                {KIND_OPTIONS.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <label className="flex items-center gap-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-600 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200">
-              <input
-                type="checkbox"
-                checked={showAccountInfo}
-                onChange={(event) => setShowAccountInfo(event.target.checked)}
-                className="h-4 w-4 rounded border-gray-300 text-blue-500 focus:ring-blue-500 dark:border-gray-500"
-              />
-              <span>Add account info</span>
-            </label>
-          </div>
+              {!isKindConfirmed && pendingKind ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setKind(pendingKind);
+                    setIsKindConfirmed(true);
+                  }}
+                  className="rounded-md bg-blue-500 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-600"
+                >
+                  Set
+                </button>
+              ) : null}
 
-          {kind === 'bank' ? (
-            <>
-              <label className="flex items-center gap-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-600 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200">
-                <input
-                  type="checkbox"
-                  checked={isCryptoAccount}
-                  onChange={(event) => setIsCryptoAccount(event.target.checked)}
-                  className="h-4 w-4 rounded border-gray-300 text-blue-500 focus:ring-blue-500 dark:border-gray-500"
-                />
-                <span>This is a crypto account</span>
-              </label>
-
-              {isCryptoAccount ? (
-                <div className="grid grid-cols-2 gap-3">
-                  <TextInput
-                    label="Ticker"
-                    value={cryptoTicker}
-                    onChange={setCryptoTicker}
-                    placeholder="BTC"
-                    maxLength={10}
-                  />
-                  <div className="flex flex-col gap-1">
-                    <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Unit</label>
-                    <div className="flex rounded-full bg-gray-100 p-1 dark:bg-gray-700">
-                      {(['whole', 'sats'] as const).map((unit) => (
-                        <button
-                          key={unit}
-                          type="button"
-                          onClick={() => setCryptoUnit(unit)}
-                          className={`flex-1 rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
-                            cryptoUnit === unit
-                              ? 'bg-blue-500 text-white'
-                              : 'text-gray-500 hover:text-gray-700 dark:text-gray-300 dark:hover:text-gray-100'
-                          }`}
-                        >
-                          {unit === 'whole' ? 'Whole' : 'Sats'}
-                        </button>
-                      ))}
-                    </div>
+              {isChangingKind ? (
+                <div className="space-y-2 rounded-md border border-amber-200 bg-amber-50/80 px-3 py-3 text-xs text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-100">
+                  <p>Changing type clears Details, Tasks and Links. Album and Log are preserved.</p>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (pendingKind && pendingKind !== kind) {
+                          resetKindSpecificFields(pendingKind);
+                        }
+                      }}
+                      disabled={!pendingKind || pendingKind === kind}
+                      className="rounded-md bg-amber-500 px-3 py-1.5 font-semibold text-white hover:bg-amber-600 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      Confirm
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPendingKind(kind);
+                        setShowKindChangeConfirm(false);
+                      }}
+                      className="rounded-md border border-gray-300 px-3 py-1.5 font-semibold text-gray-700 hover:bg-white dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-800"
+                    >
+                      Cancel
+                    </button>
                   </div>
                 </div>
               ) : null}
-            </>
-          ) : null}
-
-          {showAccountInfo ? (
-            <TextInput
-              label="Institution"
-              value={institution}
-              onChange={setInstitution}
-              placeholder="e.g. Chase"
-              maxLength={100}
-            />
-          ) : null}
-
-          {supportsPullFrom ? (
-            <div className="flex flex-col gap-1">
-              <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Pulls from</label>
-              <select
-                value={pullFromAccountId}
-                onChange={(event) => setPullFromAccountId(event.target.value)}
-                className={SELECT_CLS}
-              >
-                <option value="">None</option>
-                {bankAccountOptions.map((account) => (
-                  <option key={account.id} value={account.id}>
-                    {account.name}
-                  </option>
-                ))}
-              </select>
             </div>
-          ) : null}
-
-          {kind === 'debt' ? (
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-              <NumberInput
-                label="Interest Rate (% annual)"
-                value={debtRate}
-                onChange={setDebtRate}
-                placeholder="0"
-                step={0.01}
-              />
-              <NumberInput
-                label="Term (months)"
-                value={debtTerm}
-                onChange={setDebtTerm}
-                placeholder="0"
-                step={1}
-              />
-              <div className="flex flex-col gap-1">
-                <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Start Date</label>
-                <input
-                  type="date"
-                  value={debtStartDate}
-                  onChange={(event) => setDebtStartDate(event.target.value)}
-                  className={SELECT_CLS}
-                />
-              </div>
-            </div>
-          ) : null}
-
-          {kind === 'allowance' ? (
+          ) : (
             <>
-              <div className="flex flex-col gap-1">
-                <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Recipient</label>
-                <select
-                  value={allowanceContactId}
-                  onChange={(event) => setAllowanceContactId(event.target.value)}
-                  className={SELECT_CLS}
-                >
-                  <option value="">Select contact</option>
-                  {contactOptions.map((contact) => (
-                    <option key={contact.id} value={contact.id}>
-                      {contact.displayName || contact.name}
-                    </option>
-                  ))}
-                </select>
+              <div className="grid grid-cols-1 items-end gap-3 sm:grid-cols-[auto_minmax(0,1fr)]">
+                {isKindConfirmed ? (
+                  <div className="flex flex-col gap-1">
+                    <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Kind</label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPendingKind(kind);
+                        setShowKindChangeConfirm(true);
+                      }}
+                      className="rounded-full border border-gray-300 bg-gray-50 px-3 py-1.5 text-sm font-medium text-gray-700 hover:border-amber-300 hover:text-amber-700 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:border-amber-500/50 dark:hover:text-amber-200"
+                    >
+                      {KIND_OPTIONS.find((opt) => opt.value === kind)?.label ?? kind}
+                    </button>
+                  </div>
+                ) : null}
+
+                {kind === 'allowance' ? (
+                  <div className="flex flex-col gap-1">
+                    <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Balance</label>
+                    <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-600 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200">
+                      {balance === '' ? 'No balance yet' : formatAmountWithTicker(balance, '$')}
+                    </div>
+                  </div>
+                ) : (
+                  <NumberInput
+                    label={amountFieldLabel}
+                    value={balance}
+                    onChange={handleBalanceChange}
+                    placeholder="0.00"
+                    step={0.01}
+                  />
+                )}
               </div>
 
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Period Start</label>
-                  <input
-                    type="date"
-                    value={allowanceStartDate}
-                    onChange={(event) => setAllowanceStartDate(event.target.value)}
-                    className={SELECT_CLS}
-                  />
+              {kind === 'bank' ? (
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div className="flex flex-col gap-1">
+                    <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Ticker</label>
+                    <input
+                      type="text"
+                      value={cryptoTicker}
+                      onChange={(event) => setCryptoTicker(event.target.value.toUpperCase())}
+                      placeholder="$"
+                      maxLength={6}
+                      className={SELECT_CLS}
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Unit</label>
+                    <select
+                      value={cryptoUnit}
+                      onChange={(event) => setCryptoUnit(event.target.value as AccountResource['cryptoUnit'])}
+                      className={SELECT_CLS}
+                    >
+                      <option value="whole">Standard (whole numbers)</option>
+                      <option value="sats">Sats (satoshi)</option>
+                    </select>
+                  </div>
                 </div>
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Period End</label>
-                  <input
-                    type="date"
-                    value={allowanceEndDate}
-                    onChange={(event) => setAllowanceEndDate(event.target.value)}
-                    className={SELECT_CLS}
-                  />
-                </div>
-              </div>
-            </>
-          ) : null}
+              ) : null}
 
-          {allowsDueDate(kind) ? (
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div className="flex flex-col gap-1">
-                <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Due Date</label>
-                <input
-                  type="date"
-                  value={dueDate}
-                  onChange={(event) => setDueDate(event.target.value)}
-                  className={SELECT_CLS}
-                />
-              </div>
-              <NumberInput
-                label="Lead Days"
-                value={dueDateLeadDays}
-                onChange={setDueDateLeadDays}
-                placeholder="7"
-                step={1}
+              <TextInput
+                label="Institution"
+                value={institution}
+                onChange={setInstitution}
+                placeholder="e.g. Chase"
+                maxLength={100}
               />
-            </div>
-          ) : null}
 
-          {(existing?.pendingTransactions?.length ?? 0) > 0 ? (
+              {supportsPullFrom ? (
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Pulls from</label>
+                  <select
+                    value={pullFromAccountId}
+                    onChange={(event) => setPullFromAccountId(event.target.value)}
+                    className={SELECT_CLS}
+                  >
+                    <option value="">None</option>
+                    {bankAccountOptions.map((account) => (
+                      <option key={account.id} value={account.id}>
+                        {account.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : null}
+
+              {supportsPushTo ? (
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Push to</label>
+                  <select
+                    value={pullFromAccountId}
+                    onChange={(event) => setPullFromAccountId(event.target.value)}
+                    className={SELECT_CLS}
+                  >
+                    <option value="">None</option>
+                    {bankAccountOptions.map((account) => (
+                      <option key={account.id} value={account.id}>
+                        {account.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : null}
+
+              {kind === 'debt' ? (
+                <>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                    <NumberInput
+                      label="Interest Rate"
+                      value={debtRate}
+                      onChange={setDebtRate}
+                      placeholder="0"
+                      step={0.01}
+                    />
+                    <NumberInput
+                      label="Term (months)"
+                      value={debtTerm}
+                      onChange={setDebtTerm}
+                      placeholder="0"
+                      step={1}
+                    />
+                    <div className="flex flex-col gap-1">
+                      <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Start Date</label>
+                      <input
+                        type="date"
+                        value={debtStartDate}
+                        onChange={(event) => setDebtStartDate(event.target.value)}
+                        className={SELECT_CLS}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-600 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200">
+                      Est. payment {minimumPayment == null ? '--' : `${formatCompactAmount(minimumPayment, displayTicker)}/m`}
+                    </div>
+                    <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-600 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200">
+                      Est. interest {estimatedInterest == null ? '--' : formatCompactAmount(estimatedInterest, displayTicker)}
+                    </div>
+                    {debtStartDate ? (
+                      <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-600 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200">
+                        Est. end {estimatedEndDate == null ? '--' : formatDate(estimatedEndDate)}
+                      </div>
+                    ) : null}
+                  </div>
+                </>
+              ) : null}
+
+              {kind === 'allowance' ? (
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Recipient</label>
+                  <select
+                    value={allowanceContactId}
+                    onChange={(event) => setAllowanceContactId(event.target.value)}
+                    className={SELECT_CLS}
+                  >
+                    <option value="">Select contact</option>
+                    {contactOptions.map((contact) => (
+                      <option key={contact.id} value={contact.id}>
+                        {contact.displayName || contact.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : null}
+            </>
+          )}
+
+          {!isSelectingKind && (existing?.pendingTransactions?.length ?? 0) > 0 ? (
             <div className="flex flex-col gap-1">
               <label className="text-xs font-medium text-gray-500 dark:text-gray-400">
                 Pending Transactions ({existing?.pendingTransactions?.length ?? 0})
@@ -1305,12 +1848,39 @@ export function AccountFormNew({ existing, onSaved, onCancel }: AccountFormNewPr
       ) : null}
 
       {activeTab === 'tasks' ? (
-        <div className="space-y-4 px-4 py-3">
-          {renderTaskSection('account', 'Account tasks', '+ Add Task')}
+        <div className="flex h-full min-h-0 flex-col gap-4 px-4 py-3">
+          {kind === 'allowance' ? (
+            renderTaskSection('account', 'Account Tasks', '+ Add Task')
+          ) : (
+            <div className="flex min-h-0 flex-1 flex-col">
+              {renderTaskSection('account', 'Account Tasks', '+ Add Task')}
+            </div>
+          )}
 
           {kind === 'allowance' ? (
             <>
-              {showAllowanceTaskSources ? (
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Period Start</label>
+                  <input
+                    type="date"
+                    value={allowanceStartDate}
+                    onChange={(event) => setAllowanceStartDate(event.target.value)}
+                    className={SELECT_CLS}
+                  />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Period End</label>
+                  <input
+                    type="date"
+                    value={allowanceEndDate}
+                    onChange={(event) => setAllowanceEndDate(event.target.value)}
+                    className={SELECT_CLS}
+                  />
+                </div>
+              </div>
+
+              {!hasExpandedTask && showAllowanceTaskSources ? (
                 <div className="space-y-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-3 dark:border-gray-600 dark:bg-gray-800/50">
                   <p className="text-xs text-gray-500 dark:text-gray-400">
                     Add an allowance task from existing resource tasks, the built-in library, or your saved templates.
@@ -1401,7 +1971,17 @@ export function AccountFormNew({ existing, onSaved, onCancel }: AccountFormNewPr
       {activeTab === 'links' ? (
         existing ? (
           <div className="px-4 py-3">
-            <ResourceLinksTabNew resource={existing} />
+            {linksCleared ? (
+              <div className="rounded-lg bg-gray-50 px-3 py-4 text-center dark:bg-gray-800/60">
+                <p className="text-xs italic text-gray-400">Links will be cleared when you save this type change.</p>
+              </div>
+            ) : (
+              <ResourceLinksTabNew
+                resource={existing}
+                pendingAutoLinkId={pendingAutoLinkId}
+                pendingAutoLinkRelationship={pendingAutoLinkRelationship}
+              />
+            )}
           </div>
         ) : (
           <div className="px-4 py-3">
@@ -1456,7 +2036,7 @@ export function AccountFormNew({ existing, onSaved, onCancel }: AccountFormNewPr
                 </div>
                 {showLoggedAmounts && entry.amount != null ? (
                   <div className="mt-1 text-xs font-medium text-gray-500 dark:text-gray-400">
-                    Amount: {formatCurrency(entry.amount)}
+                    Amount: {formatAmountWithTicker(entry.amount, amountTicker)}
                   </div>
                 ) : null}
               </div>

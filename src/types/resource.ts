@@ -36,6 +36,7 @@ export interface ResourceLink {
   createdAt: string;
   sourceResourceId?: string;
   isMirrored?: boolean;
+  isPullLink?: boolean;
 }
 
 export const CONTACT_GROUPS = [
@@ -390,6 +391,7 @@ export interface AccountTask {
   name: string;
   kind?: 'account-task' | 'transaction-log';
   taskType?: string;
+  inputFields?: Partial<InputFields>;
   anticipatedValue?: number;
   /** Requires photo evidence on completion. */
   evidenceRequired?: boolean;

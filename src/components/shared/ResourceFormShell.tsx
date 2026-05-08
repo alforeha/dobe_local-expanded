@@ -10,6 +10,7 @@ interface ResourceFormShellProps {
   title: string;
   onSave: () => void;
   onCancel: () => void;
+  identityRow?: ReactNode;
   tabs: ResourceFormTab[];
   activeTab: string;
   onTabChange: (tab: string) => void;
@@ -21,6 +22,7 @@ export function ResourceFormShell({
   title,
   onSave,
   onCancel,
+  identityRow,
   tabs,
   activeTab,
   onTabChange,
@@ -54,6 +56,8 @@ export function ResourceFormShell({
             Save
           </button>
         </div>
+
+        {identityRow ? <div className="px-4 pb-3">{identityRow}</div> : null}
 
         <div className="flex items-center gap-4 px-4 pb-2">
           {visibleTabs.map((tab) => (

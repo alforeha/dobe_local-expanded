@@ -922,7 +922,7 @@ function _genAccountGTD(resource: AccountResource, referenceDate: string): Task[
         next.date,
         task.name,
         { label: task.name } as Task['resultFields'],
-        { taskType: task.taskType ?? 'CHECK' },
+        { taskType: task.taskType ?? 'CHECK', inputFields: task.inputFields ?? null },
       ),
     );
   }

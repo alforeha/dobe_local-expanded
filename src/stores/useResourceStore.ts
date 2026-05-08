@@ -35,7 +35,12 @@ interface ResourceActions {
   updateContactAlbum: (contactId: string, album: AlbumEntry[]) => void;
   updateVehicleAlbum: (vehicleId: string, album: AlbumEntry[]) => void;
   removeResource: (id: string) => string[];
-  addResourceLink: (sourceId: string, targetId: string, relationship: string) => void;
+  addResourceLink: (
+    sourceId: string,
+    targetId: string,
+    relationship: string,
+    metadata?: Pick<NonNullable<Resource['links']>[number], 'isPullLink'>,
+  ) => void;
   updateResourceLink: (sourceId: string, linkId: string, relationship: string) => void;
   removeResourceLink: (sourceId: string, linkId: string) => void;
   getContacts: () => ContactResource[];
@@ -616,7 +621,7 @@ export const useResourceStore = create<ResourceState & ResourceActions>()(
         return deletedIds;
       },
 
-      addResourceLink: (sourceId, targetId, relationship) => {
+      addResourceLink: (sourceId, targetId, relationship, metadata) => {
         const source = get().resources[sourceId];
         const target = get().resources[targetId];
         if (!source || !target) return;
@@ -632,6 +637,7 @@ export const useResourceStore = create<ResourceState & ResourceActions>()(
                     relationship: trimmedRelationship,
                     sourceResourceId: sourceId,
                     isMirrored: false,
+                    isPullLink: metadata?.isPullLink ?? link.isPullLink,
                   }
                 : link,
             )
@@ -644,6 +650,7 @@ export const useResourceStore = create<ResourceState & ResourceActions>()(
                 createdAt: now,
                 sourceResourceId: sourceId,
                 isMirrored: false,
+                isPullLink: metadata?.isPullLink,
               },
             ];
 
