@@ -1134,9 +1134,29 @@ export function AccountFormNew({ existing, onSaved, onCancel }: AccountFormNewPr
       ...prev,
       [taskId]: { ...result },
     }));
+    const completionTaskId = crypto.randomUUID();
+    const completionTask: Task = ({
+      id: completionTaskId,
+      templateRef: null,
+      isUnique: true,
+      title: task.name.trim() || 'Untitled account task',
+      taskType: normaliseResourceTaskTypeForSave(task.taskType),
+      completionState: 'complete',
+      completedAt: now,
+      resultFields: result ?? {},
+      icon: task.icon.trim() || existing?.icon || 'finance',
+      resourceRef: existing?.id ?? null,
+      attachmentRef: null,
+      location: null,
+      sharedWith: null,
+      questRef: null,
+      actRef: null,
+      secondaryTag: null,
+    } as unknown) as Task;
+    setScheduleTask(completionTask);
     setActiveEvent({
       ...qaEvent,
-      completions: [...qaEvent.completions, { taskRef: taskId, completedAt: now }],
+      completions: [...qaEvent.completions, { taskRef: completionTaskId, completedAt: now }],
       xpAwarded: (qaEvent.xpAwarded ?? 0) + 5,
     });
     awardExecuteWisdomXp();
@@ -1159,43 +1179,49 @@ export function AccountFormNew({ existing, onSaved, onCancel }: AccountFormNewPr
     formatKindAwareAmount,
     kind,
     setActiveEvent,
+    setScheduleTask,
     showExecuteCompletionSummary,
+    existing?.icon,
+    existing?.id,
   ]);
 
-  const createTransactionLogCompletionTask = useCallback((
-    account: AccountResource,
-    accountTask: TaskDraft,
-    amount: number,
-    note: string,
-    now: string,
-    resultValue?: string,
-    linkedAccountMeta?: TransactionLogLinkedAccountMeta,
-  ): Task => ({
-    id: uuidv4(),
-    templateRef: null,
-    isUnique: true,
-    title: accountTask.name,
-    taskType: 'TEXT',
-    completionState: 'complete',
-    completedAt: now,
-    resultFields: ({
-      resourceTaskId: `resource-task:${account.id}:account-task:${accountTask.id}`,
-      amount,
-      note: resultValue ?? note,
-      value: resultValue ?? note,
-      linkedAccountId: linkedAccountMeta?.linkedAccountId,
-      linkedAccountName: linkedAccountMeta?.linkedAccountName,
-      linkedAccountIcon: linkedAccountMeta?.linkedAccountIcon,
-      direction: linkedAccountMeta?.direction,
-    } as unknown) as Task['resultFields'],
-    attachmentRef: null,
-    resourceRef: account.id,
-    location: null,
-    sharedWith: null,
-    questRef: null,
-    actRef: null,
-      secondaryTag: null,
-  }), []);
+	  const createTransactionLogCompletionTask = useCallback((
+	    account: AccountResource,
+	    accountTask: TaskDraft,
+	    amount: number,
+	    note: string,
+	    now: string,
+	    resultValue?: string,
+	    linkedAccountMeta?: TransactionLogLinkedAccountMeta,
+	    newBalance?: number,
+	  ): Task => ({
+	    id: uuidv4(),
+	    templateRef: null,
+	    isUnique: true,
+	    title: accountTask.name,
+	    taskType: 'TEXT',
+	    completionState: 'complete',
+	    completedAt: now,
+	    resultFields: ({
+	      resourceTaskId: `resource-task:${account.id}:account-task:${accountTask.id}`,
+	      amount,
+	      note: resultValue ?? note,
+	      value: resultValue ?? note,
+	      linkedAccountId: linkedAccountMeta?.linkedAccountId,
+	      linkedAccountName: linkedAccountMeta?.linkedAccountName,
+	      linkedAccountIcon: linkedAccountMeta?.linkedAccountIcon,
+	      direction: linkedAccountMeta?.direction,
+	      ...(newBalance != null ? { newBalance } : {}),
+	    } as unknown) as Task['resultFields'],
+	    attachmentRef: null,
+	    resourceRef: account.id,
+	    location: null,
+	    sharedWith: null,
+	    questRef: null,
+	    actRef: null,
+	      secondaryTag: null,
+	    icon: accountTask.icon.trim() || account.icon || 'finance',
+	  } as unknown as Task), []);
 
   const pushTaskToGtd = useCallback((task: TaskDraft) => {
     const latestUser = useUserStore.getState().user ?? user;
@@ -1285,27 +1311,33 @@ export function AccountFormNew({ existing, onSaved, onCancel }: AccountFormNewPr
       ? linkedBank
       : null;
     const shouldUpdateLinkedBank = kind !== 'bank' && linkedBankAccount != null;
-    const linkedAccountMeta = linkedBankAccount
-      ? {
-          linkedAccountId: linkedBankAccount.id,
-          linkedAccountName: linkedBankAccount.name,
-          linkedAccountIcon: linkedBankAccount.icon,
-          direction: kind === 'income' ? 'deposit' : 'withdrawal',
-        } satisfies TransactionLogLinkedAccountMeta
-      : undefined;
-    const noLinkedBankText = 'Transaction logged only \u2014 no linked bank account set';
-    let debtPrincipalPortion: number | null = null;
-    let debtInterestPortion: number | null = null;
-    let debtNextBalance: number | null = null;
+	    const linkedAccountMeta = linkedBankAccount
+	      ? {
+	          linkedAccountId: linkedBankAccount.id,
+	          linkedAccountName: linkedBankAccount.name,
+	          linkedAccountIcon: linkedBankAccount.icon,
+	          direction: kind === 'income' ? 'deposit' : 'withdrawal',
+	        } satisfies TransactionLogLinkedAccountMeta
+	      : undefined;
+	    const noLinkedBankText = 'Transaction logged only \u2014 no linked bank account set';
+	    let debtPrincipalPortion: number | null = null;
+	    let debtInterestPortion: number | null = null;
+	    let debtNextBalance: number | null = null;
 
-    if (kind === 'debt') {
-      const monthlyRate = (existing.debtRate ?? 0) / 12 / 100;
-      const interestPortion = currentPersistedBalance * monthlyRate;
-      const principalPortion = Math.max(0, amount - interestPortion);
+	    if (kind === 'debt') {
+	      const monthlyRate = (existing.debtRate ?? 0) / 12 / 100;
+	      const interestPortion = currentPersistedBalance * monthlyRate;
+	      const principalPortion = Math.max(0, amount - interestPortion);
       debtPrincipalPortion = principalPortion;
-      debtInterestPortion = interestPortion;
-      debtNextBalance = Math.max(0, currentPersistedBalance - principalPortion);
-    }
+	      debtInterestPortion = interestPortion;
+	      debtNextBalance = Math.max(0, currentPersistedBalance - principalPortion);
+	    }
+
+	    const currentAccountNextBalance = kind === 'bank'
+	      ? currentPersistedBalance + amount
+	      : kind === 'debt'
+	        ? debtNextBalance
+	        : null;
 
     const currentResultValue = (() => {
       if (kind === 'debt' && debtPrincipalPortion != null && debtInterestPortion != null) {
@@ -1325,15 +1357,16 @@ export function AccountFormNew({ existing, onSaved, onCancel }: AccountFormNewPr
 
       return noLinkedBankText;
     })();
-    const currentCompletedTask = createTransactionLogCompletionTask(
-      existing,
-      task,
-      amount,
-      note,
-      now,
-      currentResultValue,
-      linkedAccountMeta,
-    );
+	    const currentCompletedTask = createTransactionLogCompletionTask(
+	      existing,
+	      task,
+	      amount,
+	      note,
+	      now,
+	      currentResultValue,
+	      linkedAccountMeta,
+	      currentAccountNextBalance ?? undefined,
+	    );
     const nextCompletions = [...qaEvent.completions, { taskRef: currentCompletedTask.id, completedAt: now }];
 
     setScheduleTask(currentCompletedTask);
@@ -1367,17 +1400,19 @@ export function AccountFormNew({ existing, onSaved, onCancel }: AccountFormNewPr
         const linkedNote = kind === 'income'
           ? `${linkedAmountText} deposited from ${sourceAccountLabel}`
           : `${linkedAmountText} withdrawn for ${sourceAccountLabel}`;
-        const linkedCompletedTask = createTransactionLogCompletionTask(
-          linkedBankAccount,
-          toTaskDraft(linkedTransactionLogTask),
-          amount,
-          linkedNote,
-          now,
-          linkedNote,
-        );
-        setScheduleTask(linkedCompletedTask);
-        nextCompletions.push({ taskRef: linkedCompletedTask.id, completedAt: now });
-      }
+	        const linkedCompletedTask = createTransactionLogCompletionTask(
+	          linkedBankAccount,
+	          toTaskDraft(linkedTransactionLogTask),
+	          amount,
+	          linkedNote,
+	          now,
+	          linkedNote,
+	          undefined,
+	          linkedBankNextBalance,
+	        );
+	        setScheduleTask(linkedCompletedTask);
+	        nextCompletions.push({ taskRef: linkedCompletedTask.id, completedAt: now });
+	      }
     }
 
     if (kind === 'debt' && persistedExisting?.type === 'account' && debtNextBalance != null) {
@@ -1447,27 +1482,29 @@ export function AccountFormNew({ existing, onSaved, onCancel }: AccountFormNewPr
     const resultValue = options?.resultValue ?? (isOpeningBalance
       ? `Opening balance set to ${formatBankBalancePill(nextBalance, normalizedTicker, cryptoUnit)}`
       : `Balance adjusted: ${formatBankBalanceAdjustment(difference, normalizedTicker, cryptoUnit)}`);
-    const completedTask: Task = {
-      id: taskId,
-      templateRef: null,
-      isUnique: true,
-      title: transactionLogTask.name,
+	    const completedTask: Task = {
+	      id: taskId,
+	      templateRef: null,
+	      isUnique: true,
+	      title: transactionLogTask.name,
       taskType: 'TEXT',
       completionState: 'complete',
       completedAt: now,
-      resultFields: ({
-        resourceTaskId: `resource-task:${existing.id}:account-task:${transactionLogTask.id}`,
-        value: resultValue,
-        amount: transactionAmount,
-      } as unknown) as Task['resultFields'],
-      attachmentRef: null,
-      resourceRef: existing.id,
-      location: null,
-      sharedWith: null,
-      questRef: null,
-      actRef: null,
-      secondaryTag: null,
-    };
+	      resultFields: ({
+	        resourceTaskId: `resource-task:${existing.id}:account-task:${transactionLogTask.id}`,
+	        value: resultValue,
+	        amount: transactionAmount,
+	        newBalance: nextBalance,
+	      } as unknown) as Task['resultFields'],
+	      attachmentRef: null,
+	      resourceRef: existing.id,
+	      location: null,
+	      sharedWith: null,
+	      questRef: null,
+	      actRef: null,
+	      secondaryTag: null,
+	      icon: transactionLogTask.icon.trim() || existing.icon || 'finance',
+	    } as unknown as Task;
 
     setScheduleTask(completedTask);
     setActiveEvent({

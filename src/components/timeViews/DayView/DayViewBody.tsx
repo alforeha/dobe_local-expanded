@@ -745,14 +745,17 @@ export function DayViewBody({ date, onEventOpen, onEditPlanned }: DayViewBodyPro
           })}
 
           {/* QA completion badges */}
-          {Array.from(qaByHour.entries()).flatMap(([h, completions]) =>
-            completions.map((c, idx) => {
-              const task = tasks[c.taskRef];
-              const tmpl = task?.templateRef ? resolveTemplate(task.templateRef, taskTemplates) : null;
-              const iconKey = resolveTaskIcon(tmpl);
-              return (
-                <QACompletionIcon
-                  key={`${c.taskRef}-${c.completedAt}`}
+	          {Array.from(qaByHour.entries()).flatMap(([h, completions]) =>
+	            completions.map((c, idx) => {
+	              const task = tasks[c.taskRef];
+	              const tmpl = task?.templateRef ? resolveTemplate(task.templateRef, taskTemplates) : null;
+	              const taskIcon = typeof (task as { icon?: unknown } | undefined)?.icon === 'string'
+	                ? (task as { icon?: string }).icon?.trim()
+	                : '';
+	              const iconKey = taskIcon || resolveTaskIcon(tmpl);
+	              return (
+	                <QACompletionIcon
+	                  key={`${c.taskRef}-${c.completedAt}`}
                   iconKey={iconKey}
                   offsetIndex={idx}
                   topPx={scaledSlotTop[h + 1] - 32 - clipOffsetPx}

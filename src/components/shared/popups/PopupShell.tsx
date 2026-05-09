@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 
 interface PopupShellProps {
-  title: string;
+  title: ReactNode;
   onClose: () => void;
   children?: ReactNode;
   size?: 'default' | 'large';
@@ -26,8 +26,10 @@ export function PopupShell({ title, onClose, children, size = 'default', headerR
     >
       <div className={panelClassName} onClick={(e) => e.stopPropagation()}>
         {/* Header */}
-        <div className="flex shrink-0 items-center justify-between border-b border-gray-200 px-4 py-3 dark:border-gray-700">
-          <h3 className="text-base font-semibold text-gray-800 dark:text-gray-100">{title}</h3>
+        <div className="flex shrink-0 items-start justify-between gap-3 border-b border-gray-200 px-4 py-3 dark:border-gray-700">
+          {typeof title === 'string'
+            ? <h3 className="text-base font-semibold text-gray-800 dark:text-gray-100">{title}</h3>
+            : <div className="min-w-0 flex-1">{title}</div>}
           <div className="flex items-center gap-2">
             {headerRight}
             <button
