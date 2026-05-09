@@ -7,9 +7,10 @@ interface IconPickerProps {
   onChange: (key: string) => void;
   label?: string;
   align?: 'left' | 'center' | 'right';
+  allowedKeys?: string[];
 }
 
-export function IconPicker({ value, onChange, label, align = 'center' }: IconPickerProps) {
+export function IconPicker({ value, onChange, label, align = 'center', allowedKeys }: IconPickerProps) {
   const [open, setOpen] = useState(false);
   const [popoverPosition, setPopoverPosition] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -72,7 +73,9 @@ export function IconPicker({ value, onChange, label, align = 'center' }: IconPic
   }, [align, open]);
 
   const normalised = value?.toLowerCase?.() ?? '';
-  const entries = Object.entries(ICON_MAP);
+  const entries = Object.entries(ICON_MAP).filter(([key]) => (
+    !allowedKeys || allowedKeys.includes(key)
+  ));
   const popoverClassName = 'fixed z-[120] w-[22rem] max-w-[calc(100vw-1rem)] overflow-hidden rounded-xl border border-gray-200 bg-white p-2 shadow-xl dark:border-gray-600 dark:bg-gray-800';
 
   return (

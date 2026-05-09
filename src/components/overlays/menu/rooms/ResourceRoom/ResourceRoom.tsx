@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { useResourceStore } from '../../../../../stores/useResourceStore';
 import { useUserStore } from '../../../../../stores/useUserStore';
@@ -8,7 +8,7 @@ import { ResourceRoomHeader } from './ResourceRoomHeader';
 import { ResourceRoomSubHeader } from './ResourceRoomSubHeader';
 import { ResourceRoomBody } from './ResourceRoomBody';
 import { TypeSelectorSheet } from './TypeSelectorSheet';
-import { ContactForm } from './contact/ContactForm';
+import { ContactFormNew } from './contact/ContactFormNew';
 import { HomeForm } from './home/HomeForm';
 import { VehicleForm } from './vehicle/VehicleForm';
 import { AccountFormNew } from './account/AccountFormNew';
@@ -51,6 +51,7 @@ export function ResourceRoom({ onOverlayActiveChange }: ResourceRoomProps) {
   const [editingInventoryContainerId, setEditingInventoryContainerId] = useState<string | null>(null);
   const [expandedResourceId, setExpandedResourceId] = useState<string | null>(menuResourceTarget?.resourceId ?? null);
   const [activeExpandedResourceId, setActiveExpandedResourceId] = useState<string | null>(menuResourceTarget?.resourceId ?? null);
+  const contactFormAutoSaveRef = useRef<(() => void) | null>(null);
 
   const resources = useResourceStore((s) => s.resources);
   const setResource = useResourceStore((s) => s.setResource);
@@ -111,9 +112,20 @@ export function ResourceRoom({ onOverlayActiveChange }: ResourceRoomProps) {
     };
   }, [onOverlayActiveChange, overlayActive]);
 
+  const registerContactFormAutoSave = useCallback((callback: (() => void) | null) => {
+    contactFormAutoSaveRef.current = callback;
+  }, []);
+
+  const triggerContactFormAutoSave = useCallback(() => {
+    const callback = contactFormAutoSaveRef.current;
+    contactFormAutoSaveRef.current = null;
+    callback?.();
+  }, []);
+
   useEffect(() => {
     if (!menuResourceTarget) return;
     const timer = window.setTimeout(() => {
+      triggerContactFormAutoSave();
       setActiveType(menuResourceTarget.resourceType);
       setExpandedResourceId(menuResourceTarget.resourceId);
       setActiveExpandedResourceId(menuResourceTarget.resourceId);
@@ -121,7 +133,49 @@ export function ResourceRoom({ onOverlayActiveChange }: ResourceRoomProps) {
       clearMenuResourceTarget();
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [clearMenuResourceTarget, menuResourceTarget]);
+  }, [clearMenuResourceTarget, menuResourceTarget, triggerContactFormAutoSave]);
+
+  useEffect(() => {
+    return () => {
+      triggerContactFormAutoSave();
+    };
+  }, [triggerContactFormAutoSave]);
+
+  const handleEditDone = useCallback(() => {
+    contactFormAutoSaveRef.current = null;
+    setEditingResource(null);
+    setEditingInventoryContainerId(null);
+  }, []);
+
+  const handleAdded = useCallback(() => {
+    contactFormAutoSaveRef.current = null;
+    setAddStep('closed');
+  }, []);
+
+  const handleBackToSelector = useCallback(() => {
+    triggerContactFormAutoSave();
+    setAddStep('type-selector');
+  }, [triggerContactFormAutoSave]);
+
+  const handleCloseTypeSelector = useCallback(() => {
+    triggerContactFormAutoSave();
+    setAddStep('closed');
+  }, [triggerContactFormAutoSave]);
+
+  const handleTypeChange = useCallback((type: ResourceType) => {
+    triggerContactFormAutoSave();
+    setActiveType(type);
+    setAddStep('closed');
+    setExpandedResourceId(null);
+    setActiveExpandedResourceId(null);
+  }, [triggerContactFormAutoSave]);
+
+  const handleExpandedChange = useCallback((resourceId: string | null) => {
+    if (resourceId == null) {
+      triggerContactFormAutoSave();
+    }
+    setActiveExpandedResourceId(resourceId);
+  }, [triggerContactFormAutoSave]);
 
   useEffect(() => {
     if (activeType !== 'inventory' || !user || filtered.length > 0) return;
@@ -159,18 +213,14 @@ export function ResourceRoom({ onOverlayActiveChange }: ResourceRoomProps) {
 
   // ── Edit overlay ──────────────────────────────────────────────────────────
   if (editingResource) {
-    const onDone = () => {
-      setEditingResource(null);
-      setEditingInventoryContainerId(null);
-    };
     return (
       <div className="flex flex-col h-full">
-        {editingResource.type === 'home'      && <HomeForm      existing={editingResource} onSaved={onDone} onCancel={onDone} />}
-        {editingResource.type === 'vehicle'   && <VehicleForm   existing={editingResource} onSaved={onDone} onCancel={onDone} />}
-        {editingResource.type === 'account'   && <AccountFormNew   existing={editingResource} onSaved={onDone} onCancel={onDone} />}
-        {editingResource.type === 'inventory' && <InventoryForm existing={editingResource} onSaved={onDone} onCancel={onDone} editorMode={inventoryEditMode} editingContainerId={editingInventoryContainerId} />}
-        {editingResource.type === 'doc'       && <DocForm       existing={editingResource} onSaved={onDone} onCancel={onDone} />}
-        {editingResource.type === 'contact'   && <ContactForm   existing={editingResource} onSaved={onDone} onCancel={onDone} />}
+        {editingResource.type === 'home'      && <HomeForm existing={editingResource} onSaved={handleEditDone} onCancel={handleEditDone} />}
+        {editingResource.type === 'vehicle'   && <VehicleForm existing={editingResource} onSaved={handleEditDone} onCancel={handleEditDone} />}
+        {editingResource.type === 'account'   && <AccountFormNew existing={editingResource} onSaved={handleEditDone} onCancel={handleEditDone} />}
+        {editingResource.type === 'inventory' && <InventoryForm existing={editingResource} onSaved={handleEditDone} onCancel={handleEditDone} editorMode={inventoryEditMode} editingContainerId={editingInventoryContainerId} />}
+        {editingResource.type === 'doc'       && <DocForm existing={editingResource} onSaved={handleEditDone} onCancel={handleEditDone} />}
+        {editingResource.type === 'contact'   && <ContactFormNew existing={editingResource} onSaved={handleEditDone} registerOnAutoSave={registerContactFormAutoSave} />}
       </div>
     );
   }
@@ -183,35 +233,30 @@ export function ResourceRoom({ onOverlayActiveChange }: ResourceRoomProps) {
           onSelect={(selection) => {
             setAddStep(TYPE_TO_ADD_STEP[selection]);
           }}
-          onCancel={() => {
-            setAddStep('closed');
-          }}
+          onCancel={handleCloseTypeSelector}
         />
       </div>
     );
   }
 
   // ── Add flow: individual forms ─────────────────────────────────────────────
-  const backToSelector = () => setAddStep('type-selector');
-  const onAdded = () => setAddStep('closed');
-
   if (addStep === 'contact-form') {
-    return <div className="flex flex-col h-full"><ContactForm   onSaved={onAdded} onCancel={backToSelector} /></div>;
+    return <div className="flex flex-col h-full"><ContactFormNew onSaved={handleAdded} registerOnAutoSave={registerContactFormAutoSave} /></div>;
   }
   if (addStep === 'home-form') {
-    return <div className="flex flex-col h-full"><HomeForm      onSaved={onAdded} onCancel={backToSelector} /></div>;
+    return <div className="flex flex-col h-full"><HomeForm      onSaved={handleAdded} onCancel={handleBackToSelector} /></div>;
   }
   if (addStep === 'vehicle-form') {
-    return <div className="flex flex-col h-full"><VehicleForm   onSaved={onAdded} onCancel={backToSelector} /></div>;
+    return <div className="flex flex-col h-full"><VehicleForm   onSaved={handleAdded} onCancel={handleBackToSelector} /></div>;
   }
   if (addStep === 'account-form') {
-    return <div className="flex flex-col h-full"><AccountFormNew   onSaved={onAdded} onCancel={backToSelector} /></div>;
+    return <div className="flex flex-col h-full"><AccountFormNew   onSaved={handleAdded} onCancel={handleBackToSelector} /></div>;
   }
   if (addStep === 'inventory-form') {
-    return <div className="flex flex-col h-full"><InventoryForm onSaved={onAdded} onCancel={backToSelector} /></div>;
+    return <div className="flex flex-col h-full"><InventoryForm onSaved={handleAdded} onCancel={handleBackToSelector} /></div>;
   }
   if (addStep === 'doc-form') {
-    return <div className="flex flex-col h-full"><DocForm       onSaved={onAdded} onCancel={backToSelector} /></div>;
+    return <div className="flex flex-col h-full"><DocForm       onSaved={handleAdded} onCancel={handleBackToSelector} /></div>;
   }
 
   // ── Normal room view ──────────────────────────────────────────────────────
@@ -219,13 +264,11 @@ export function ResourceRoom({ onOverlayActiveChange }: ResourceRoomProps) {
     <div className="flex flex-col h-full">
       <ResourceRoomHeader
         activeType={activeType}
-        onTypeChange={(t) => {
-          setActiveType(t);
-          setAddStep('closed');
-          setExpandedResourceId(null);
-          setActiveExpandedResourceId(null);
+        onTypeChange={handleTypeChange}
+        onAdd={() => {
+          triggerContactFormAutoSave();
+          setAddStep('type-selector');
         }}
-        onAdd={() => setAddStep('type-selector')}
       />
       {!activeExpandedResourceId ? (
         <ResourceRoomSubHeader
@@ -240,12 +283,13 @@ export function ResourceRoom({ onOverlayActiveChange }: ResourceRoomProps) {
       <ResourceRoomBody
         resources={filtered}
         onEdit={(resource) => {
+          triggerContactFormAutoSave();
           setInventoryEditMode('all');
           setEditingInventoryContainerId(null);
           setEditingResource(resource);
         }}
         expandedResourceId={expandedResourceId}
-        onExpandedChange={setActiveExpandedResourceId}
+        onExpandedChange={handleExpandedChange}
       />
     </div>
   );

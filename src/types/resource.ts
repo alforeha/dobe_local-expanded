@@ -449,6 +449,16 @@ export interface ResourceBase {
   log: ResourceLogEntry[];
 }
 
+export interface ContactTask {
+  id: string;
+  icon: string;
+  name: string;
+  taskType?: 'CHECK' | 'TEXT' | 'COUNTER' | 'RATING';
+  recurrenceMode?: 'recurring' | 'never';
+  recurrence: ResourceRecurrenceRule;
+  reminderLeadDays: number;
+}
+
 export interface ContactResource {
   id: string;
   type: 'contact';
@@ -463,6 +473,7 @@ export interface ContactResource {
   email?: string;
   birthday?: string; // YYYY-MM-DD
   birthdayLeadDays?: number;
+  tasks?: ContactTask[];
   address?: string;
   linkedContacts?: ContactLink[];
   notes?: ResourceNote[];

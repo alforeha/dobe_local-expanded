@@ -9,7 +9,7 @@ export interface ResourceFormTab {
 interface ResourceFormShellProps {
   title: string;
   onSave: () => void;
-  onCancel: () => void;
+  onCancel?: () => void;
   identityRow?: ReactNode;
   hideChrome?: boolean;
   tabs: ResourceFormTab[];
@@ -22,7 +22,6 @@ interface ResourceFormShellProps {
 export function ResourceFormShell({
   title,
   onSave,
-  onCancel,
   identityRow,
   hideChrome = false,
   tabs,
@@ -37,15 +36,8 @@ export function ResourceFormShell({
     <div className="flex h-full flex-col">
       {!hideChrome ? (
         <div className="shrink-0 border-b border-gray-100 dark:border-gray-700">
-          <div className="flex items-center gap-2 px-4 py-3">
-            <button
-              type="button"
-              onClick={onCancel}
-              className="text-sm text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
-            >
-              Cancel
-            </button>
-            <h3 className="flex-1 text-center text-sm font-semibold text-gray-700 dark:text-gray-200">
+          <div className="flex items-center justify-between gap-3 px-4 py-3">
+            <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200">
               {title}
             </h3>
             <button
