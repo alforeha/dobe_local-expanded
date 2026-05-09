@@ -28,6 +28,7 @@ import type { Task } from '../../../../../../types/task';
 import { useResourceStore } from '../../../../../../stores/useResourceStore';
 import { useScheduleStore } from '../../../../../../stores/useScheduleStore';
 import { useUserStore } from '../../../../../../stores/useUserStore';
+import { awardStat, awardXP } from '../../../../../../engine/awardPipeline';
 import { generateGTDItems } from '../../../../../../engine/resourceEngine';
 import { getAppDate, getAppNowISO } from '../../../../../../utils/dateUtils';
 import { getCustomTemplatePool, getLibraryTemplatePool } from '../../../../../../utils/resolveTaskTemplate';
@@ -74,6 +75,15 @@ interface TransactionLogLinkedAccountMeta {
   linkedAccountName: string;
   linkedAccountIcon: string;
   direction: 'deposit' | 'withdrawal';
+}
+
+interface ExecuteCompletionSummary {
+  taskId: string;
+  taskName: string;
+  amountText: string | null;
+  note: string | null;
+  linkedAccountName: string | null;
+  linkedAccountIcon: string | null;
 }
 
 interface AllowanceTaskSourceOption {
@@ -786,6 +796,9 @@ export function AccountFormNew({ existing, onSaved, onCancel }: AccountFormNewPr
   const [executingTaskIds, setExecutingTaskIds] = useState<Record<string, boolean>>({});
   const [taskExecutionDrafts, setTaskExecutionDrafts] = useState<Record<string, Partial<InputFields>>>({});
   const [transactionLogExecuteDrafts, setTransactionLogExecuteDrafts] = useState<Record<string, TransactionLogExecuteDraft>>({});
+  const [confirmingRemove, setConfirmingRemove] = useState(false);
+  const [executeCompletionSummary, setExecuteCompletionSummary] = useState<ExecuteCompletionSummary | null>(null);
+  const [gtdPushFeedbackTaskId, setGtdPushFeedbackTaskId] = useState<string | null>(null);
   const [isEditingBalance, setIsEditingBalance] = useState(false);
   const [pendingBalance, setPendingBalance] = useState<number | ''>('');
 
@@ -1002,6 +1015,28 @@ export function AccountFormNew({ existing, onSaved, onCancel }: AccountFormNewPr
     return () => window.clearTimeout(timeoutId);
   }, [debtExpectedPayment, kind]);
 
+  useEffect(() => {
+    if (!executeCompletionSummary) return undefined;
+
+    const timeoutId = window.setTimeout(() => {
+      setExecuteCompletionSummary((current) => (
+        current?.taskId === executeCompletionSummary.taskId ? null : current
+      ));
+    }, 3000);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [executeCompletionSummary]);
+
+  useEffect(() => {
+    if (!gtdPushFeedbackTaskId) return undefined;
+
+    const timeoutId = window.setTimeout(() => {
+      setGtdPushFeedbackTaskId((current) => (current === gtdPushFeedbackTaskId ? null : current));
+    }, 3000);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [gtdPushFeedbackTaskId]);
+
   function handleBalanceChange(value: number | '') {
     setBalance(value);
   }
@@ -1017,6 +1052,7 @@ export function AccountFormNew({ existing, onSaved, onCancel }: AccountFormNewPr
   }, []);
 
   const handleStartTaskExecution = useCallback((task: TaskDraft) => {
+    setExecuteCompletionSummary(null);
     if (task.kind === 'transaction-log') {
       setTransactionLogExecuteDrafts((prev) => ({
         ...prev,
@@ -1040,7 +1076,44 @@ export function AccountFormNew({ existing, onSaved, onCancel }: AccountFormNewPr
     }));
   }, []);
 
+  const formatTransactionLogAmountText = useCallback((amount: number) => (
+    amount.toLocaleString(undefined, {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 2,
+    })
+  ), []);
+
+  const formatKindAwareAmount = useCallback((accountKind: AccountKind, amount: number, ticker?: string) => (
+    `${getTransactionAmountPrefix(accountKind, ticker)}${formatTransactionLogAmountText(amount)}`
+  ), [formatTransactionLogAmountText]);
+
+  const awardExecuteWisdomXp = useCallback(() => {
+    if (!user) return;
+
+    awardXP(user.system.id, 5, {
+      statGroup: 'wisdom',
+      source: 'account-task.execute.quickActions',
+    });
+    awardStat(user.system.id, 'wisdom', 5, 'account-task.execute.quickActions');
+  }, [user]);
+
+  const extractExecutionNote = useCallback((result: Partial<InputFields>): string | null => {
+    const fields = result as Record<string, unknown>;
+    const candidates = ['value', 'note', 'text', 'description', 'comment']
+      .map((key) => fields[key]);
+    const match = candidates.find((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0);
+    return match?.trim() ?? null;
+  }, []);
+
+  const showExecuteCompletionSummary = useCallback((summary: ExecuteCompletionSummary) => {
+    setExecuteCompletionSummary(summary);
+    setExecutingTaskIds((prev) => ({ ...prev, [summary.taskId]: false }));
+  }, []);
+
   const handleTaskExecutionComplete = useCallback((taskId: string, result: Partial<InputFields>) => {
+    const task = [...accountTasks, ...allowanceTasks].find((entry) => entry.id === taskId);
+    if (!task) return;
+
     const now = getAppNowISO();
     const today = getAppDate();
     const qaEventId = `qa-${today}`;
@@ -1064,20 +1137,30 @@ export function AccountFormNew({ existing, onSaved, onCancel }: AccountFormNewPr
     setActiveEvent({
       ...qaEvent,
       completions: [...qaEvent.completions, { taskRef: taskId, completedAt: now }],
+      xpAwarded: (qaEvent.xpAwarded ?? 0) + 5,
     });
-    handleCancelTaskExecution(taskId);
-  }, [handleCancelTaskExecution, setActiveEvent]);
-
-  const formatTransactionLogAmountText = useCallback((amount: number) => (
-    amount.toLocaleString(undefined, {
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 2,
-    })
-  ), []);
-
-  const formatKindAwareAmount = useCallback((accountKind: AccountKind, amount: number, ticker?: string) => (
-    `${getTransactionAmountPrefix(accountKind, ticker)}${formatTransactionLogAmountText(amount)}`
-  ), [formatTransactionLogAmountText]);
+    awardExecuteWisdomXp();
+    showExecuteCompletionSummary({
+      taskId,
+      taskName: task.name.trim() || 'Untitled account task',
+      amountText: typeof task.anticipatedValue === 'number'
+        ? formatKindAwareAmount(kind, task.anticipatedValue, cryptoTicker)
+        : null,
+      note: extractExecutionNote(result),
+      linkedAccountName: null,
+      linkedAccountIcon: null,
+    });
+  }, [
+    accountTasks,
+    allowanceTasks,
+    awardExecuteWisdomXp,
+    cryptoTicker,
+    extractExecutionNote,
+    formatKindAwareAmount,
+    kind,
+    setActiveEvent,
+    showExecuteCompletionSummary,
+  ]);
 
   const createTransactionLogCompletionTask = useCallback((
     account: AccountResource,
@@ -1111,8 +1194,60 @@ export function AccountFormNew({ existing, onSaved, onCancel }: AccountFormNewPr
     sharedWith: null,
     questRef: null,
     actRef: null,
-    secondaryTag: null,
+      secondaryTag: null,
   }), []);
+
+  const pushTaskToGtd = useCallback((task: TaskDraft) => {
+    const latestUser = useUserStore.getState().user ?? user;
+    if (!existing || !latestUser || gtdPushFeedbackTaskId === task.id) return;
+
+    const dueDate = getAppDate();
+    const resourceTaskId = `resource-task:${existing.id}:account-task:${task.id}`;
+    const existingPendingTaskId = latestUser.lists.gtdList.find((taskId) => {
+      const existingTask = useScheduleStore.getState().tasks[taskId];
+      if (!existingTask || existingTask.completionState !== 'pending') return false;
+      const fields = existingTask.resultFields as Record<string, unknown>;
+      return fields.resourceTaskId === resourceTaskId && fields.dueDate === dueDate;
+    });
+    if (existingPendingTaskId) {
+      setGtdPushFeedbackTaskId(task.id);
+      return;
+    }
+
+    const taskType = normaliseResourceTaskTypeForSave(task.taskType);
+    const nextTask: Task = {
+      id: uuidv4(),
+      templateRef: resourceTaskId,
+      isUnique: true,
+      title: task.name.trim() || 'Untitled account task',
+      taskType,
+      completionState: 'pending',
+      completedAt: null,
+      resultFields: ({
+        ...buildTaskInputFields(taskType, task.name.trim(), task.inputFields),
+        resourceTaskId,
+        dueDate,
+        label: task.name.trim() || 'Untitled account task',
+      } as unknown) as Task['resultFields'],
+      attachmentRef: null,
+      resourceRef: existing.id,
+      location: null,
+      sharedWith: null,
+      questRef: null,
+      actRef: null,
+      secondaryTag: null,
+    };
+
+    setScheduleTask(nextTask);
+    setUser({
+      ...latestUser,
+      lists: {
+        ...latestUser.lists,
+        gtdList: [...new Set([...latestUser.lists.gtdList, nextTask.id])],
+      },
+    });
+    setGtdPushFeedbackTaskId(task.id);
+  }, [existing, gtdPushFeedbackTaskId, setScheduleTask, setUser, user]);
 
   const handleTransactionLogExecuteConfirm = useCallback((task: TaskDraft) => {
     if (!existing || task.kind !== 'transaction-log') return;
@@ -1257,22 +1392,31 @@ export function AccountFormNew({ existing, onSaved, onCancel }: AccountFormNewPr
     setActiveEvent({
       ...qaEvent,
       completions: nextCompletions,
+      xpAwarded: (qaEvent.xpAwarded ?? 0) + 5,
     });
-
-    handleCancelTaskExecution(task.id);
+    awardExecuteWisdomXp();
+    showExecuteCompletionSummary({
+      taskId: task.id,
+      taskName: task.name.trim() || 'Untitled account task',
+      amountText: formatKindAwareAmount(kind, amount, cryptoTicker),
+      note: note || null,
+      linkedAccountName: linkedAccountMeta?.linkedAccountName ?? null,
+      linkedAccountIcon: linkedAccountMeta?.linkedAccountIcon ?? null,
+    });
   }, [
+    awardExecuteWisdomXp,
     balance,
     createTransactionLogCompletionTask,
     cryptoTicker,
     existing,
     formatKindAwareAmount,
     formatTransactionLogAmountText,
-    handleCancelTaskExecution,
     kind,
     resources,
     setActiveEvent,
     setResource,
     setScheduleTask,
+    showExecuteCompletionSummary,
     transactionLogExecuteDrafts,
   ]);
 
@@ -1533,9 +1677,15 @@ export function AccountFormNew({ existing, onSaved, onCancel }: AccountFormNewPr
       delete next[id];
       return next;
     });
+    setConfirmingRemove(false);
+    setExecuteCompletionSummary(null);
+    setGtdPushFeedbackTaskId((current) => (current === id ? null : current));
   }
 
   function setExpandedTask(section: 'account' | 'allowance', id: string | null) {
+    setConfirmingRemove(false);
+    setExecuteCompletionSummary(null);
+    setGtdPushFeedbackTaskId(null);
     if (section === 'account') {
       setExpandedAccountTaskId(id);
       setExpandedAllowanceTaskId(null);
@@ -1549,7 +1699,11 @@ export function AccountFormNew({ existing, onSaved, onCancel }: AccountFormNewPr
     return (
       <button
         type="button"
-        onClick={() => setTaskEditorTabs((prev) => ({ ...prev, [taskId]: tab }))}
+        onClick={() => {
+          setConfirmingRemove(false);
+          setExecuteCompletionSummary(null);
+          setTaskEditorTabs((prev) => ({ ...prev, [taskId]: tab }));
+        }}
         className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
           activeTabKey === tab
             ? 'bg-blue-500 text-white'
@@ -1662,7 +1816,7 @@ export function AccountFormNew({ existing, onSaved, onCancel }: AccountFormNewPr
                   : `${transactionAmountPrefix}0`
                 : describeCollapsedTaskRecurrence(task)}
             </span>
-            {normalizeRecurrenceMode(task.recurrenceMode) === 'recurring' && task.reminderLeadDays > 0 ? (
+            {task.reminderLeadDays > -1 ? (
               <span className="shrink-0 text-sm leading-none">{'\u{1F514}'}</span>
             ) : null}
           </div>
@@ -1698,6 +1852,9 @@ export function AccountFormNew({ existing, onSaved, onCancel }: AccountFormNewPr
       const sendToGtd = task.reminderLeadDays >= 0;
       const isPeriodic = normalizeRecurrenceMode(task.recurrenceMode) === 'recurring';
       const isExecutingTask = executingTaskIds[task.id] === true;
+      const completionSummaryForTask = executeCompletionSummary?.taskId === task.id ? executeCompletionSummary : null;
+      const isShowingCompletionSummary = completionSummaryForTask != null;
+      const isShowingGtdPushFeedback = gtdPushFeedbackTaskId === task.id;
       const transactionLogExecuteDraft = transactionLogExecuteDrafts[task.id] ?? {
         amount: task.anticipatedValue,
         note: '',
@@ -1748,24 +1905,37 @@ export function AccountFormNew({ existing, onSaved, onCancel }: AccountFormNewPr
       return (
         <div key={task.id} className="flex h-full flex-1 flex-col rounded-xl bg-gray-50 dark:bg-gray-700">
           <div className="shrink-0 space-y-3 px-4 py-4">
-            <div className="flex items-center gap-3">
-              <IconPicker
-                value={task.icon?.trim() || 'finance'}
-                onChange={(value) => updateTask(section, task.id, 'icon', value)}
-              />
-              {isTransactionLog ? (
-                <div className="min-w-0 text-sm font-semibold text-gray-900 dark:text-gray-100">
-                  {task.name.trim() || 'Untitled account task'}
-                </div>
-              ) : (
-                <input
-                  type="text"
-                  value={task.name}
-                  onChange={(event) => updateTask(section, task.id, 'name', event.target.value)}
-                  placeholder="Task name"
-                  className={`${SELECT_CLS} min-w-0 flex-1`}
+            <div className="flex items-start gap-3">
+              <div className="flex min-w-0 flex-1 items-center gap-3">
+                <IconPicker
+                  value={task.icon?.trim() || 'finance'}
+                  onChange={(value) => updateTask(section, task.id, 'icon', value)}
                 />
-              )}
+                {isTransactionLog ? (
+                  <div className="min-w-0 text-sm font-semibold text-gray-900 dark:text-gray-100">
+                    {task.name.trim() || 'Untitled account task'}
+                  </div>
+                ) : (
+                  <input
+                    type="text"
+                    value={task.name}
+                    onChange={(event) => updateTask(section, task.id, 'name', event.target.value)}
+                    placeholder="Task name"
+                    className={`${SELECT_CLS} min-w-0 flex-1`}
+                  />
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setConfirmingRemove(false);
+                  setExpandedTask(section, null);
+                }}
+                className="rounded-md px-2 py-1 text-sm font-semibold text-gray-400 transition-colors hover:bg-gray-200 hover:text-gray-700 dark:text-gray-500 dark:hover:bg-gray-600 dark:hover:text-gray-200"
+                aria-label="Close task editor"
+              >
+                ×
+              </button>
             </div>
             <div className="flex items-center gap-2">
               {renderTaskTabButton(task.id, 'schedule', 'Schedule', activeEditorTab)}
@@ -1775,7 +1945,41 @@ export function AccountFormNew({ existing, onSaved, onCancel }: AccountFormNewPr
 
           <div className="flex-1 overflow-y-auto px-4 pb-4">
             <div className="space-y-4">
-              {activeEditorTab === 'schedule' ? (
+              {isShowingCompletionSummary ? (
+                <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-4 dark:border-emerald-800 dark:bg-emerald-950/40">
+                  <div className="flex items-center gap-2 text-emerald-700 dark:text-emerald-300">
+                    <span className="text-lg leading-none">✓</span>
+                    <span className="text-sm font-semibold">Success</span>
+                  </div>
+                  <div className="mt-3 text-base font-semibold text-gray-900 dark:text-gray-100">
+                    {completionSummaryForTask.taskName}
+                  </div>
+                  {completionSummaryForTask.amountText ? (
+                    <div className="mt-2 text-sm text-gray-700 dark:text-gray-200">
+                      {completionSummaryForTask.amountText}
+                    </div>
+                  ) : null}
+                  {completionSummaryForTask.note ? (
+                    <div className="mt-2 text-sm text-gray-600 dark:text-gray-300">
+                      {completionSummaryForTask.note}
+                    </div>
+                  ) : null}
+                  {completionSummaryForTask.linkedAccountName && completionSummaryForTask.linkedAccountIcon ? (
+                    <div className="mt-3 inline-flex items-center gap-2 rounded-lg bg-white px-3 py-2 text-sm text-gray-700 dark:bg-gray-800 dark:text-gray-200">
+                      <IconDisplay
+                        iconKey={completionSummaryForTask.linkedAccountIcon}
+                        size={16}
+                        className="h-4 w-4 object-contain"
+                        alt=""
+                      />
+                      <span>{completionSummaryForTask.linkedAccountName}</span>
+                    </div>
+                  ) : null}
+                  <div className="mt-3 text-sm font-medium text-emerald-700 dark:text-emerald-300">
+                    XP awarded: +5 Wisdom
+                  </div>
+                </div>
+              ) : activeEditorTab === 'schedule' ? (
                 <div className="space-y-4">
                       <div className="grid grid-cols-2 gap-2 rounded-xl bg-gray-100 p-1 dark:bg-gray-800">
                         <button
@@ -2017,15 +2221,6 @@ export function AccountFormNew({ existing, onSaved, onCancel }: AccountFormNewPr
                           </div>
                         </div>
 
-                        <div className="flex justify-end">
-                          <button
-                            type="button"
-                            onClick={() => handleStartTaskExecution(task)}
-                            className="rounded-md bg-blue-500 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-600"
-                          >
-                            Execute
-                          </button>
-                        </div>
                       </>
                     ) : (
                       <>
@@ -2050,16 +2245,6 @@ export function AccountFormNew({ existing, onSaved, onCancel }: AccountFormNewPr
                             onChange={(fields) => updateTaskInputFields(task, fields)}
                           />
                         </div>
-
-                        <div className="flex justify-end">
-                          <button
-                            type="button"
-                            onClick={() => handleStartTaskExecution(task)}
-                            className="rounded-md bg-blue-500 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-600"
-                          >
-                            Execute
-                          </button>
-                        </div>
                       </>
                     )
                   )}
@@ -2080,23 +2265,73 @@ export function AccountFormNew({ existing, onSaved, onCancel }: AccountFormNewPr
             </div>
           </div>
 
-          <div className="sticky bottom-0 mt-auto flex items-center justify-between gap-2 border-t border-gray-200 bg-gray-50 px-4 py-3 dark:border-gray-600 dark:bg-gray-700">
+          <div className="sticky bottom-0 mt-auto flex items-start justify-between gap-2 border-t border-gray-200 bg-gray-50 px-4 py-3 dark:border-gray-600 dark:bg-gray-700">
             {isTransactionLog ? <span /> : (
               <button
                 type="button"
-                onClick={() => removeTask(section, task.id)}
-                className="text-xs font-medium text-gray-400 hover:text-red-400"
+                onClick={() => {
+                  if (confirmingRemove) {
+                    removeTask(section, task.id);
+                    return;
+                  }
+                  setConfirmingRemove(true);
+                }}
+                className={`text-xs font-medium ${
+                  confirmingRemove
+                    ? 'text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300'
+                    : 'text-gray-400 hover:text-red-400'
+                }`}
               >
-                Remove
+                {confirmingRemove ? 'Confirm remove?' : 'Remove'}
               </button>
             )}
-            <button
-              type="button"
-              onClick={() => setExpandedTask(section, null)}
-              className="rounded-md bg-blue-500 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-600"
-            >
-              Save
-            </button>
+            <div className="flex flex-col items-end gap-1">
+              <div className="flex items-center gap-2">
+                {activeEditorTab === 'action' && !isExecutingTask && !isShowingCompletionSummary ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => pushTaskToGtd(task)}
+                      disabled={isShowingGtdPushFeedback}
+                      className="rounded-md border border-gray-300 px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-white disabled:cursor-not-allowed disabled:border-gray-200 disabled:bg-gray-200 disabled:text-gray-500 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-800 dark:disabled:border-gray-700 dark:disabled:bg-gray-800 dark:disabled:text-gray-500"
+                    >
+                      Push to GTD
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleStartTaskExecution(task)}
+                      className="rounded-md bg-blue-500 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-600"
+                    >
+                      Execute
+                    </button>
+                  </>
+                ) : isShowingCompletionSummary ? (
+                  <button
+                    type="button"
+                    onClick={() => setExecuteCompletionSummary(null)}
+                    className="rounded-md bg-blue-500 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-600"
+                  >
+                    Done
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setConfirmingRemove(false);
+                      setExpandedTask(section, null);
+                    }}
+                    className="rounded-md bg-blue-500 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-600"
+                  >
+                    Save
+                  </button>
+                )}
+              </div>
+              {activeEditorTab === 'action' && isShowingGtdPushFeedback ? (
+                <span className="text-[11px] font-medium text-emerald-600 dark:text-emerald-300">
+                  Added to GTD list
+                </span>
+              ) : null}
+            </div>
           </div>
         </div>
       );
@@ -2244,7 +2479,11 @@ export function AccountFormNew({ existing, onSaved, onCancel }: AccountFormNewPr
       )}
       tabs={tabs}
       activeTab={activeTab}
-      onTabChange={setActiveTab}
+      onTabChange={(nextTab) => {
+        setConfirmingRemove(false);
+        setExecuteCompletionSummary(null);
+        setActiveTab(nextTab);
+      }}
       isSaving={!canSave}
       hideChrome={hasExpandedTask}
     >
