@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { taskTemplateLibrary } from '../../../../../../coach';
 import { CUSTOM_ITEM_TEMPLATE_PREFIX, getItemTaskTemplateMeta } from '../../../../../../coach/ItemLibrary';
@@ -11,7 +11,6 @@ import type {
   HomeResource,
   InventoryItemTemplate,
   InventoryResource,
-  RecurrenceDayOfWeek,
   Resource,
   ResourceRecurrenceRule,
   VehicleResource,
@@ -21,6 +20,7 @@ import {
   isInventory,
   makeDefaultRecurrenceRule,
   normalizeRecurrenceMode,
+  type RecurrenceDayOfWeek,
   toRecurrenceRule,
 } from '../../../../../../types/resource';
 import type { QuickActionsEvent } from '../../../../../../types/event';
@@ -29,6 +29,7 @@ import { useResourceStore } from '../../../../../../stores/useResourceStore';
 import { useScheduleStore } from '../../../../../../stores/useScheduleStore';
 import { useUserStore } from '../../../../../../stores/useUserStore';
 import { generateGTDItems } from '../../../../../../engine/resourceEngine';
+import { getAppDate, getAppNowISO } from '../../../../../../utils/dateUtils';
 import { getCustomTemplatePool, getLibraryTemplatePool } from '../../../../../../utils/resolveTaskTemplate';
 import { getUserInventoryItemTemplates, mergeInventoryItemTemplates } from '../../../../../../utils/inventoryItems';
 import { TextInput } from '../../../../../shared/inputs/TextInput';
@@ -39,7 +40,9 @@ import { ResourceFormShell, type ResourceFormTab } from '../../../../../shared/R
 import { ResourceLinksTabNew } from '../../../../../shared/ResourceLinksTabNew';
 import { AlbumViewer } from '../../../../../shared/AlbumViewer';
 import { AlbumEntryEditor } from '../../../../../shared/AlbumEntryEditor';
-import type { InputFields, TaskType } from '../../../../../../types/taskTemplate';
+import { TaskTypeConfigEditor } from '../../../../../shared/TaskTypeConfigEditor';
+import { TaskTypeInputRenderer } from '../../../../../overlays/event/TaskTypeInputRenderer';
+import type { InputFields, TaskTemplate, TaskType } from '../../../../../../types/taskTemplate';
 
 interface AccountFormNewProps {
   existing?: AccountResource;
@@ -61,12 +64,51 @@ interface TaskDraft {
   reminderLeadDays: number;
 }
 
+interface TransactionLogExecuteDraft {
+  amount: number | '';
+  note: string;
+}
+
 interface AllowanceTaskSourceOption {
   value: string;
   label: string;
   icon: string;
   detail?: string;
   seed: Omit<TaskDraft, 'id' | 'kind'>;
+}
+
+interface ExecuteTaskInputProps {
+  taskId: string;
+  executionTemplate: TaskTemplate;
+  executionTask: Task;
+  onCompleteTask: (taskId: string, result: Partial<InputFields>) => void;
+  onResultChangeTask: (taskId: string, result: Partial<InputFields>) => void;
+}
+
+function ExecuteTaskInput({
+  taskId,
+  executionTemplate,
+  executionTask,
+  onCompleteTask,
+  onResultChangeTask,
+}: ExecuteTaskInputProps) {
+  const handleComplete = useCallback((result: Partial<InputFields>) => {
+    onCompleteTask(taskId, result);
+  }, [onCompleteTask, taskId]);
+
+  const handleResultChange = useCallback((result: Partial<InputFields>) => {
+    onResultChangeTask(taskId, result);
+  }, [onResultChangeTask, taskId]);
+
+  return (
+    <TaskTypeInputRenderer
+      taskType={executionTemplate.taskType}
+      template={executionTemplate}
+      task={executionTask}
+      onComplete={handleComplete}
+      onResultChange={handleResultChange}
+    />
+  );
 }
 
 const tabs: ResourceFormTab[] = [
@@ -99,31 +141,6 @@ const KIND_OPTIONS: { value: AccountKind; label: string }[] = [
   { value: 'allowance', label: 'Allowance' },
 ];
 
-const DOW_LABELS: { key: RecurrenceDayOfWeek; label: string }[] = [
-  { key: 'sun', label: 'Su' },
-  { key: 'mon', label: 'Mo' },
-  { key: 'tue', label: 'Tu' },
-  { key: 'wed', label: 'We' },
-  { key: 'thu', label: 'Th' },
-  { key: 'fri', label: 'Fr' },
-  { key: 'sat', label: 'Sa' },
-];
-
-const MONTH_OPTIONS = [
-  { value: 1, label: 'January' },
-  { value: 2, label: 'February' },
-  { value: 3, label: 'March' },
-  { value: 4, label: 'April' },
-  { value: 5, label: 'May' },
-  { value: 6, label: 'June' },
-  { value: 7, label: 'July' },
-  { value: 8, label: 'August' },
-  { value: 9, label: 'September' },
-  { value: 10, label: 'October' },
-  { value: 11, label: 'November' },
-  { value: 12, label: 'December' },
-] as const;
-
 const SELECT_CLS =
   'w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-purple-500 focus:outline-none dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100';
 
@@ -142,6 +159,15 @@ const AUTO_LINK_RELATIONSHIP_BY_KIND: Partial<Record<AccountKind, string>> = {
 };
 
 const AUTO_LINK_RELATIONSHIPS = new Set(Object.values(AUTO_LINK_RELATIONSHIP_BY_KIND));
+const DOW_LABELS: Array<{ key: RecurrenceDayOfWeek; label: string }> = [
+  { key: 'sun', label: 'Su' },
+  { key: 'mon', label: 'Mo' },
+  { key: 'tue', label: 'Tu' },
+  { key: 'wed', label: 'We' },
+  { key: 'thu', label: 'Th' },
+  { key: 'fri', label: 'Fr' },
+  { key: 'sat', label: 'Sa' },
+];
 
 function makeTransactionLogTask(): TaskDraft {
   return {
@@ -253,7 +279,7 @@ function finaliseTaskDrafts(taskDrafts: TaskDraft[], ensureTransactionLog: boole
         evidenceRequired: task.evidenceRequired === true ? true : undefined,
         recurrenceMode,
         recurrence,
-        reminderLeadDays: recurrenceMode === 'recurring' ? task.reminderLeadDays : -1,
+        reminderLeadDays: task.reminderLeadDays,
       };
     });
 
@@ -750,6 +776,9 @@ export function AccountFormNew({ existing, onSaved, onCancel }: AccountFormNewPr
   const [linksCleared, setLinksCleared] = useState(false);
   const [editingEntry, setEditingEntry] = useState<AlbumEntry | null>(null);
   const [isCreatingEntry, setIsCreatingEntry] = useState(false);
+  const [executingTaskIds, setExecutingTaskIds] = useState<Record<string, boolean>>({});
+  const [taskExecutionDrafts, setTaskExecutionDrafts] = useState<Record<string, Partial<InputFields>>>({});
+  const [transactionLogExecuteDrafts, setTransactionLogExecuteDrafts] = useState<Record<string, TransactionLogExecuteDraft>>({});
   const [isEditingBalance, setIsEditingBalance] = useState(false);
   const [pendingBalance, setPendingBalance] = useState<number | ''>('');
 
@@ -951,6 +980,158 @@ export function AccountFormNew({ existing, onSaved, onCancel }: AccountFormNewPr
   function handleBalanceChange(value: number | '') {
     setBalance(value);
   }
+
+  const getTransactionLogBalanceDelta = useCallback((amount: number): number => {
+    if (kind === 'bank' || kind === 'income') return amount;
+    return -amount;
+  }, [kind]);
+
+  const handleCancelTaskExecution = useCallback((taskId: string) => {
+    setExecutingTaskIds((prev) => ({ ...prev, [taskId]: false }));
+    setTransactionLogExecuteDrafts((prev) => {
+      if (!(taskId in prev)) return prev;
+      const next = { ...prev };
+      delete next[taskId];
+      return next;
+    });
+  }, []);
+
+  const handleStartTaskExecution = useCallback((task: TaskDraft) => {
+    if (task.kind === 'transaction-log') {
+      setTransactionLogExecuteDrafts((prev) => ({
+        ...prev,
+        [task.id]: {
+          amount: task.anticipatedValue,
+          note: '',
+        },
+      }));
+    }
+
+    setExecutingTaskIds((prev) => ({ ...prev, [task.id]: true }));
+  }, []);
+
+  const handleTaskExecutionResultChange = useCallback((taskId: string, result: Partial<InputFields>) => {
+    setTaskExecutionDrafts((prev) => ({
+      ...prev,
+      [taskId]: {
+        ...prev[taskId],
+        ...result,
+      },
+    }));
+  }, []);
+
+  const handleTaskExecutionComplete = useCallback((taskId: string, result: Partial<InputFields>) => {
+    const now = getAppNowISO();
+    const today = getAppDate();
+    const qaEventId = `qa-${today}`;
+    const existingQaEvent = useScheduleStore.getState().activeEvents[qaEventId];
+    const qaEvent: QuickActionsEvent =
+      existingQaEvent && 'completions' in existingQaEvent
+        ? existingQaEvent
+        : {
+            id: qaEventId,
+            eventType: 'quickActions',
+            date: today,
+            completions: [],
+            xpAwarded: 0,
+            sharedCompletions: null,
+          };
+
+    setTaskExecutionDrafts((prev) => ({
+      ...prev,
+      [taskId]: { ...result },
+    }));
+    setActiveEvent({
+      ...qaEvent,
+      completions: [...qaEvent.completions, { taskRef: taskId, completedAt: now }],
+    });
+    handleCancelTaskExecution(taskId);
+  }, [handleCancelTaskExecution, setActiveEvent]);
+
+  const handleTransactionLogExecuteConfirm = useCallback((task: TaskDraft) => {
+    if (!existing || task.kind !== 'transaction-log') return;
+
+    const draft = transactionLogExecuteDrafts[task.id];
+    if (!draft || draft.amount === '') return;
+
+    const amount = draft.amount;
+    const note = draft.note.trim();
+    const now = getAppNowISO();
+    const today = getAppDate();
+    const qaEventId = `qa-${today}`;
+    const persistedExisting = resources[existing.id];
+    const currentPersistedBalance =
+      persistedExisting?.type === 'account' && typeof persistedExisting.balance === 'number'
+        ? persistedExisting.balance
+        : (typeof balance === 'number' ? balance : 0);
+    const nextBalance = currentPersistedBalance + getTransactionLogBalanceDelta(amount);
+    const existingQaEvent = useScheduleStore.getState().activeEvents[qaEventId];
+    const qaEvent: QuickActionsEvent =
+      existingQaEvent && 'completions' in existingQaEvent
+        ? existingQaEvent
+        : {
+            id: qaEventId,
+            eventType: 'quickActions',
+            date: today,
+            completions: [],
+            xpAwarded: 0,
+            sharedCompletions: null,
+          };
+    const completionTaskId = uuidv4();
+    const completedTask: Task = {
+      id: completionTaskId,
+      templateRef: null,
+      isUnique: true,
+      title: task.name,
+      taskType: 'TEXT',
+      completionState: 'complete',
+      completedAt: now,
+      resultFields: ({
+        resourceTaskId: `resource-task:${existing.id}:account-task:${task.id}`,
+        amount,
+        note,
+        value: note || `Transaction logged: ${transactionAmountPrefix}${amount.toLocaleString(undefined, {
+          minimumFractionDigits: 0,
+          maximumFractionDigits: 2,
+        })}`,
+      } as unknown) as Task['resultFields'],
+      attachmentRef: null,
+      resourceRef: existing.id,
+      location: null,
+      sharedWith: null,
+      questRef: null,
+      actRef: null,
+      secondaryTag: null,
+    };
+
+    setScheduleTask(completedTask);
+    setActiveEvent({
+      ...qaEvent,
+      completions: [...qaEvent.completions, { taskRef: completionTaskId, completedAt: now }],
+    });
+
+    if (persistedExisting?.type === 'account') {
+      setResource({
+        ...persistedExisting,
+        balance: nextBalance,
+        updatedAt: now,
+      });
+    }
+
+    setBalance(nextBalance);
+    handleCancelTaskExecution(task.id);
+  }, [
+    balance,
+    existing,
+    getTransactionLogBalanceDelta,
+    handleCancelTaskExecution,
+    resources,
+    setActiveEvent,
+    setResource,
+    setScheduleTask,
+    transactionAmountPrefix,
+    transactionLogExecuteDrafts,
+  ]);
 
   function createBalanceTransactionLogEntry(
     nextBalance: number,
@@ -1195,40 +1376,6 @@ export function AccountFormNew({ existing, onSaved, onCancel }: AccountFormNewPr
     );
   }
 
-  function updateTaskRecurrence(
-    section: 'account' | 'allowance',
-    id: string,
-    patch: Partial<ResourceRecurrenceRule>,
-  ) {
-    const setTasks = section === 'account' ? setAccountTasks : setAllowanceTasks;
-    setTasks((prev) =>
-      prev.map((task) =>
-        task.id === id
-          ? { ...task, recurrence: { ...task.recurrence, ...patch } }
-          : task,
-      ),
-    );
-  }
-
-  function toggleTaskDay(section: 'account' | 'allowance', id: string, day: RecurrenceDayOfWeek) {
-    const setTasks = section === 'account' ? setAccountTasks : setAllowanceTasks;
-    setTasks((prev) =>
-      prev.map((task) => {
-        if (task.id !== id) return task;
-        const days = task.recurrence.days.includes(day)
-          ? task.recurrence.days.filter((entry) => entry !== day)
-          : [...task.recurrence.days, day];
-        return { ...task, recurrence: { ...task.recurrence, days } };
-      }),
-    );
-  }
-
-  function updateTaskYearlySeedDate(section: 'account' | 'allowance', id: string, month: number, day: number) {
-    updateTaskRecurrence(section, id, {
-      seedDate: buildSeedDateFromParts(accountSeedYear, month, day),
-    });
-  }
-
   function removeTask(section: 'account' | 'allowance', id: string) {
     const tasks = section === 'account' ? accountTasks : allowanceTasks;
     const taskToRemove = tasks.find((task) => task.id === id);
@@ -1268,7 +1415,38 @@ export function AccountFormNew({ existing, onSaved, onCancel }: AccountFormNewPr
       >
         {label}
       </button>
-    );
+      );
+  }
+
+  function updateTaskRecurrence(
+    section: 'account' | 'allowance',
+    id: string,
+    patch: Partial<ResourceRecurrenceRule>,
+  ) {
+    const tasks = section === 'account' ? accountTasks : allowanceTasks;
+    const task = tasks.find((entry) => entry.id === id);
+    if (!task) return;
+
+    updateTask(section, id, 'recurrence', {
+      ...task.recurrence,
+      ...patch,
+    });
+  }
+
+  function toggleTaskDay(
+    section: 'account' | 'allowance',
+    id: string,
+    day: RecurrenceDayOfWeek,
+  ) {
+    const tasks = section === 'account' ? accountTasks : allowanceTasks;
+    const task = tasks.find((entry) => entry.id === id);
+    if (!task) return;
+
+    const days = task.recurrence.days.includes(day)
+      ? task.recurrence.days.filter((entry) => entry !== day)
+      : [...task.recurrence.days, day].filter((entry, index, arr) => arr.indexOf(entry) === index);
+
+    updateTaskRecurrence(section, id, { days });
   }
 
   function handleAddEntry() {
@@ -1371,399 +1549,377 @@ export function AccountFormNew({ existing, onSaved, onCancel }: AccountFormNewPr
 
     const renderExpandedTask = (task: TaskDraft) => {
       const isTransactionLog = section === 'account' && task.kind === 'transaction-log';
-      const activeEditorTab = isTransactionLog ? 'schedule' : (taskEditorTabs[task.id] ?? 'schedule');
+      const activeEditorTab = taskEditorTabs[task.id] ?? 'schedule';
       const selectedTaskType = normalizeResourceDraftTaskType(task.taskType);
       const taskInputFields = buildTaskInputFields(selectedTaskType, task.name.trim(), task.inputFields);
+      const sendToGtd = task.reminderLeadDays >= 0;
+      const isPeriodic = normalizeRecurrenceMode(task.recurrenceMode) === 'recurring';
+      const isExecutingTask = executingTaskIds[task.id] === true;
+      const transactionLogExecuteDraft = transactionLogExecuteDrafts[task.id] ?? {
+        amount: task.anticipatedValue,
+        note: '',
+      };
+      const transactionLogAmountLabel = task.anticipatedValue === ''
+        ? `${transactionAmountPrefix}0`
+        : `${transactionAmountPrefix}${Number(task.anticipatedValue).toLocaleString(undefined, {
+          minimumFractionDigits: 0,
+          maximumFractionDigits: 2,
+        })}`;
+      const executionTemplate: TaskTemplate = {
+        name: task.name.trim() || 'Untitled account task',
+        description: '',
+        icon: task.icon?.trim() || 'finance',
+        taskType: selectedTaskType === 'USE' ? 'TEXT' : selectedTaskType,
+        inputFields: taskInputFields as TaskTemplate['inputFields'],
+        xpAward: { health: 0, strength: 0, agility: 0, defense: 0, charisma: 0, wisdom: 0 },
+        cooldown: null,
+        media: null,
+        items: [],
+        secondaryTag: null,
+      };
+      const executionTask: Task = {
+        id: `account-task-preview:${task.id}`,
+        templateRef: null,
+        isUnique: true,
+        title: task.name.trim() || 'Untitled account task',
+        taskType: executionTemplate.taskType,
+        completionState: 'pending',
+        completedAt: null,
+        resultFields: taskExecutionDrafts[task.id] ?? {},
+        attachmentRef: null,
+        resourceRef: existing?.id ?? null,
+        location: null,
+        sharedWith: null,
+        questRef: null,
+        actRef: null,
+        secondaryTag: null,
+      };
 
-      const updateTaskInputFields = (patch: Partial<InputFields>) => {
+      const updateTaskInputFields = (draftTask: TaskDraft, fields: Partial<InputFields>) => {
         updateTask(section, task.id, 'inputFields', {
-          ...taskInputFields,
-          ...patch,
+          ...buildTaskInputFields(selectedTaskType, draftTask.name.trim(), draftTask.inputFields),
+          ...fields,
         });
       };
 
-      const renderActionFieldLabel = (label: string) => (
-        <label className="text-xs font-medium text-gray-500 dark:text-gray-400">{label}</label>
-      );
-
-      const renderActionConfigFields = () => {
-        switch (selectedTaskType) {
-          case 'CHECK':
-            return (
-              <div className="rounded-lg border border-dashed border-gray-300 bg-white px-3 py-3 text-sm text-gray-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300">
-                Simple checkbox completion
-              </div>
-            );
-          case 'COUNTER': {
-            const counterFields = taskInputFields as { target?: number; unit?: string };
-            return (
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <div className="space-y-1">
-                  {renderActionFieldLabel('Target count')}
-                  <input
-                    type="number"
-                    min={1}
-                    value={typeof counterFields.target === 'number' ? counterFields.target : 1}
-                    onChange={(event) => updateTaskInputFields({ target: Math.max(1, Number(event.target.value) || 1) })}
-                    className={SELECT_CLS}
-                  />
+      return (
+        <div key={task.id} className="flex h-full flex-1 flex-col rounded-xl bg-gray-50 dark:bg-gray-700">
+          <div className="shrink-0 space-y-3 px-4 py-4">
+            <div className="flex items-center gap-3">
+              <IconPicker
+                value={task.icon?.trim() || 'finance'}
+                onChange={(value) => updateTask(section, task.id, 'icon', value)}
+              />
+              {isTransactionLog ? (
+                <div className="min-w-0 text-sm font-semibold text-gray-900 dark:text-gray-100">
+                  {task.name.trim() || 'Untitled account task'}
                 </div>
-                <div className="space-y-1">
-                  {renderActionFieldLabel('Unit label')}
-                  <input
-                    type="text"
-                    value={typeof counterFields.unit === 'string' ? counterFields.unit : ''}
-                    onChange={(event) => updateTaskInputFields({ unit: event.target.value })}
-                    placeholder="e.g. reps, pages"
-                    className={SELECT_CLS}
-                  />
-                </div>
-              </div>
-            );
-          }
-          case 'DURATION': {
-            const durationFields = taskInputFields as { targetDuration?: number };
-            return (
-              <div className="space-y-1">
-                {renderActionFieldLabel('Target duration (minutes)')}
-                <input
-                  type="number"
-                  min={1}
-                  value={Math.max(1, Math.round((typeof durationFields.targetDuration === 'number' ? durationFields.targetDuration : 300) / 60))}
-                  onChange={(event) => updateTaskInputFields({
-                    targetDuration: Math.max(1, Number(event.target.value) || 1) * 60,
-                    unit: 'seconds',
-                  })}
-                  className={SELECT_CLS}
-                />
-              </div>
-            );
-          }
-          case 'TIMER': {
-            const timerFields = taskInputFields as { countdownFrom?: number };
-            return (
-              <div className="space-y-1">
-                {renderActionFieldLabel('Time limit (minutes)')}
-                <input
-                  type="number"
-                  min={1}
-                  value={Math.max(1, Math.round((typeof timerFields.countdownFrom === 'number' ? timerFields.countdownFrom : 300) / 60))}
-                  onChange={(event) => updateTaskInputFields({ countdownFrom: Math.max(1, Number(event.target.value) || 1) * 60 })}
-                  className={SELECT_CLS}
-                />
-              </div>
-            );
-          }
-          case 'RATING': {
-            const ratingFields = taskInputFields as { scale?: number; label?: string };
-            return (
-              <div className="space-y-1">
-                {renderActionFieldLabel('Scale')}
-                <select
-                  value={Number(ratingFields.scale ?? 5) > 5 ? 10 : 5}
-                  onChange={(event) => updateTaskInputFields({ scale: Number(event.target.value), label: typeof ratingFields.label === 'string' ? ratingFields.label : (task.name.trim() || 'Rate this') })}
-                  className={SELECT_CLS}
-                >
-                  <option value={5}>1-5</option>
-                  <option value={10}>1-10</option>
-                </select>
-              </div>
-            );
-          }
-          case 'TEXT': {
-            const textFields = taskInputFields as { prompt?: string };
-            return (
-              <div className="space-y-1">
-                {renderActionFieldLabel('Prompt text')}
+              ) : (
                 <input
                   type="text"
-                  value={typeof textFields.prompt === 'string' ? textFields.prompt : ''}
-                  onChange={(event) => updateTaskInputFields({ prompt: event.target.value, maxLength: null })}
-                  placeholder="What will the user be asked to write?"
-                  className={SELECT_CLS}
+                  value={task.name}
+                  onChange={(event) => updateTask(section, task.id, 'name', event.target.value)}
+                  placeholder="Task name"
+                  className={`${SELECT_CLS} min-w-0 flex-1`}
                 />
-              </div>
-            );
-          }
-          case 'CONSUME': {
-            const consumeFields = taskInputFields as { entries?: Array<{ itemTemplateRef?: string; quantity?: number }> };
-            const entries = Array.isArray(consumeFields.entries) && consumeFields.entries.length > 0
-              ? consumeFields.entries
-              : [{ itemTemplateRef: '', quantity: 1 }];
-            return (
-              <div className="space-y-1">
-                {renderActionFieldLabel('Quantity to consume per completion')}
-                <input
-                  type="number"
-                  min={1}
-                  value={entries[0]?.quantity ?? 1}
-                  onChange={(event) => updateTaskInputFields({
-                    entries: [
-                      {
-                        itemTemplateRef: entries[0]?.itemTemplateRef ?? '',
-                        quantity: Math.max(1, Number(event.target.value) || 1),
-                      },
-                    ],
-                  })}
-                  className={SELECT_CLS}
-                />
-              </div>
-            );
-          }
-          case 'USE': {
-            const useFields = taskInputFields as { prompt?: string };
-            return (
-              <div className="space-y-1">
-                {renderActionFieldLabel('Procedure steps')}
-                <textarea
-                  value={typeof useFields.prompt === 'string' ? useFields.prompt : ''}
-                  onChange={(event) => updateTaskInputFields({ prompt: event.target.value, maxLength: null })}
-                  rows={5}
-                  placeholder="Describe the procedure steps"
-                  className={`${SELECT_CLS} resize-none`}
-                />
-              </div>
-            );
-          }
-          default:
-            return null;
-        }
-      };
-
-      return (
-        <div key={task.id} className="flex flex-1 flex-col rounded-xl bg-gray-50 px-3 py-3 dark:bg-gray-700">
-          <div className="mb-3 flex items-center justify-between gap-2">
-            <button
-              type="button"
-              onClick={() => setExpandedTask(section, null)}
-              className="rounded-md px-2 py-1 text-sm font-medium text-blue-500 hover:text-blue-600"
-            >
-              ← Back
-            </button>
+              )}
+            </div>
             <div className="flex items-center gap-2">
               {renderTaskTabButton(task.id, 'schedule', 'Schedule', activeEditorTab)}
-              {!isTransactionLog ? renderTaskTabButton(task.id, 'action', 'Action', activeEditorTab) : null}
+              {renderTaskTabButton(task.id, 'action', 'Action', activeEditorTab)}
             </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto">
+          <div className="flex-1 overflow-y-auto px-4 pb-4">
             <div className="space-y-4">
-              {!isTransactionLog ? (
-                <div className="grid grid-cols-[auto_minmax(0,1fr)] items-end gap-3">
-                  <div className="space-y-1">
-                    <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Icon</label>
-                    <IconPicker value={task.icon || 'finance'} onChange={(value) => updateTask(section, task.id, 'icon', value)} align="left" />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Task Name</label>
-                    <input
-                      type="text"
-                      value={task.name}
-                      onChange={(event) => updateTask(section, task.id, 'name', event.target.value)}
-                      placeholder="Task name"
-                      maxLength={80}
-                      className={SELECT_CLS}
-                    />
-                  </div>
-                </div>
-              ) : null}
-
               {activeEditorTab === 'schedule' ? (
-                <>
-                  {isTransactionLog ? (
-                    <div className="space-y-3">
-                      <div className="flex items-center gap-3">
-                        <IconPicker value={task.icon || 'finance'} onChange={(value) => updateTask(section, task.id, 'icon', value)} align="left" />
-                        <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">{task.name}</div>
-                      </div>
-                      <div className="space-y-1">
-                        <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Amount</label>
-                        <div className="flex items-center rounded-md border border-gray-300 bg-white px-3 dark:border-gray-600 dark:bg-gray-800">
-                          <span className="shrink-0 pr-2 text-sm text-gray-500 dark:text-gray-400">{transactionAmountPrefix}</span>
-                          <input
-                            type="number"
-                            value={task.anticipatedValue}
-                            onChange={(event) => updateTask(section, task.id, 'anticipatedValue', event.target.value === '' ? '' : Number(event.target.value))}
-                            placeholder="0.00"
-                            step={0.01}
-                            className="w-full bg-transparent py-2 text-sm text-gray-900 focus:outline-none dark:text-gray-100"
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  ) : null}
-
-                  <div className="space-y-2">
-                    <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Recurrence</label>
-                    <div className="flex rounded-full bg-white p-1 dark:bg-gray-800">
-                      {(['recurring', 'never'] as const).map((mode) => (
+                <div className="space-y-4">
+                      <div className="grid grid-cols-2 gap-2 rounded-xl bg-gray-100 p-1 dark:bg-gray-800">
                         <button
-                          key={mode}
                           type="button"
-                          onClick={() => updateTask(section, task.id, 'recurrenceMode', mode)}
-                          className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
-                            normalizeRecurrenceMode(task.recurrenceMode) === mode
-                              ? 'bg-blue-500 text-white'
-                              : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
+                          onClick={() => updateTask(section, task.id, 'recurrenceMode', 'recurring')}
+                          className={`rounded-lg px-3 py-2 text-sm font-semibold transition-colors ${
+                            isPeriodic
+                              ? 'bg-white text-gray-900 shadow-sm dark:bg-gray-700 dark:text-gray-100'
+                              : 'text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-gray-100'
                           }`}
                         >
-                          {mode === 'recurring' ? 'Recurring' : 'On demand'}
+                          Periodic
                         </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {normalizeRecurrenceMode(task.recurrenceMode) === 'recurring' ? (
-                    <div className="space-y-3 rounded-xl border border-gray-200 bg-white px-3 py-3 dark:border-gray-600 dark:bg-gray-800/70">
-                      <div className="space-y-1">
-                        <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Frequency</label>
-                        <select
-                          value={task.recurrence.frequency}
-                          onChange={(event) =>
-                            updateTaskRecurrence(section, task.id, {
-                              frequency: event.target.value as ResourceRecurrenceRule['frequency'],
-                              days: event.target.value === 'weekly' ? task.recurrence.days : [],
-                              monthlyDay:
-                                event.target.value === 'monthly'
-                                  ? (task.recurrence.monthlyDay ?? getDayOfMonth(task.recurrence.seedDate))
-                                  : null,
-                            })
-                          }
-                          className={SELECT_CLS}
+                        <button
+                          type="button"
+                          onClick={() => updateTask(section, task.id, 'recurrenceMode', 'never')}
+                          className={`rounded-lg px-3 py-2 text-sm font-semibold transition-colors ${
+                            !isPeriodic
+                              ? 'bg-white text-gray-900 shadow-sm dark:bg-gray-700 dark:text-gray-100'
+                              : 'text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-gray-100'
+                          }`}
                         >
-                          <option value="daily">Daily</option>
-                          <option value="weekly">Weekly</option>
-                          <option value="monthly">Monthly</option>
-                          <option value="yearly">Yearly</option>
-                        </select>
+                          On Demand
+                        </button>
                       </div>
 
-                      <div className="space-y-1">
-                        <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Interval</label>
-                        <input
-                          type="number"
-                          min={1}
-                          max={99}
-                          value={task.recurrence.interval}
-                          onChange={(event) => updateTaskRecurrence(section, task.id, { interval: Math.max(1, Number(event.target.value) || 1) })}
-                          className={`w-14 ${SMALL_INPUT_CLS}`}
-                        />
-                      </div>
-
-                      {task.recurrence.frequency === 'weekly' ? (
-                        <div className="space-y-1">
-                          <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Days</label>
-                          <div className="flex flex-wrap gap-2">
-                            {DOW_LABELS.map(({ key, label }) => (
-                              <button
-                                key={key}
-                                type="button"
-                                onClick={() => toggleTaskDay(section, task.id, key)}
-                                className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
-                                  task.recurrence.days.includes(key)
-                                    ? 'bg-blue-500 text-white'
-                                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600'
-                                }`}
+                      {isPeriodic ? (
+                        <div className="space-y-3">
+                          <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_8rem]">
+                            <div className="space-y-1">
+                              <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Frequency</label>
+                              <select
+                                value={task.recurrence.frequency}
+                                onChange={(event) =>
+                                  updateTaskRecurrence(section, task.id, {
+                                    frequency: event.target.value as ResourceRecurrenceRule['frequency'],
+                                    days: event.target.value === 'weekly' ? task.recurrence.days : [],
+                                    monthlyDay:
+                                      event.target.value === 'monthly'
+                                        ? (task.recurrence.monthlyDay ?? getDayOfMonth(task.recurrence.seedDate))
+                                        : null,
+                                  })
+                                }
+                                className={SELECT_CLS}
                               >
-                                {label}
-                              </button>
-                            ))}
+                                <option value="daily">Daily</option>
+                                <option value="weekly">Weekly</option>
+                                <option value="monthly">Monthly</option>
+                                <option value="yearly">Yearly</option>
+                              </select>
+                            </div>
+                            <div className="space-y-1">
+                              <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Interval</label>
+                              <input
+                                type="number"
+                                min={1}
+                                max={99}
+                                value={task.recurrence.interval}
+                                onChange={(event) => updateTaskRecurrence(section, task.id, { interval: Math.max(1, Number(event.target.value) || 1) })}
+                                className={SELECT_CLS}
+                              />
+                            </div>
+                          </div>
+
+                          {task.recurrence.frequency === 'weekly' ? (
+                            <div className="space-y-1">
+                              <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Days</label>
+                              <div className="flex flex-wrap gap-1.5">
+                                {DOW_LABELS.map(({ key, label }) => (
+                                  <button
+                                    key={key}
+                                    type="button"
+                                    onClick={() => toggleTaskDay(section, task.id, key)}
+                                    className={`h-8 min-w-8 rounded-md px-2 text-xs font-medium transition-colors ${
+                                      task.recurrence.days.includes(key)
+                                        ? 'bg-blue-500 text-white'
+                                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600'
+                                    }`}
+                                  >
+                                    {label}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          ) : null}
+
+                          <div className="grid gap-3 sm:grid-cols-2">
+                            <div className="space-y-1">
+                              <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Start Date</label>
+                              <input
+                                type="date"
+                                value={task.recurrence.seedDate}
+                                onChange={(event) =>
+                                  updateTaskRecurrence(section, task.id, {
+                                    seedDate: event.target.value,
+                                    monthlyDay:
+                                      task.recurrence.frequency === 'monthly'
+                                        ? (task.recurrence.monthlyDay ?? getDayOfMonth(event.target.value))
+                                        : task.recurrence.monthlyDay,
+                                  })
+                                }
+                                className={SELECT_CLS}
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <label className="text-xs font-medium text-gray-500 dark:text-gray-400">End Date</label>
+                              <input
+                                type="date"
+                                value={task.recurrence.endsOn ?? ''}
+                                onChange={(event) => updateTaskRecurrence(section, task.id, { endsOn: event.target.value || null })}
+                                className={SELECT_CLS}
+                              />
+                            </div>
+                          </div>
+
+                          <div className="space-y-3 rounded-xl border border-gray-200 bg-white px-3 py-3 dark:border-gray-600 dark:bg-gray-800/70">
+                            <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200">
+                              <input
+                                type="checkbox"
+                                checked={sendToGtd}
+                                onChange={(event) => updateTask(section, task.id, 'reminderLeadDays', event.target.checked ? Math.max(0, task.reminderLeadDays) : -1)}
+                                className="h-4 w-4 rounded border-gray-300 text-blue-500 focus:ring-blue-500 dark:border-gray-500"
+                              />
+                              <span>Send to GTD list</span>
+                            </label>
+
+                            {sendToGtd ? (
+                              <div className="space-y-1">
+                                <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Days before (0 = on the day)</label>
+                                <input
+                                  type="number"
+                                  min={0}
+                                  max={365}
+                                  value={Math.max(0, task.reminderLeadDays)}
+                                  onChange={(event) => updateTask(section, task.id, 'reminderLeadDays', Math.max(0, Number(event.target.value) || 0))}
+                                  className={`w-24 ${SMALL_INPUT_CLS}`}
+                                />
+                              </div>
+                            ) : null}
                           </div>
                         </div>
-                      ) : null}
-
-                      {task.recurrence.frequency === 'monthly' ? (
+                      ) : (
+                        <p className="text-sm text-gray-500 dark:text-gray-400">Available to execute in Resource and Task Room</p>
+                      )}
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {isExecutingTask ? (
+                    isTransactionLog ? (
+                      <div className="space-y-3">
                         <div className="space-y-1">
-                          <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Day of month</label>
-                          <input
-                            type="number"
-                            min={1}
-                            max={31}
-                            value={task.recurrence.monthlyDay ?? getDayOfMonth(task.recurrence.seedDate)}
-                            onChange={(event) =>
-                              updateTaskRecurrence(section, task.id, {
-                                monthlyDay: Math.min(31, Math.max(1, Number(event.target.value) || 1)),
-                              })
-                            }
-                            className={`w-20 ${SMALL_INPUT_CLS}`}
-                          />
-                        </div>
-                      ) : null}
-
-                      {task.recurrence.frequency === 'yearly' ? (
-                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_auto]">
-                          <div className="space-y-1">
-                            <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Month</label>
-                            <select
-                              value={getMonthOfYear(task.recurrence.seedDate)}
-                              onChange={(event) =>
-                                updateTaskYearlySeedDate(
-                                  section,
-                                  task.id,
-                                  Number(event.target.value),
-                                  getDayOfMonth(task.recurrence.seedDate),
-                                )
-                              }
-                              className={SELECT_CLS}
-                            >
-                              {MONTH_OPTIONS.map((option) => (
-                                <option key={option.value} value={option.value}>{option.label}</option>
-                              ))}
-                            </select>
-                          </div>
-
-                          <div className="space-y-1">
-                            <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Day of month</label>
+                          <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Amount</label>
+                          <div className="flex items-center rounded-md border border-gray-300 bg-white px-3 dark:border-gray-600 dark:bg-gray-800">
+                            <span className="shrink-0 pr-2 text-sm text-gray-500 dark:text-gray-400">{transactionAmountPrefix}</span>
                             <input
                               type="number"
-                              min={1}
-                              max={31}
-                              value={getDayOfMonth(task.recurrence.seedDate)}
-                              onChange={(event) =>
-                                updateTaskYearlySeedDate(
-                                  section,
-                                  task.id,
-                                  getMonthOfYear(task.recurrence.seedDate),
-                                  Math.min(31, Math.max(1, Number(event.target.value) || 1)),
-                                )
-                              }
-                              className={`w-20 ${SMALL_INPUT_CLS}`}
+                              min={0}
+                              step={kind === 'bank' && cryptoUnit === 'sats' ? 1 : 0.01}
+                              value={transactionLogExecuteDraft.amount}
+                              onChange={(event) => setTransactionLogExecuteDrafts((prev) => ({
+                                ...prev,
+                                [task.id]: {
+                                  ...transactionLogExecuteDraft,
+                                  amount: event.target.value === '' ? '' : Number(event.target.value),
+                                },
+                              }))}
+                              placeholder="0.00"
+                              className="w-full bg-transparent py-2 text-sm text-gray-900 focus:outline-none dark:text-gray-100"
                             />
                           </div>
                         </div>
-                      ) : null}
-                    </div>
-                  ) : null}
 
-                  {normalizeRecurrenceMode(task.recurrenceMode) === 'recurring' ? (
-                    <NumberInput
-                      label="Reminder Lead Days"
-                      value={task.reminderLeadDays < 0 ? '' : task.reminderLeadDays}
-                      onChange={(value) => updateTask(section, task.id, 'reminderLeadDays', value === '' ? -1 : Math.max(0, Number(value)))}
-                      min={0}
-                      step={1}
-                    />
-                  ) : null}
-                </>
-              ) : (
-                <div className="space-y-4">
-                  <div className="space-y-1">
-                    <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Task Type</label>
-                    <select
-                      value={selectedTaskType}
-                      onChange={(event) => updateTask(section, task.id, 'taskType', event.target.value)}
-                      className={SELECT_CLS}
-                    >
-                      {RESOURCE_TASK_TYPE_OPTIONS.map((taskType) => (
-                        <option key={taskType.value} value={taskType.value}>{taskType.label}</option>
-                      ))}
-                    </select>
-                  </div>
+                        <div className="space-y-1">
+                          <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Note (optional)</label>
+                          <input
+                            type="text"
+                            value={transactionLogExecuteDraft.note}
+                            onChange={(event) => setTransactionLogExecuteDrafts((prev) => ({
+                              ...prev,
+                              [task.id]: {
+                                ...transactionLogExecuteDraft,
+                                note: event.target.value,
+                              },
+                            }))}
+                            placeholder="Add a note"
+                            className={SELECT_CLS}
+                          />
+                        </div>
 
-                  <div className="space-y-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-3 dark:border-gray-600 dark:bg-gray-800/40">
-                    <div className="text-xs font-medium text-gray-500 dark:text-gray-400">Template configuration</div>
-                    {renderActionConfigFields()}
-                  </div>
+                        <div className="flex justify-end gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handleCancelTaskExecution(task.id)}
+                            className="rounded-md border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-white dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-800"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleTransactionLogExecuteConfirm(task)}
+                            disabled={transactionLogExecuteDraft.amount === ''}
+                            className="rounded-md bg-blue-500 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            Confirm
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        <ExecuteTaskInput
+                          taskId={task.id}
+                          executionTemplate={executionTemplate}
+                          executionTask={executionTask}
+                          onCompleteTask={handleTaskExecutionComplete}
+                          onResultChangeTask={handleTaskExecutionResultChange}
+                        />
+                        <div className="flex justify-end">
+                          <button
+                            type="button"
+                            onClick={() => handleCancelTaskExecution(task.id)}
+                            className="rounded-md border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-white dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-800"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    )
+                  ) : (
+                    isTransactionLog ? (
+                      <>
+                        <div className="space-y-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-3 dark:border-gray-600 dark:bg-gray-800/40">
+                          <div className="flex items-center justify-between gap-3 rounded-lg bg-white px-3 py-2 dark:bg-gray-800/70">
+                            <span className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Task Type</span>
+                            <span className="text-sm font-medium text-gray-900 dark:text-gray-100">Transaction Log</span>
+                          </div>
+                          <div className="flex items-center justify-between gap-3 rounded-lg bg-white px-3 py-2 dark:bg-gray-800/70">
+                            <span className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Amount</span>
+                            <span className="text-sm font-medium text-gray-900 dark:text-gray-100">{transactionLogAmountLabel}</span>
+                          </div>
+                        </div>
+
+                        <div className="flex justify-end">
+                          <button
+                            type="button"
+                            onClick={() => handleStartTaskExecution(task)}
+                            className="rounded-md bg-blue-500 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-600"
+                          >
+                            Execute
+                          </button>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="text-xs font-medium text-gray-500 dark:text-gray-400">Configure task parameters</div>
+                        <div className="space-y-1">
+                          <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Task Type</label>
+                          <select
+                            value={selectedTaskType}
+                            onChange={(event) => updateTask(section, task.id, 'taskType', event.target.value)}
+                            className={SELECT_CLS}
+                          >
+                            {RESOURCE_TASK_TYPE_OPTIONS.map((taskType) => (
+                              <option key={taskType.value} value={taskType.value}>{taskType.label}</option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div className="space-y-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-3 dark:border-gray-600 dark:bg-gray-800/40">
+                          <TaskTypeConfigEditor
+                            taskType={task.taskType ?? 'CHECK'}
+                            inputFields={task.inputFields ?? {}}
+                            onChange={(fields) => updateTaskInputFields(task, fields)}
+                          />
+                        </div>
+
+                        <div className="flex justify-end">
+                          <button
+                            type="button"
+                            onClick={() => handleStartTaskExecution(task)}
+                            className="rounded-md bg-blue-500 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-600"
+                          >
+                            Execute
+                          </button>
+                        </div>
+                      </>
+                    )
+                  )}
 
                   {section === 'allowance' ? (
                     <label className="flex items-center gap-2 rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-600 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200">
@@ -1781,7 +1937,7 @@ export function AccountFormNew({ existing, onSaved, onCancel }: AccountFormNewPr
             </div>
           </div>
 
-          <div className="mt-4 flex items-center justify-between gap-2 border-t border-gray-200 pt-3 dark:border-gray-600">
+          <div className="sticky bottom-0 mt-auto flex items-center justify-between gap-2 border-t border-gray-200 bg-gray-50 px-4 py-3 dark:border-gray-600 dark:bg-gray-700">
             {isTransactionLog ? <span /> : (
               <button
                 type="button"
@@ -1945,6 +2101,7 @@ export function AccountFormNew({ existing, onSaved, onCancel }: AccountFormNewPr
       activeTab={activeTab}
       onTabChange={setActiveTab}
       isSaving={!canSave}
+      hideChrome={hasExpandedTask}
     >
       {activeTab === 'details' ? (
         <div className="space-y-3 px-4 py-3">
@@ -2038,9 +2195,9 @@ export function AccountFormNew({ existing, onSaved, onCancel }: AccountFormNewPr
                 </div>
               ) : (
                 <>
-                  <div className={kind === 'debt' ? 'grid grid-cols-2 gap-2' : 'grid grid-cols-1 items-end gap-3 sm:grid-cols-[auto_minmax(0,1fr)]'}>
+                  <div className="flex flex-row gap-2 items-center">
                     {isKindConfirmed ? (
-                      <div className="flex flex-col gap-1">
+                      <div className="flex flex-1 min-w-0 flex-col gap-1">
                         <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Kind</label>
                         <button
                           type="button"
@@ -2048,7 +2205,7 @@ export function AccountFormNew({ existing, onSaved, onCancel }: AccountFormNewPr
                             setPendingKind(kind);
                             setShowKindChangeConfirm(true);
                           }}
-                          className="rounded-full border border-gray-300 bg-gray-50 px-3 py-1.5 text-sm font-medium text-gray-700 hover:border-amber-300 hover:text-amber-700 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:border-amber-500/50 dark:hover:text-amber-200"
+                          className="flex-1 rounded-full border border-gray-300 bg-gray-50 px-3 py-1.5 text-sm font-medium text-gray-700 hover:border-amber-300 hover:text-amber-700 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:border-amber-500/50 dark:hover:text-amber-200"
                         >
                           {KIND_OPTIONS.find((opt) => opt.value === kind)?.label ?? kind}
                         </button>
@@ -2056,42 +2213,44 @@ export function AccountFormNew({ existing, onSaved, onCancel }: AccountFormNewPr
                     ) : null}
 
                     {kind === 'bank' ? (
-                      <div className="flex flex-col gap-1">
+                      <div className="flex flex-1 min-w-0 flex-col gap-1">
                         <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Balance</label>
                         <button
                           type="button"
                           onClick={handleStartBalanceEdit}
-                          className="rounded-full border border-blue-300 bg-blue-50 px-3 py-2 text-left text-sm font-medium text-blue-700 hover:border-blue-400 hover:bg-blue-100 dark:border-blue-500/40 dark:bg-blue-500/10 dark:text-blue-100 dark:hover:border-blue-400 dark:hover:bg-blue-500/20"
+                          className="flex-1 rounded-full border border-blue-300 bg-blue-50 px-3 py-2 text-left text-sm font-medium text-blue-700 hover:border-blue-400 hover:bg-blue-100 dark:border-blue-500/40 dark:bg-blue-500/10 dark:text-blue-100 dark:hover:border-blue-400 dark:hover:bg-blue-500/20"
                         >
                           {bankBalancePillLabel}
                         </button>
                       </div>
                     ) : kind === 'debt' ? (
-                      <div className="flex flex-col gap-1">
+                      <div className="flex flex-1 min-w-0 flex-col gap-1">
                         <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Current Balance</label>
                         <button
                           type="button"
                           onClick={handleStartDebtBalanceEdit}
-                          className="rounded-full border border-blue-300 bg-blue-50 px-3 py-2 text-left text-sm font-medium text-blue-700 hover:border-blue-400 hover:bg-blue-100 dark:border-blue-500/40 dark:bg-blue-500/10 dark:text-blue-100 dark:hover:border-blue-400 dark:hover:bg-blue-500/20"
+                          className="flex-1 rounded-full border border-blue-300 bg-blue-50 px-3 py-2 text-left text-sm font-medium text-blue-700 hover:border-blue-400 hover:bg-blue-100 dark:border-blue-500/40 dark:bg-blue-500/10 dark:text-blue-100 dark:hover:border-blue-400 dark:hover:bg-blue-500/20"
                         >
                           {debtBalancePillLabel}
                         </button>
                       </div>
                     ) : kind === 'allowance' ? (
-                      <div className="flex flex-col gap-1">
+                      <div className="flex flex-1 min-w-0 flex-col gap-1">
                         <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Balance</label>
                         <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-600 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200">
                           {balance === '' ? 'No balance yet' : formatAmountWithTicker(balance, '$')}
                         </div>
                       </div>
                     ) : (
-                      <NumberInput
-                        label={amountFieldLabel}
-                        value={balance}
-                        onChange={handleBalanceChange}
-                        placeholder="0.00"
-                        step={0.01}
-                      />
+                      <div className="flex-1 min-w-0">
+                        <NumberInput
+                          label={amountFieldLabel}
+                          value={balance}
+                          onChange={handleBalanceChange}
+                          placeholder="0.00"
+                          step={0.01}
+                        />
+                      </div>
                     )}
                   </div>
 
