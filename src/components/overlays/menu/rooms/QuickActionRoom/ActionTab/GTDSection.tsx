@@ -15,6 +15,7 @@ import { GlowRing } from '../../../../../shared/GlowRing';
 import { IconDisplay } from '../../../../../shared/IconDisplay';
 import { ONBOARDING_GLOW } from '../../../../../../constants/onboardingKeys';
 import { useGlows } from '../../../../../../hooks/useOnboardingGlow';
+import { resolveTaskDisplayName } from '../../../../../../utils/resolveTaskDisplayName';
 
 type GtdEntry =
   | {
@@ -102,9 +103,11 @@ function buildPreviewTask(entry: GtdEntry): Task | null {
   return {
     id: `preview-${entry.item.id}`,
     templateRef: entry.item.templateRef ?? `manual-preview:${entry.item.id}`,
+    title: entry.item.title,
+    taskType: entry.template.taskType,
     completionState: 'pending',
     completedAt: null,
-    resultFields: {},
+    resultFields: (entry.item.parameters ?? {}) as Partial<InputFields>,
     attachmentRef: null,
     resourceRef: entry.item.resourceRef,
     location: null,
@@ -179,6 +182,7 @@ export function GTDSection() {
       const template = getTemplateByRef(taskTemplates, task.templateRef);
       const resource = task.resourceRef ? resources[task.resourceRef] ?? null : null;
       const dueDate = getSystemDueDate(task);
+      const taskName = resolveTaskDisplayName(task, taskTemplates, starterTaskTemplates);
       return {
         kind: 'system',
         id: task.id,
@@ -186,7 +190,9 @@ export function GTDSection() {
         template,
         resource,
         isMilestone: task.questRef !== null,
-        title: task.title ?? getSystemLabel(task) ?? template?.name ?? resource?.name ?? task.templateRef ?? 'Unknown task',
+        title: taskName !== 'Unknown task'
+          ? taskName
+          : getSystemLabel(task) ?? resource?.name ?? 'Unknown task',
         note: template?.description ?? null,
         dueDate,
       };

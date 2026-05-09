@@ -981,11 +981,6 @@ export function AccountFormNew({ existing, onSaved, onCancel }: AccountFormNewPr
     setBalance(value);
   }
 
-  const getTransactionLogBalanceDelta = useCallback((amount: number): number => {
-    if (kind === 'bank' || kind === 'income') return amount;
-    return -amount;
-  }, [kind]);
-
   const handleCancelTaskExecution = useCallback((taskId: string) => {
     setExecutingTaskIds((prev) => ({ ...prev, [taskId]: false }));
     setTransactionLogExecuteDrafts((prev) => {
@@ -1048,6 +1043,43 @@ export function AccountFormNew({ existing, onSaved, onCancel }: AccountFormNewPr
     handleCancelTaskExecution(taskId);
   }, [handleCancelTaskExecution, setActiveEvent]);
 
+  const formatTransactionLogAmountText = useCallback((amount: number) => (
+    amount.toLocaleString(undefined, {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 2,
+    })
+  ), []);
+
+  const createTransactionLogCompletionTask = useCallback((
+    account: AccountResource,
+    accountTask: TaskDraft,
+    amount: number,
+    note: string,
+    now: string,
+    resultValue?: string,
+  ): Task => ({
+    id: uuidv4(),
+    templateRef: null,
+    isUnique: true,
+    title: accountTask.name,
+    taskType: 'TEXT',
+    completionState: 'complete',
+    completedAt: now,
+    resultFields: ({
+      resourceTaskId: `resource-task:${account.id}:account-task:${accountTask.id}`,
+      amount,
+      note,
+      value: resultValue ?? note,
+    } as unknown) as Task['resultFields'],
+    attachmentRef: null,
+    resourceRef: account.id,
+    location: null,
+    sharedWith: null,
+    questRef: null,
+    actRef: null,
+    secondaryTag: null,
+  }), []);
+
   const handleTransactionLogExecuteConfirm = useCallback((task: TaskDraft) => {
     if (!existing || task.kind !== 'transaction-log') return;
 
@@ -1064,7 +1096,6 @@ export function AccountFormNew({ existing, onSaved, onCancel }: AccountFormNewPr
       persistedExisting?.type === 'account' && typeof persistedExisting.balance === 'number'
         ? persistedExisting.balance
         : (typeof balance === 'number' ? balance : 0);
-    const nextBalance = currentPersistedBalance + getTransactionLogBalanceDelta(amount);
     const existingQaEvent = useScheduleStore.getState().activeEvents[qaEventId];
     const qaEvent: QuickActionsEvent =
       existingQaEvent && 'completions' in existingQaEvent
@@ -1077,54 +1108,86 @@ export function AccountFormNew({ existing, onSaved, onCancel }: AccountFormNewPr
             xpAwarded: 0,
             sharedCompletions: null,
           };
-    const completionTaskId = uuidv4();
-    const completedTask: Task = {
-      id: completionTaskId,
-      templateRef: null,
-      isUnique: true,
-      title: task.name,
-      taskType: 'TEXT',
-      completionState: 'complete',
-      completedAt: now,
-      resultFields: ({
-        resourceTaskId: `resource-task:${existing.id}:account-task:${task.id}`,
-        amount,
-        note,
-        value: note || `Transaction logged: ${transactionAmountPrefix}${amount.toLocaleString(undefined, {
-          minimumFractionDigits: 0,
-          maximumFractionDigits: 2,
-        })}`,
-      } as unknown) as Task['resultFields'],
-      attachmentRef: null,
-      resourceRef: existing.id,
-      location: null,
-      sharedWith: null,
-      questRef: null,
-      actRef: null,
-      secondaryTag: null,
-    };
+    const amountText = formatTransactionLogAmountText(amount);
+    const linkedBank = existing.pullFromAccountId
+      ? resources[existing.pullFromAccountId]
+      : undefined;
+    const linkedBankAccount = linkedBank?.type === 'account' && linkedBank.kind === 'bank'
+      ? linkedBank
+      : null;
+    const defaultValue = `Transaction logged: ${transactionAmountPrefix}${amountText}`;
+    const warningText = 'No linked bank account set — transaction logged only.';
+    const shouldUpdateLinkedBank = kind !== 'bank' && linkedBankAccount != null;
+    const currentResultValue = kind === 'bank'
+      ? (note || defaultValue)
+      : linkedBankAccount == null
+        ? `${note || defaultValue} ${warningText}`.trim()
+        : (note || defaultValue);
+    const currentCompletedTask = createTransactionLogCompletionTask(
+      existing,
+      task,
+      amount,
+      note,
+      now,
+      currentResultValue,
+    );
+    const nextCompletions = [...qaEvent.completions, { taskRef: currentCompletedTask.id, completedAt: now }];
 
-    setScheduleTask(completedTask);
-    setActiveEvent({
-      ...qaEvent,
-      completions: [...qaEvent.completions, { taskRef: completionTaskId, completedAt: now }],
-    });
+    setScheduleTask(currentCompletedTask);
 
-    if (persistedExisting?.type === 'account') {
+    if (kind === 'bank') {
+      if (persistedExisting?.type === 'account') {
+        const nextBalance = currentPersistedBalance + amount;
+        setResource({
+          ...persistedExisting,
+          balance: nextBalance,
+          updatedAt: now,
+        });
+        setBalance(nextBalance);
+      }
+    } else if (shouldUpdateLinkedBank) {
+      const linkedTransactionLogTask = linkedBankAccount.accountTasks?.find((accountTask) => accountTask.kind === 'transaction-log');
+      const linkedBankBalance = typeof linkedBankAccount.balance === 'number' ? linkedBankAccount.balance : 0;
+      const linkedBankNextBalance = kind === 'income'
+        ? linkedBankBalance + amount
+        : linkedBankBalance - amount;
+
       setResource({
-        ...persistedExisting,
-        balance: nextBalance,
+        ...linkedBankAccount,
+        balance: linkedBankNextBalance,
         updatedAt: now,
       });
+
+      if (linkedTransactionLogTask) {
+        const linkedNote = kind === 'income'
+          ? `Deposit from ${existing.name}: ${amountText}`
+          : `Payment to ${existing.name}: ${amountText}`;
+        const linkedCompletedTask = createTransactionLogCompletionTask(
+          linkedBankAccount,
+          toTaskDraft(linkedTransactionLogTask),
+          amount,
+          linkedNote,
+          now,
+          linkedNote,
+        );
+        setScheduleTask(linkedCompletedTask);
+        nextCompletions.push({ taskRef: linkedCompletedTask.id, completedAt: now });
+      }
     }
 
-    setBalance(nextBalance);
+    setActiveEvent({
+      ...qaEvent,
+      completions: nextCompletions,
+    });
+
     handleCancelTaskExecution(task.id);
   }, [
     balance,
+    createTransactionLogCompletionTask,
     existing,
-    getTransactionLogBalanceDelta,
+    formatTransactionLogAmountText,
     handleCancelTaskExecution,
+    kind,
     resources,
     setActiveEvent,
     setResource,

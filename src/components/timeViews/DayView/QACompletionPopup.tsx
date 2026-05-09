@@ -8,6 +8,8 @@ import { TaskTypeInputRenderer } from '../../overlays/event/TaskTypeInputRendere
 import { readPhotoFile } from '../../../utils/photoCapture';
 import { resolveTemplate } from './qaUtils';
 import type { InputFields } from '../../../types/taskTemplate';
+import { starterTaskTemplates } from '../../../coach/StarterQuestLibrary';
+import { resolveTaskDisplayName } from '../../../utils/resolveTaskDisplayName';
 
 interface QACompletionPopupProps {
   qaEventId: string;
@@ -356,7 +358,7 @@ export function QACompletionPopup({ qaEventId, completion, albumEntry, onClose }
 
   const task = tasks[completion.taskRef];
   const template = task?.templateRef ? resolveTemplate(task.templateRef, taskTemplates) : null;
-  const taskName = template?.name ?? (task?.templateRef ?? '—');
+  const taskName = task ? resolveTaskDisplayName(task, taskTemplates, starterTaskTemplates) : '—';
   const isRoll = template?.taskType === 'ROLL';
 
   const rollFields = isRoll && task
