@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { taskTemplateLibrary } from '../../../../../../coach';
 import { CUSTOM_ITEM_TEMPLATE_PREFIX, getItemTaskTemplateMeta } from '../../../../../../coach/ItemLibrary';
@@ -67,6 +67,13 @@ interface TaskDraft {
 interface TransactionLogExecuteDraft {
   amount: number | '';
   note: string;
+}
+
+interface TransactionLogLinkedAccountMeta {
+  linkedAccountId: string;
+  linkedAccountName: string;
+  linkedAccountIcon: string;
+  direction: 'deposit' | 'withdrawal';
 }
 
 interface AllowanceTaskSourceOption {
@@ -316,7 +323,7 @@ function formatCompactAmount(value: number, prefix = ''): string {
 }
 
 function getTransactionAmountPrefix(kind: AccountKind, cryptoTicker?: string): string {
-  if (kind === 'bill' || kind === 'subscription') return '- ';
+  if (kind === 'bill' || kind === 'subscription' || kind === 'debt' || kind === 'allowance') return '- ';
   if (kind === 'income') return '+ ';
   return `${cryptoTicker?.trim() || '$'} `;
 }
@@ -594,7 +601,7 @@ function collectExistingResourceTaskOptions(
               value: `resource:${inventory.id}:inventory:${container.id}:${item.id}:${task.id}`,
               label: `${inventory.name} - ${display.name}`,
               icon: display.icon || inventory.icon || 'task',
-              detail: `Existing inventory task${container.name ? ` · ${container.name}` : ''}`,
+              detail: `Existing inventory task${container.name ? ` \u00B7 ${container.name}` : ''}`,
               seed: buildTaskDraftSeed(
                 display.name,
                 display.icon || inventory.icon || 'task',
@@ -910,10 +917,28 @@ export function AccountFormNew({ existing, onSaved, onCancel }: AccountFormNewPr
               key: `${event.id}:${completion.taskRef}:${completion.completedAt}`,
               completedAt: completion.completedAt,
               value: typeof resultFields.value === 'string' ? resultFields.value : '',
+              note: typeof resultFields.note === 'string' ? resultFields.note : '',
               amount: typeof resultFields.amount === 'number' ? resultFields.amount : null,
+              linkedAccountId: typeof resultFields.linkedAccountId === 'string' ? resultFields.linkedAccountId : null,
+              linkedAccountName: typeof resultFields.linkedAccountName === 'string' ? resultFields.linkedAccountName : null,
+              linkedAccountIcon: typeof resultFields.linkedAccountIcon === 'string' ? resultFields.linkedAccountIcon : null,
+              direction:
+                resultFields.direction === 'deposit' || resultFields.direction === 'withdrawal'
+                  ? resultFields.direction
+                  : null,
             };
           })
-          .filter((entry): entry is { key: string; completedAt: string; value: string; amount: number | null } => Boolean(entry)),
+          .filter((entry): entry is {
+            key: string;
+            completedAt: string;
+            value: string;
+            note: string;
+            amount: number | null;
+            linkedAccountId: string | null;
+            linkedAccountName: string | null;
+            linkedAccountIcon: string | null;
+            direction: 'deposit' | 'withdrawal' | null;
+          } => Boolean(entry)),
       )
       .sort((left, right) => right.completedAt.localeCompare(left.completedAt));
   }, [activeEvents, historyEvents, scheduleTasks, transactionResourceTaskId]);
@@ -1050,6 +1075,10 @@ export function AccountFormNew({ existing, onSaved, onCancel }: AccountFormNewPr
     })
   ), []);
 
+  const formatKindAwareAmount = useCallback((accountKind: AccountKind, amount: number, ticker?: string) => (
+    `${getTransactionAmountPrefix(accountKind, ticker)}${formatTransactionLogAmountText(amount)}`
+  ), [formatTransactionLogAmountText]);
+
   const createTransactionLogCompletionTask = useCallback((
     account: AccountResource,
     accountTask: TaskDraft,
@@ -1057,6 +1086,7 @@ export function AccountFormNew({ existing, onSaved, onCancel }: AccountFormNewPr
     note: string,
     now: string,
     resultValue?: string,
+    linkedAccountMeta?: TransactionLogLinkedAccountMeta,
   ): Task => ({
     id: uuidv4(),
     templateRef: null,
@@ -1068,8 +1098,12 @@ export function AccountFormNew({ existing, onSaved, onCancel }: AccountFormNewPr
     resultFields: ({
       resourceTaskId: `resource-task:${account.id}:account-task:${accountTask.id}`,
       amount,
-      note,
+      note: resultValue ?? note,
       value: resultValue ?? note,
+      linkedAccountId: linkedAccountMeta?.linkedAccountId,
+      linkedAccountName: linkedAccountMeta?.linkedAccountName,
+      linkedAccountIcon: linkedAccountMeta?.linkedAccountIcon,
+      direction: linkedAccountMeta?.direction,
     } as unknown) as Task['resultFields'],
     attachmentRef: null,
     resourceRef: account.id,
@@ -1108,21 +1142,54 @@ export function AccountFormNew({ existing, onSaved, onCancel }: AccountFormNewPr
             xpAwarded: 0,
             sharedCompletions: null,
           };
-    const amountText = formatTransactionLogAmountText(amount);
+    const formattedAmount = formatKindAwareAmount(kind, amount, cryptoTicker);
     const linkedBank = existing.pullFromAccountId
       ? resources[existing.pullFromAccountId]
       : undefined;
     const linkedBankAccount = linkedBank?.type === 'account' && linkedBank.kind === 'bank'
       ? linkedBank
       : null;
-    const defaultValue = `Transaction logged: ${transactionAmountPrefix}${amountText}`;
-    const warningText = 'No linked bank account set — transaction logged only.';
     const shouldUpdateLinkedBank = kind !== 'bank' && linkedBankAccount != null;
-    const currentResultValue = kind === 'bank'
-      ? (note || defaultValue)
-      : linkedBankAccount == null
-        ? `${note || defaultValue} ${warningText}`.trim()
-        : (note || defaultValue);
+    const linkedAccountMeta = linkedBankAccount
+      ? {
+          linkedAccountId: linkedBankAccount.id,
+          linkedAccountName: linkedBankAccount.name,
+          linkedAccountIcon: linkedBankAccount.icon,
+          direction: kind === 'income' ? 'deposit' : 'withdrawal',
+        } satisfies TransactionLogLinkedAccountMeta
+      : undefined;
+    const noLinkedBankText = 'Transaction logged only \u2014 no linked bank account set';
+    let debtPrincipalPortion: number | null = null;
+    let debtInterestPortion: number | null = null;
+    let debtNextBalance: number | null = null;
+
+    if (kind === 'debt') {
+      const monthlyRate = (existing.debtRate ?? 0) / 12 / 100;
+      const interestPortion = currentPersistedBalance * monthlyRate;
+      const principalPortion = Math.max(0, amount - interestPortion);
+      debtPrincipalPortion = principalPortion;
+      debtInterestPortion = interestPortion;
+      debtNextBalance = Math.max(0, currentPersistedBalance - principalPortion);
+    }
+
+    const currentResultValue = (() => {
+      if (kind === 'debt' && debtPrincipalPortion != null && debtInterestPortion != null) {
+        const debtSummary = `${formattedAmount} paid \u00B7 Principal: ${formatTransactionLogAmountText(debtPrincipalPortion)} \u00B7 Interest: ${formatTransactionLogAmountText(debtInterestPortion)}`;
+        return linkedBankAccount
+          ? debtSummary
+          : `${debtSummary} \u00B7 ${noLinkedBankText}`;
+      }
+
+      if (kind === 'bank') {
+        return note || `Transaction logged: ${formattedAmount}`;
+      }
+
+      if (linkedBankAccount) {
+        return formattedAmount;
+      }
+
+      return noLinkedBankText;
+    })();
     const currentCompletedTask = createTransactionLogCompletionTask(
       existing,
       task,
@@ -1130,6 +1197,7 @@ export function AccountFormNew({ existing, onSaved, onCancel }: AccountFormNewPr
       note,
       now,
       currentResultValue,
+      linkedAccountMeta,
     );
     const nextCompletions = [...qaEvent.completions, { taskRef: currentCompletedTask.id, completedAt: now }];
 
@@ -1159,9 +1227,11 @@ export function AccountFormNew({ existing, onSaved, onCancel }: AccountFormNewPr
       });
 
       if (linkedTransactionLogTask) {
+        const linkedAmountText = formatKindAwareAmount('bank', amount, linkedBankAccount.cryptoTicker);
+        const sourceAccountLabel = existing.name;
         const linkedNote = kind === 'income'
-          ? `Deposit from ${existing.name}: ${amountText}`
-          : `Payment to ${existing.name}: ${amountText}`;
+          ? `${linkedAmountText} deposited from ${sourceAccountLabel}`
+          : `${linkedAmountText} withdrawn for ${sourceAccountLabel}`;
         const linkedCompletedTask = createTransactionLogCompletionTask(
           linkedBankAccount,
           toTaskDraft(linkedTransactionLogTask),
@@ -1175,6 +1245,15 @@ export function AccountFormNew({ existing, onSaved, onCancel }: AccountFormNewPr
       }
     }
 
+    if (kind === 'debt' && persistedExisting?.type === 'account' && debtNextBalance != null) {
+      setResource({
+        ...persistedExisting,
+        balance: debtNextBalance,
+        updatedAt: now,
+      });
+      setBalance(debtNextBalance);
+    }
+
     setActiveEvent({
       ...qaEvent,
       completions: nextCompletions,
@@ -1184,7 +1263,9 @@ export function AccountFormNew({ existing, onSaved, onCancel }: AccountFormNewPr
   }, [
     balance,
     createTransactionLogCompletionTask,
+    cryptoTicker,
     existing,
+    formatKindAwareAmount,
     formatTransactionLogAmountText,
     handleCancelTaskExecution,
     kind,
@@ -1192,7 +1273,6 @@ export function AccountFormNew({ existing, onSaved, onCancel }: AccountFormNewPr
     setActiveEvent,
     setResource,
     setScheduleTask,
-    transactionAmountPrefix,
     transactionLogExecuteDrafts,
   ]);
 
@@ -1222,7 +1302,7 @@ export function AccountFormNew({ existing, onSaved, onCancel }: AccountFormNewPr
     const transactionAmount = options?.transactionAmount ?? (isOpeningBalance ? nextBalance : difference);
     const resultValue = options?.resultValue ?? (isOpeningBalance
       ? `Opening balance set to ${formatBankBalancePill(nextBalance, normalizedTicker, cryptoUnit)}`
-      : `Balance adjusted by ${formatBankBalanceAdjustment(difference, normalizedTicker, cryptoUnit)} to ${formatBankBalancePill(nextBalance, normalizedTicker, cryptoUnit)}`);
+      : `Balance adjusted: ${formatBankBalanceAdjustment(difference, normalizedTicker, cryptoUnit)}`);
     const completedTask: Task = {
       id: taskId,
       templateRef: null,
@@ -1288,10 +1368,10 @@ export function AccountFormNew({ existing, onSaved, onCancel }: AccountFormNewPr
         }
 
         if (difference !== 0 || isOpeningBalance) {
-          const signedDifference = `${difference > 0 ? '+' : difference < 0 ? '-' : ''}${formatAmountWithTicker(Math.abs(difference))}`;
+          const signedDifference = `${difference > 0 ? '+' : difference < 0 ? '-' : ''}${formatTransactionLogAmountText(Math.abs(difference))}`;
           const resultValue = isOpeningBalance
-            ? `Balance adjusted to ${formatAmountWithTicker(nextBalance)}`
-            : `Correction: ${signedDifference} (balance adjusted to ${formatAmountWithTicker(nextBalance)})`;
+            ? `Balance adjusted: ${formatTransactionLogAmountText(nextBalance)}`
+            : `Balance adjusted: ${signedDifference}`;
           createBalanceTransactionLogEntry(nextBalance, difference, {
             resultValue,
             transactionAmount: difference,
@@ -1583,7 +1663,7 @@ export function AccountFormNew({ existing, onSaved, onCancel }: AccountFormNewPr
                 : describeCollapsedTaskRecurrence(task)}
             </span>
             {normalizeRecurrenceMode(task.recurrenceMode) === 'recurring' && task.reminderLeadDays > 0 ? (
-              <span className="shrink-0 text-sm leading-none">🔔</span>
+              <span className="shrink-0 text-sm leading-none">{'\u{1F514}'}</span>
             ) : null}
           </div>
         </div>
@@ -2047,9 +2127,11 @@ export function AccountFormNew({ existing, onSaved, onCancel }: AccountFormNewPr
         ) : null}
 
         {visibleCustomTasks.map((task) => (
-          expandedTaskId === task.id
-            ? renderExpandedTask(task)
-            : renderCollapsedRow(task, 'custom')
+          <Fragment key={task.id}>
+            {expandedTaskId === task.id
+              ? renderExpandedTask(task)
+              : renderCollapsedRow(task, 'custom')}
+          </Fragment>
         ))}
 
         {visibleTransactionTask && expandedTaskId === visibleTransactionTask.id ? renderExpandedTask(visibleTransactionTask) : null}
@@ -2775,12 +2857,21 @@ export function AccountFormNew({ existing, onSaved, onCancel }: AccountFormNewPr
                 <div className="text-xs text-gray-400 dark:text-gray-500">
                   {formatCompletionDateTime(entry.completedAt)}
                 </div>
-                <div className="mt-1 text-sm text-gray-800 dark:text-gray-100">
-                  {entry.value || 'No result text'}
+                <div className="mt-1 flex flex-wrap items-center gap-1 text-sm text-gray-800 dark:text-gray-100">
+                  <span>{entry.value || entry.note || 'No result text'}</span>
+                  {entry.direction && entry.linkedAccountName && entry.linkedAccountIcon ? (<>
+                    <span>{entry.direction === 'deposit' ? 'deposited into' : 'withdrawn from'}</span>
+                    <span className="inline-flex items-center gap-1">
+                      <IconDisplay iconKey={entry.linkedAccountIcon} size={16} className="h-4 w-4 object-contain" alt="" />
+                      <span>{entry.linkedAccountName}</span>
+                    </span>
+                  </>) : null}
                 </div>
                 {showLoggedAmounts && entry.amount != null ? (
                   <div className="mt-1 text-xs font-medium text-gray-500 dark:text-gray-400">
-                    Amount: {formatAmountWithTicker(entry.amount, amountTicker)}
+                    Amount: {kind === 'bank'
+                      ? formatAmountWithTicker(entry.amount, normalizedTicker)
+                      : formatKindAwareAmount(kind, entry.amount, cryptoTicker)}
                   </div>
                 ) : null}
               </div>
@@ -2799,3 +2890,4 @@ export function AccountFormNew({ existing, onSaved, onCancel }: AccountFormNewPr
     </ResourceFormShell>
   );
 }
+
