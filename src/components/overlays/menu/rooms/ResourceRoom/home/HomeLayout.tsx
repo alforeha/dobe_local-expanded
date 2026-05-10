@@ -551,7 +551,7 @@ export function HomeLayout({
 	}, [isEditingStoryOutline, onFloorEditChange]);
 
 	return (
-		<div className="space-y-3 rounded-xl border border-gray-200 bg-gray-50 p-3 dark:border-gray-600 dark:bg-gray-800/40">
+		<div className="space-y-3 rounded-xl border border-gray-200 bg-gray-50 dark:border-gray-600 dark:bg-gray-800/40">
 			{showStoryControls ? (
 				<>
 					<div className="flex items-center gap-2">

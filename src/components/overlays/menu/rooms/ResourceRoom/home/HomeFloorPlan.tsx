@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
 import { v4 as uuidv4 } from 'uuid';
 import { CUSTOM_ITEM_TEMPLATE_PREFIX, getItemTaskTemplateMeta } from '../../../../../../coach/ItemLibrary';
 import { taskTemplateLibrary } from '../../../../../../coach';
@@ -463,6 +464,7 @@ export function HomeFloorPlan({
 	const [newLooseItemQuantityByRoom, setNewLooseItemQuantityByRoom] = useState<Record<string, string>>({});
 	const [selectedPlacementId, setSelectedPlacementId] = useState<string | null>(null);
 	const [expandedPlacedContainerId, setExpandedPlacedContainerId] = useState<string | null>(null);
+	const prevExpandedPlacedContainerIdRef = useRef<string | null>(null);
 	const [expandedPlacedTaskId, setExpandedPlacedTaskId] = useState<string | null>(null);
 	const [executePlacedTaskPrompt, setExecutePlacedTaskPrompt] = useState<{ name: string; taskType: string | null | undefined } | null>(null);
 	const [editingPlacedContainerId, setEditingPlacedContainerId] = useState<string | null>(null);
@@ -916,14 +918,18 @@ export function HomeFloorPlan({
 	useEffect(() => {
 		if (!expandedPlacedContainerId) {
 			setSelectedPlacementId(null);
+			prevExpandedPlacedContainerIdRef.current = null;
 			return;
 		}
 
-		if (!hasExpandedPlacement) {
+		if (!hasExpandedPlacement && prevExpandedPlacedContainerIdRef.current === expandedPlacedContainerId) {
 			setExpandedPlacedContainerId(null);
 			setSelectedPlacementId(null);
+			prevExpandedPlacedContainerIdRef.current = null;
 			return;
 		}
+
+		prevExpandedPlacedContainerIdRef.current = expandedPlacedContainerId;
 
 		if (selectedPlacementId !== expandedPlacedContainerId) {
 			setSelectedPlacementId(expandedPlacedContainerId);
@@ -2249,7 +2255,7 @@ export function HomeFloorPlan({
 		const cleanablePlacementCount = placedContainerEntries.length + placedLooseItemEntries.filter((entry) => entry.itemKind === 'facility').length;
 
 		return (
-			<div className="space-y-3 border-t border-gray-200 px-4 py-4 dark:border-gray-700">
+			<div className="space-y-3 border-t border-gray-200 px-2 py-2 dark:border-gray-700">
 				{!hasFocusedPlacement ? (
 					<div className="flex flex-wrap items-center gap-2">
 					<button
@@ -2287,7 +2293,7 @@ export function HomeFloorPlan({
 				) : null}
 
 				{visibleContainerEntries.length > 0 ? (
-				<div className="space-y-2 rounded-xl bg-gray-50 px-3 py-3 text-sm dark:bg-gray-800/60">
+				<div className="space-y-2 rounded-xl bg-gray-50 py-3 text-sm dark:bg-gray-800/60">
 					<div className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Container placement</div>
 					{visibleContainerEntries.length === 0 ? (
 						<div className="mt-2 text-xs italic text-gray-400">No placed containers.</div>
@@ -2310,6 +2316,7 @@ export function HomeFloorPlan({
 													if (viewingContainerPlacementId === entry.placement.id) {
 														setViewingContainerPlacementId(null);
 													}
+													onPlacedItemSelectRef.current?.(null);
 													return;
 												}
 
@@ -2377,7 +2384,7 @@ export function HomeFloorPlan({
 				) : null}
 
 				{visibleLooseItemEntries.length > 0 ? (
-				<div className="space-y-2 rounded-xl bg-gray-50 px-3 py-3 text-sm dark:bg-gray-800/60">
+				<div className="space-y-2 rounded-xl bg-gray-50 py-3 text-sm dark:bg-gray-800/60">
 					<div className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Room items</div>
 					{visibleLooseItemEntries.length === 0 ? (
 						<div className="mt-2 text-xs italic text-gray-400">No placed room items.</div>
@@ -2403,6 +2410,7 @@ export function HomeFloorPlan({
 													if (viewingContainerPlacementId === entry.placement.id) {
 														setViewingContainerPlacementId(null);
 													}
+													onPlacedItemSelectRef.current?.(null);
 													return;
 												}
 
@@ -3136,9 +3144,11 @@ export function HomeFloorPlan({
 															style={isPlacementEditable ? { cursor: 'grab' } : undefined}
 															onPointerDown={(event) => {
 																event.stopPropagation();
+																flushSync(() => {
+																	setExpandedPlacedContainerId(entry.id);
+																	setSelectedPlacementId(entry.id);
+																});
 																onSelectRoom(room.id);
-																setExpandedPlacedContainerId(entry.id);
-																setSelectedPlacementId(entry.id);
 																if (!isPlacementEditable) return;
 																const point = getWorldPoint(event);
 																setInteraction({ type: 'drag-container', roomId: room.id, placementId: entry.id, offsetX: point.x - entry.x, offsetY: point.y - entry.y });
@@ -3701,6 +3711,7 @@ export function HomeFloorPlan({
 																							setEditingContainersRoomId((current) => current === room.id ? null : current);
 																						}
 																						setSelectedPlacementId((current) => current === entry.placement.id ? null : current);
+																						onPlacedItemSelectRef.current?.(null);
 																						return;
 																					}
 
