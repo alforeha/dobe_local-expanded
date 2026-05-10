@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { flushSync } from 'react-dom';
 import { v4 as uuidv4 } from 'uuid';
 import { CUSTOM_ITEM_TEMPLATE_PREFIX, getItemTaskTemplateMeta } from '../../../../../../coach/ItemLibrary';
@@ -30,6 +30,47 @@ interface StoryOutlineDraft {
 	segments: FloorPlanSegment[];
 }
 
+export interface HomeFloorPlanActionControls {
+	selectedRoom: null | {
+		id: string;
+		canClean: boolean;
+		photoBusy: boolean;
+		onExitRoom: () => void;
+		onEditRoom: () => void;
+		onDeleteRoom: () => void;
+		onTakePhoto: () => void;
+		onAddContainer: () => void;
+		onAddItem: () => void;
+		onCleanRoom: () => void;
+	};
+	selectedItem: null | {
+		id: string;
+		name: string;
+		width: number;
+		depth: number;
+		canClean: boolean;
+		photoBusy: boolean;
+		canMoveUp: boolean;
+		canMoveDown: boolean;
+		onDeleteItem: () => void;
+		onTakePhoto: () => void;
+		onCleanItem: () => void;
+		onUpdateDimensions: (width: number, depth: number) => void;
+		onMoveLayerUp: () => void;
+		onMoveLayerDown: () => void;
+	};
+	roomEdit: null | {
+		canSave: boolean;
+		activeMode: 'add-point' | 'select-segment';
+		onEditPoints: () => void;
+		onEditLines: () => void;
+	};
+	storyOutlineEdit: null | {
+		canSave: boolean;
+		onEditStartPoint: () => void;
+	};
+}
+
 interface HomeFloorPlanProps {
 	story: HomeStory;
 	selectedRoomId: string | null;
@@ -47,7 +88,6 @@ interface HomeFloorPlanProps {
 	onEditingRoomChange?: (room: FloorPlanRoom | null) => void;
 	onSaveEditingRoom?: () => void;
 	onCancelEditingRoom?: () => void;
-	onStartCreateRoom?: () => void;
 	onStartEditRoom?: (room: FloorPlanRoom) => void;
 	onDeleteRoom?: (roomId: string) => void;
 	onUpdateRoomPlacedItems?: (roomId: string, placedItems: PlacedInstance[]) => void;
@@ -55,6 +95,8 @@ interface HomeFloorPlanProps {
 	onUpdateStoryPlacedItems?: (placedItems: PlacedInstance[]) => void;
 	onUpdateRoomPhotos?: (roomId: string, photos: AlbumEntry[]) => void;
 	onUpdateStoryPhotos?: (photos: AlbumEntry[]) => void;
+	actionBar?: ReactNode;
+	onActionBarStateChange?: (controls: HomeFloorPlanActionControls | null) => void;
 }
 
 
@@ -431,7 +473,6 @@ export function HomeFloorPlan({
 	onEditingRoomChange,
 	onSaveEditingRoom,
 	onCancelEditingRoom,
-	onStartCreateRoom,
 	onStartEditRoom,
 	onDeleteRoom,
 	onUpdateRoomPlacedItems,
@@ -439,6 +480,8 @@ export function HomeFloorPlan({
 	onUpdateStoryPlacedItems,
 	onUpdateRoomPhotos,
 	onUpdateStoryPhotos,
+	actionBar,
+	onActionBarStateChange,
 }: HomeFloorPlanProps) {
 	const svgRef = useRef<SVGSVGElement | null>(null);
 	const [zoom, setZoom] = useState(1);
@@ -488,6 +531,7 @@ export function HomeFloorPlan({
 	const [viewedLayoutWidthHeightGrid, setViewedLayoutWidthHeightGrid] = useState<FaceGridInputDraft>({ columns: '1', rows: '1' });
 	const [viewedLayoutDepthHeightGrid, setViewedLayoutDepthHeightGrid] = useState<FaceGridInputDraft>({ columns: '1', rows: '1' });
 	const [viewedLayoutError, setViewedLayoutError] = useState('');
+	const [isEditingStoryStartPoint, setIsEditingStoryStartPoint] = useState(false);
 	const resources = useResourceStore((s) => s.resources);
 	const setResource = useResourceStore((s) => s.setResource);
 	const setTask = useScheduleStore((s) => s.setTask);
@@ -832,6 +876,14 @@ export function HomeFloorPlan({
 		: findRoomContainerRecord(selectedRoomSummary.room, viewedContainerEntry.container.id);
 	const viewedContainerLayoutPanelOpen = showViewedContainerLayoutPanel && Boolean(viewedContainerEntry?.container);
 	const onPlacedItemSelectRef = useRef(onPlacedItemSelect);
+	const actionBarHelpersRef = useRef<{
+		captureAndAppendToHomeAlbum: typeof captureAndAppendToHomeAlbum;
+		movePlacedItemLayer: typeof movePlacedItemLayer;
+		pushPlacementCleanTask: typeof pushPlacementCleanTask;
+		pushRoomCleanTasks: typeof pushRoomCleanTasks;
+		removePlacedItem: typeof removePlacedItem;
+		updatePlacedItem: typeof updatePlacedItem;
+	} | null>(null);
 
 	useEffect(() => {
 		if (!viewingContainerPlacementId || viewedContainerEntry) return;
@@ -845,6 +897,7 @@ export function HomeFloorPlan({
 			setSelectedOutlineSegmentIndex(null);
 			setRoomEditMode('add-point');
 			setOutlineEditMode('add-point');
+			setIsEditingStoryStartPoint(false);
 		}, 0);
 		return () => window.clearTimeout(resetId);
 	}, [editingMode, editingRoom?.id, editingStoryOutline, isPlacingStartPoint]);
@@ -1079,10 +1132,9 @@ export function HomeFloorPlan({
 
 	function beginOriginDrag(event: { stopPropagation: () => void }) {
 		if (!editable || (!editingRoom && !editingStoryOutline)) return;
-		if (editingRoom && !isPlacingStartPoint) {
-			event.stopPropagation();
-			setInteraction({ type: 'drag-origin' });
-		}
+		if (editingRoom && isPlacingStartPoint) return;
+		event.stopPropagation();
+		setInteraction({ type: 'drag-origin' });
 	}
 
 	function reopenStartPointEditor() {
@@ -1115,6 +1167,20 @@ export function HomeFloorPlan({
 		}
 
 		setIsPlacingStartPoint(true);
+	}
+
+	function setActiveRoomEditMode(nextMode: RoomEditMode) {
+		setRoomEditMode(nextMode);
+		if (nextMode === 'add-point') {
+			setSelectedSegmentIndex(null);
+		}
+	}
+
+	function setActiveOutlineEditMode(nextMode: OutlineEditMode) {
+		setOutlineEditMode(nextMode);
+		if (nextMode === 'add-point') {
+			setSelectedOutlineSegmentIndex(null);
+		}
 	}
 
 	function updateDraftContainer(roomId: string, patch: Partial<{ name: string; icon: string }>) {
@@ -1429,6 +1495,37 @@ export function HomeFloorPlan({
 			lists: {
 				...user.lists,
 				gtdList: [...new Set([...user.lists.gtdList, ...nextTasks.map((task) => task.id)])],
+			},
+		});
+	}
+
+	function pushPlacementCleanTask(placementId: string, title: string) {
+		if (!user) return;
+		if (isPlacementCleanInQuickActions(placementId)) return;
+		const nextTask: Task = {
+			id: uuidv4(),
+			templateRef: null,
+			isUnique: true,
+			title,
+			taskType: 'CHECK',
+			completionState: 'pending',
+			completedAt: null,
+			resultFields: { label: title },
+			attachmentRef: buildPlacementCleanQuickActionsKey(placementId, homeId ?? null),
+			resourceRef: homeId ?? null,
+			location: null,
+			sharedWith: null,
+			questRef: null,
+			actRef: null,
+			secondaryTag: null,
+		};
+
+		setTask(nextTask);
+		setUser({
+			...user,
+			lists: {
+				...user.lists,
+				gtdList: [...new Set([...user.lists.gtdList, nextTask.id])],
 			},
 		});
 	}
@@ -2176,6 +2273,33 @@ export function HomeFloorPlan({
 		}
 	}
 
+	function movePlacedItemLayer(roomId: string | null, placementId: string, direction: 'up' | 'down') {
+		const reorder = (placedItems: PlacedInstance[]) => {
+			const currentIndex = placedItems.findIndex((entry) => entry.id === placementId);
+			if (currentIndex === -1) return placedItems;
+
+			const targetIndex = direction === 'up'
+				? Math.min(placedItems.length - 1, currentIndex + 1)
+				: Math.max(0, currentIndex - 1);
+			if (targetIndex === currentIndex) return placedItems;
+
+			const nextPlacedItems = [...placedItems];
+			const [moved] = nextPlacedItems.splice(currentIndex, 1);
+			nextPlacedItems.splice(targetIndex, 0, moved);
+			return nextPlacedItems;
+		};
+
+		if (roomId === null) {
+			if (!onUpdateStoryPlacedItems) return;
+			onUpdateStoryPlacedItems(reorder(story.placedItems));
+			return;
+		}
+
+		const room = story.rooms.find((entry) => entry.id === roomId);
+		if (!room || !onUpdateRoomPlacedItems) return;
+		onUpdateRoomPlacedItems(roomId, reorder(room.placedItems));
+	}
+
 	function removePhoto(scopeId: string, roomId: string | null, photoIndex: number) {
 		const existingPhotos = roomId
 			? (story.rooms.find((entry) => entry.id === roomId)?.photos ?? [])
@@ -2244,6 +2368,123 @@ export function HomeFloorPlan({
 			</div>
 		);
 	}
+
+	const selectedItemAction = (() => {
+		if (!selectedPlacementId) return null;
+
+		for (const room of story.rooms) {
+			const placementIndex = room.placedItems.findIndex((entry) => entry.id === selectedPlacementId && entry.kind === 'item');
+			if (placementIndex === -1) continue;
+			const placement = room.placedItems[placementIndex];
+			const resolvedEntry = resolvePlacedItemEntry(room, placement);
+			const placedScopeId = `placed-item:${placement.id}`;
+			return {
+				id: placement.id,
+				name: resolvedEntry.itemName,
+				roomId: room.id as string | null,
+				width: placement.width,
+				depth: placement.depth,
+				canClean: resolvedEntry.itemKind === 'facility',
+				photoBusy: photoUploadBusyByScope[placedScopeId] === true,
+				canMoveUp: placementIndex < room.placedItems.length - 1,
+				canMoveDown: placementIndex > 0,
+			};
+		}
+
+		const placementIndex = story.placedItems.findIndex((entry) => entry.id === selectedPlacementId && entry.kind === 'item');
+		if (placementIndex === -1) return null;
+		const placement = story.placedItems[placementIndex];
+		const record = findInventoryItemRecord(placement.refId);
+		const placedScopeId = `placed-item:${placement.id}`;
+		return {
+			id: placement.id,
+			name: record?.resolvedItem?.name ?? placement.refId,
+			roomId: null as string | null,
+			width: placement.width,
+			depth: placement.depth,
+			canClean: (record?.resolvedItem?.kind ?? null) === 'facility',
+			photoBusy: photoUploadBusyByScope[placedScopeId] === true,
+			canMoveUp: placementIndex < story.placedItems.length - 1,
+			canMoveDown: placementIndex > 0,
+		};
+	})();
+
+	actionBarHelpersRef.current = {
+		captureAndAppendToHomeAlbum,
+		movePlacedItemLayer,
+		pushPlacementCleanTask,
+		pushRoomCleanTasks,
+		removePlacedItem,
+		updatePlacedItem,
+	};
+
+	useEffect(() => {
+		if (!onActionBarStateChange || viewedContainerEntry?.container) {
+			onActionBarStateChange?.(null);
+			return;
+		}
+
+		onActionBarStateChange({
+			selectedRoom: selectedRoomSummary ? {
+				id: selectedRoomSummary.room.id,
+				canClean: selectedRoomSummary.placedContainerEntries.length + selectedRoomSummary.placedLooseItemEntries.filter((entry) => entry.itemKind === 'facility').length > 0,
+				photoBusy: photoUploadBusyByScope[selectedRoomSummary.room.id] === true,
+				onExitRoom: () => onSelectRoom(null),
+				onEditRoom: () => onStartEditRoom?.(selectedRoomSummary.room),
+				onDeleteRoom: () => onDeleteRoom?.(selectedRoomSummary.room.id),
+				onTakePhoto: () => { void actionBarHelpersRef.current?.captureAndAppendToHomeAlbum(selectedRoomSummary.room.id, selectedRoomSummary.room.id, 'manual'); },
+				onAddContainer: () => {
+					onSelectRoom(selectedRoomSummary.room.id);
+					setRoomAddContainerRoomId(selectedRoomSummary.room.id);
+				},
+				onAddItem: () => {
+					onSelectRoom(selectedRoomSummary.room.id);
+					setRoomAddItemRoomId(selectedRoomSummary.room.id);
+				},
+				onCleanRoom: () => actionBarHelpersRef.current?.pushRoomCleanTasks(selectedRoomSummary),
+			} : null,
+			selectedItem: selectedItemAction ? {
+				id: selectedItemAction.id,
+				name: selectedItemAction.name,
+				width: selectedItemAction.width,
+				depth: selectedItemAction.depth,
+				canClean: selectedItemAction.canClean,
+				photoBusy: selectedItemAction.photoBusy,
+				canMoveUp: selectedItemAction.canMoveUp,
+				canMoveDown: selectedItemAction.canMoveDown,
+				onDeleteItem: () => actionBarHelpersRef.current?.removePlacedItem(selectedItemAction.roomId, selectedItemAction.id),
+				onTakePhoto: () => { void actionBarHelpersRef.current?.captureAndAppendToHomeAlbum(`placed-item:${selectedItemAction.id}`, selectedItemAction.id, 'placed-item'); },
+				onCleanItem: () => actionBarHelpersRef.current?.pushPlacementCleanTask(selectedItemAction.id, `Clean ${selectedItemAction.name}`),
+				onUpdateDimensions: (width: number, depth: number) => actionBarHelpersRef.current?.updatePlacedItem(selectedItemAction.roomId, selectedItemAction.id, { width, depth }),
+				onMoveLayerUp: () => actionBarHelpersRef.current?.movePlacedItemLayer(selectedItemAction.roomId, selectedItemAction.id, 'up'),
+				onMoveLayerDown: () => actionBarHelpersRef.current?.movePlacedItemLayer(selectedItemAction.roomId, selectedItemAction.id, 'down'),
+			} : null,
+			roomEdit: editingRoom ? {
+				canSave: canSaveEditingRoom,
+				activeMode: roomEditMode,
+				onEditPoints: () => setActiveRoomEditMode('add-point'),
+				onEditLines: () => setActiveRoomEditMode('select-segment'),
+			} : null,
+			storyOutlineEdit: editingStoryOutline ? {
+				canSave: canSaveStoryOutline,
+				onEditStartPoint: () => setIsEditingStoryStartPoint(true),
+			} : null,
+		});
+	}, [
+		canSaveEditingRoom,
+		canSaveStoryOutline,
+		editingRoom,
+		editingStoryOutline,
+		onActionBarStateChange,
+		onDeleteRoom,
+		onSelectRoom,
+		onStartEditRoom,
+		photoUploadBusyByScope,
+		roomEditMode,
+		selectedItemAction,
+		selectedRoomSummary,
+		viewedContainerEntry,
+	]);
 
 	function renderRoomExpandedContent(summary: typeof roomSummaries[number]) {
 		const { room, placedContainerEntries, placedLooseItemEntries } = summary;
@@ -2788,9 +3029,6 @@ export function HomeFloorPlan({
 						<div>
 							<div className="text-sm font-semibold text-gray-800 dark:text-gray-100">{story.name}</div>
 						</div>
-						{editable && !editingRoom && !editingStoryOutline ? (
-							<button type="button" onClick={onStartCreateRoom} className="rounded-md bg-blue-500 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-blue-600">Outline room</button>
-						) : null}
 					</div>
 				) : null}
 				{roomEditorPanel}
@@ -3215,6 +3453,22 @@ export function HomeFloorPlan({
 										))}
 									</g>
 								) : null}
+								{editingStoryOutline && isEditingStoryStartPoint ? (
+									<g>
+										<circle cx={editingStoryOutline.origin.x} cy={editingStoryOutline.origin.y} r={VERTEX_VISIBLE_RADIUS} fill="#ffffff" stroke="#2563eb" strokeWidth="2" style={{ pointerEvents: 'none' }} />
+										<circle cx={editingStoryOutline.origin.x} cy={editingStoryOutline.origin.y} r="2.5" fill="#2563eb" style={{ pointerEvents: 'none' }} />
+										<circle
+											cx={editingStoryOutline.origin.x}
+											cy={editingStoryOutline.origin.y}
+											r={VERTEX_HIT_RADIUS}
+											fill="transparent"
+											pointerEvents="all"
+											style={{ cursor: 'grab' }}
+											onPointerDown={beginOriginDrag}
+											onTouchStart={beginOriginDrag}
+										/>
+									</g>
+								) : null}
 								{editingRoom && isPlacingStartPoint ? (
 									<g>
 										{startPointAnchors.map((anchor, index) => {
@@ -3273,6 +3527,12 @@ export function HomeFloorPlan({
 						</div>
 					) : null}
 				</div>
+
+				{actionBar ? (
+					<div className="border-t border-gray-200 bg-gray-50/80 px-3 py-3 dark:border-gray-700 dark:bg-gray-950/40">
+						{actionBar}
+					</div>
+				) : null}
 
 				{editable && editingRoom && isPlacingStartPoint ? (
 					<div className="border-t border-gray-200 bg-gray-50/80 px-3 py-3 dark:border-gray-700 dark:bg-gray-950/40">
@@ -3335,11 +3595,9 @@ export function HomeFloorPlan({
 											className={`rounded-full px-4 py-1 text-xs font-semibold transition-colors duration-150 ${(isEditingStoryOutline ? outlineEditMode : roomEditMode) === 'add-point' ? 'bg-blue-500 text-white shadow' : 'bg-transparent text-gray-700 dark:text-gray-200'}`}
 											onClick={() => {
 												if (isEditingStoryOutline) {
-													setOutlineEditMode('add-point');
-													setSelectedOutlineSegmentIndex(null);
+													setActiveOutlineEditMode('add-point');
 												} else {
-													setRoomEditMode('add-point');
-													setSelectedSegmentIndex(null);
+													setActiveRoomEditMode('add-point');
 												}
 											}}
 										>
@@ -3350,9 +3608,9 @@ export function HomeFloorPlan({
 											className={`rounded-full px-4 py-1 text-xs font-semibold transition-colors duration-150 ${(isEditingStoryOutline ? outlineEditMode : roomEditMode) === 'select-segment' ? 'bg-blue-500 text-white shadow' : 'bg-transparent text-gray-700 dark:text-gray-200'}`}
 											onClick={() => {
 												if (isEditingStoryOutline) {
-													setOutlineEditMode('select-segment');
+													setActiveOutlineEditMode('select-segment');
 												} else {
-													setRoomEditMode('select-segment');
+													setActiveRoomEditMode('select-segment');
 												}
 											}}
 										>

@@ -7,7 +7,7 @@ import { closeFloorPlanSegments, getPointsBounds, segmentsToPoints } from '../..
 import { getUserInventoryItemTemplates, mergeInventoryItemTemplates, resolveInventoryItemTemplate } from '../../../../../../utils/inventoryItems';
 import { IconDisplay } from '../../../../../shared/IconDisplay';
 import { PopupShell } from '../../../../../shared/popups/PopupShell';
-import { HomeFloorPlan } from './HomeFloorPlan';
+import { HomeFloorPlan, type HomeFloorPlanActionControls } from './HomeFloorPlan';
 
 interface HomeLayoutProps {
 	stories: HomeStory[];
@@ -138,6 +138,24 @@ function makeDraftStoryOutline(): StoryOutlineDraft {
 	};
 }
 
+const ADD_STORY_OPTION_VALUE = '__add_story__';
+
+interface FloorPlanActionSnapshot {
+	selectedRoomId: string | null;
+	selectedRoomCanClean: boolean;
+	selectedRoomPhotoBusy: boolean;
+	selectedItemId: string | null;
+	selectedItemWidth: number;
+	selectedItemDepth: number;
+	selectedItemCanClean: boolean;
+	selectedItemCanMoveUp: boolean;
+	selectedItemCanMoveDown: boolean;
+	selectedItemPhotoBusy: boolean;
+	roomEditMode: 'add-point' | 'select-segment' | null;
+	roomEditCanSave: boolean;
+	storyOutlineCanSave: boolean;
+}
+
 export function HomeLayout({
 	stories,
 	onChange,
@@ -159,7 +177,28 @@ export function HomeLayout({
 	const [editingStoryOutline, setEditingStoryOutline] = useState<StoryOutlineDraft | null>(null);
 	const [deleteDialog, setDeleteDialog] = useState<DeleteDialogState>(null);
 	const [isDeleteStoryConfirming, setIsDeleteStoryConfirming] = useState(false);
+	const [confirmDeleteRoomActionId, setConfirmDeleteRoomActionId] = useState<string | null>(null);
+	const [confirmDeleteItemActionId, setConfirmDeleteItemActionId] = useState<string | null>(null);
+	const [editingSelectedItemDimensionsId, setEditingSelectedItemDimensionsId] = useState<string | null>(null);
+	const [selectedItemDimensionDraft, setSelectedItemDimensionDraft] = useState<{ width: string; depth: string }>({ width: '', depth: '' });
 	const deleteStoryButtonRef = useRef<HTMLDivElement | null>(null);
+	const floorPlanActionControlsRef = useRef<HomeFloorPlanActionControls | null>(null);
+	const floorPlanActionSnapshotKeyRef = useRef('');
+	const [floorPlanActionSnapshot, setFloorPlanActionSnapshot] = useState<FloorPlanActionSnapshot>({
+		selectedRoomId: null,
+		selectedRoomCanClean: false,
+		selectedRoomPhotoBusy: false,
+		selectedItemId: null,
+		selectedItemWidth: 0,
+		selectedItemDepth: 0,
+		selectedItemCanClean: false,
+		selectedItemCanMoveUp: false,
+		selectedItemCanMoveDown: false,
+		selectedItemPhotoBusy: false,
+		roomEditMode: null,
+		roomEditCanSave: false,
+		storyOutlineCanSave: false,
+	});
 	const resources = useResourceStore((state) => state.resources);
 	const setResource = useResourceStore((state) => state.setResource);
 	const user = useUserStore((state) => state.user);
@@ -524,6 +563,29 @@ export function HomeLayout({
 		)));
 	}
 
+	function handleFloorPlanActionStateChange(controls: HomeFloorPlanActionControls | null) {
+		floorPlanActionControlsRef.current = controls;
+		const nextSnapshot: FloorPlanActionSnapshot = {
+			selectedRoomId: controls?.selectedRoom?.id ?? null,
+			selectedRoomCanClean: controls?.selectedRoom?.canClean ?? false,
+			selectedRoomPhotoBusy: controls?.selectedRoom?.photoBusy ?? false,
+			selectedItemId: controls?.selectedItem?.id ?? null,
+			selectedItemWidth: controls?.selectedItem?.width ?? 0,
+			selectedItemDepth: controls?.selectedItem?.depth ?? 0,
+			selectedItemCanClean: controls?.selectedItem?.canClean ?? false,
+			selectedItemCanMoveUp: controls?.selectedItem?.canMoveUp ?? false,
+			selectedItemCanMoveDown: controls?.selectedItem?.canMoveDown ?? false,
+			selectedItemPhotoBusy: controls?.selectedItem?.photoBusy ?? false,
+			roomEditMode: controls?.roomEdit?.activeMode ?? null,
+			roomEditCanSave: controls?.roomEdit?.canSave ?? false,
+			storyOutlineCanSave: controls?.storyOutlineEdit?.canSave ?? false,
+		};
+		const nextKey = JSON.stringify(nextSnapshot);
+	if (nextKey === floorPlanActionSnapshotKeyRef.current) return;
+		floorPlanActionSnapshotKeyRef.current = nextKey;
+		setFloorPlanActionSnapshot(nextSnapshot);
+	}
+
 	const activeStoryHasOutline = Boolean(activeStory?.outlineOrigin && (activeStory?.outlineSegments?.length ?? 0) > 0);
 	const isEditingStoryName = Boolean(activeStory && editingStoryId === activeStory.id);
 	const isEditingStoryOutline = Boolean(activeStory && editingStoryId === activeStory.id && editingStoryOutline);
@@ -549,6 +611,228 @@ export function HomeLayout({
 	useEffect(() => {
 		onFloorEditChange?.(isEditingStoryOutline);
 	}, [isEditingStoryOutline, onFloorEditChange]);
+
+	const iconButtonClassName = 'inline-flex h-9 min-w-9 items-center justify-center rounded-full bg-white px-3 text-base text-gray-700 shadow-sm ring-1 ring-black/5 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800';
+	const activeIconButtonClassName = 'inline-flex h-9 min-w-9 items-center justify-center rounded-full bg-blue-500 px-3 text-base text-white shadow-sm ring-1 ring-blue-500 hover:bg-blue-600';
+	const destructiveIconButtonClassName = 'inline-flex h-9 min-w-9 items-center justify-center rounded-full bg-red-50 px-3 text-base text-red-600 shadow-sm ring-1 ring-red-200 hover:bg-red-100 dark:bg-red-900/20 dark:text-red-300 dark:ring-red-900/30 dark:hover:bg-red-900/30';
+
+	const actionBar = (() => {
+		if (!editable || !activeStory) return null;
+
+		if (isEditingStoryName || isEditingStoryOutline) {
+			const canSaveStoryChanges = isEditingStoryOutline ? floorPlanActionSnapshot.storyOutlineCanSave : storyName.trim().length > 0;
+			return (
+				<div className="flex flex-wrap items-center justify-center gap-2 md:justify-start">
+					<button
+						type="button"
+						onClick={handleSaveStoryEdits}
+						disabled={!canSaveStoryChanges}
+						className={canSaveStoryChanges ? activeIconButtonClassName : `${iconButtonClassName} text-gray-400`}
+						title="Save story changes"
+						aria-label="Save story changes"
+					>
+						✓
+					</button>
+					<button type="button" onClick={handleCancelStoryEdit} className={iconButtonClassName} title="Cancel story changes" aria-label="Cancel story changes">✗</button>
+					{isEditingStoryOutline ? (
+						<button
+							type="button"
+							onClick={() => floorPlanActionControlsRef.current?.storyOutlineEdit?.onEditStartPoint()}
+							className={iconButtonClassName}
+							title="Edit story start point"
+							aria-label="Edit story start point"
+						>
+							📍
+						</button>
+					) : null}
+				</div>
+			);
+		}
+
+		if (editingRoom && floorPlanActionSnapshot.roomEditMode) {
+			return (
+				<div className="flex flex-wrap items-center justify-center gap-2 md:justify-start">
+					<button
+						type="button"
+						onClick={handleSaveEditingRoom}
+						disabled={!floorPlanActionSnapshot.roomEditCanSave}
+						className={floorPlanActionSnapshot.roomEditCanSave ? activeIconButtonClassName : `${iconButtonClassName} text-gray-400`}
+						title="Save room changes"
+						aria-label="Save room changes"
+					>
+						✓
+					</button>
+					<button type="button" onClick={() => { setEditingRoom(null); setEditingMode(null); handleCancelStoryEdit(); }} className={iconButtonClassName} title="Cancel room editing" aria-label="Cancel room editing">✗</button>
+					<button
+						type="button"
+						onClick={() => floorPlanActionControlsRef.current?.roomEdit?.onEditPoints()}
+						className={floorPlanActionSnapshot.roomEditMode === 'add-point' ? activeIconButtonClassName : iconButtonClassName}
+						title="Edit room points"
+						aria-label="Edit room points"
+					>
+						⬡
+					</button>
+					<button
+						type="button"
+						onClick={() => floorPlanActionControlsRef.current?.roomEdit?.onEditLines()}
+						className={floorPlanActionSnapshot.roomEditMode === 'select-segment' ? activeIconButtonClassName : iconButtonClassName}
+						title="Edit room lines"
+						aria-label="Edit room lines"
+					>
+						／
+					</button>
+				</div>
+			);
+		}
+
+		if (floorPlanActionSnapshot.selectedItemId) {
+			const selectedItemId = floorPlanActionSnapshot.selectedItemId;
+			return (
+				<div className="flex flex-wrap items-center justify-center gap-2 md:justify-start">
+					<button
+						type="button"
+						onClick={() => {
+							if (confirmDeleteItemActionId === selectedItemId) {
+								floorPlanActionControlsRef.current?.selectedItem?.onDeleteItem();
+								setConfirmDeleteItemActionId(null);
+								return;
+							}
+							setConfirmDeleteItemActionId(selectedItemId);
+						}}
+						className={confirmDeleteItemActionId === selectedItemId ? activeIconButtonClassName : destructiveIconButtonClassName}
+						title={confirmDeleteItemActionId === selectedItemId ? 'Confirm delete item' : 'Delete item'}
+						aria-label={confirmDeleteItemActionId === selectedItemId ? 'Confirm delete item' : 'Delete item'}
+					>
+						🗑️
+					</button>
+					<button type="button" onClick={() => floorPlanActionControlsRef.current?.selectedItem?.onTakePhoto()} disabled={floorPlanActionSnapshot.selectedItemPhotoBusy} className={iconButtonClassName} title="Take item photo" aria-label="Take item photo">📷</button>
+					<button type="button" onClick={() => floorPlanActionControlsRef.current?.selectedItem?.onCleanItem()} disabled={!floorPlanActionSnapshot.selectedItemCanClean} className={iconButtonClassName} title="Clean item" aria-label="Clean item">🧹</button>
+					{editingSelectedItemDimensionsId === selectedItemId ? (
+						<div
+							className="flex items-center gap-2 rounded-full bg-white px-3 py-1 shadow-sm ring-1 ring-black/5 dark:bg-gray-900"
+							onKeyDown={(event) => {
+								if (event.key === 'Escape') {
+									setEditingSelectedItemDimensionsId(null);
+									setSelectedItemDimensionDraft({
+										width: String(floorPlanActionSnapshot.selectedItemWidth),
+										depth: String(floorPlanActionSnapshot.selectedItemDepth),
+									});
+								}
+								if (event.key === 'Enter') {
+									const nextWidth = Math.max(1, Number(selectedItemDimensionDraft.width) || 1);
+									const nextDepth = Math.max(1, Number(selectedItemDimensionDraft.depth) || 1);
+									floorPlanActionControlsRef.current?.selectedItem?.onUpdateDimensions(nextWidth, nextDepth);
+									setEditingSelectedItemDimensionsId(null);
+								}
+							}}
+						>
+							<input
+								type="number"
+								min={1}
+								value={selectedItemDimensionDraft.width}
+								onChange={(event) => setSelectedItemDimensionDraft((current) => ({ ...current, width: event.target.value }))}
+								className="w-16 rounded-md border border-gray-300 bg-white px-2 py-1 text-xs text-gray-900 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+								aria-label="Selected item width"
+							/>
+							<span className="text-xs text-gray-500 dark:text-gray-400">×</span>
+							<input
+								type="number"
+								min={1}
+								value={selectedItemDimensionDraft.depth}
+								onChange={(event) => setSelectedItemDimensionDraft((current) => ({ ...current, depth: event.target.value }))}
+								className="w-16 rounded-md border border-gray-300 bg-white px-2 py-1 text-xs text-gray-900 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+								aria-label="Selected item depth"
+							/>
+							<button
+								type="button"
+								onClick={() => {
+									const nextWidth = Math.max(1, Number(selectedItemDimensionDraft.width) || 1);
+									const nextDepth = Math.max(1, Number(selectedItemDimensionDraft.depth) || 1);
+									floorPlanActionControlsRef.current?.selectedItem?.onUpdateDimensions(nextWidth, nextDepth);
+									setEditingSelectedItemDimensionsId(null);
+								}}
+								className="rounded-full bg-emerald-500 px-2 py-1 text-xs font-semibold text-white hover:bg-emerald-600"
+								title="Save item dimensions"
+								aria-label="Save item dimensions"
+							>
+								✓
+							</button>
+							<button
+								type="button"
+								onClick={() => {
+									setEditingSelectedItemDimensionsId(null);
+									setSelectedItemDimensionDraft({
+										width: String(floorPlanActionSnapshot.selectedItemWidth),
+										depth: String(floorPlanActionSnapshot.selectedItemDepth),
+									});
+								}}
+								className="rounded-full bg-gray-100 px-2 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+								title="Cancel item dimension editing"
+								aria-label="Cancel item dimension editing"
+							>
+								✗
+							</button>
+						</div>
+					) : (
+						<button
+							type="button"
+							onClick={() => {
+								setSelectedItemDimensionDraft({
+									width: String(floorPlanActionSnapshot.selectedItemWidth),
+									depth: String(floorPlanActionSnapshot.selectedItemDepth),
+								});
+								setEditingSelectedItemDimensionsId(selectedItemId);
+							}}
+							className="inline-flex h-9 items-center justify-center rounded-full bg-slate-100 px-3 text-xs font-semibold text-slate-700 shadow-sm ring-1 ring-slate-200 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-200 dark:ring-slate-700 dark:hover:bg-slate-700"
+							title="Edit item dimensions"
+							aria-label="Edit item dimensions"
+						>
+							{`${floorPlanActionSnapshot.selectedItemWidth}×${floorPlanActionSnapshot.selectedItemDepth}`}
+						</button>
+					)}
+					<button type="button" onClick={() => floorPlanActionControlsRef.current?.selectedItem?.onMoveLayerUp()} disabled={!floorPlanActionSnapshot.selectedItemCanMoveUp} className={iconButtonClassName} title="Move item forward" aria-label="Move item forward">▲</button>
+					<button type="button" onClick={() => floorPlanActionControlsRef.current?.selectedItem?.onMoveLayerDown()} disabled={!floorPlanActionSnapshot.selectedItemCanMoveDown} className={iconButtonClassName} title="Move item backward" aria-label="Move item backward">▼</button>
+				</div>
+			);
+		}
+
+		if (effectiveSelectedRoomId && floorPlanActionSnapshot.selectedRoomId) {
+			const selectedRoomId = floorPlanActionSnapshot.selectedRoomId;
+			return (
+				<div className="flex flex-wrap items-center justify-center gap-2 md:justify-start">
+					<button type="button" onClick={() => floorPlanActionControlsRef.current?.selectedRoom?.onExitRoom()} className={iconButtonClassName} title="Exit room" aria-label="Exit room">←</button>
+					<button type="button" onClick={() => floorPlanActionControlsRef.current?.selectedRoom?.onEditRoom()} className={iconButtonClassName} title="Edit room" aria-label="Edit room">✏️</button>
+					<button
+						type="button"
+						onClick={() => {
+							if (confirmDeleteRoomActionId === selectedRoomId) {
+								floorPlanActionControlsRef.current?.selectedRoom?.onDeleteRoom();
+								setConfirmDeleteRoomActionId(null);
+								return;
+							}
+							setConfirmDeleteRoomActionId(selectedRoomId);
+						}}
+						className={confirmDeleteRoomActionId === selectedRoomId ? activeIconButtonClassName : destructiveIconButtonClassName}
+						title={confirmDeleteRoomActionId === selectedRoomId ? 'Confirm delete room' : 'Delete room'}
+						aria-label={confirmDeleteRoomActionId === selectedRoomId ? 'Confirm delete room' : 'Delete room'}
+					>
+						🗑️
+					</button>
+					<button type="button" onClick={() => floorPlanActionControlsRef.current?.selectedRoom?.onTakePhoto()} disabled={floorPlanActionSnapshot.selectedRoomPhotoBusy} className={iconButtonClassName} title="Take room photo" aria-label="Take room photo">📷</button>
+					<button type="button" onClick={() => floorPlanActionControlsRef.current?.selectedRoom?.onAddContainer()} className={iconButtonClassName} title="Add container" aria-label="Add container">📦</button>
+					<button type="button" onClick={() => floorPlanActionControlsRef.current?.selectedRoom?.onAddItem()} className={iconButtonClassName} title="Add item" aria-label="Add item">➕</button>
+					<button type="button" onClick={() => floorPlanActionControlsRef.current?.selectedRoom?.onCleanRoom()} disabled={!floorPlanActionSnapshot.selectedRoomCanClean} className={iconButtonClassName} title="Clean room" aria-label="Clean room">🧹</button>
+				</div>
+			);
+		}
+
+		return (
+			<div className="flex flex-wrap items-center justify-center gap-2 md:justify-start">
+				<button type="button" onClick={handleStartCreateRoom} disabled={!activeStoryHasOutline} className={iconButtonClassName} title="Outline room" aria-label="Outline room">🏠</button>
+				<button type="button" onClick={handleAddStory} className={iconButtonClassName} title="Add story" aria-label="Add story">➕</button>
+			</div>
+		);
+	})();
 
 	return (
 		<div className="space-y-3 rounded-xl border border-gray-200 bg-gray-50 dark:border-gray-600 dark:bg-gray-800/40">
@@ -587,7 +871,13 @@ export function HomeLayout({
 							) : (
 								<select
 									value={activeStory?.id ?? ''}
-									onChange={(event) => handleSelectStory(event.target.value)}
+									onChange={(event) => {
+										if (event.target.value === ADD_STORY_OPTION_VALUE) {
+											handleAddStory();
+											return;
+										}
+										handleSelectStory(event.target.value);
+									}}
 									className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-800 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-200 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100 dark:focus:border-blue-500 dark:focus:ring-blue-900/60"
 									aria-label="Select story"
 								>
@@ -596,20 +886,12 @@ export function HomeLayout({
 											{story.name}
 										</option>
 									))}
+									<option value={ADD_STORY_OPTION_VALUE}>+ Add Story</option>
 								</select>
 							)}
 						</div>
 						{showHeaderStoryActions ? (
 							<div className="flex shrink-0 items-center gap-2">
-								<button
-									type="button"
-									onClick={handleAddStory}
-									className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-white text-gray-700 hover:bg-gray-100 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800"
-									aria-label="Add story"
-									title="Add story"
-								>
-									<IconDisplay iconKey="add" size={16} className="h-4 w-4 object-contain" alt="" />
-								</button>
 								{stories.length > 1 ? (
 									<div ref={deleteStoryButtonRef}>
 										<button
@@ -673,7 +955,6 @@ export function HomeLayout({
 					onEditingRoomChange={editable ? setEditingRoom : undefined}
 					onSaveEditingRoom={editable ? handleSaveEditingRoom : undefined}
 					onCancelEditingRoom={editable ? () => { setEditingRoom(null); setEditingMode(null); handleCancelStoryEdit(); } : undefined}
-					onStartCreateRoom={editable ? handleStartCreateRoom : undefined}
 					onStartEditRoom={editable ? handleStartEditRoom : undefined}
 					onDeleteRoom={editable ? deleteRoom : undefined}
 					onUpdateRoomPlacedItems={editable ? handleUpdateRoomPlacedItems : undefined}
@@ -681,6 +962,8 @@ export function HomeLayout({
 					onUpdateStoryPlacedItems={editable ? handleUpdateStoryPlacedItems : undefined}
 					onUpdateRoomPhotos={editable ? handleUpdateRoomPhotos : undefined}
 					onUpdateStoryPhotos={editable ? handleUpdateStoryPhotos : undefined}
+					actionBar={actionBar}
+					onActionBarStateChange={handleFloorPlanActionStateChange}
 				/>
 			) : (
 				<div className="rounded-xl border border-dashed border-gray-300 px-4 py-6 text-center text-xs text-gray-500 dark:border-gray-600 dark:text-gray-400">
