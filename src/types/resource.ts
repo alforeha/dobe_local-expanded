@@ -254,6 +254,7 @@ export interface HomeChore {
   icon: string;
   name: string;
   taskType?: string;
+  inputFields?: Partial<InputFields>;
   recurrenceMode?: 'recurring' | 'never';
   recurrence: ResourceRecurrenceRule;
   /** Days before task triggers a GTD push. Default 0. -1 = never. */
@@ -493,6 +494,8 @@ export interface HomeResource {
   createdAt: string;
   updatedAt: string;
   address?: string;
+  city?: string;
+  state?: string;
   members?: string[];
   rooms?: HomeRoom[];
   stories?: HomeStory[];

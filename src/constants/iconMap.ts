@@ -124,6 +124,15 @@ export const ICON_MAP: Record<string, string> = {
   'resource-tab-accounts': '💳',
   'resource-tab-inventory': '📦',
   'resource-tab-docs': '📄',
+  // HOME ICONS
+  'home-icon-house': '🏠',
+  'home-icon-apartment': '🏢',
+  'home-icon-cabin': '🛖',
+  'home-icon-office': '🏢',
+  'home-icon-garage': '🏗️',
+  'home-icon-studio': '🏠',
+  'home-icon-condo': '🏙️',
+  'home-icon-farm': '🏡',
   // EVENT OVERLAY NAV
   'event-nav-actions': '📋',
   'event-nav-participants': '👥',

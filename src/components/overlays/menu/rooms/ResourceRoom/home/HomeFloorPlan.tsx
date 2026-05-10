@@ -809,6 +809,13 @@ export function HomeFloorPlan({
 		: roomSummaries.filter((entry) => entry.room.id === selectedRoomId);
 	const containerFocusSummary = roomSummaries.find((entry) => entry.room.id === editingContainersRoomId) ?? null;
 	const selectedRoomSummary = roomSummaries.find((entry) => entry.room.id === selectedRoom?.id) ?? null;
+	const hasExpandedPlacement = useMemo(() => {
+		if (!expandedPlacedContainerId) return false;
+		return Boolean(
+			selectedRoomSummary?.placedEntries.some((entry) => entry.placement.id === expandedPlacedContainerId)
+			|| story.placedItems.some((entry) => entry.id === expandedPlacedContainerId),
+		);
+	}, [expandedPlacedContainerId, selectedRoomSummary, story.placedItems]);
 	const selectedEditingSegment = selectedSegmentIndex != null ? editingSegmentLines[selectedSegmentIndex] ?? null : null;
 	const effectiveExpandedRoomId = !editingRoom && !editingStoryOutline ? (selectedRoomId ?? null) : expandedRoomId;
 	const activeEditablePlacementId = selectedPlacementId;
@@ -822,6 +829,7 @@ export function HomeFloorPlan({
 		? null
 		: findRoomContainerRecord(selectedRoomSummary.room, viewedContainerEntry.container.id);
 	const viewedContainerLayoutPanelOpen = showViewedContainerLayoutPanel && Boolean(viewedContainerEntry?.container);
+	const onPlacedItemSelectRef = useRef(onPlacedItemSelect);
 
 	useEffect(() => {
 		if (!viewingContainerPlacementId || viewedContainerEntry) return;
@@ -912,11 +920,6 @@ export function HomeFloorPlan({
 			return;
 		}
 
-		const hasExpandedPlacement = Boolean(
-			selectedRoomSummary?.placedEntries.some((entry) => entry.placement.id === expandedPlacedContainerId)
-			|| story.placedItems.some((entry) => entry.id === expandedPlacedContainerId),
-		);
-
 		if (!hasExpandedPlacement) {
 			const resetId = window.setTimeout(() => {
 				setExpandedPlacedContainerId(null);
@@ -930,10 +933,11 @@ export function HomeFloorPlan({
 			const syncId = window.setTimeout(() => setSelectedPlacementId(expandedPlacedContainerId), 0);
 			return () => window.clearTimeout(syncId);
 		}
-	}, [expandedPlacedContainerId, selectedPlacementId, selectedRoomSummary, story.placedItems]);
+	}, [expandedPlacedContainerId, hasExpandedPlacement, selectedPlacementId]);
 
 	useEffect(() => {
 		if (selectedPlacedId === selectedPlacementId && selectedPlacedId === expandedPlacedContainerId) return;
+		if (selectedPlacedId === undefined || selectedPlacedId === null) return;
 		const syncId = window.setTimeout(() => {
 			setExpandedPlacedContainerId(selectedPlacedId);
 			setSelectedPlacementId(selectedPlacedId);
@@ -942,8 +946,12 @@ export function HomeFloorPlan({
 	}, [expandedPlacedContainerId, selectedPlacedId, selectedPlacementId]);
 
 	useEffect(() => {
-		onPlacedItemSelect?.(selectedPlacementId);
-	}, [onPlacedItemSelect, selectedPlacementId]);
+		onPlacedItemSelectRef.current = onPlacedItemSelect;
+	});
+
+	useEffect(() => {
+		onPlacedItemSelectRef.current?.(selectedPlacementId);
+	}, [selectedPlacementId]);
 
 	useEffect(() => {
 		if (!editingRoomId) {

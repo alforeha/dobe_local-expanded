@@ -820,6 +820,7 @@ export const useResourceStore = create<ResourceState & ResourceActions>()(
       name: 'cdb-resources',
       onRehydrateStorage: () => (state) => {
         if (!state) return;
+        // HomeResource.city/state are optional, so older hydrated homes safely keep them undefined.
         const sanitizedResources = sanitizeResources(state.resources);
         if (sanitizedResources !== state.resources) {
           state.resources = sanitizedResources;

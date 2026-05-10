@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import type { AlbumEntry, FloorPlanRoom, FloorPlanSegment, HomeStory, InventoryContainer, InventoryResource, PlacedInstance } from '../../../../../../types/resource';
+import type { AlbumEntry, FloorPlanRoom, FloorPlanSegment, HomeStory, InventoryResource, PlacedInstance } from '../../../../../../types/resource';
 import { useResourceStore } from '../../../../../../stores/useResourceStore';
 import { useUserStore } from '../../../../../../stores/useUserStore';
 import { closeFloorPlanSegments, getPointsBounds, segmentsToPoints } from '../../../../../../utils/floorPlan';
@@ -32,28 +32,11 @@ interface StoryOutlineDraft {
 	segments: FloorPlanSegment[];
 }
 
-type PlacedListTab = 'items' | 'containers';
-
-interface RoomPlacedItemRow {
+interface SelectedPlacedItemSummary {
 	id: string;
 	icon: string;
 	name: string;
-	detail: string;
-}
-
-interface RoomPlacedContainerRow {
-	id: string;
-	icon: string;
-	name: string;
-	detail: string;
-}
-
-interface RoomPlacementGroup {
-	roomId: string;
-	roomName: string;
-	storyName: string;
-	items: RoomPlacedItemRow[];
-	containers: RoomPlacedContainerRow[];
+	detail: string | null;
 }
 
 function cloneRoom(room: FloorPlanRoom): FloorPlanRoom {
@@ -159,7 +142,6 @@ export function HomeLayout({ stories, onChange, editable = false, homeId, hideRo
 	const [activeStoryId, setActiveStoryId] = useState<string | null>(stories[0]?.id ?? null);
 	const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
 	const [selectedPlacedId, setSelectedPlacedId] = useState<string | null>(null);
-	const [placedListTab, setPlacedListTab] = useState<PlacedListTab>('items');
 	const [storyDialog, setStoryDialog] = useState<StoryDialogState>(null);
 	const [storyName, setStoryName] = useState('');
 	const [storyError, setStoryError] = useState('');
@@ -184,95 +166,62 @@ export function HomeLayout({ stories, onChange, editable = false, homeId, hideRo
 		return normalizedUnit ? `Quantity ${normalizedQuantity} ${normalizedUnit}` : `Quantity ${normalizedQuantity}`;
 	}
 
-	function buildFacilityDetail(placement: PlacedInstance, resolvedTemplate: ReturnType<typeof resolveInventoryItemTemplate>, recurringTaskCount: number) {
-		const firstTaskName = placement.recurringTasks?.find((task) => task.taskTemplateRef?.trim())?.taskTemplateRef?.trim()
+	function buildFacilityDetail(placement: PlacedInstance, resolvedTemplate: ReturnType<typeof resolveInventoryItemTemplate>) {
+		return placement.recurringTasks?.find((task) => task.taskTemplateRef?.trim())?.taskTemplateRef?.trim()
 			?? resolvedTemplate?.builtInTasks?.find((task) => task.taskTemplateRef?.trim())?.taskTemplateRef?.trim()
 			?? null;
-		if (firstTaskName) return firstTaskName;
-		return `${recurringTaskCount} recurring task${recurringTaskCount === 1 ? '' : 's'}`;
 	}
 
-	function resolvePlacedItemRow(room: FloorPlanRoom, placement: PlacedInstance): RoomPlacedItemRow {
-		for (const inventory of inventoryResources) {
-			const item = inventory.items.find((candidate) => candidate.id === placement.refId);
-			if (!item) continue;
-			const resolvedItem = resolveInventoryItemTemplate(item.itemTemplateRef, mergeInventoryItemTemplates(userItemTemplates, inventory.itemTemplates));
-			const recurringTasks = placement.recurringTasks ?? item.recurringTasks ?? [];
-			return {
-				id: placement.id,
-				icon: resolvedItem?.icon ?? 'inventory',
-				name: resolvedItem?.name ?? item.itemTemplateRef,
-				detail: resolvedItem?.kind === 'facility'
-					? buildFacilityDetail(placement, resolvedItem, recurringTasks.length)
-					: formatQuantity(item.quantity, item.unit),
-			};
-		}
-
-		const roomTemplates = mergeInventoryItemTemplates(userItemTemplates, room.dedicatedItems);
-		const resolvedTemplate = resolveInventoryItemTemplate(placement.refId, roomTemplates);
+	function buildPlacedItemSummary(
+		placement: PlacedInstance,
+		resolvedTemplate: ReturnType<typeof resolveInventoryItemTemplate>,
+		quantity?: number,
+		unit?: string,
+	): SelectedPlacedItemSummary {
 		return {
 			id: placement.id,
 			icon: resolvedTemplate?.icon ?? 'inventory',
 			name: resolvedTemplate?.name ?? placement.refId,
 			detail: resolvedTemplate?.kind === 'facility'
-				? buildFacilityDetail(placement, resolvedTemplate, placement.recurringTasks?.length ?? 0)
-				: formatQuantity(placement.quantity),
+				? buildFacilityDetail(placement, resolvedTemplate)
+				: formatQuantity(quantity ?? placement.quantity, unit),
 		};
 	}
 
-	function findRoomContainerRecord(room: FloorPlanRoom, containerId: string): InventoryContainer | null {
-		const dedicatedContainer = room.dedicatedContainers?.find((candidate) => candidate.id === containerId);
-		if (dedicatedContainer) return dedicatedContainer;
+	function resolvePlacedItemSummary(room: FloorPlanRoom, placement: PlacedInstance): SelectedPlacedItemSummary {
+		for (const inventory of inventoryResources) {
+			const item = inventory.items.find((candidate) => candidate.id === placement.refId);
+			if (!item) continue;
+			const resolvedItem = resolveInventoryItemTemplate(item.itemTemplateRef, mergeInventoryItemTemplates(userItemTemplates, inventory.itemTemplates));
+			return buildPlacedItemSummary(placement, resolvedItem, item.quantity, item.unit);
+		}
+
+		const roomTemplates = mergeInventoryItemTemplates(userItemTemplates, room.dedicatedItems);
+		const resolvedTemplate = resolveInventoryItemTemplate(placement.refId, roomTemplates);
+		return buildPlacedItemSummary(placement, resolvedTemplate);
+	}
+
+	const selectedPlacedItemSummary = (() => {
+		if (!activeStory || !selectedPlacedId) return null;
+
+		for (const room of activeStory.rooms) {
+			const placement = room.placedItems.find((entry) => entry.id === selectedPlacedId && entry.kind === 'item');
+			if (placement) return resolvePlacedItemSummary(room, placement);
+		}
+
+		const storyPlacement = activeStory.placedItems.find((entry) => entry.id === selectedPlacedId && entry.kind === 'item');
+		if (!storyPlacement) return null;
 
 		for (const inventory of inventoryResources) {
-			const container = inventory.containers?.find((candidate) => candidate.id === containerId);
-			if (container) return container;
+			const item = inventory.items.find((candidate) => candidate.id === storyPlacement.refId);
+			if (!item) continue;
+			const resolvedItem = resolveInventoryItemTemplate(item.itemTemplateRef, mergeInventoryItemTemplates(userItemTemplates, inventory.itemTemplates));
+			return buildPlacedItemSummary(storyPlacement, resolvedItem, item.quantity, item.unit);
 		}
 
-		return null;
-	}
-
-	function resolvePlacedContainerRow(room: FloorPlanRoom, placement: PlacedInstance): RoomPlacedContainerRow {
-		const container = findRoomContainerRecord(room, placement.refId);
-		const itemCount = container?.items.length ?? 0;
-		return {
-			id: placement.id,
-			icon: container?.icon ?? 'inventory',
-			name: container?.name ?? 'Unknown container',
-			detail: `${itemCount} item${itemCount === 1 ? '' : 's'}`,
-		};
-	}
-
-	const roomPlacementGroups: RoomPlacementGroup[] = [];
-
-	for (const story of stories) {
-		for (const room of story.rooms) {
-			const items = room.placedItems
-				.filter((placement) => placement.kind === 'item')
-				.map((placement) => resolvePlacedItemRow(room, placement));
-			const containers = room.placedItems
-				.filter((placement) => placement.kind === 'container')
-				.map((placement) => resolvePlacedContainerRow(room, placement));
-
-			if (items.length === 0 && containers.length === 0) continue;
-
-			roomPlacementGroups.push({
-				roomId: room.id,
-				roomName: room.name,
-				storyName: story.name,
-				items,
-				containers,
-			});
-		}
-	}
-
-	const filteredRoomPlacementGroups = effectiveSelectedRoomId
-		? roomPlacementGroups.filter((group) => group.roomId === effectiveSelectedRoomId)
-		: roomPlacementGroups;
-
-	const visiblePlacementGroups = placedListTab === 'items'
-		? filteredRoomPlacementGroups.filter((group) => group.items.length > 0)
-		: filteredRoomPlacementGroups.filter((group) => group.containers.length > 0);
+		const resolvedTemplate = resolveInventoryItemTemplate(storyPlacement.refId, userItemTemplates);
+		return buildPlacedItemSummary(storyPlacement, resolvedTemplate);
+	})();
 
 	function commit(nextStories: HomeStory[]) {
 		onChange?.(nextStories);
@@ -594,72 +543,29 @@ export function HomeLayout({ stories, onChange, editable = false, homeId, hideRo
 				</div>
 			)}
 
-			<div className="rounded-xl border border-gray-200 bg-white/80 p-3 dark:border-gray-700 dark:bg-gray-900/50">
-				<div className="flex items-center justify-between gap-3">
-					<div>
-						<div className="text-sm font-semibold text-gray-800 dark:text-gray-100">Placed Items</div>
-						<div className="text-xs text-gray-500 dark:text-gray-400">
-							{effectiveSelectedRoomId ? 'Showing the selected room only.' : 'Showing all rooms across stories.'}
-						</div>
-					</div>
-					<div className="flex items-center gap-1 rounded-full bg-gray-100 p-1 dark:bg-gray-800">
-						<button
-							type="button"
-							onClick={() => setPlacedListTab('items')}
-							className={placedListTab === 'items'
-								? 'rounded-full bg-white px-3 py-1 text-xs font-semibold text-gray-900 shadow-sm dark:bg-gray-700 dark:text-gray-100'
-								: 'rounded-full px-3 py-1 text-xs font-medium text-gray-600 dark:text-gray-300'}
-						>
-							Items
-						</button>
-						<button
-							type="button"
-							onClick={() => setPlacedListTab('containers')}
-							className={placedListTab === 'containers'
-								? 'rounded-full bg-white px-3 py-1 text-xs font-semibold text-gray-900 shadow-sm dark:bg-gray-700 dark:text-gray-100'
-								: 'rounded-full px-3 py-1 text-xs font-medium text-gray-600 dark:text-gray-300'}
-						>
-							Containers
-						</button>
-					</div>
-				</div>
-
-				<div className="mt-3 space-y-3">
-					{visiblePlacementGroups.length > 0 ? visiblePlacementGroups.map((group) => {
-						const rows = placedListTab === 'items' ? group.items : group.containers;
-						return (
-							<div key={`${placedListTab}-${group.roomId}`} className="rounded-lg border border-gray-200 bg-gray-50/70 dark:border-gray-700 dark:bg-gray-800/40">
-								<div className="border-b border-gray-200 px-3 py-2 dark:border-gray-700">
-									<div className="text-xs font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-300">{group.roomName}</div>
-									<div className="text-[11px] text-gray-500 dark:text-gray-400">{group.storyName}</div>
-								</div>
-								<div className="divide-y divide-gray-200 dark:divide-gray-700">
-									{rows.map((row) => (
-										<button
-											key={row.id}
-											type="button"
-											onClick={() => setSelectedPlacedId((current) => current === row.id ? null : row.id)}
-											className={`flex w-full items-center gap-3 px-3 py-2 text-left ${selectedPlacedId === row.id ? 'bg-emerald-50 dark:bg-emerald-900/20' : ''}`}
-										>
-											<IconDisplay iconKey={row.icon || 'inventory'} size={16} className="h-4 w-4 shrink-0 object-contain" alt="" />
-											<div className="min-w-0">
-												<div className="truncate text-sm font-medium text-gray-800 dark:text-gray-100">{row.name}</div>
-												<div className="truncate text-xs text-gray-500 dark:text-gray-400">{row.detail}</div>
-											</div>
-										</button>
-									))}
-								</div>
+			{selectedPlacedItemSummary ? (
+				<div className="rounded-xl border border-gray-200 bg-white/80 p-3 dark:border-gray-700 dark:bg-gray-900/50">
+					<div className="flex items-start justify-between gap-3">
+						<div className="flex min-w-0 items-center gap-3">
+							<IconDisplay iconKey={selectedPlacedItemSummary.icon || 'inventory'} size={20} className="h-5 w-5 shrink-0 object-contain" alt="" />
+							<div className="min-w-0">
+								<div className="truncate text-sm font-semibold text-gray-800 dark:text-gray-100">{selectedPlacedItemSummary.name}</div>
+								{selectedPlacedItemSummary.detail ? (
+									<div className="truncate text-xs text-gray-500 dark:text-gray-400">{selectedPlacedItemSummary.detail}</div>
+								) : null}
 							</div>
-						);
-					}) : (
-						<div className="rounded-lg border border-dashed border-gray-300 px-4 py-5 text-center text-xs text-gray-500 dark:border-gray-700 dark:text-gray-400">
-							{placedListTab === 'items'
-								? 'No placed items found for the current room filter.'
-								: 'No placed containers found for the current room filter.'}
 						</div>
-					)}
+						<button
+							type="button"
+							onClick={() => setSelectedPlacedId(null)}
+							className="rounded-full bg-gray-100 px-2 py-1 text-xs font-semibold text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+							aria-label="Deselect selected item"
+						>
+							×
+						</button>
+					</div>
 				</div>
-			</div>
+			) : null}
 
 			{storyDialog ? (
 				<PopupShell

@@ -1198,7 +1198,7 @@ function _genHomeGTD(resource: HomeResource, referenceDate: string): Task[] {
         next.date,
         chore.name,
         { label: chore.name } as Task['resultFields'],
-        { taskType: chore.taskType ?? 'CHECK' },
+        { taskType: chore.taskType ?? 'CHECK', inputFields: chore.inputFields ?? null },
       ),
     );
   }
