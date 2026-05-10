@@ -8,6 +8,8 @@ import { IconDisplay } from '../../../../shared/IconDisplay';
 interface ResourceBlockProps {
   resource: Resource;
   onEdit: (resource: Resource) => void;
+  onRoomSelectedChange?: (roomSelected: boolean) => void;
+  roomSelected?: boolean;
   isExpanded: boolean;
   onExpand: (id: string) => void;
   onCollapse: () => void;
@@ -142,7 +144,7 @@ function getLinkedTargets(resource: Resource, resources: Record<string, Resource
     .filter((target): target is Resource => Boolean(target));
 }
 
-export function ResourceBlock({ resource, onEdit, isExpanded, onExpand, onCollapse }: ResourceBlockProps) {
+export function ResourceBlock({ resource, onEdit, onRoomSelectedChange, roomSelected = false, isExpanded, onExpand, onCollapse }: ResourceBlockProps) {
   const resources = useResourceStore((state) => state.resources);
   const currentResource = resources[resource.id] ?? resource;
   const contactResource = isContact(currentResource) ? currentResource : null;
@@ -317,6 +319,8 @@ export function ResourceBlock({ resource, onEdit, isExpanded, onExpand, onCollap
           <ResourceBlockExpanded
             key={currentResource.id}
             resource={currentResource}
+            onRoomSelectedChange={onRoomSelectedChange}
+            roomSelected={roomSelected}
             onClose={onCollapse}
             onEdit={onEdit}
           />

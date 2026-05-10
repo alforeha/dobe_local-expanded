@@ -280,6 +280,7 @@ export function HomeFormNew({ existing, onSaved, registerOnAutoSave }: HomeFormN
   const defaultHomeIcon = homeIconKeys[0] ?? 'home-icon-house';
 
   const [activeTab, setActiveTab] = useState('details');
+  const [roomSelected, setRoomSelected] = useState(false);
   const [iconKey, setIconKey] = useState(existing?.icon ?? currentExisting?.icon ?? defaultHomeIcon);
   const [displayName, setDisplayName] = useState(existing?.name ?? currentExisting?.name ?? '');
   const [streetAddress, setStreetAddress] = useState(existing?.address ?? currentExisting?.address ?? '');
@@ -1325,13 +1326,15 @@ export function HomeFormNew({ existing, onSaved, registerOnAutoSave }: HomeFormN
   function renderLayoutTab() {
     return (
       <div className="px-4 py-4">
+        {!roomSelected ? (
         <div className="mb-2 flex items-center justify-between">
           <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Floor plan</span>
           <span className="text-[11px] text-gray-400 dark:text-gray-500">
             {stories.length} stor{stories.length === 1 ? 'y' : 'ies'} · {stories.reduce((sum, story) => sum + story.rooms.length, 0)} rooms
           </span>
         </div>
-        <HomeLayout stories={stories} onChange={setStories} editable homeId={draftHomeId} />
+        ) : null}
+        <HomeLayout stories={stories} onChange={setStories} editable homeId={draftHomeId} onRoomSelectedChange={setRoomSelected} />
       </div>
     );
   }
@@ -1356,6 +1359,7 @@ export function HomeFormNew({ existing, onSaved, registerOnAutoSave }: HomeFormN
         activeTab={activeTab}
         onTabChange={handleTabChange}
         hideChrome={hasExpandedChore}
+        hideTabs={roomSelected}
       >
         {activeTab === 'details' ? renderDetailsTab() : null}
         {activeTab === 'tasks' ? renderTasksTab() : null}

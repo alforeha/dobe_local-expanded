@@ -915,30 +915,29 @@ export function HomeFloorPlan({
 
 	useEffect(() => {
 		if (!expandedPlacedContainerId) {
-			const resetId = window.setTimeout(() => setSelectedPlacementId(null), 0);
-			return () => window.clearTimeout(resetId);
+			setSelectedPlacementId(null);
 			return;
 		}
 
 		if (!hasExpandedPlacement) {
-			const resetId = window.setTimeout(() => {
-				setExpandedPlacedContainerId(null);
-				setSelectedPlacementId(null);
-			}, 0);
-			return () => window.clearTimeout(resetId);
+			setExpandedPlacedContainerId(null);
+			setSelectedPlacementId(null);
 			return;
 		}
 
 		if (selectedPlacementId !== expandedPlacedContainerId) {
-			const syncId = window.setTimeout(() => setSelectedPlacementId(expandedPlacedContainerId), 0);
-			return () => window.clearTimeout(syncId);
+			setSelectedPlacementId(expandedPlacedContainerId);
 		}
 	}, [expandedPlacedContainerId, hasExpandedPlacement, selectedPlacementId]);
 
 	useEffect(() => {
 		if (selectedPlacedId === selectedPlacementId && selectedPlacedId === expandedPlacedContainerId) return;
-		if (selectedPlacedId === undefined || selectedPlacedId === null) return;
 		const syncId = window.setTimeout(() => {
+			if (selectedPlacedId === undefined || selectedPlacedId === null) {
+				setExpandedPlacedContainerId(null);
+				setSelectedPlacementId(null);
+				return;
+			}
 			setExpandedPlacedContainerId(selectedPlacedId);
 			setSelectedPlacementId(selectedPlacedId);
 		}, 0);
@@ -2776,14 +2775,16 @@ export function HomeFloorPlan({
 	return (
 		<div className="space-y-3">
 			<div className="overflow-visible rounded-xl border border-gray-200 bg-white dark:border-gray-600 dark:bg-gray-900/60">
-				<div className="flex items-center justify-between gap-3 border-b border-gray-200 px-3 py-2 dark:border-gray-700">
-					<div>
-						<div className="text-sm font-semibold text-gray-800 dark:text-gray-100">{story.name}</div>
+				{!selectedRoomId ? (
+					<div className="flex items-center justify-between gap-3 border-b border-gray-200 px-3 py-2 dark:border-gray-700">
+						<div>
+							<div className="text-sm font-semibold text-gray-800 dark:text-gray-100">{story.name}</div>
+						</div>
+						{editable && !editingRoom && !editingStoryOutline ? (
+							<button type="button" onClick={onStartCreateRoom} className="rounded-md bg-blue-500 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-blue-600">Outline room</button>
+						) : null}
 					</div>
-					{editable && !editingRoom && !editingStoryOutline ? (
-						<button type="button" onClick={onStartCreateRoom} className="rounded-md bg-blue-500 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-blue-600">Outline room</button>
-					) : null}
-				</div>
+				) : null}
 				{roomEditorPanel}
 
 				<div className="relative">
@@ -3479,6 +3480,8 @@ export function HomeFloorPlan({
 													if (isExpanded) {
 														onSelectRoom(null);
 														setExpandedRoomId(null);
+														setExpandedPlacedContainerId(null);
+														setSelectedPlacementId(null);
 														setRoomAddItemRoomId((current) => current === room.id ? null : current);
 														setRoomAddContainerRoomId((current) => current === room.id ? null : current);
 														setViewingContainerPlacementId(null);

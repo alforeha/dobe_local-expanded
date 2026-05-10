@@ -15,6 +15,8 @@ interface HomeLayoutProps {
 	editable?: boolean;
 	homeId?: string;
 	hideRoomList?: boolean;
+	onRoomSelectedChange?: (hasRoomSelected: boolean) => void;
+	onFloorEditChange?: (isEditing: boolean) => void;
 }
 
 type StoryDialogState =
@@ -136,7 +138,15 @@ function makeDraftStoryOutline(): StoryOutlineDraft {
 	};
 }
 
-export function HomeLayout({ stories, onChange, editable = false, homeId, hideRoomList = false }: HomeLayoutProps) {
+export function HomeLayout({
+	stories,
+	onChange,
+	editable = false,
+	homeId,
+	hideRoomList = false,
+	onRoomSelectedChange,
+	onFloorEditChange,
+}: HomeLayoutProps) {
 	const [activeStoryId, setActiveStoryId] = useState<string | null>(stories[0]?.id ?? null);
 	const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
 	const [selectedPlacedId, setSelectedPlacedId] = useState<string | null>(null);
@@ -350,6 +360,18 @@ export function HomeLayout({ stories, onChange, editable = false, homeId, hideRo
 		setEditingStoryOutline(cloneStoryOutline(activeStory));
 	}
 
+	function handleStartEditStoryName() {
+		if (!activeStory) return;
+		setIsDeleteStoryConfirming(false);
+		setEditingMode(null);
+		setEditingRoom(null);
+		setSelectedRoomId(null);
+		setEditingStoryId(activeStory.id);
+		setStoryName(activeStory.name);
+		setStoryError('');
+		setEditingStoryOutline(null);
+	}
+
 	function handleStartEditRoom(room: FloorPlanRoom) {
 		setEditingStoryOutline(null);
 		setEditingMode('update');
@@ -359,6 +381,7 @@ export function HomeLayout({ stories, onChange, editable = false, homeId, hideRo
 
 	function handleSelectStory(storyId: string) {
 		setActiveStoryId(storyId);
+		setSelectedRoomId(null);
 		setEditingRoom(null);
 		setEditingMode(null);
 		setEditingStoryId(null);
@@ -377,22 +400,26 @@ export function HomeLayout({ stories, onChange, editable = false, homeId, hideRo
 	}
 
 	function handleSaveStoryEdits() {
-		if (!activeStory || !editingStoryOutline || editingStoryId !== activeStory.id) return;
+		if (!activeStory || editingStoryId !== activeStory.id) return;
 		const trimmed = storyName.trim();
 		if (!trimmed) {
 			setStoryError('Story name is required.');
 			return;
 		}
-		const closedSegments = closeFloorPlanSegments(editingStoryOutline.origin, editingStoryOutline.segments);
 		commit(stories.map((story) => (
 			story.id !== activeStory.id
 				? story
-				: {
-					...story,
-					name: trimmed,
-					outlineOrigin: { ...editingStoryOutline.origin },
-					outlineSegments: closedSegments.map((segment) => ({ ...segment })),
-				}
+				: editingStoryOutline
+					? {
+						...story,
+						name: trimmed,
+						outlineOrigin: { ...editingStoryOutline.origin },
+						outlineSegments: closeFloorPlanSegments(editingStoryOutline.origin, editingStoryOutline.segments).map((segment) => ({ ...segment })),
+					}
+					: {
+						...story,
+						name: trimmed,
+					}
 		)));
 		handleCancelStoryEdit();
 	}
@@ -498,8 +525,10 @@ export function HomeLayout({ stories, onChange, editable = false, homeId, hideRo
 	}
 
 	const activeStoryHasOutline = Boolean(activeStory?.outlineOrigin && (activeStory?.outlineSegments?.length ?? 0) > 0);
-	const isEditingActiveStory = Boolean(activeStory && editingStoryId === activeStory.id);
-	const showHeaderStoryActions = editable && !isEditingActiveStory;
+	const isEditingStoryName = Boolean(activeStory && editingStoryId === activeStory.id);
+	const isEditingStoryOutline = Boolean(activeStory && editingStoryId === activeStory.id && editingStoryOutline);
+	const showHeaderStoryActions = editable && !isEditingStoryOutline;
+	const showStoryControls = !effectiveSelectedRoomId;
 
 	useEffect(() => {
 		if (!isDeleteStoryConfirming) return undefined;
@@ -513,103 +542,112 @@ export function HomeLayout({ stories, onChange, editable = false, homeId, hideRo
 		return () => document.removeEventListener('pointerdown', handlePointerDown);
 	}, [isDeleteStoryConfirming]);
 
+	useEffect(() => {
+		onRoomSelectedChange?.(Boolean(effectiveSelectedRoomId));
+	}, [effectiveSelectedRoomId, onRoomSelectedChange]);
+
+	useEffect(() => {
+		onFloorEditChange?.(isEditingStoryOutline);
+	}, [isEditingStoryOutline, onFloorEditChange]);
+
 	return (
 		<div className="space-y-3 rounded-xl border border-gray-200 bg-gray-50 p-3 dark:border-gray-600 dark:bg-gray-800/40">
-			<div className="flex items-center gap-2">
-				<div className="min-w-0 flex-1">
-					{isEditingActiveStory ? (
-						<div className="flex items-center gap-2">
-							<input
-								type="text"
-								value={storyName}
-								onChange={(event) => {
-									setStoryName(event.target.value);
-									setStoryError('');
-								}}
-								className="min-w-0 flex-1 rounded-md border border-blue-300 bg-white px-3 py-2 text-sm font-semibold text-gray-900 outline-none ring-2 ring-blue-200 dark:border-blue-500 dark:bg-gray-900 dark:text-gray-100 dark:ring-blue-900/60"
-								placeholder="Story name"
-								aria-label="Story name"
-							/>
-							<span className="shrink-0 text-xs text-gray-500 dark:text-gray-400">
-								{activeStory?.rooms.length ?? 0} room{(activeStory?.rooms.length ?? 0) === 1 ? '' : 's'}
-							</span>
-							<button
-								type="button"
-								onClick={handleSaveStoryEdits}
-								className="shrink-0 text-xs font-semibold text-blue-600 hover:text-blue-700 dark:text-blue-300 dark:hover:text-blue-200"
-							>
-								Save
-							</button>
-							<button
-								type="button"
-								onClick={handleCancelStoryEdit}
-								className="shrink-0 text-xs font-semibold text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-							>
-								Cancel
-							</button>
+			{showStoryControls ? (
+				<>
+					<div className="flex items-center gap-2">
+						<div className="min-w-0 flex-1">
+							{isEditingStoryName ? (
+								<div className="flex items-center gap-2">
+									<input
+										type="text"
+										value={storyName}
+										onChange={(event) => {
+											setStoryName(event.target.value);
+											setStoryError('');
+										}}
+										className="min-w-0 flex-1 rounded-md border border-blue-300 bg-white px-3 py-2 text-sm font-semibold text-gray-900 outline-none ring-2 ring-blue-200 dark:border-blue-500 dark:bg-gray-900 dark:text-gray-100 dark:ring-blue-900/60"
+										placeholder="Story name"
+										aria-label="Story name"
+									/>
+									<button
+										type="button"
+										onClick={handleSaveStoryEdits}
+										className="shrink-0 text-xs font-semibold text-blue-600 hover:text-blue-700 dark:text-blue-300 dark:hover:text-blue-200"
+									>
+										Save
+									</button>
+									<button
+										type="button"
+										onClick={handleCancelStoryEdit}
+										className="shrink-0 text-xs font-semibold text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+									>
+										Cancel
+									</button>
+								</div>
+							) : (
+								<select
+									value={activeStory?.id ?? ''}
+									onChange={(event) => handleSelectStory(event.target.value)}
+									className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-800 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-200 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100 dark:focus:border-blue-500 dark:focus:ring-blue-900/60"
+									aria-label="Select story"
+								>
+									{stories.map((story) => (
+										<option key={story.id} value={story.id}>
+											{story.name}
+										</option>
+									))}
+								</select>
+							)}
 						</div>
-					) : (
-						<select
-							value={activeStory?.id ?? ''}
-							onChange={(event) => handleSelectStory(event.target.value)}
-							className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-800 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-200 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100 dark:focus:border-blue-500 dark:focus:ring-blue-900/60"
-							aria-label="Select story"
-						>
-							{stories.map((story) => (
-								<option key={story.id} value={story.id}>
-									{story.name}
-								</option>
-							))}
-						</select>
-					)}
-				</div>
-				{showHeaderStoryActions ? (
-					<div className="flex shrink-0 items-center gap-2">
-						<button
-							type="button"
-							onClick={handleAddStory}
-							className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-white text-gray-700 hover:bg-gray-100 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800"
-							aria-label="Add story"
-							title="Add story"
-						>
-							<IconDisplay iconKey="add" size={16} className="h-4 w-4 object-contain" alt="" />
-						</button>
-						{stories.length > 1 ? (
-							<div ref={deleteStoryButtonRef}>
+						{showHeaderStoryActions ? (
+							<div className="flex shrink-0 items-center gap-2">
 								<button
 									type="button"
-									onClick={() => {
-										if (!activeStory) return;
-										if (isDeleteStoryConfirming) {
-											confirmDeleteStory(activeStory.id);
-											return;
-										}
-										setIsDeleteStoryConfirming(true);
-									}}
-									className={isDeleteStoryConfirming
-										? 'inline-flex h-9 items-center justify-center rounded-full bg-red-500 px-3 text-xs font-semibold text-white hover:bg-red-600'
-										: 'inline-flex h-9 items-center justify-center rounded-full bg-white px-3 text-xs font-semibold text-red-600 hover:bg-red-50 dark:bg-gray-900 dark:text-red-300 dark:hover:bg-red-900/20'}
+									onClick={handleAddStory}
+									className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-white text-gray-700 hover:bg-gray-100 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800"
+									aria-label="Add story"
+									title="Add story"
 								>
-									{isDeleteStoryConfirming ? 'Confirm delete?' : 'Delete'}
+									<IconDisplay iconKey="add" size={16} className="h-4 w-4 object-contain" alt="" />
+								</button>
+								{stories.length > 1 ? (
+									<div ref={deleteStoryButtonRef}>
+										<button
+											type="button"
+											onClick={() => {
+												if (!activeStory) return;
+												if (isDeleteStoryConfirming) {
+													confirmDeleteStory(activeStory.id);
+													return;
+												}
+												setIsDeleteStoryConfirming(true);
+											}}
+											className={isDeleteStoryConfirming
+												? 'inline-flex h-9 items-center justify-center rounded-full bg-red-500 px-3 text-xs font-semibold text-white hover:bg-red-600'
+												: 'inline-flex h-9 items-center justify-center rounded-full bg-white px-3 text-xs font-semibold text-red-600 hover:bg-red-50 dark:bg-gray-900 dark:text-red-300 dark:hover:bg-red-900/20'}
+										>
+											{isDeleteStoryConfirming ? 'Confirm delete?' : 'Delete'}
+										</button>
+									</div>
+								) : null}
+								<button
+									type="button"
+									onClick={isEditingStoryName ? handleStartEditStoryOutline : handleStartEditStoryName}
+									disabled={!activeStory}
+									className={isEditingStoryName || isEditingStoryOutline
+										? 'inline-flex h-9 w-9 items-center justify-center rounded-full bg-blue-500 text-white hover:bg-blue-600 disabled:cursor-not-allowed disabled:bg-gray-200 disabled:text-gray-400 dark:disabled:bg-gray-700'
+										: 'inline-flex h-9 w-9 items-center justify-center rounded-full bg-white text-gray-700 hover:bg-gray-100 disabled:cursor-not-allowed disabled:bg-gray-200 disabled:text-gray-400 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800 dark:disabled:bg-gray-700'}
+									aria-label={isEditingStoryName ? (activeStoryHasOutline ? 'Edit outline' : 'Outline story') : 'Edit story'}
+									title={isEditingStoryName ? (activeStoryHasOutline ? 'Edit outline' : 'Outline story') : 'Edit story'}
+								>
+									<IconDisplay iconKey="edit" size={16} className="h-4 w-4 object-contain" alt="" />
 								</button>
 							</div>
 						) : null}
-						<button
-							type="button"
-							onClick={handleStartEditStoryOutline}
-							disabled={!activeStory}
-							className={isEditingActiveStory
-								? 'inline-flex h-9 w-9 items-center justify-center rounded-full bg-blue-500 text-white hover:bg-blue-600 disabled:cursor-not-allowed disabled:bg-gray-200 disabled:text-gray-400 dark:disabled:bg-gray-700'
-								: 'inline-flex h-9 w-9 items-center justify-center rounded-full bg-white text-gray-700 hover:bg-gray-100 disabled:cursor-not-allowed disabled:bg-gray-200 disabled:text-gray-400 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800 dark:disabled:bg-gray-700'}
-							aria-label={activeStoryHasOutline ? 'Edit story' : 'Outline story'}
-							title={activeStoryHasOutline ? 'Edit story' : 'Outline story'}
-						>
-							<IconDisplay iconKey="edit" size={16} className="h-4 w-4 object-contain" alt="" />
-						</button>
 					</div>
-				) : null}
-			</div>
-			{storyError && isEditingActiveStory ? <div className="text-xs text-red-500">{storyError}</div> : null}
+					{storyError && isEditingStoryName ? <div className="text-xs text-red-500">{storyError}</div> : null}
+				</>
+			) : null}
 
 			{activeStory ? (
 				<HomeFloorPlan
@@ -617,7 +655,13 @@ export function HomeLayout({ stories, onChange, editable = false, homeId, hideRo
 					selectedRoomId={effectiveSelectedRoomId}
 					selectedPlacedId={selectedPlacedId}
 					onPlacedItemSelect={(id) => setSelectedPlacedId(id)}
-					onSelectRoom={setSelectedRoomId}
+					onSelectRoom={(id) => {
+						setSelectedRoomId(id);
+						onRoomSelectedChange?.(Boolean(id));
+						if (!id) {
+							setSelectedPlacedId(null);
+						}
+					}}
 					homeId={homeId}
 					hideRoomList={hideRoomList}
 					editable={editable}

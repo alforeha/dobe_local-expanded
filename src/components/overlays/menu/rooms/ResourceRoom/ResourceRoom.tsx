@@ -43,6 +43,7 @@ export function ResourceRoom({ onOverlayActiveChange }: ResourceRoomProps) {
   const menuResourceTarget = useSystemStore((s) => s.menuResourceTarget);
   const clearMenuResourceTarget = useSystemStore((s) => s.clearMenuResourceTarget);
   const [activeType, setActiveType] = useState<ResourceType>(menuResourceTarget?.resourceType ?? 'contact');
+  const [roomSelected, setRoomSelected] = useState(false);
   const [contactSearch, setContactSearch] = useState('');
   const [contactGroupFilter, setContactGroupFilter] = useState('');
   const [addStep, setAddStep] = useState<AddStep>('closed');
@@ -165,6 +166,7 @@ export function ResourceRoom({ onOverlayActiveChange }: ResourceRoomProps) {
   const handleTypeChange = useCallback((type: ResourceType) => {
     triggerResourceFormAutoSave();
     setActiveType(type);
+    setRoomSelected(false);
     setAddStep('closed');
     setExpandedResourceId(null);
     setActiveExpandedResourceId(null);
@@ -173,6 +175,7 @@ export function ResourceRoom({ onOverlayActiveChange }: ResourceRoomProps) {
   const handleExpandedChange = useCallback((resourceId: string | null) => {
     if (resourceId == null) {
       triggerResourceFormAutoSave();
+      setRoomSelected(false);
     }
     setActiveExpandedResourceId(resourceId);
   }, [triggerResourceFormAutoSave]);
@@ -282,6 +285,8 @@ export function ResourceRoom({ onOverlayActiveChange }: ResourceRoomProps) {
       ) : null}
       <ResourceRoomBody
         resources={filtered}
+        onRoomSelectedChange={setRoomSelected}
+        roomSelected={roomSelected}
         onEdit={(resource) => {
           triggerResourceFormAutoSave();
           setInventoryEditMode('all');

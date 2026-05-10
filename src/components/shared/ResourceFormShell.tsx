@@ -14,6 +14,7 @@ interface ResourceFormShellProps {
   resourceIcon?: string;
   resourceName?: string;
   hideChrome?: boolean;
+  hideTabs?: boolean;
   tabs: ResourceFormTab[];
   activeTab: string;
   onTabChange: (tab: string) => void;
@@ -26,6 +27,7 @@ export function ResourceFormShell({
   resourceIcon,
   resourceName,
   hideChrome = false,
+  hideTabs = false,
   tabs,
   activeTab,
   onTabChange,
@@ -61,22 +63,24 @@ export function ResourceFormShell({
             </button>
           </div>
 
-          <div className="flex items-center gap-4 px-4 pb-2">
-            {visibleTabs.map((tab) => (
-              <button
-                key={tab.key}
-                type="button"
-                onClick={() => onTabChange(tab.key)}
-                className={`border-b-2 pb-0.5 text-xs font-medium transition-colors ${
-                  activeTab === tab.key
-                    ? 'border-blue-500 text-blue-500'
-                    : 'border-transparent text-gray-400 hover:text-gray-600 dark:hover:text-gray-300'
-                }`}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </div>
+          {!hideTabs ? (
+            <div className="flex items-center gap-4 px-4 pb-2">
+              {visibleTabs.map((tab) => (
+                <button
+                  key={tab.key}
+                  type="button"
+                  onClick={() => onTabChange(tab.key)}
+                  className={`border-b-2 pb-0.5 text-xs font-medium transition-colors ${
+                    activeTab === tab.key
+                      ? 'border-blue-500 text-blue-500'
+                      : 'border-transparent text-gray-400 hover:text-gray-600 dark:hover:text-gray-300'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+          ) : null}
         </div>
       ) : null}
 

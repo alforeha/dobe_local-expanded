@@ -19,6 +19,8 @@ import { DocMetaView } from './doc/DocMetaView';
 
 interface ResourceBlockExpandedProps {
   resource: Resource;
+  onRoomSelectedChange?: (roomSelected: boolean) => void;
+  roomSelected?: boolean;
   onClose: () => void;
   onEdit: (resource: Resource) => void;
 }
@@ -45,11 +47,12 @@ function buildRoomNameLookup(home: HomeResource): Map<string, string> {
   return lookup;
 }
 
-export function ResourceBlockExpanded({ resource, onClose, onEdit }: ResourceBlockExpandedProps) {
+export function ResourceBlockExpanded({ resource, onRoomSelectedChange, roomSelected = false, onClose, onEdit }: ResourceBlockExpandedProps) {
   const [activeTab, setActiveTab] = useState<'details' | 'layout' | 'relationships' | 'album'>('details');
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [editingEntry, setEditingEntry] = useState<AlbumEntry | null>(null);
   const [isCreatingEntry, setIsCreatingEntry] = useState(false);
+  const [floorEditing, setFloorEditing] = useState(false);
   const resetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const resources = useResourceStore((s) => s.resources);
@@ -65,11 +68,16 @@ export function ResourceBlockExpanded({ resource, onClose, onEdit }: ResourceBlo
   const contactResource = currentResource.type === 'contact' ? currentResource : null;
   const vehicleResource = currentResource.type === 'vehicle' ? currentResource : null;
   const canShowAlbum = Boolean(homeResource || contactResource || vehicleResource);
+  const showTabBar = canShowAlbum && (!homeResource || (!roomSelected && !floorEditing));
   const album = homeResource?.album ?? contactResource?.album ?? vehicleResource?.album ?? [];
   const roomNameLookup = useMemo(
     () => (homeResource ? buildRoomNameLookup(homeResource) : new Map<string, string>()),
     [homeResource],
   );
+
+  function handleRoomSelectedChange(nextRoomSelected: boolean) {
+    onRoomSelectedChange?.(nextRoomSelected);
+  }
 
   function handleDelete() {
     if (!deleteConfirm) {
@@ -242,7 +250,7 @@ export function ResourceBlockExpanded({ resource, onClose, onEdit }: ResourceBlo
           </div>
         )}
 
-        {canShowAlbum ? (
+        {showTabBar ? (
           <div className="mb-3 flex items-center gap-4 border-b border-gray-200 pb-2 dark:border-gray-700">
             <button
               type="button"
@@ -297,7 +305,13 @@ export function ResourceBlockExpanded({ resource, onClose, onEdit }: ResourceBlo
 
         <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
           {activeTab === 'layout' && homeResource ? (
-            <HomeLayout stories={homeResource.stories ?? []} homeId={homeResource.id} hideRoomList />
+            <HomeLayout
+              stories={homeResource.stories ?? []}
+              homeId={homeResource.id}
+              hideRoomList
+              onRoomSelectedChange={handleRoomSelectedChange}
+              onFloorEditChange={setFloorEditing}
+            />
           ) : activeTab === 'layout' && vehicleResource ? (
             <VehicleLayout resource={vehicleResource} displayOnly />
           ) : activeTab === 'album' && canShowAlbum ? (

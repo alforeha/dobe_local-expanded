@@ -9,6 +9,8 @@ interface ResourceRoomBodyProps {
   onEdit: (resource: Resource) => void;
   expandedResourceId?: string | null;
   onExpandedChange?: (expandedId: string | null) => void;
+  onRoomSelectedChange?: (roomSelected: boolean) => void;
+  roomSelected?: boolean;
 }
 
 export function ResourceRoomBody({
@@ -16,6 +18,8 @@ export function ResourceRoomBody({
   onEdit,
   expandedResourceId = null,
   onExpandedChange,
+  onRoomSelectedChange,
+  roomSelected = false,
 }: ResourceRoomBodyProps) {
   const [expandedId, setExpandedId] = useState<string | null>(expandedResourceId);
 
@@ -32,6 +36,11 @@ export function ResourceRoomBody({
     if (resources.some((resource) => resource.id === expandedId)) return;
     setExpandedId(null);
   }, [expandedId, resources]);
+
+  useEffect(() => {
+    if (expandedId) return;
+    onRoomSelectedChange?.(false);
+  }, [expandedId, onRoomSelectedChange]);
 
   if (resources.length === 0) {
     return (
@@ -64,6 +73,8 @@ export function ResourceRoomBody({
             key={expandedResource.id}
             resource={expandedResource}
             onEdit={onEdit}
+            onRoomSelectedChange={onRoomSelectedChange}
+            roomSelected={roomSelected}
             isExpanded={true}
             onExpand={(id) => setExpandedId(id)}
             onCollapse={() => setExpandedId(null)}
@@ -80,6 +91,8 @@ export function ResourceRoomBody({
           key={r.id}
           resource={r}
           onEdit={onEdit}
+          onRoomSelectedChange={onRoomSelectedChange}
+          roomSelected={roomSelected}
           isExpanded={expandedId === r.id}
           onExpand={(id) => setExpandedId(id)}
           onCollapse={() => setExpandedId(null)}
