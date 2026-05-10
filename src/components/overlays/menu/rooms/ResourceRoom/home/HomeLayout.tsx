@@ -656,11 +656,11 @@ export function HomeLayout({
 					selectedPlacedId={selectedPlacedId}
 					onPlacedItemSelect={(id) => setSelectedPlacedId(id)}
 					onSelectRoom={(id) => {
-						setSelectedRoomId(id);
-						onRoomSelectedChange?.(Boolean(id));
-						if (!id) {
+						if (id !== selectedRoomId) {
 							setSelectedPlacedId(null);
 						}
+						setSelectedRoomId(id);
+						onRoomSelectedChange?.(Boolean(id));
 					}}
 					homeId={homeId}
 					hideRoomList={hideRoomList}
