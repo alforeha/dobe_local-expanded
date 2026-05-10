@@ -753,33 +753,27 @@ export function ContactFormNew({ existing, onSaved, registerOnAutoSave }: Contac
     setEditingAlbumEntry(undefined);
   }
 
-  function renderIdentityRow() {
+  function renderDetailsTab() {
     return (
-      <div className="flex items-end gap-3">
-        <IconPicker
-          value={iconKey}
-          onChange={setIconKey}
-          allowedKeys={contactIconKeys}
-          align="left"
-        />
-        <div className="min-w-0 flex-1">
-          <label className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">Name *</label>
+      <div className="space-y-4 px-4 py-4">
+        <div className="flex flex-row items-center gap-2">
+          <div className="shrink-0">
+            <IconPicker
+              value={iconKey}
+              onChange={setIconKey}
+              allowedKeys={contactIconKeys}
+              align="left"
+            />
+          </div>
           <input
             type="text"
             value={displayName}
             onChange={(event) => setDisplayName(event.target.value)}
             placeholder="Full name"
             maxLength={100}
-            className={SELECT_CLS}
+            className={`${SELECT_CLS} flex-1 min-w-0`}
           />
         </div>
-      </div>
-    );
-  }
-
-  function renderDetailsTab() {
-    return (
-      <div className="space-y-4 px-4 py-4">
         <div className="flex flex-col gap-1.5">
           <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Groups</label>
           <div className="relative">
@@ -1514,7 +1508,8 @@ export function ContactFormNew({ existing, onSaved, registerOnAutoSave }: Contac
         onSave={() => {
           handleSave();
         }}
-        identityRow={renderIdentityRow()}
+        resourceIcon={iconKey}
+        resourceName={displayName}
         tabs={tabs}
         activeTab={activeTab}
         onTabChange={setActiveTab}

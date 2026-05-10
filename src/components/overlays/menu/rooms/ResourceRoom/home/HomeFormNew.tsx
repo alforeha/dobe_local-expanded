@@ -766,29 +766,23 @@ export function HomeFormNew({ existing, onSaved, registerOnAutoSave }: HomeFormN
     setEditingAlbumEntry(undefined);
   }
 
-  function renderIdentityRow() {
-    return (
-      <div className="flex items-end gap-3">
-        <IconPicker value={iconKey} onChange={setIconKey} allowedKeys={homeIconKeys} />
-        <div className="min-w-0 flex-1">
-          <label className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">Name</label>
-          <input
-            type="text"
-            value={displayName}
-            onChange={(event) => setDisplayName(event.target.value)}
-            placeholder="e.g. Main Home"
-            maxLength={100}
-            className={INPUT_CLS}
-          />
-        </div>
-      </div>
-    );
-  }
-
   function renderDetailsTab() {
     return (
       <div className="px-4 py-4">
         <div className="grid gap-3 sm:grid-cols-2">
+          <div className="flex flex-row items-center gap-2 sm:col-span-2">
+            <div className="shrink-0">
+              <IconPicker value={iconKey} onChange={setIconKey} allowedKeys={homeIconKeys} />
+            </div>
+            <input
+              type="text"
+              value={displayName}
+              onChange={(event) => setDisplayName(event.target.value)}
+              placeholder="e.g. Main Home"
+              maxLength={100}
+              className={`${INPUT_CLS} flex-1 min-w-0`}
+            />
+          </div>
           <div className="space-y-1 sm:col-span-2">
             <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Street</label>
             <input
@@ -1356,7 +1350,8 @@ export function HomeFormNew({ existing, onSaved, registerOnAutoSave }: HomeFormN
         onSave={() => {
           handleSave();
         }}
-        identityRow={renderIdentityRow()}
+        resourceIcon={iconKey}
+        resourceName={displayName}
         tabs={tabs}
         activeTab={activeTab}
         onTabChange={handleTabChange}

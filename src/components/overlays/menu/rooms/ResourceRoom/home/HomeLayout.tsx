@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import type { AlbumEntry, FloorPlanRoom, FloorPlanSegment, HomeStory, InventoryResource, PlacedInstance } from '../../../../../../types/resource';
 import { useResourceStore } from '../../../../../../stores/useResourceStore';
@@ -19,11 +19,9 @@ interface HomeLayoutProps {
 
 type StoryDialogState =
 	| { mode: 'add' }
-	| { mode: 'rename'; storyId: string }
 	| null;
 
 type DeleteDialogState =
-	| { kind: 'story'; storyId: string }
 	| { kind: 'room'; roomId: string }
 	| null;
 
@@ -143,12 +141,15 @@ export function HomeLayout({ stories, onChange, editable = false, homeId, hideRo
 	const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
 	const [selectedPlacedId, setSelectedPlacedId] = useState<string | null>(null);
 	const [storyDialog, setStoryDialog] = useState<StoryDialogState>(null);
+	const [editingStoryId, setEditingStoryId] = useState<string | null>(null);
 	const [storyName, setStoryName] = useState('');
 	const [storyError, setStoryError] = useState('');
 	const [editingRoom, setEditingRoom] = useState<FloorPlanRoom | null>(null);
 	const [editingMode, setEditingMode] = useState<'create' | 'update' | null>(null);
 	const [editingStoryOutline, setEditingStoryOutline] = useState<StoryOutlineDraft | null>(null);
 	const [deleteDialog, setDeleteDialog] = useState<DeleteDialogState>(null);
+	const [isDeleteStoryConfirming, setIsDeleteStoryConfirming] = useState(false);
+	const deleteStoryButtonRef = useRef<HTMLDivElement | null>(null);
 	const resources = useResourceStore((state) => state.resources);
 	const setResource = useResourceStore((state) => state.setResource);
 	const user = useUserStore((state) => state.user);
@@ -228,26 +229,27 @@ export function HomeLayout({ stories, onChange, editable = false, homeId, hideRo
 	}
 
 	function handleAddStory() {
+		setIsDeleteStoryConfirming(false);
+		setEditingStoryId(null);
+		setEditingStoryOutline(null);
 		setStoryDialog({ mode: 'add' });
 		setStoryName(`Story ${stories.length + 1}`);
 		setStoryError('');
 	}
 
-	function handleRenameStory(storyId: string) {
-		const story = stories.find((entry) => entry.id === storyId);
-		if (!story) return;
-		setStoryDialog({ mode: 'rename', storyId });
-		setStoryName(story.name);
-		setStoryError('');
-	}
-
-	function handleDeleteStory(storyId: string) {
-		setDeleteDialog({ kind: 'story', storyId });
-	}
-
 	function confirmDeleteStory(storyId: string) {
-		commit(stories.filter((entry) => entry.id !== storyId));
+		const remainingStories = stories.filter((entry) => entry.id !== storyId);
+		commit(remainingStories);
+		if (activeStoryId === storyId) {
+			setActiveStoryId(remainingStories[0]?.id ?? null);
+			setSelectedRoomId(null);
+			setSelectedPlacedId(null);
+			setEditingRoom(null);
+			setEditingMode(null);
+			handleCancelStoryEdit();
+		}
 		setDeleteDialog(null);
+		setIsDeleteStoryConfirming(false);
 	}
 
 	function deleteRoom(roomId: string) {
@@ -304,7 +306,7 @@ export function HomeLayout({ stories, onChange, editable = false, homeId, hideRo
 	}
 
 	function handleSaveStoryName() {
-		if (!storyDialog) return;
+		if (storyDialog?.mode !== 'add') return;
 		const trimmed = storyName.trim();
 		if (!trimmed) {
 			setStoryError('Story name is required.');
@@ -320,7 +322,7 @@ export function HomeLayout({ stories, onChange, editable = false, homeId, hideRo
 			setEditingRoom(null);
 			setEditingStoryOutline(makeDraftStoryOutline());
 		} else {
-			commit(stories.map((entry) => (entry.id === storyDialog.storyId ? { ...entry, name: trimmed } : entry)));
+			return;
 		}
 
 		setStoryDialog(null);
@@ -338,9 +340,13 @@ export function HomeLayout({ stories, onChange, editable = false, homeId, hideRo
 
 	function handleStartEditStoryOutline() {
 		if (!activeStory) return;
+		setIsDeleteStoryConfirming(false);
 		setEditingMode(null);
 		setEditingRoom(null);
 		setSelectedRoomId(null);
+		setEditingStoryId(activeStory.id);
+		setStoryName(activeStory.name);
+		setStoryError('');
 		setEditingStoryOutline(cloneStoryOutline(activeStory));
 	}
 
@@ -355,22 +361,40 @@ export function HomeLayout({ stories, onChange, editable = false, homeId, hideRo
 		setActiveStoryId(storyId);
 		setEditingRoom(null);
 		setEditingMode(null);
+		setEditingStoryId(null);
+		setStoryName('');
+		setStoryError('');
+		setEditingStoryOutline(null);
+		setIsDeleteStoryConfirming(false);
+	}
+
+	function handleCancelStoryEdit() {
+		setIsDeleteStoryConfirming(false);
+		setEditingStoryId(null);
+		setStoryName('');
+		setStoryError('');
 		setEditingStoryOutline(null);
 	}
 
-	function handleSaveStoryOutline() {
-		if (!activeStory || !editingStoryOutline) return;
+	function handleSaveStoryEdits() {
+		if (!activeStory || !editingStoryOutline || editingStoryId !== activeStory.id) return;
+		const trimmed = storyName.trim();
+		if (!trimmed) {
+			setStoryError('Story name is required.');
+			return;
+		}
 		const closedSegments = closeFloorPlanSegments(editingStoryOutline.origin, editingStoryOutline.segments);
 		commit(stories.map((story) => (
 			story.id !== activeStory.id
 				? story
 				: {
 					...story,
+					name: trimmed,
 					outlineOrigin: { ...editingStoryOutline.origin },
 					outlineSegments: closedSegments.map((segment) => ({ ...segment })),
 				}
 		)));
-		setEditingStoryOutline(null);
+		handleCancelStoryEdit();
 	}
 
 	function handleSaveEditingRoom() {
@@ -474,41 +498,118 @@ export function HomeLayout({ stories, onChange, editable = false, homeId, hideRo
 	}
 
 	const activeStoryHasOutline = Boolean(activeStory?.outlineOrigin && (activeStory?.outlineSegments?.length ?? 0) > 0);
+	const isEditingActiveStory = Boolean(activeStory && editingStoryId === activeStory.id);
+	const showHeaderStoryActions = editable && !isEditingActiveStory;
+
+	useEffect(() => {
+		if (!isDeleteStoryConfirming) return undefined;
+
+		function handlePointerDown(event: PointerEvent) {
+			if (deleteStoryButtonRef.current?.contains(event.target as Node)) return;
+			setIsDeleteStoryConfirming(false);
+		}
+
+		document.addEventListener('pointerdown', handlePointerDown);
+		return () => document.removeEventListener('pointerdown', handlePointerDown);
+	}, [isDeleteStoryConfirming]);
 
 	return (
 		<div className="space-y-3 rounded-xl border border-gray-200 bg-gray-50 p-3 dark:border-gray-600 dark:bg-gray-800/40">
-			<div className="flex items-start justify-between gap-3">
-				<div>
-					<div className="text-sm font-semibold text-gray-800 dark:text-gray-100">Floor plan</div>
-					<div className="text-xs text-gray-500 dark:text-gray-400">Manage stories, draw rooms with orthogonal segments, and position them on a shared canvas.</div>
+			<div className="flex items-center gap-2">
+				<div className="min-w-0 flex-1">
+					{isEditingActiveStory ? (
+						<div className="flex items-center gap-2">
+							<input
+								type="text"
+								value={storyName}
+								onChange={(event) => {
+									setStoryName(event.target.value);
+									setStoryError('');
+								}}
+								className="min-w-0 flex-1 rounded-md border border-blue-300 bg-white px-3 py-2 text-sm font-semibold text-gray-900 outline-none ring-2 ring-blue-200 dark:border-blue-500 dark:bg-gray-900 dark:text-gray-100 dark:ring-blue-900/60"
+								placeholder="Story name"
+								aria-label="Story name"
+							/>
+							<span className="shrink-0 text-xs text-gray-500 dark:text-gray-400">
+								{activeStory?.rooms.length ?? 0} room{(activeStory?.rooms.length ?? 0) === 1 ? '' : 's'}
+							</span>
+							<button
+								type="button"
+								onClick={handleSaveStoryEdits}
+								className="shrink-0 text-xs font-semibold text-blue-600 hover:text-blue-700 dark:text-blue-300 dark:hover:text-blue-200"
+							>
+								Save
+							</button>
+							<button
+								type="button"
+								onClick={handleCancelStoryEdit}
+								className="shrink-0 text-xs font-semibold text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+							>
+								Cancel
+							</button>
+						</div>
+					) : (
+						<select
+							value={activeStory?.id ?? ''}
+							onChange={(event) => handleSelectStory(event.target.value)}
+							className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-800 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-200 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100 dark:focus:border-blue-500 dark:focus:ring-blue-900/60"
+							aria-label="Select story"
+						>
+							{stories.map((story) => (
+								<option key={story.id} value={story.id}>
+									{story.name}
+								</option>
+							))}
+						</select>
+					)}
 				</div>
-				{editable ? (
-					<div className="flex flex-wrap items-center gap-2">
-						<button type="button" onClick={handleAddStory} className="rounded-md bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-100 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800">+ Add story</button>
-						{activeStory ? (
-							<>
-								<button type="button" onClick={handleStartEditStoryOutline} className="rounded-md bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-100 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800">
-									{activeStoryHasOutline ? 'Edit story outline' : 'Outline story'}
+				{showHeaderStoryActions ? (
+					<div className="flex shrink-0 items-center gap-2">
+						<button
+							type="button"
+							onClick={handleAddStory}
+							className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-white text-gray-700 hover:bg-gray-100 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800"
+							aria-label="Add story"
+							title="Add story"
+						>
+							<IconDisplay iconKey="add" size={16} className="h-4 w-4 object-contain" alt="" />
+						</button>
+						{stories.length > 1 ? (
+							<div ref={deleteStoryButtonRef}>
+								<button
+									type="button"
+									onClick={() => {
+										if (!activeStory) return;
+										if (isDeleteStoryConfirming) {
+											confirmDeleteStory(activeStory.id);
+											return;
+										}
+										setIsDeleteStoryConfirming(true);
+									}}
+									className={isDeleteStoryConfirming
+										? 'inline-flex h-9 items-center justify-center rounded-full bg-red-500 px-3 text-xs font-semibold text-white hover:bg-red-600'
+										: 'inline-flex h-9 items-center justify-center rounded-full bg-white px-3 text-xs font-semibold text-red-600 hover:bg-red-50 dark:bg-gray-900 dark:text-red-300 dark:hover:bg-red-900/20'}
+								>
+									{isDeleteStoryConfirming ? 'Confirm delete?' : 'Delete'}
 								</button>
-							</>
+							</div>
 						) : null}
+						<button
+							type="button"
+							onClick={handleStartEditStoryOutline}
+							disabled={!activeStory}
+							className={isEditingActiveStory
+								? 'inline-flex h-9 w-9 items-center justify-center rounded-full bg-blue-500 text-white hover:bg-blue-600 disabled:cursor-not-allowed disabled:bg-gray-200 disabled:text-gray-400 dark:disabled:bg-gray-700'
+								: 'inline-flex h-9 w-9 items-center justify-center rounded-full bg-white text-gray-700 hover:bg-gray-100 disabled:cursor-not-allowed disabled:bg-gray-200 disabled:text-gray-400 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800 dark:disabled:bg-gray-700'}
+							aria-label={activeStoryHasOutline ? 'Edit story' : 'Outline story'}
+							title={activeStoryHasOutline ? 'Edit story' : 'Outline story'}
+						>
+							<IconDisplay iconKey="edit" size={16} className="h-4 w-4 object-contain" alt="" />
+						</button>
 					</div>
 				) : null}
 			</div>
-
-			<div className="flex flex-wrap gap-2">
-				{stories.map((story) => {
-					const isActive = story.id === activeStory?.id;
-					return (
-						<div key={story.id} className={isActive ? 'flex items-center gap-2 rounded-full bg-blue-500 px-3 py-1.5 text-xs text-white' : 'flex items-center gap-2 rounded-full bg-white px-3 py-1.5 text-xs text-gray-600 dark:bg-gray-900 dark:text-gray-300'}>
-							<button type="button" onClick={() => handleSelectStory(story.id)} className="font-semibold">{story.name}</button>
-							<span className={isActive ? 'text-blue-100' : 'text-gray-400'}>{story.rooms.length}</span>
-							{editable ? <button type="button" onClick={() => handleRenameStory(story.id)} className={isActive ? 'text-blue-100 hover:text-white' : 'text-gray-400 hover:text-gray-700 dark:hover:text-gray-100'}>Rename</button> : null}
-							{editable && stories.length > 1 ? <button type="button" onClick={() => handleDeleteStory(story.id)} className={isActive ? 'text-blue-100 hover:text-white' : 'text-gray-400 hover:text-red-500'}>Delete</button> : null}
-						</div>
-					);
-				})}
-			</div>
+			{storyError && isEditingActiveStory ? <div className="text-xs text-red-500">{storyError}</div> : null}
 
 			{activeStory ? (
 				<HomeFloorPlan
@@ -524,10 +625,10 @@ export function HomeLayout({ stories, onChange, editable = false, homeId, hideRo
 					editingRoom={editingRoom}
 					editingMode={editingMode}
 					onEditingStoryOutlineChange={editable ? setEditingStoryOutline : undefined}
-					onSaveStoryOutline={editable ? handleSaveStoryOutline : undefined}
+					onSaveStoryOutline={editable ? handleSaveStoryEdits : undefined}
 					onEditingRoomChange={editable ? setEditingRoom : undefined}
 					onSaveEditingRoom={editable ? handleSaveEditingRoom : undefined}
-					onCancelEditingRoom={editable ? () => { setEditingRoom(null); setEditingMode(null); setEditingStoryOutline(null); } : undefined}
+					onCancelEditingRoom={editable ? () => { setEditingRoom(null); setEditingMode(null); handleCancelStoryEdit(); } : undefined}
 					onStartCreateRoom={editable ? handleStartCreateRoom : undefined}
 					onStartEditRoom={editable ? handleStartEditRoom : undefined}
 					onDeleteRoom={editable ? deleteRoom : undefined}
@@ -569,7 +670,7 @@ export function HomeLayout({ stories, onChange, editable = false, homeId, hideRo
 
 			{storyDialog ? (
 				<PopupShell
-					title={storyDialog.mode === 'add' ? 'New Story' : 'Rename Story'}
+					title="New Story"
 					onClose={() => {
 						setStoryDialog(null);
 						setStoryError('');
@@ -608,7 +709,7 @@ export function HomeLayout({ stories, onChange, editable = false, homeId, hideRo
 								onClick={handleSaveStoryName}
 								className="flex-1 rounded-lg bg-blue-500 px-4 py-2 text-sm font-medium text-white hover:bg-blue-600"
 							>
-								{storyDialog.mode === 'add' ? 'Create Story' : 'Save'}
+								Create Story
 							</button>
 						</div>
 					</div>
@@ -617,22 +718,15 @@ export function HomeLayout({ stories, onChange, editable = false, homeId, hideRo
 
 			{deleteDialog ? (
 				<PopupShell
-					title={deleteDialog.kind === 'story' ? 'Delete Story' : 'Delete Room'}
+					title="Delete Room"
 					onClose={() => setDeleteDialog(null)}
 				>
 					<div className="space-y-3">
 						<p className="text-sm text-gray-600 dark:text-gray-300">
-							{deleteDialog.kind === 'story'
-								? (() => {
-									const story = stories.find((entry) => entry.id === deleteDialog.storyId);
-									return story
-										? `Delete ${story.name} and its ${story.rooms.length} room${story.rooms.length === 1 ? '' : 's'}?`
-										: 'Delete this story?';
-								})()
-								: (() => {
-									const room = activeStory?.rooms.find((entry) => entry.id === deleteDialog.roomId) ?? editingRoom;
-									return room?.name?.trim() ? `Delete ${room.name}?` : 'Delete this room?';
-								})()}
+							{(() => {
+								const room = activeStory?.rooms.find((entry) => entry.id === deleteDialog.roomId) ?? editingRoom;
+								return room?.name?.trim() ? `Delete ${room.name}?` : 'Delete this room?';
+							})()}
 						</p>
 						<div className="flex gap-2 pt-1">
 							<button
@@ -645,10 +739,6 @@ export function HomeLayout({ stories, onChange, editable = false, homeId, hideRo
 							<button
 								type="button"
 								onClick={() => {
-									if (deleteDialog.kind === 'story') {
-										confirmDeleteStory(deleteDialog.storyId);
-										return;
-									}
 									confirmDeleteRoom(deleteDialog.roomId);
 								}}
 								className="flex-1 rounded-lg bg-red-500 px-4 py-2 text-sm font-medium text-white hover:bg-red-600"

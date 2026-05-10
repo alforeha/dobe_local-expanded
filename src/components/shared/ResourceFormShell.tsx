@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { IconDisplay } from './IconDisplay';
 
 export interface ResourceFormTab {
   key: string;
@@ -10,7 +11,8 @@ interface ResourceFormShellProps {
   title: string;
   onSave: () => void;
   onCancel?: () => void;
-  identityRow?: ReactNode;
+  resourceIcon?: string;
+  resourceName?: string;
   hideChrome?: boolean;
   tabs: ResourceFormTab[];
   activeTab: string;
@@ -20,9 +22,9 @@ interface ResourceFormShellProps {
 }
 
 export function ResourceFormShell({
-  title,
   onSave,
-  identityRow,
+  resourceIcon,
+  resourceName,
   hideChrome = false,
   tabs,
   activeTab,
@@ -36,23 +38,28 @@ export function ResourceFormShell({
     <div className="flex h-full flex-col">
       {!hideChrome ? (
         <div className="shrink-0 border-b border-gray-100 dark:border-gray-700">
-          <div className="flex items-center justify-between gap-3 px-4 py-3">
-            <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200">
-              {title}
-            </h3>
+          <div className="flex flex-row items-center gap-2 px-3 py-2">
+            <div className="flex min-w-0 flex-1 items-center gap-2">
+              <div className="flex h-5 w-5 shrink-0 items-center justify-center">
+                {resourceIcon ? (
+                  <IconDisplay iconKey={resourceIcon} size={20} className="h-5 w-5 object-contain" alt="" />
+                ) : null}
+              </div>
+              <div className="flex-1 min-w-0 truncate text-sm font-semibold text-gray-700 dark:text-gray-200">
+                {resourceName?.trim() || 'Untitled'}
+              </div>
+            </div>
             <button
               type="button"
               onClick={onSave}
               disabled={isSaving}
-              className={`text-sm font-semibold transition-colors ${
+              className={`shrink-0 text-sm font-semibold transition-colors ${
                 isSaving ? 'text-gray-300' : 'text-blue-500 hover:text-blue-600'
               }`}
             >
               Save
             </button>
           </div>
-
-          {identityRow ? <div className="px-4 pb-3">{identityRow}</div> : null}
 
           <div className="flex items-center gap-4 px-4 pb-2">
             {visibleTabs.map((tab) => (

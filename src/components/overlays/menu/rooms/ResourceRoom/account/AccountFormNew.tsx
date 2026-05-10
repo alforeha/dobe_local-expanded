@@ -2502,18 +2502,8 @@ export function AccountFormNew({ existing, onSaved, onCancel }: AccountFormNewPr
       title={existing ? 'Edit Account' : 'New Account'}
       onSave={handleSave}
       onCancel={onCancel}
-      identityRow={(
-        <div className="grid grid-cols-[auto_minmax(0,1fr)] items-end gap-3">
-          <IconPicker value={iconKey} onChange={setIconKey} />
-          <TextInput
-            label="Name *"
-            value={displayName}
-            onChange={setDisplayName}
-            placeholder="e.g. Checking Account"
-            maxLength={100}
-          />
-        </div>
-      )}
+      resourceIcon={iconKey}
+      resourceName={displayName}
       tabs={tabs}
       activeTab={activeTab}
       onTabChange={(nextTab) => {
@@ -2526,6 +2516,19 @@ export function AccountFormNew({ existing, onSaved, onCancel }: AccountFormNewPr
     >
       {activeTab === 'details' ? (
         <div className="space-y-3 px-4 py-3">
+          <div className="flex flex-row items-center gap-2">
+            <div className="shrink-0">
+              <IconPicker value={iconKey} onChange={setIconKey} />
+            </div>
+            <input
+              type="text"
+              value={displayName}
+              onChange={(event) => setDisplayName(event.target.value)}
+              placeholder="e.g. Checking Account"
+              maxLength={100}
+              className={`${SELECT_CLS} flex-1 min-w-0`}
+            />
+          </div>
           {isSelectingKind ? (
             <div className="space-y-3">
               <div className="flex flex-col gap-1">
