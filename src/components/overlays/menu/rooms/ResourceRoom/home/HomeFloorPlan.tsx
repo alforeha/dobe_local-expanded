@@ -2460,8 +2460,6 @@ export function HomeFloorPlan({
 	return (
 		<div ref={rootRef} className="flex h-full min-h-0 flex-col gap-3">
 			<div className="shrink-0 overflow-visible rounded-xl border border-gray-200 bg-white dark:border-gray-600 dark:bg-gray-900/60">
-				{roomEditorPanel}
-
 				<div ref={canvasRef} className="relative shrink-0">
 					{viewedContainerEntry?.container ? (
 						<div
@@ -2676,6 +2674,8 @@ export function HomeFloorPlan({
 						<HomeFloorPlanActionBar {...actionBarProps} />
 					</div>
 				) : null}
+
+				{roomEditorPanel}
 
 				{editable && editingRoom && isPlacingStartPoint ? (
 					<div className="border-t border-gray-200 bg-gray-50/80 px-3 py-3 dark:border-gray-700 dark:bg-gray-950/40">

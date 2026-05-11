@@ -209,6 +209,170 @@ export function HomeFloorPlanCanvas(props: HomeFloorPlanCanvasProps) {
 					</g>
 				);
 			})() : null}
+			{canvasRooms.map((room) => {
+				const points = segmentsToPoints(room.origin, room.segments);
+				const roomSegmentLines = getSegmentLines(room.origin, room.segments);
+				const bounds = getPointsBounds(points);
+				const polygonPoints = points.map((point) => `${point.x},${point.y}`).join(' ');
+				const isSelected = room.id === selectedRoom?.id;
+				const isEditingThisRoom = Boolean(editingRoom && room.id === editingRoom.id);
+				if (isEditingThisRoom && isPlacingStartPoint) return null;
+				const canFill = points.length >= 3;
+				const finalPoint = points[points.length - 1] ?? room.origin;
+				const isClosedRoom = canFill && pointsMatch(finalPoint, points[0]);
+
+				return (
+					<g key={`outline-${room.id}`}>
+						{canFill ? (
+							<polygon
+								points={polygonPoints}
+								fill={room.color ?? '#84cc16'}
+								fillOpacity={isSelected || isEditingThisRoom ? 0.34 : 0.2}
+								stroke="none"
+								onPointerDown={(event) => {
+									event.stopPropagation();
+									if (editingContainersRoomId === room.id && activeEditablePlacementId) {
+										const nextPoint = getWorldPoint(event);
+										updatePlacedItem(room.id, activeEditablePlacementId, { x: nextPoint.x, y: nextPoint.y });
+										return;
+									}
+									if (!editingRoom && canSelectRooms) onSelectRoom(room.id);
+								}}
+							/>
+						) : null}
+						{roomSegmentLines.map(({ segment, index, start, end }) => {
+							const isDoor = segment.kind === 'door';
+							const isEditingSegment = isEditingThisRoom && selectedSegmentIndex === index;
+							const strokeColor = isDoor ? '#f59e0b' : (isSelected || isEditingThisRoom ? '#0f172a' : room.color ?? '#84cc16');
+							const strokeWidth = isDoor ? (isSelected || isEditingThisRoom ? 5 : 4) : (isSelected || isEditingThisRoom ? 3.5 : 2.5);
+							const handleSegmentPointerDown = (event: React.PointerEvent<SVGLineElement>) => {
+								event.stopPropagation();
+								if (editingContainersRoomId === room.id && activeEditablePlacementId) {
+									const nextPoint = getWorldPoint(event);
+									updatePlacedItem(room.id, activeEditablePlacementId, { x: nextPoint.x, y: nextPoint.y });
+									return;
+								}
+								if (canSelectRooms) onSelectRoom(room.id);
+								if (isEditingThisRoom) setSelectedSegmentIndex(index);
+							};
+							return (
+								<g key={`${room.id}-segment-${index}`}>
+									{isEditingSegment ? <line x1={start.x} y1={start.y} x2={end.x} y2={end.y} stroke="#2563eb" strokeWidth={strokeWidth + 6} strokeLinecap="round" opacity="0.22" /> : null}
+									<line x1={start.x} y1={start.y} x2={end.x} y2={end.y} stroke={strokeColor} strokeWidth={strokeWidth} strokeDasharray={isDoor ? '12 8' : (!isClosedRoom && index === roomSegmentLines.length - 1 ? '8 6' : undefined)} strokeLinecap="round" onPointerDown={handleSegmentPointerDown} />
+									<line x1={start.x} y1={start.y} x2={end.x} y2={end.y} stroke="transparent" strokeWidth={16} strokeLinecap="round" onPointerDown={handleSegmentPointerDown} />
+								</g>
+							);
+						})}
+						{isEditingThisRoom && points.length >= 3 && !pointsMatch(finalPoint, points[0]) ? (
+							<>
+								<line x1={finalPoint.x} y1={finalPoint.y} x2={points[0].x} y2={points[0].y} stroke={room.color ?? '#84cc16'} strokeWidth="2" strokeDasharray="6 5" />
+								<text x={midpoint(finalPoint, points[0]).x} y={midpoint(finalPoint, points[0]).y - 8} textAnchor="middle" pointerEvents="none" className="select-none fill-slate-700 text-[11px] font-semibold">
+									{formatDistance(getPointDistance(finalPoint, points[0]))}
+								</text>
+							</>
+						) : null}
+						<text x={bounds.minX + bounds.width / 2} y={bounds.minY + bounds.height / 2} textAnchor="middle" dominantBaseline="middle" pointerEvents="none" className="select-none fill-slate-900 text-[14px] font-semibold">
+							{room.name || 'New room'}
+						</text>
+						{isEditingThisRoom ? points.slice(1).map((point, index) => {
+							const start = points[index];
+							const labelPoint = midpoint(start, point);
+							return (
+								<text key={`${room.id}-dim-${index}`} x={labelPoint.x} y={labelPoint.y - 8} textAnchor="middle" pointerEvents="none" className="select-none fill-slate-700 text-[11px] font-semibold">
+									{formatDistance(getPointDistance(start, point))}
+								</text>
+							);
+						}) : null}
+					</g>
+				);
+			})}
+			{canvasRooms.map((room) => {
+				const isEditingThisRoom = Boolean(editingRoom && room.id === editingRoom.id);
+				if (isEditingThisRoom && isPlacingStartPoint) return null;
+
+				return (
+					<g key={`items-${room.id}`}>
+						{[...room.placedItems].sort((left, right) => {
+							const leftRank = left.id === selectedPlacementId ? 1 : 0;
+							const rightRank = right.id === selectedPlacementId ? 1 : 0;
+							return leftRank - rightRank;
+						}).map((entry) => {
+							const footprint = getRotatedRectPoints({ x: entry.x, y: entry.y }, entry.width, entry.depth, entry.rotation).map((point) => `${point.x},${point.y}`).join(' ');
+							const isPlacementSelected = selectedPlacementId === entry.id;
+							const isPlacementEditable = selectedPlacementId === entry.id;
+							const resolvedContainer = entry.kind === 'container' ? findRoomContainerRecord(room, entry.refId) : null;
+							const resolvedItem = entry.kind === 'item' ? resolvePlacedItemEntry(room, entry) : null;
+							const visualRecord = entry.kind === 'container'
+								? { icon: resolvedContainer?.container.icon ?? 'inventory', fill: 'rgba(15,23,42,0.12)' }
+								: { icon: resolvedItem?.itemIcon ?? 'inventory', fill: 'rgba(59,130,246,0.10)' };
+							const resolvedIcon = resolveIcon(visualRecord.icon);
+							const iconSize = Math.max(10, Math.min(entry.width, entry.depth) * 0.62);
+							const hasQuickActionsIndicator = Boolean(
+								(entry.kind === 'container' && isPlacementCleanInQuickActions(entry.id))
+								|| (resolvedItem?.itemKind === 'facility' && (
+									placedItemHasQuickActionsTask(entry.id, resolvedItem.recurringTasks)
+									|| isPlacementCleanInQuickActions(entry.id)
+								))
+							);
+
+							return (
+								<g key={entry.id}>
+									<polygon
+										points={footprint}
+										fill={isPlacementEditable ? 'rgba(16,185,129,0.24)' : visualRecord.fill}
+										stroke={isPlacementSelected ? '#059669' : isPlacementEditable ? '#10b981' : '#475569'}
+										strokeWidth={isPlacementSelected ? 3 : 2}
+										style={isPlacementEditable ? { cursor: 'grab' } : undefined}
+										onPointerDown={(event) => {
+											event.stopPropagation();
+											if (!canSelectPlacedItems) return;
+											flushSync(() => {
+												setExpandedPlacedContainerId(entry.id);
+												setSelectedPlacementId(entry.id);
+											});
+											if (canSelectRooms) onSelectRoom(room.id);
+											if (!isPlacementEditable) return;
+											const point = getWorldPoint(event);
+											setInteraction({ type: 'drag-container', roomId: room.id, placementId: entry.id, offsetX: point.x - entry.x, offsetY: point.y - entry.y });
+										}}
+									/>
+									<g transform={`translate(${entry.x} ${entry.y})`} style={{ pointerEvents: 'none' }}>
+										<g transform={`rotate(${entry.rotation})`}>
+											{isImageIcon(resolvedIcon) ? (
+												<image
+													href={resolvedIcon}
+													x={-iconSize / 2}
+													y={-iconSize / 2}
+													width={iconSize}
+													height={iconSize}
+													preserveAspectRatio="xMidYMid meet"
+													opacity={isPlacementSelected ? 1 : 0.82}
+												/>
+											) : (
+												<text
+													x={0}
+													y={0}
+													textAnchor="middle"
+													dominantBaseline="central"
+													fontSize={iconSize}
+													opacity={isPlacementSelected ? 1 : 0.9}
+												>
+													{resolvedIcon}
+												</text>
+											)}
+										</g>
+										{hasQuickActionsIndicator ? (
+											<g transform={`translate(${QUICK_ACTIONS_BADGE_OFFSET_X} ${QUICK_ACTIONS_BADGE_OFFSET_Y})`}>
+												<circle cx={0} cy={0} r={QUICK_ACTIONS_BADGE_RADIUS} fill="#ef4444" />
+											</g>
+										) : null}
+									</g>
+								</g>
+							);
+						})}
+					</g>
+				);
+			})}
 			{[...story.placedItems].sort((left, right) => {
 				const leftRank = left.id === selectedPlacementId ? 1 : 0;
 				const rightRank = right.id === selectedPlacementId ? 1 : 0;
@@ -264,161 +428,6 @@ export function HomeFloorPlanCanvas(props: HomeFloorPlanCanvasProps) {
 								</g>
 							) : null}
 						</g>
-					</g>
-				);
-			})}
-			{canvasRooms.map((room) => {
-				const points = segmentsToPoints(room.origin, room.segments);
-				const roomSegmentLines = getSegmentLines(room.origin, room.segments);
-				const bounds = getPointsBounds(points);
-				const polygonPoints = points.map((point) => `${point.x},${point.y}`).join(' ');
-				const isSelected = room.id === selectedRoom?.id;
-				const isEditingThisRoom = Boolean(editingRoom && room.id === editingRoom.id);
-				if (isEditingThisRoom && isPlacingStartPoint) return null;
-				const canFill = points.length >= 3;
-				const finalPoint = points[points.length - 1] ?? room.origin;
-				const isClosedRoom = canFill && pointsMatch(finalPoint, points[0]);
-
-				return (
-					<g key={room.id}>
-						{canFill ? (
-							<polygon
-								points={polygonPoints}
-								fill={room.color ?? '#84cc16'}
-								fillOpacity={isSelected || isEditingThisRoom ? 0.34 : 0.2}
-								stroke="none"
-								onPointerDown={(event) => {
-									event.stopPropagation();
-									if (editingContainersRoomId === room.id && activeEditablePlacementId) {
-										const nextPoint = getWorldPoint(event);
-										updatePlacedItem(room.id, activeEditablePlacementId, { x: nextPoint.x, y: nextPoint.y });
-										return;
-									}
-									if (!editingRoom && canSelectRooms) onSelectRoom(room.id);
-								}}
-							/>
-						) : null}
-						{roomSegmentLines.map(({ segment, index, start, end }) => {
-							const isDoor = segment.kind === 'door';
-							const isEditingSegment = isEditingThisRoom && selectedSegmentIndex === index;
-							const strokeColor = isDoor ? '#f59e0b' : (isSelected || isEditingThisRoom ? '#0f172a' : room.color ?? '#84cc16');
-							const strokeWidth = isDoor ? (isSelected || isEditingThisRoom ? 5 : 4) : (isSelected || isEditingThisRoom ? 3.5 : 2.5);
-							const handleSegmentPointerDown = (event: React.PointerEvent<SVGLineElement>) => {
-								event.stopPropagation();
-								if (editingContainersRoomId === room.id && activeEditablePlacementId) {
-									const nextPoint = getWorldPoint(event);
-									updatePlacedItem(room.id, activeEditablePlacementId, { x: nextPoint.x, y: nextPoint.y });
-									return;
-								}
-								if (canSelectRooms) onSelectRoom(room.id);
-								if (isEditingThisRoom) setSelectedSegmentIndex(index);
-							};
-							return (
-								<g key={`${room.id}-segment-${index}`}>
-									{isEditingSegment ? <line x1={start.x} y1={start.y} x2={end.x} y2={end.y} stroke="#2563eb" strokeWidth={strokeWidth + 6} strokeLinecap="round" opacity="0.22" /> : null}
-									<line x1={start.x} y1={start.y} x2={end.x} y2={end.y} stroke={strokeColor} strokeWidth={strokeWidth} strokeDasharray={isDoor ? '12 8' : (!isClosedRoom && index === roomSegmentLines.length - 1 ? '8 6' : undefined)} strokeLinecap="round" onPointerDown={handleSegmentPointerDown} />
-									<line x1={start.x} y1={start.y} x2={end.x} y2={end.y} stroke="transparent" strokeWidth={16} strokeLinecap="round" onPointerDown={handleSegmentPointerDown} />
-								</g>
-							);
-						})}
-						{isEditingThisRoom && points.length >= 3 && !pointsMatch(finalPoint, points[0]) ? (
-							<>
-								<line x1={finalPoint.x} y1={finalPoint.y} x2={points[0].x} y2={points[0].y} stroke={room.color ?? '#84cc16'} strokeWidth="2" strokeDasharray="6 5" />
-								<text x={midpoint(finalPoint, points[0]).x} y={midpoint(finalPoint, points[0]).y - 8} textAnchor="middle" pointerEvents="none" className="select-none fill-slate-700 text-[11px] font-semibold">
-									{formatDistance(getPointDistance(finalPoint, points[0]))}
-								</text>
-							</>
-						) : null}
-							<text x={bounds.minX + bounds.width / 2} y={bounds.minY + bounds.height / 2} textAnchor="middle" dominantBaseline="middle" pointerEvents="none" className="select-none fill-slate-900 text-[14px] font-semibold">
-							{room.name || 'New room'}
-						</text>
-						{isEditingThisRoom ? points.slice(1).map((point, index) => {
-							const start = points[index];
-							const labelPoint = midpoint(start, point);
-							return (
-									<text key={`${room.id}-dim-${index}`} x={labelPoint.x} y={labelPoint.y - 8} textAnchor="middle" pointerEvents="none" className="select-none fill-slate-700 text-[11px] font-semibold">
-									{formatDistance(getPointDistance(start, point))}
-								</text>
-							);
-						}) : null}
-							{[...room.placedItems].sort((left, right) => {
-								const leftRank = left.id === selectedPlacementId ? 1 : 0;
-								const rightRank = right.id === selectedPlacementId ? 1 : 0;
-								return leftRank - rightRank;
-							}).map((entry) => {
-								const footprint = getRotatedRectPoints({ x: entry.x, y: entry.y }, entry.width, entry.depth, entry.rotation).map((point) => `${point.x},${point.y}`).join(' ');
-								const isPlacementSelected = selectedPlacementId === entry.id;
-								const isPlacementEditable = selectedPlacementId === entry.id;
-								const resolvedContainer = entry.kind === 'container' ? findRoomContainerRecord(room, entry.refId) : null;
-								const resolvedItem = entry.kind === 'item' ? resolvePlacedItemEntry(room, entry) : null;
-								const visualRecord = entry.kind === 'container'
-									? { icon: resolvedContainer?.container.icon ?? 'inventory', fill: 'rgba(15,23,42,0.12)' }
-									: { icon: resolvedItem?.itemIcon ?? 'inventory', fill: 'rgba(59,130,246,0.10)' };
-								const resolvedIcon = resolveIcon(visualRecord.icon);
-								const iconSize = Math.max(10, Math.min(entry.width, entry.depth) * 0.62);
-								const hasQuickActionsIndicator = Boolean(
-									(entry.kind === 'container' && isPlacementCleanInQuickActions(entry.id))
-									|| (resolvedItem?.itemKind === 'facility' && (
-										placedItemHasQuickActionsTask(entry.id, resolvedItem.recurringTasks)
-										|| isPlacementCleanInQuickActions(entry.id)
-									))
-								);
-
-								return (
-									<g key={entry.id}>
-										<polygon
-											points={footprint}
-											fill={isPlacementEditable ? 'rgba(16,185,129,0.24)' : visualRecord.fill}
-											stroke={isPlacementSelected ? '#059669' : isPlacementEditable ? '#10b981' : '#475569'}
-											strokeWidth={isPlacementSelected ? 3 : 2}
-											style={isPlacementEditable ? { cursor: 'grab' } : undefined}
-											onPointerDown={(event) => {
-												event.stopPropagation();
-												if (!canSelectPlacedItems) return;
-												flushSync(() => {
-													setExpandedPlacedContainerId(entry.id);
-													setSelectedPlacementId(entry.id);
-												});
-												if (canSelectRooms) onSelectRoom(room.id);
-												if (!isPlacementEditable) return;
-												const point = getWorldPoint(event);
-												setInteraction({ type: 'drag-container', roomId: room.id, placementId: entry.id, offsetX: point.x - entry.x, offsetY: point.y - entry.y });
-											}}
-										/>
-										<g transform={`translate(${entry.x} ${entry.y})`} style={{ pointerEvents: 'none' }}>
-											<g transform={`rotate(${entry.rotation})`}>
-												{isImageIcon(resolvedIcon) ? (
-													<image
-														href={resolvedIcon}
-														x={-iconSize / 2}
-														y={-iconSize / 2}
-														width={iconSize}
-														height={iconSize}
-														preserveAspectRatio="xMidYMid meet"
-														opacity={isPlacementSelected ? 1 : 0.82}
-													/>
-												) : (
-													<text
-														x={0}
-														y={0}
-														textAnchor="middle"
-														dominantBaseline="central"
-														fontSize={iconSize}
-														opacity={isPlacementSelected ? 1 : 0.9}
-													>
-														{resolvedIcon}
-													</text>
-												)}
-											</g>
-											{hasQuickActionsIndicator ? (
-												<g transform={`translate(${QUICK_ACTIONS_BADGE_OFFSET_X} ${QUICK_ACTIONS_BADGE_OFFSET_Y})`}>
-													<circle cx={0} cy={0} r={QUICK_ACTIONS_BADGE_RADIUS} fill="#ef4444" />
-												</g>
-											) : null}
-										</g>
-									</g>
-								);
-							})}
 					</g>
 				);
 			})}
