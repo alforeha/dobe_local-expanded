@@ -154,6 +154,7 @@ export const ICON_MAP: Record<string, string> = {
   'fp-delete': '🗑️',
   'fp-save': '✓',
   'fp-cancel': '✗',
+  'fp-back': '\u2190',
   'fp-exit': '←',
   'fp-camera': '📷',
   'fp-add-item': '📦',
@@ -162,6 +163,7 @@ export const ICON_MAP: Record<string, string> = {
   'fp-start-point': '📍',
   'fp-layer-up': '▲',
   'fp-layer-down': '▼',
+  'fp-view': '\uD83D\uDC41',
   'fp-edit-points': '⬡',
   'fp-edit-lines': '⟋',
   // gear slots

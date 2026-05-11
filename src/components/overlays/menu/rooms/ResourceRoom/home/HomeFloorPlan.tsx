@@ -2111,6 +2111,45 @@ export function HomeFloorPlan({
 			canMoveDown: placementIndex > 0,
 		};
 	})();
+	const selectedContainerAction = (() => {
+		if (!selectedPlacementId) return null;
+
+		for (const room of story.rooms) {
+			const placementIndex = room.placedItems.findIndex((entry) => entry.id === selectedPlacementId && entry.kind === 'container');
+			if (placementIndex === -1) continue;
+			const placement = room.placedItems[placementIndex];
+			const resolvedEntry = resolvePlacedContainerEntry(room, placement);
+			const placedScopeId = `placed-container:${placement.id}`;
+			return {
+				id: placement.id,
+				name: resolvedEntry.containerName,
+				roomId: room.id as string | null,
+				width: placement.width,
+				depth: placement.depth,
+				canClean: true,
+				photoBusy: photoUploadBusyByScope[placedScopeId] === true,
+				canMoveUp: placementIndex < room.placedItems.length - 1,
+				canMoveDown: placementIndex > 0,
+			};
+		}
+
+		const placementIndex = story.placedItems.findIndex((entry) => entry.id === selectedPlacementId && entry.kind === 'container');
+		if (placementIndex === -1) return null;
+		const placement = story.placedItems[placementIndex];
+		const record = findInventoryContainerRecord(placement.refId);
+		const placedScopeId = `placed-container:${placement.id}`;
+		return {
+			id: placement.id,
+			name: record?.container.name ?? placement.refId,
+			roomId: null as string | null,
+			width: placement.width,
+			depth: placement.depth,
+			canClean: true,
+			photoBusy: photoUploadBusyByScope[placedScopeId] === true,
+			canMoveUp: placementIndex < story.placedItems.length - 1,
+			canMoveDown: placementIndex > 0,
+		};
+	})();
 	const selectedRoomCanClean = selectedRoomSummary
 		? selectedRoomSummary.placedContainerEntries.length + selectedRoomSummary.placedLooseItemEntries.filter((entry) => entry.itemKind === 'facility').length > 0
 		: false;
@@ -2123,6 +2162,7 @@ export function HomeFloorPlan({
 		activeStoryId: story.id,
 		selectedRoomId: selectedRoomSummary?.room.id ?? null,
 		selectedPlacedId: selectedItemAction?.id ?? null,
+		selectedContainerId: selectedContainerAction?.id ?? null,
 		activeStoryHasOutline,
 		canSaveStoryChanges: isEditingStoryOutline ? canSaveStoryOutline : canSaveStoryChanges,
 		canSaveEditingRoom,
@@ -2135,11 +2175,29 @@ export function HomeFloorPlan({
 		selectedItemCanMoveUp: selectedItemAction?.canMoveUp ?? false,
 		selectedItemCanMoveDown: selectedItemAction?.canMoveDown ?? false,
 		selectedItemPhotoBusy: selectedItemAction?.photoBusy ?? false,
+		selectedContainerWidth: selectedContainerAction?.width ?? 0,
+		selectedContainerDepth: selectedContainerAction?.depth ?? 0,
+		selectedContainerCanClean: selectedContainerAction?.canClean ?? false,
+		selectedContainerCanMoveUp: selectedContainerAction?.canMoveUp ?? false,
+		selectedContainerCanMoveDown: selectedContainerAction?.canMoveDown ?? false,
+		selectedContainerPhotoBusy: selectedContainerAction?.photoBusy ?? false,
 		homeName,
 		roomName: selectedRoomSummary?.room.name ?? null,
 		itemName: selectedItemAction?.name ?? null,
+		containerName: selectedContainerAction?.name ?? null,
 		onOpenAlbumEditor,
 		onExitRoom: () => onSelectRoom(null),
+		onExitItem: () => {
+			setExpandedPlacedContainerId(null);
+			setSelectedPlacementId(null);
+			onPlacedItemSelectRef.current?.(null);
+		},
+		onExitContainer: () => {
+			setExpandedPlacedContainerId(null);
+			setSelectedPlacementId(null);
+			setViewingContainerPlacementId(null);
+			onPlacedItemSelectRef.current?.(null);
+		},
 		onEditRoom: () => {
 			if (selectedRoomSummary) onStartEditRoom?.(selectedRoomSummary.room);
 		},
@@ -2193,6 +2251,24 @@ export function HomeFloorPlan({
 		},
 		onDimensionChange: (width: number, depth: number) => {
 			if (selectedItemAction) updatePlacedItem(selectedItemAction.roomId, selectedItemAction.id, { width, depth });
+		},
+		onCleanContainer: () => {
+			if (selectedContainerAction) pushPlacementCleanTask(selectedContainerAction.id, `Clean ${selectedContainerAction.name}`);
+		},
+		onViewContainer: () => {
+			if (selectedContainerAction) setViewingContainerPlacementId(selectedContainerAction.id);
+		},
+		onDeleteContainer: () => {
+			if (selectedContainerAction) removePlacedItem(selectedContainerAction.roomId, selectedContainerAction.id);
+		},
+		onLayerUpContainer: () => {
+			if (selectedContainerAction) movePlacedItemLayer(selectedContainerAction.roomId, selectedContainerAction.id, 'up');
+		},
+		onLayerDownContainer: () => {
+			if (selectedContainerAction) movePlacedItemLayer(selectedContainerAction.roomId, selectedContainerAction.id, 'down');
+		},
+		onContainerDimensionChange: (width: number, depth: number) => {
+			if (selectedContainerAction) updatePlacedItem(selectedContainerAction.roomId, selectedContainerAction.id, { width, depth });
 		},
 	};
 
@@ -2583,7 +2659,6 @@ export function HomeFloorPlan({
 														<div className="text-[11px] text-gray-500 dark:text-gray-400">{placedContainerEntries.length} container{placedContainerEntries.length === 1 ? '' : 's'} · {placedLooseItemCount} item{placedLooseItemCount === 1 ? '' : 's'}{(room.photos?.length ?? 0) > 0 ? ` · ${room.photos?.length ?? 0} photo${(room.photos?.length ?? 0) === 1 ? '' : 's'}` : ''}</div>
 													</div>
 												</div>
-												<span className="text-base font-semibold text-blue-600 dark:text-blue-300">{isExpanded ? '↑' : '↓'}</span>
 											</button>
 											{isExpanded ? <HomeFloorPlanRoomRows summary={summary} {...roomRowsProps} /> : null}
 										</div>
