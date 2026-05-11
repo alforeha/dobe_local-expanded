@@ -32,7 +32,6 @@ import {
 	buildPlacementCleanQuickActionsKey,
 	clampZoom,
 	combineBounds,
-	containerFaceLabel,
 	describeReminder,
 	describeTaskRecurrence,
 	formatDistance,
@@ -204,6 +203,10 @@ export function HomeFloorPlan({
 	const [roomAddContainerRoomId, setRoomAddContainerRoomId] = useState<string | null>(null);
 	const [viewingContainerPlacementId, setViewingContainerPlacementId] = useState<string | null>(null);
 	const [viewingContainerFace, setViewingContainerFace] = useState<ContainerFace>('width-depth');
+	const [selectedContainerItemId, setSelectedContainerItemId] = useState<string | null>(null);
+	const [editingQty, setEditingQty] = useState<number | ''>('');
+	const [confirmRemoveContainerItemId, setConfirmRemoveContainerItemId] = useState<string | null>(null);
+	const [containerClearTrigger, setContainerClearTrigger] = useState(0);
 	const [showViewedContainerAddItemPanel, setShowViewedContainerAddItemPanel] = useState(false);
 	const [showViewedContainerLayoutPanel, setShowViewedContainerLayoutPanel] = useState(false);
 	const [pendingViewedContainerItemId, setPendingViewedContainerItemId] = useState<string | null>(null);
@@ -214,9 +217,11 @@ export function HomeFloorPlan({
 	const [viewedLayoutWidthDepthGrid, setViewedLayoutWidthDepthGrid] = useState<FaceGridInputDraft>({ columns: '1', rows: '1' });
 	const [viewedLayoutWidthHeightGrid, setViewedLayoutWidthHeightGrid] = useState<FaceGridInputDraft>({ columns: '1', rows: '1' });
 	const [viewedLayoutDepthHeightGrid, setViewedLayoutDepthHeightGrid] = useState<FaceGridInputDraft>({ columns: '1', rows: '1' });
+	const [pendingDefaultFace, setPendingDefaultFace] = useState<ContainerFace | null>(null);
 	const [viewedLayoutError, setViewedLayoutError] = useState('');
 	const [isEditingStoryStartPoint, setIsEditingStoryStartPoint] = useState(false);
 	const [roomRowsHeight, setRoomRowsHeight] = useState(200);
+	const [containerViewHeight, setContainerViewHeight] = useState(400);
 	const resources = useResourceStore((s) => s.resources);
 	const setResource = useResourceStore((s) => s.setResource);
 	const setTask = useScheduleStore((s) => s.setTask);
@@ -559,18 +564,46 @@ export function HomeFloorPlan({
 	const viewedContainerRecord = !selectedRoomSummary || !viewedContainerEntry?.container
 		? null
 		: findRoomContainerRecord(selectedRoomSummary.room, viewedContainerEntry.container.id);
+	const viewedContainerItemTemplates = viewedContainerRecord?.itemTemplates ?? userItemTemplates;
+	const faceItems = (viewedContainerEntry?.container?.items ?? []).filter((item) => item.placedInContainer?.[viewingContainerFace] !== undefined);
 	const viewedContainerLayoutPanelOpen = showViewedContainerLayoutPanel && Boolean(viewedContainerEntry?.container);
 	const onPlacedItemSelectRef = useRef(onPlacedItemSelect);
 	const rootRef = useRef<HTMLDivElement>(null);
 	const storyControlsRef = useRef<HTMLDivElement>(null);
 	const canvasRef = useRef<HTMLDivElement>(null);
 	const actionBarRef = useRef<HTMLDivElement>(null);
+	const containerViewRef = useRef<HTMLDivElement>(null);
 
 	useEffect(() => {
 		if (!viewingContainerPlacementId || viewedContainerEntry) return;
 		const resetId = window.setTimeout(() => setViewingContainerPlacementId(null), 0);
 		return () => window.clearTimeout(resetId);
 	}, [viewedContainerEntry, viewingContainerPlacementId]);
+
+	useEffect(() => {
+		if (!viewingContainerPlacementId || !selectedRoomSummary) return;
+		const placement = selectedRoomSummary.room.placedItems.find((entry) => (
+			entry.id === viewingContainerPlacementId && entry.kind === 'container'
+		));
+		if (!placement) return;
+		const entry = resolvePlacedContainerEntry(selectedRoomSummary.room, placement);
+		if (!entry?.container) return;
+		setViewingContainerFace(entry.container.defaultFace ?? 'width-depth');
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [viewingContainerPlacementId]);
+
+	useEffect(() => {
+		if (!pendingViewedContainerItemId) return;
+		const item = viewedContainerEntry?.container?.items?.find((candidate) => candidate.id === pendingViewedContainerItemId);
+		setSelectedContainerItemId(pendingViewedContainerItemId);
+		setEditingQty(item?.quantity ?? '');
+		setPendingViewedContainerItemId(null);
+	}, [pendingViewedContainerItemId, viewedContainerEntry]);
+
+	useEffect(() => {
+		setSelectedContainerItemId(null);
+		setEditingQty('');
+	}, [viewingContainerFace, viewingContainerPlacementId]);
 
 	useEffect(() => {
 		const root = rootRef.current;
@@ -601,6 +634,37 @@ export function HomeFloorPlan({
 		if (storyControlsRef.current) observer.observe(storyControlsRef.current);
 		return () => observer.disconnect();
 	}, [selectedRoomId]);
+
+	useEffect(() => {
+		const root = rootRef.current;
+		const containerView = containerViewRef.current;
+		if (!root || !containerView) return;
+
+		const homeLayoutRoot = root.parentElement?.parentElement;
+		const storyControls = Array.from(homeLayoutRoot?.children ?? []).find((element) => (
+			element instanceof HTMLDivElement && element.className === 'flex items-center gap-2'
+		));
+		storyControlsRef.current = storyControls instanceof HTMLDivElement ? storyControls : null;
+
+		const calculate = () => {
+			if (!viewingContainerPlacementId) {
+				setContainerViewHeight(0);
+				return;
+			}
+			const totalHeight = rootRef.current?.clientHeight ?? 400;
+			const storyControlsHeight = selectedRoomId
+				? 0
+				: (storyControlsRef.current?.clientHeight ?? 0);
+			setContainerViewHeight(Math.max(0, totalHeight - storyControlsHeight - 32));
+		};
+
+		calculate();
+		const observer = new ResizeObserver(calculate);
+		observer.observe(root);
+		observer.observe(containerView);
+		if (storyControlsRef.current) observer.observe(storyControlsRef.current);
+		return () => observer.disconnect();
+	}, [selectedRoomId, viewingContainerPlacementId]);
 
 	useEffect(() => {
 		const resetId = window.setTimeout(() => {
@@ -1434,6 +1498,7 @@ export function HomeFloorPlan({
 		setViewedLayoutDepth(viewedContainerEntry.container.dimensions?.depth ?? '');
 		setViewedLayoutHeight(viewedContainerEntry.container.dimensions?.height ?? '');
 		setViewedLayoutActiveFace(layoutGrid?.xAxis ?? 'width-depth');
+		setPendingDefaultFace(viewedContainerEntry.container.defaultFace ?? null);
 		const widthDepthGrid = resolveContainerFaceGrid(layoutGrid, 'width-depth');
 		const widthHeightGrid = resolveContainerFaceGrid(layoutGrid, 'width-height');
 		const depthHeightGrid = resolveContainerFaceGrid(layoutGrid, 'depth-height');
@@ -1504,6 +1569,7 @@ export function HomeFloorPlan({
 
 		const apply = (container: InventoryContainer): InventoryContainer => ({
 			...container,
+			defaultFace: pendingDefaultFace ?? undefined,
 			dimensions: hasFullDimensions
 				? {
 					width: viewedLayoutWidth,
@@ -2392,54 +2458,197 @@ export function HomeFloorPlan({
 
 				<div ref={canvasRef} className="relative shrink-0">
 					{viewedContainerEntry?.container ? (
-						<div className="space-y-3 rounded-2xl border border-gray-200 bg-white/95 p-3 shadow-sm ring-1 ring-black/5 backdrop-blur dark:border-gray-700 dark:bg-gray-900/95">
-							<div className="flex flex-wrap items-center justify-between gap-3">
-								<div>
-									<div className="text-sm font-semibold text-gray-800 dark:text-gray-100">{viewedContainerEntry.containerName}</div>
-									<div className="text-xs text-gray-500 dark:text-gray-400">{viewedContainerEntry.inventoryName}</div>
-								</div>
-							</div>
-							<ContainerLayoutCanvas
-								container={viewedContainerEntry.container}
-								activeFace={viewingContainerFace}
-								items={viewedContainerEntry.container.items}
-								isEditMode
-								viewportHeightClassName="h-[26rem] md:h-[30rem]"
-								pendingSelectedItemId={pendingViewedContainerItemId}
-								onPendingSelectedItemHandled={() => setPendingViewedContainerItemId(null)}
-								onPlaceItem={updateContainerCanvasItemPlacement}
-								onUpdateItemQuantity={updateViewedContainerItemQuantity}
-								onRemoveItem={removeContainerCanvasItemPlacement}
-							/>
-							<div className="space-y-2 border-t border-gray-200 pt-3 dark:border-gray-700">
-								<div className="flex flex-wrap items-center gap-2">
-									{(['width-depth', 'width-height', 'depth-height'] as ContainerFace[]).map((face) => (
+						<div
+							ref={containerViewRef}
+							className="rounded-2xl border border-gray-200 bg-white/95 p-3 shadow-sm ring-1 ring-black/5 backdrop-blur dark:border-gray-700 dark:bg-gray-900/95"
+							style={{ height: containerViewHeight }}
+						>
+							<div className="flex h-full min-h-0 flex-col">
+								<div className="shrink-0 flex flex-wrap items-center justify-between gap-2 border-b border-gray-200 px-2 py-1 dark:border-gray-700">
+									<div className="flex flex-wrap items-center gap-2">
+										{([
+											{ face: 'width-depth', label: 'Top' },
+											{ face: 'width-height', label: 'Front' },
+											{ face: 'depth-height', label: 'Side' },
+										] as const).map((option) => (
+											<button
+												key={option.face}
+												type="button"
+												onClick={() => setViewingContainerFace(option.face)}
+												className={viewingContainerFace === option.face ? 'rounded-full bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white' : 'rounded-full bg-gray-100 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700'}
+											>
+												{option.label}
+											</button>
+										))}
+									</div>
+									<div className="flex items-center gap-2">
 										<button
-											key={face}
 											type="button"
-											onClick={() => setViewingContainerFace(face)}
-											className={viewingContainerFace === face ? 'rounded-full bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white' : 'rounded-full bg-gray-100 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700'}
+											onClick={openViewedContainerLayoutPanel}
+											title="Edit Layout"
+											aria-label="Edit Layout"
+											className="rounded-full bg-gray-100 p-2 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
 										>
-											{containerFaceLabel(face)}
+											<IconDisplay iconKey="fp-edit" size={16} className="h-4 w-4 object-contain" alt="" />
 										</button>
-									))}
+										<button
+											type="button"
+											onClick={() => setShowViewedContainerAddItemPanel(true)}
+											title="Add Item"
+											aria-label="Add Item"
+											className="rounded-full bg-blue-500 p-2 text-white hover:bg-blue-600"
+										>
+											<IconDisplay iconKey="fp-add-item" size={16} className="h-4 w-4 object-contain" alt="" />
+										</button>
+										<button
+											type="button"
+											onClick={() => setViewingContainerPlacementId(null)}
+											title="Back"
+											aria-label="Back"
+											className="rounded-full bg-gray-100 p-2 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+										>
+											<IconDisplay iconKey="fp-back" size={16} className="h-4 w-4 object-contain" alt="" />
+										</button>
+									</div>
 								</div>
-								<div className="flex items-center justify-end gap-2">
-									<button
-										type="button"
-										onClick={openViewedContainerLayoutPanel}
-										className="rounded-full bg-gray-100 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
-									>
-										Edit Layout
-									</button>
-									<button
-										type="button"
-										onClick={() => setShowViewedContainerAddItemPanel(true)}
-										className="rounded-full bg-blue-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-600"
-									>
-										Add Item
-									</button>
-									<button type="button" onClick={() => setViewingContainerPlacementId(null)} className="rounded-full bg-gray-100 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700">Back</button>
+								<div className="shrink-0 pt-3">
+									<div className="flex items-center gap-2">
+										<IconDisplay iconKey={viewedContainerEntry.containerIcon || 'inventory'} size={16} className="h-4 w-4 shrink-0 object-contain" alt="" />
+										<div className="text-sm font-semibold text-gray-800 dark:text-gray-100">{viewedContainerEntry.containerName}</div>
+									</div>
+								</div>
+								<div className="shrink-0 pt-3">
+									<div className="shrink-0">
+										<ContainerLayoutCanvas
+											container={viewedContainerEntry.container}
+											activeFace={viewingContainerFace}
+											items={viewedContainerEntry.container.items}
+											isEditMode
+											hidePlacedItemsList
+											viewportHeightClassName="h-48 md:h-56"
+											clearSelectionTrigger={containerClearTrigger}
+											pendingSelectedItemId={pendingViewedContainerItemId}
+											onSelectedItemChange={(id) => {
+												setSelectedContainerItemId(id);
+												if (id) {
+													const item = viewedContainerEntry?.container.items?.find((entry) => entry.id === id);
+													setEditingQty(item?.quantity ?? '');
+												}
+											}}
+											onPlaceItem={updateContainerCanvasItemPlacement}
+											onUpdateItemQuantity={updateViewedContainerItemQuantity}
+											onRemoveItem={removeContainerCanvasItemPlacement}
+										/>
+									</div>
+								</div>
+								<div className="flex-1 min-h-0 overflow-y-auto px-2 py-2 space-y-2">
+									{faceItems.length > 0 ? (
+										faceItems
+											.filter((item) => !selectedContainerItemId || item.id === selectedContainerItemId)
+											.map((item) => {
+											const resolved = resolveInventoryItemTemplate(item.itemTemplateRef, viewedContainerItemTemplates);
+											const isSelected = selectedContainerItemId === item.id;
+											return (
+												<div
+													key={item.id}
+													className={isSelected ? 'rounded-xl bg-blue-50 px-2 py-2 ring-1 ring-blue-200 dark:bg-blue-950/30 dark:ring-blue-900/60' : 'rounded-xl px-2 py-2 hover:bg-gray-50 dark:hover:bg-gray-800/60'}
+												>
+													<button
+														type="button"
+														onClick={() => {
+															if (isSelected) {
+																setSelectedContainerItemId(null);
+																setEditingQty('');
+																setConfirmRemoveContainerItemId(null);
+																return;
+															}
+															setSelectedContainerItemId(item.id);
+															setEditingQty(item.quantity ?? '');
+															setConfirmRemoveContainerItemId(null);
+														}}
+														className="flex w-full items-center gap-2 text-left text-sm"
+													>
+														<IconDisplay iconKey={resolved?.icon ?? 'inventory'} size={16} className="h-4 w-4 shrink-0 object-contain" alt="" />
+														<span className="min-w-0 flex-1 truncate text-gray-700 dark:text-gray-200">{resolved?.name ?? item.itemTemplateRef}</span>
+														{item.quantity != null ? (
+															<span className="text-xs text-gray-400">x{item.quantity}</span>
+														) : null}
+													</button>
+													{isSelected ? (
+														<div className="mt-2 flex items-center gap-2 pl-6">
+															<input
+																type="number"
+																value={editingQty}
+																onChange={(event) => setEditingQty(event.target.value === '' ? '' : Number(event.target.value))}
+																className="w-16 rounded border border-gray-300 px-1 py-0.5 text-sm dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100"
+															/>
+															<button
+																type="button"
+																onClick={() => {
+																	const placement = item.placedInContainer?.[viewingContainerFace];
+																	if (!placement) return;
+																	const currentRotation = placement.rotation ?? 0;
+																	updateContainerCanvasItemPlacement(
+																		item.id,
+																		viewingContainerFace,
+																		placement.x,
+																		placement.y,
+																		(currentRotation + 90) % 360,
+																	);
+																	setConfirmRemoveContainerItemId(null);
+																}}
+																title="Rotate item"
+																aria-label="Rotate item"
+																className="rounded-full bg-blue-100 p-1.5 text-blue-700 hover:bg-blue-200 dark:bg-blue-900/30 dark:text-blue-200 dark:hover:bg-blue-900/50"
+															>
+																<IconDisplay iconKey="fp-edit-lines" size={14} className="h-3.5 w-3.5 object-contain" alt="" />
+															</button>
+															<button
+																type="button"
+																onClick={() => {
+																	if (editingQty !== '') {
+																		updateViewedContainerItemQuantity(item.id, Number(editingQty));
+																		setSelectedContainerItemId(null);
+																		setContainerClearTrigger((current) => current + 1);
+																		setEditingQty('');
+																		setConfirmRemoveContainerItemId(null);
+																	}
+																}}
+																title="Save quantity"
+																aria-label="Save quantity"
+																className="rounded-full bg-emerald-100 p-1.5 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-200 dark:hover:bg-emerald-900/50"
+															>
+																<IconDisplay iconKey="fp-save" size={14} className="h-3.5 w-3.5 object-contain" alt="" />
+															</button>
+															<button
+																type="button"
+																onClick={() => {
+																	if (confirmRemoveContainerItemId === item.id) {
+																		removeContainerCanvasItemPlacement(item.id, viewingContainerFace);
+																		setSelectedContainerItemId(null);
+																		setContainerClearTrigger((current) => current + 1);
+																		setEditingQty('');
+																		setConfirmRemoveContainerItemId(null);
+																		return;
+																	}
+																	setConfirmRemoveContainerItemId(item.id);
+																}}
+																title="Remove item"
+																aria-label="Remove item"
+																className={confirmRemoveContainerItemId === item.id
+																	? 'rounded-full bg-red-100 p-1.5 text-red-700 hover:bg-red-200 dark:bg-red-900/30 dark:text-red-200 dark:hover:bg-red-900/50'
+																	: 'rounded-full bg-amber-100 p-1.5 text-amber-700 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-200 dark:hover:bg-amber-900/50'}
+															>
+																<IconDisplay iconKey="fp-delete" size={14} className="h-3.5 w-3.5 object-contain" alt="" />
+															</button>
+														</div>
+													) : null}
+												</div>
+											);
+											})
+									) : (
+										<div className="text-xs text-gray-500 dark:text-gray-400">No items on this face.</div>
+									)}
 								</div>
 							</div>
 						</div>
@@ -2621,7 +2830,7 @@ export function HomeFloorPlan({
 					</div>
 				) : null}
 
-				{!hideRoomList && !editingRoom && !isEditingStoryName && !editingStoryOutline && roomSummaries.length > 0 ? (
+				{!hideRoomList && !editingRoom && !isEditingStoryName && !editingStoryOutline && !viewingContainerPlacementId && roomSummaries.length > 0 ? (
 					<div className="flex min-h-0 flex-1 flex-col border-t border-gray-200 bg-gray-50/80 px-3 py-3 dark:border-gray-700 dark:bg-gray-950/40">
 						<div className="mx-auto flex min-h-0 w-full max-w-4xl flex-1 flex-col space-y-2">
 							<div className="px-1 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Rooms</div>
@@ -3071,6 +3280,20 @@ export function HomeFloorPlan({
 									<input type="number" min={1} max={10} value={(viewedLayoutActiveFace === 'width-depth' ? viewedLayoutWidthDepthGrid : viewedLayoutActiveFace === 'width-height' ? viewedLayoutWidthHeightGrid : viewedLayoutDepthHeightGrid).rows} onChange={(event) => updateViewedLayoutGrid(viewedLayoutActiveFace, { rows: event.target.value })} onBlur={() => commitViewedLayoutGrid(viewedLayoutActiveFace)} className={`${INPUT_CLS} w-full`} />
 								</label>
 							</div>
+							<label className="mt-2 flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+								<input
+									type="checkbox"
+									checked={viewedLayoutActiveFace === (pendingDefaultFace ?? 'width-depth')}
+									onChange={(event) => {
+										if (event.target.checked) {
+											setPendingDefaultFace(viewedLayoutActiveFace);
+										} else {
+											setPendingDefaultFace(null);
+										}
+									}}
+								/>
+								Set as default view
+							</label>
 
 							{viewedLayoutError ? <div className="text-sm text-red-600 dark:text-red-300">{viewedLayoutError}</div> : null}
 

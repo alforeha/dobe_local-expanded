@@ -11,9 +11,12 @@ interface ContainerLayoutCanvasProps {
   activeFace: ContainerFace;
   items: ItemInstance[];
   isEditMode: boolean;
+  hidePlacedItemsList?: boolean;
   viewportHeightClassName?: string;
+  clearSelectionTrigger?: number;
   pendingSelectedItemId?: string | null;
   onPendingSelectedItemHandled?: () => void;
+  onSelectedItemChange?: (itemId: string | null) => void;
   onPlaceItem: (itemId: string, face: ContainerFace, x: number, y: number, rotation: number) => void;
   onUpdateItemQuantity: (itemId: string, quantity: number) => void;
   onRemoveItem: (itemId: string, face: ContainerFace) => void;
@@ -90,16 +93,22 @@ export function ContainerLayoutCanvas({
   activeFace,
   items,
   isEditMode,
+  hidePlacedItemsList = false,
   viewportHeightClassName,
+  clearSelectionTrigger,
   pendingSelectedItemId,
   onPendingSelectedItemHandled,
+  onSelectedItemChange,
   onPlaceItem,
   onUpdateItemQuantity,
   onRemoveItem,
 }: ContainerLayoutCanvasProps) {
   const user = useUserStore((state) => state.user);
   const userTemplates = useMemo(() => getUserInventoryItemTemplates(user), [user]);
-  const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
+  const [selectionState, setSelectionState] = useState<{ itemId: string | null; trigger: number | undefined }>({
+    itemId: null,
+    trigger: clearSelectionTrigger,
+  });
   const [draggingItemId, setDraggingItemId] = useState<string | null>(null);
 
   const faceDimensions = getFaceDimensions(container, activeFace);
@@ -115,8 +124,11 @@ export function ContainerLayoutCanvas({
     () => items.filter((item) => !item.placedInContainer || Object.keys(item.placedInContainer).length === 0),
     [items],
   );
+  const localSelectedItemId = selectionState.itemId && selectionState.trigger === clearSelectionTrigger
+    ? selectionState.itemId
+    : null;
   const activeSelectedItemId = pendingSelectedItemId
-    ?? (selectedItemId && items.some((item) => item.id === selectedItemId) ? selectedItemId : null);
+    ?? (localSelectedItemId && items.some((item) => item.id === localSelectedItemId) ? localSelectedItemId : null);
   const selectedItem = useMemo(
     () => items.find((item) => item.id === activeSelectedItemId) ?? null,
     [activeSelectedItemId, items],
@@ -125,10 +137,21 @@ export function ContainerLayoutCanvas({
   const hasFixedViewport = Boolean(viewportHeightClassName);
   const faceAspectRatio = faceDimensions.xSize / faceDimensions.ySize;
 
+  function selectItem(itemId: string | null) {
+    setSelectionState({
+      itemId,
+      trigger: clearSelectionTrigger,
+    });
+  }
+
   useEffect(() => {
     if (!pendingSelectedItemId) return;
     onPendingSelectedItemHandled?.();
   }, [onPendingSelectedItemHandled, pendingSelectedItemId]);
+
+  useEffect(() => {
+    onSelectedItemChange?.(activeSelectedItemId ?? null);
+  }, [activeSelectedItemId, onSelectedItemChange]);
 
   function getPlacementForPointer(
     clientX: number,
@@ -167,7 +190,7 @@ export function ContainerLayoutCanvas({
     const rotation = item.placedInContainer?.[activeFace]?.rotation ?? 0;
     const next = getPlacementForPointer(event.clientX, event.clientY, rect, activeSelectedItemId, rotation);
     onPlaceItem(activeSelectedItemId, activeFace, next.x, next.y, rotation);
-    setSelectedItemId(activeSelectedItemId);
+    selectItem(activeSelectedItemId);
   }
 
   function handleCanvasDrop(event: React.DragEvent<HTMLDivElement>) {
@@ -184,7 +207,7 @@ export function ContainerLayoutCanvas({
     const rect = event.currentTarget.getBoundingClientRect();
     const next = getPlacementForPointer(event.clientX, event.clientY, rect, draggedItemId, rotation);
     onPlaceItem(draggedItemId, activeFace, next.x, next.y, rotation);
-    setSelectedItemId(draggedItemId);
+    selectItem(draggedItemId);
     setDraggingItemId(null);
   }
 
@@ -288,7 +311,7 @@ export function ContainerLayoutCanvas({
               if (!isEditMode) return;
               event.dataTransfer.effectAllowed = 'move';
               event.dataTransfer.setData('application/x-container-item-id', item.id);
-              setSelectedItemId(item.id);
+              selectItem(item.id);
               setDraggingItemId(item.id);
             }}
             onDragEnd={() => {
@@ -297,7 +320,7 @@ export function ContainerLayoutCanvas({
             onClick={(event) => {
               event.stopPropagation();
               if (!isEditMode) return;
-              setSelectedItemId(item.id);
+              selectItem(item.id);
             }}
             className={`absolute flex items-center justify-center overflow-hidden rounded-lg border shadow-sm ${
               activeSelectedItemId === item.id
@@ -337,7 +360,7 @@ export function ContainerLayoutCanvas({
                 <button
                   key={`available-${item.id}`}
                   type="button"
-                  onClick={() => setSelectedItemId(item.id)}
+                  onClick={() => selectItem(item.id)}
                   className={isSelected ? 'flex w-full items-center gap-2 rounded-xl bg-blue-50 px-3 py-2 text-left ring-1 ring-blue-200 dark:bg-blue-950/40 dark:ring-blue-900/60' : 'flex w-full items-center gap-2 rounded-xl bg-white px-3 py-2 text-left ring-1 ring-black/5 dark:bg-gray-800'}
                 >
                   {resolved?.icon ? <IconDisplay iconKey={resolved.icon} size={16} className="h-4 w-4 shrink-0 object-contain" /> : null}
@@ -362,7 +385,7 @@ export function ContainerLayoutCanvas({
         ) : canvasStage}
       </div>
 
-      {isEditMode ? (
+      {!hidePlacedItemsList && isEditMode ? (
         <div className="space-y-3 rounded-2xl border border-gray-200 bg-gray-50/80 p-3 dark:border-gray-700 dark:bg-gray-900/40">
           {activeSelectedItemId && !selectedPlacement ? (
             <div className="text-xs text-gray-500 dark:text-gray-400">
@@ -388,7 +411,7 @@ export function ContainerLayoutCanvas({
                   >
                     <button
                       type="button"
-                      onClick={() => setSelectedItemId(item.id)}
+                      onClick={() => selectItem(item.id)}
                       className="flex w-full items-center justify-between gap-3 text-left text-sm font-medium text-gray-700 dark:text-gray-200"
                     >
                       <span className="flex min-w-0 items-center gap-2">
@@ -445,7 +468,7 @@ export function ContainerLayoutCanvas({
                         </button>
                         <button
                           type="button"
-                          onClick={() => setSelectedItemId(null)}
+                          onClick={() => selectItem(null)}
                           className="rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-900/30 dark:text-emerald-200"
                         >
                           Set

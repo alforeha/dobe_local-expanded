@@ -180,6 +180,7 @@ export interface InventoryContainer {
   id: string;
   name: string;
   icon: string;
+  defaultFace?: 'width-depth' | 'width-height' | 'depth-height';
   kind?: 'container' | 'bag';
   dimensions?: {
     width: number;
