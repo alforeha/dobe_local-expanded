@@ -17,6 +17,7 @@ interface HomeLayoutProps {
 	hideRoomList?: boolean;
 	showSelectedItemPanel?: boolean;
 	onRoomSelectedChange?: (hasRoomSelected: boolean) => void;
+	onPlacementExpandedChange?: (isExpanded: boolean) => void;
 	onFloorEditChange?: (isEditing: boolean) => void;
 	onOpenAlbumEditor?: (location: string) => void;
 }
@@ -150,6 +151,7 @@ export function HomeLayout({
 	hideRoomList = false,
 	showSelectedItemPanel = false,
 	onRoomSelectedChange,
+	onPlacementExpandedChange,
 	onFloorEditChange,
 	onOpenAlbumEditor,
 }: HomeLayoutProps) {
@@ -650,6 +652,7 @@ export function HomeLayout({
 					}}
 					homeId={homeId}
 					hideRoomList={hideRoomList}
+					onPlacementExpandedChange={onPlacementExpandedChange}
 					editable={editable}
 					editingStoryOutline={editingStoryOutline}
 					editingRoom={editingRoom}

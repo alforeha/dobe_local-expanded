@@ -281,6 +281,7 @@ export function HomeFormNew({ existing, onSaved, registerOnAutoSave }: HomeFormN
 
   const [activeTab, setActiveTab] = useState('details');
   const [roomSelected, setRoomSelected] = useState(false);
+  const [placementExpanded, setPlacementExpanded] = useState(false);
   const [iconKey, setIconKey] = useState(existing?.icon ?? currentExisting?.icon ?? defaultHomeIcon);
   const [displayName, setDisplayName] = useState(existing?.name ?? currentExisting?.name ?? '');
   const [streetAddress, setStreetAddress] = useState(existing?.address ?? currentExisting?.address ?? '');
@@ -1342,6 +1343,7 @@ export function HomeFormNew({ existing, onSaved, registerOnAutoSave }: HomeFormN
           editable
           homeId={draftHomeId}
           onRoomSelectedChange={setRoomSelected}
+          onPlacementExpandedChange={setPlacementExpanded}
           onOpenAlbumEditor={handleOpenAlbumEditor}
         />
       </div>
@@ -1381,7 +1383,7 @@ export function HomeFormNew({ existing, onSaved, registerOnAutoSave }: HomeFormN
         activeTab={activeTab}
         onTabChange={handleTabChange}
         hideChrome={hasExpandedChore}
-        hideTabs={roomSelected}
+        hideTabs={roomSelected || placementExpanded}
         noScrollContent={activeTab === 'layout'}
       >
         {activeTab === 'details' ? renderDetailsTab() : null}

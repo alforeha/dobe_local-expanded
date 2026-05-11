@@ -60,6 +60,7 @@ interface HomeFloorPlanProps {
 	selectedRoomId: string | null;
 	selectedPlacedId?: string | null;
 	onPlacedItemSelect?: (placedId: string | null) => void;
+	onPlacementExpandedChange?: (isExpanded: boolean) => void;
 	onSelectRoom: (roomId: string | null) => void;
 	homeId?: string;
 	hideRoomList?: boolean;
@@ -136,6 +137,7 @@ export function HomeFloorPlan({
 	selectedRoomId,
 	selectedPlacedId = null,
 	onPlacedItemSelect,
+	onPlacementExpandedChange,
 	onSelectRoom,
 	homeId,
 	hideRoomList = false,
@@ -740,6 +742,10 @@ export function HomeFloorPlan({
 			return () => window.clearTimeout(resetId);
 		}
 	}, [editingContainersRoomId, selectedRoomId]);
+
+	useEffect(() => {
+		onPlacementExpandedChange?.(Boolean(expandedPlacedContainerId));
+	}, [expandedPlacedContainerId, onPlacementExpandedChange]);
 
 	useEffect(() => {
 		if (!expandedPlacedContainerId) {

@@ -18,7 +18,6 @@ export function HomeFloorPlanRoomRows({ summary, ...props }: HomeFloorPlanRoomRo
 		INPUT_CLS,
 		ITEM_TASK_TYPE_OPTIONS,
 		DOW_LABELS,
-		captureAndAppendToHomeAlbum,
 		describeReminder,
 		describeTaskRecurrence,
 		executePlacedRecurringTask,
@@ -34,7 +33,6 @@ export function HomeFloorPlanRoomRows({ summary, ...props }: HomeFloorPlanRoomRo
 		onSelectRoom,
 		onUpdateRoomPhotos,
 		photoStatusByScope,
-		photoUploadBusyByScope,
 		pushPlacedRecurringTaskReminder,
 		renderContainerItems,
 		resolvePlacedTaskDisplay,
@@ -43,7 +41,6 @@ export function HomeFloorPlanRoomRows({ summary, ...props }: HomeFloorPlanRoomRo
 		setExpandedPlacedContainerId,
 		setExpandedPlacedTaskId,
 		setSelectedPlacementId,
-		setViewingContainerFace,
 		setViewingContainerPlacementId,
 		updatePlacedItem,
 		updatePlacedRecurringTask,
@@ -57,7 +54,6 @@ export function HomeFloorPlanRoomRows({ summary, ...props }: HomeFloorPlanRoomRo
 		updatePlacedRecurringTaskConsumeEntry,
 		removePlacedRecurringTaskConsumeEntry,
 		updatePlacedRecurringTaskTextInput,
-		removePlacedItem,
 		userConsumableTaskTemplates,
 		viewingContainerPlacementId,
 		isEditingStory = false,
@@ -382,30 +378,9 @@ export function HomeFloorPlanRoomRows({ summary, ...props }: HomeFloorPlanRoomRo
 															<input type="number" min={0} value={quantityValue ?? 0} onChange={(event) => updatePlacedItem(room.id, entry.placement.id, { quantity: Math.max(0, Number(event.target.value) || 0) })} className={`${INPUT_CLS} w-full`} />
 														</label>
 													</div>
-												) : (
-													<div className="flex flex-wrap items-end gap-2 rounded-lg bg-gray-50 px-3 py-3 dark:bg-gray-800/70 sm:flex-nowrap">
-														<label className="min-w-0 flex-1 space-y-1"><span className="text-[11px] font-medium text-gray-600 dark:text-gray-300">W</span><input type="number" min={0} value={entry.placement.width} onChange={(event) => updatePlacedItem(room.id, entry.placement.id, { width: Math.max(0, Number(event.target.value) || 0) })} className={`${INPUT_CLS} w-full`} /></label>
-														<label className="min-w-0 flex-1 space-y-1"><span className="text-[11px] font-medium text-gray-600 dark:text-gray-300">D</span><input type="number" min={0} value={entry.placement.depth} onChange={(event) => updatePlacedItem(room.id, entry.placement.id, { depth: Math.max(0, Number(event.target.value) || 0) })} className={`${INPUT_CLS} w-full`} /></label>
-														<button type="button" onClick={() => updatePlacedItem(room.id, entry.placement.id, { rotation: ((entry.placement.rotation ?? 0) + 30) % 360 })} className="rounded-full bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-100 dark:bg-blue-900/20 dark:text-blue-200 dark:hover:bg-blue-900/40 sm:self-end">Rotate +30°</button>
-													</div>
-												)}
+												) : null}
 												<div className="mt-3 flex flex-wrap items-center gap-2">
 													<div className="text-[11px] text-gray-500 dark:text-gray-400">Drag the selected footprint on the canvas to move it.</div>
-													{(() => {
-														const placedScopeId = `placed-item:${entry.placement.id}`;
-														const isPhotoBusy = photoUploadBusyByScope[placedScopeId] === true;
-														return (
-															<button
-																type="button"
-																disabled={isPhotoBusy}
-																onClick={() => { void captureAndAppendToHomeAlbum(placedScopeId, entry.placement.id, 'placed-item'); }}
-																className="rounded-full bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-100 disabled:opacity-50 dark:bg-blue-900/30 dark:text-blue-200 dark:hover:bg-blue-900/50"
-															>
-																{isPhotoBusy ? 'Adding photo...' : 'Take Photo'}
-															</button>
-														);
-													})()}
-													<button type="button" onClick={() => removePlacedItem(room.id, entry.placement.id)} className="rounded-full bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-100 dark:bg-red-900/20 dark:text-red-300">Remove</button>
 												</div>
 												{photoStatusByScope[`placed-item:${entry.placement.id}`] ? (
 													<div className="mt-2 text-[11px] text-gray-500 dark:text-gray-400">{photoStatusByScope[`placed-item:${entry.placement.id}`]}</div>
@@ -429,7 +404,6 @@ export function HomeFloorPlanRoomRows({ summary, ...props }: HomeFloorPlanRoomRo
 						<div className="space-y-2">
 							{visibleContainerEntries.map((entry) => {
 								const isSelectedPlacement = expandedPlacedContainerId === entry.placement.id;
-								const isViewing = viewingContainerPlacementId === entry.placement.id;
 								const hasCleanTaskInQuickActions = isPlacementCleanInQuickActions(entry.placement.id);
 								return (
 									<div key={entry.placement.id} className={isSelectedPlacement ? 'rounded-xl bg-white ring-2 ring-blue-200 dark:bg-gray-900/70 dark:ring-blue-900/60' : 'rounded-xl bg-white ring-1 ring-black/5 dark:bg-gray-900/70'}>
@@ -467,36 +441,6 @@ export function HomeFloorPlanRoomRows({ summary, ...props }: HomeFloorPlanRoomRo
 											<div className="border-t border-gray-200 px-3 py-3 text-xs text-gray-600 dark:border-gray-700 dark:text-gray-300">
 												<div className="mb-2 text-[11px] text-gray-500 dark:text-gray-400">{entry.inventoryName}</div>
 												{renderContainerItems(entry.placement.refId, entry.items, false)}
-												<div className="mt-3 flex flex-wrap items-center gap-2">
-													<button
-														type="button"
-														onClick={() => {
-															onSelectRoom(room.id);
-															setExpandedPlacedContainerId(entry.placement.id);
-															setSelectedPlacementId(entry.placement.id);
-															setViewingContainerPlacementId(entry.placement.id);
-															setViewingContainerFace(entry.container?.layoutGrid?.xAxis ?? 'width-depth');
-														}}
-														className={isViewing ? 'rounded-full bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white' : 'rounded-full bg-gray-100 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700'}
-													>
-														View
-													</button>
-													{(() => {
-														const placedScopeId = `placed-container:${entry.placement.id}`;
-														const isPhotoBusy = photoUploadBusyByScope[placedScopeId] === true;
-														return (
-															<button
-																type="button"
-																disabled={isPhotoBusy}
-																onClick={() => { void captureAndAppendToHomeAlbum(placedScopeId, entry.placement.id, 'placed-container'); }}
-																className="rounded-full bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-100 disabled:opacity-50 dark:bg-blue-900/30 dark:text-blue-200 dark:hover:bg-blue-900/50"
-															>
-																{isPhotoBusy ? 'Adding photo...' : 'Take Photo'}
-															</button>
-														);
-													})()}
-													<button type="button" onClick={() => removePlacedItem(room.id, entry.placement.id)} className="rounded-full bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-100 dark:bg-red-900/20 dark:text-red-300">Remove</button>
-												</div>
 												{photoStatusByScope[`placed-container:${entry.placement.id}`] ? (
 													<div className="mt-2 text-[11px] text-gray-500 dark:text-gray-400">{photoStatusByScope[`placed-container:${entry.placement.id}`]}</div>
 												) : null}
