@@ -21,14 +21,16 @@ interface HomeFloorPlanActionBarProps {
 	selectedItemCanMoveUp: boolean;
 	selectedItemCanMoveDown: boolean;
 	selectedItemPhotoBusy: boolean;
+	homeName: string;
+	roomName: string | null;
+	itemName: string | null;
+	onOpenAlbumEditor?: (location: string) => void;
 	onExitRoom: () => void;
 	onEditRoom: () => void;
 	onDeleteRoom: () => void;
 	onAddItem: () => void;
 	onAddContainer: () => void;
 	onCleanRoom: () => void;
-	onTakePhoto: () => void;
-	onTakeHomePhoto: () => void;
 	onOutlineRoom: () => void;
 	onAddStory: () => void;
 	onSave: () => void;
@@ -67,14 +69,16 @@ export function HomeFloorPlanActionBar({
 	selectedItemCanMoveUp,
 	selectedItemCanMoveDown,
 	selectedItemPhotoBusy,
+	homeName,
+	roomName,
+	itemName,
+	onOpenAlbumEditor,
 	onExitRoom,
 	onEditRoom,
 	onDeleteRoom,
 	onAddItem,
 	onAddContainer,
 	onCleanRoom,
-	onTakePhoto,
-	onTakeHomePhoto,
 	onOutlineRoom,
 	onAddStory,
 	onSave,
@@ -109,6 +113,12 @@ export function HomeFloorPlanActionBar({
 			width: String(selectedItemWidth),
 			depth: String(selectedItemDepth),
 		};
+	const normalizedHomeName = homeName.trim() || 'Home';
+	const normalizedRoomName = roomName?.trim() || 'Room';
+	const normalizedItemName = itemName?.trim() || 'Item';
+	const openHomeAlbumEditor = () => onOpenAlbumEditor?.(normalizedHomeName);
+	const openRoomAlbumEditor = () => onOpenAlbumEditor?.(`${normalizedHomeName} · ${normalizedRoomName}`);
+	const openItemAlbumEditor = () => onOpenAlbumEditor?.(`${normalizedHomeName} · ${normalizedRoomName} · ${normalizedItemName}`);
 
 	useEffect(() => {
 		if (!showAddChoice) return;
@@ -314,7 +324,7 @@ export function HomeFloorPlanActionBar({
 							alt={activeConfirmDeleteItemActionId === selectedPlacedId ? 'Confirm delete item' : 'Delete item'}
 						/>
 					</button>
-					<button type="button" onClick={onTakePhoto} disabled={selectedItemPhotoBusy} className={iconButtonClassName} title="Take item photo" aria-label="Take item photo">
+					<button type="button" onClick={openItemAlbumEditor} disabled={selectedItemPhotoBusy} className={iconButtonClassName} title="Take item photo" aria-label="Take item photo">
 						<IconDisplay iconKey="fp-camera" size={18} alt="Take item photo" />
 					</button>
 					<button type="button" onClick={onCleanItem} disabled={!selectedItemCanClean} className={iconButtonClassName} title="Clean item" aria-label="Clean item">
@@ -422,7 +432,7 @@ export function HomeFloorPlanActionBar({
 					<button type="button" onClick={onEditRoom} className={iconButtonClassName} title="Edit room" aria-label="Edit room">
 						<IconDisplay iconKey="fp-edit" size={18} alt="Edit room" />
 					</button>
-					<button type="button" onClick={onTakePhoto} disabled={selectedRoomPhotoBusy} className={iconButtonClassName} title="Take room photo" aria-label="Take room photo">
+					<button type="button" onClick={openRoomAlbumEditor} disabled={selectedRoomPhotoBusy} className={iconButtonClassName} title="Take room photo" aria-label="Take room photo">
 						<IconDisplay iconKey="fp-camera" size={18} alt="Take room photo" />
 					</button>
 					<div ref={addChoiceRef} className="relative">
@@ -474,7 +484,7 @@ export function HomeFloorPlanActionBar({
 
 		return (
 			<div className="flex flex-wrap items-center justify-center gap-2 md:justify-start">
-				<button type="button" onClick={onTakeHomePhoto} className={iconButtonClassName} title="Take home photo" aria-label="Take home photo">
+				<button type="button" onClick={openHomeAlbumEditor} className={iconButtonClassName} title="Take home photo" aria-label="Take home photo">
 					<IconDisplay iconKey="fp-camera" size={18} alt="Take home photo" />
 				</button>
 				<button type="button" onClick={onOutlineRoom} disabled={!activeStoryHasOutline} className={iconButtonClassName} title="Add Room" aria-label="Add Room">

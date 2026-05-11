@@ -61,6 +61,30 @@ function getTemplateByRef(
     null;
 }
 
+function buildSyntheticTemplate(task: Task | null | undefined): TaskTemplate | null {
+  if (!task?.isUnique || !task.taskType) return null;
+  return {
+    id: task.id,
+    name: task.title ?? 'Task',
+    description: '',
+    icon: 'check',
+    taskType: task.taskType as TaskTemplate['taskType'],
+    inputFields: (task.resultFields ?? {}) as InputFields,
+    xpAward: {
+      health: 0,
+      strength: 0,
+      agility: 0,
+      defense: 0,
+      charisma: 0,
+      wisdom: 0,
+    },
+    cooldown: null,
+    media: null,
+    items: [],
+    secondaryTag: task.secondaryTag,
+  };
+}
+
 function getPrimaryStatKey(xpAward: XpAward): StatGroupKey | null {
   let best: StatGroupKey | null = null;
   let bestVal = 0;
@@ -360,9 +384,10 @@ function ExpandedGtdCard({
   onManualComplete,
 }: ExpandedGtdCardProps) {
   const previewTask = buildPreviewTask(entry);
+  const effectiveTemplate = entry.template ?? buildSyntheticTemplate(previewTask);
   const detail = detailText(entry);
   const statKey = entry.template ? getPrimaryStatKey(entry.template.xpAward) : null;
-  const canUseTemplateInput = Boolean(entry.template && previewTask);
+  const canUseTemplateInput = Boolean(effectiveTemplate && previewTask);
 
   return (
     <div className={`min-h-[19rem] rounded-3xl border p-4 shadow-sm ${getTone(entry)}`}>
@@ -420,8 +445,8 @@ function ExpandedGtdCard({
           </button>
         ) : canUseTemplateInput ? (
           <TaskTypeInputRenderer
-            taskType={entry.template!.taskType}
-            template={entry.template}
+            taskType={effectiveTemplate!.taskType}
+            template={effectiveTemplate}
             task={previewTask}
             onComplete={(resultFields) => {
               if (entry.kind === 'system') {

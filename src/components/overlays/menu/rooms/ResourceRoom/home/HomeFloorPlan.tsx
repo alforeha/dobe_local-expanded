@@ -89,6 +89,7 @@ interface HomeFloorPlanProps {
 	onUpdateStoryPlacedItems?: (placedItems: PlacedInstance[]) => void;
 	onUpdateRoomPhotos?: (roomId: string, photos: AlbumEntry[]) => void;
 	onUpdateStoryPhotos?: (photos: AlbumEntry[]) => void;
+	onOpenAlbumEditor?: (location: string) => void;
 }
 
 
@@ -164,6 +165,7 @@ export function HomeFloorPlan({
 	onUpdateStoryPlacedItems,
 	onUpdateRoomPhotos,
 	onUpdateStoryPhotos,
+	onOpenAlbumEditor,
 }: HomeFloorPlanProps) {
 	const svgRef = useRef<SVGSVGElement | null>(null);
 	const [zoom, setZoom] = useState(1);
@@ -622,10 +624,6 @@ export function HomeFloorPlan({
 						<span className="text-xs font-medium text-gray-500 dark:text-gray-400">Room name</span>
 						<input value={editingRoom.name} onChange={(event) => onEditingRoomChange?.({ ...editingRoom, name: event.target.value })} className={INPUT_CLS} placeholder="e.g. Kitchen" />
 					</label>
-					<div className="ml-auto flex items-center gap-2">
-						<button type="button" onClick={onCancelEditingRoom} className="rounded-full bg-gray-100 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700">Cancel</button>
-						<button type="button" onClick={onSaveEditingRoom} disabled={!canSaveEditingRoom} className={canSaveEditingRoom ? 'rounded-full bg-emerald-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-600' : 'rounded-full bg-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-400 dark:bg-gray-700'}>{editingMode === 'create' ? 'Save room' : 'Save changes'}</button>
-					</div>
 				</div>
 			</div>
 		</div>
@@ -887,12 +885,6 @@ export function HomeFloorPlan({
 		}
 	}
 
-	function setActiveOutlineEditMode(nextMode: OutlineEditMode) {
-		setOutlineEditMode(nextMode);
-		if (nextMode === 'add-point') {
-			setSelectedOutlineSegmentIndex(null);
-		}
-	}
 
 	function updateDraftContainer(roomId: string, patch: Partial<{ name: string; icon: string }>) {
 		setDraftContainerByRoom((current) => ({
@@ -2123,6 +2115,7 @@ export function HomeFloorPlan({
 		? selectedRoomSummary.placedContainerEntries.length + selectedRoomSummary.placedLooseItemEntries.filter((entry) => entry.itemKind === 'facility').length > 0
 		: false;
 	const selectedRoomPhotoBusy = selectedRoomSummary ? photoUploadBusyByScope[selectedRoomSummary.room.id] === true : false;
+	const homeName = getCurrentHome()?.name?.trim() || story.name.trim() || 'Home';
 	const actionBarProps = {
 		isEditingStoryName,
 		isEditingStoryOutline,
@@ -2142,6 +2135,10 @@ export function HomeFloorPlan({
 		selectedItemCanMoveUp: selectedItemAction?.canMoveUp ?? false,
 		selectedItemCanMoveDown: selectedItemAction?.canMoveDown ?? false,
 		selectedItemPhotoBusy: selectedItemAction?.photoBusy ?? false,
+		homeName,
+		roomName: selectedRoomSummary?.room.name ?? null,
+		itemName: selectedItemAction?.name ?? null,
+		onOpenAlbumEditor,
 		onExitRoom: () => onSelectRoom(null),
 		onEditRoom: () => {
 			if (selectedRoomSummary) onStartEditRoom?.(selectedRoomSummary.room);
@@ -2161,19 +2158,6 @@ export function HomeFloorPlan({
 		},
 		onCleanRoom: () => {
 			if (selectedRoomSummary) pushRoomCleanTasks(selectedRoomSummary);
-		},
-		onTakePhoto: () => {
-			if (selectedItemAction) {
-				void captureAndAppendToHomeAlbum(`placed-item:${selectedItemAction.id}`, selectedItemAction.id, 'placed-item');
-				return;
-			}
-			if (selectedRoomSummary) {
-				void captureAndAppendToHomeAlbum(selectedRoomSummary.room.id, selectedRoomSummary.room.id, 'manual');
-			}
-		},
-		onTakeHomePhoto: () => {
-			if (!homeId) return;
-			void captureAndAppendToHomeAlbum(homeId, undefined, 'manual');
 		},
 		onOutlineRoom: () => onOutlineRoom?.(),
 		onAddStory: () => onAddStory?.(),
@@ -2449,44 +2433,6 @@ export function HomeFloorPlan({
 				{editable && (editingStoryOutline || (editingRoom && !isPlacingStartPoint)) && currentPoint ? (
 					<div className="border-t border-gray-200 bg-gray-50/80 px-3 py-3 dark:border-gray-700 dark:bg-gray-950/40">
 						<div className="mx-auto w-full max-w-xs rounded-2xl bg-white/96 p-3 shadow-sm ring-1 ring-black/5 backdrop-blur dark:bg-gray-900/96">
-							<div className="mb-2 flex items-center gap-2 text-[11px] text-gray-500 dark:text-gray-400">
-								<span>{isEditingStoryOutline ? 'Story boundary' : 'Polyline'}</span>
-								<span>•</span>
-								<span>{activePoints.length} pt</span>
-								{activePoints.length >= 2 ? <span>• {Math.round(getPointsBounds(activePoints).width)} x {Math.round(getPointsBounds(activePoints).height)}</span> : null}
-							</div>
-							{isEditingStoryOutline || editingRoom ? (
-								<div className="mb-3 flex items-center justify-center">
-									<div className="inline-flex rounded-full bg-gray-200 p-1 dark:bg-gray-700">
-										<button
-											type="button"
-											className={`rounded-full px-4 py-1 text-xs font-semibold transition-colors duration-150 ${(isEditingStoryOutline ? outlineEditMode : roomEditMode) === 'add-point' ? 'bg-blue-500 text-white shadow' : 'bg-transparent text-gray-700 dark:text-gray-200'}`}
-											onClick={() => {
-												if (isEditingStoryOutline) {
-													setActiveOutlineEditMode('add-point');
-												} else {
-													setActiveRoomEditMode('add-point');
-												}
-											}}
-										>
-											Edit Point
-										</button>
-										<button
-											type="button"
-											className={`rounded-full px-4 py-1 text-xs font-semibold transition-colors duration-150 ${(isEditingStoryOutline ? outlineEditMode : roomEditMode) === 'select-segment' ? 'bg-blue-500 text-white shadow' : 'bg-transparent text-gray-700 dark:text-gray-200'}`}
-											onClick={() => {
-												if (isEditingStoryOutline) {
-													setActiveOutlineEditMode('select-segment');
-												} else {
-													setActiveRoomEditMode('select-segment');
-												}
-											}}
-										>
-											Edit Line
-										</button>
-									</div>
-								</div>
-							) : null}
 							{(isEditingStoryOutline ? outlineEditMode : roomEditMode) === 'add-point' ? (
 								<>
 									<div className="grid grid-cols-3 gap-2">
@@ -3078,4 +3024,6 @@ export function HomeFloorPlan({
 		</div>
 	);
 }
+
+
 

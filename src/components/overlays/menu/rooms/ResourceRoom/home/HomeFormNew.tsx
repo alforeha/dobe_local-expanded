@@ -315,6 +315,7 @@ export function HomeFormNew({ existing, onSaved, registerOnAutoSave }: HomeFormN
   const [gtdPushFeedbackTaskId, setGtdPushFeedbackTaskId] = useState<string | null>(null);
   const [isAlbumEditorOpen, setIsAlbumEditorOpen] = useState(false);
   const [editingAlbumEntry, setEditingAlbumEntry] = useState<AlbumEntry | undefined>(undefined);
+  const [pendingAlbumLocation, setPendingAlbumLocation] = useState<string | null>(null);
 
   const canSave = displayName.trim().length > 0;
   const liveLinks = currentExisting?.links ?? existing?.links;
@@ -742,14 +743,22 @@ export function HomeFormNew({ existing, onSaved, registerOnAutoSave }: HomeFormN
   }, [handleSave, registerOnAutoSave]);
 
   function handleAddAlbumEntry() {
+    setPendingAlbumLocation(null);
     setEditingAlbumEntry(undefined);
     setIsAlbumEditorOpen(true);
   }
 
   function handleEditAlbumEntry(entry: AlbumEntry) {
+    setPendingAlbumLocation(null);
     setEditingAlbumEntry(entry);
     setIsAlbumEditorOpen(true);
   }
+
+  const handleOpenAlbumEditor = useCallback((location: string) => {
+    setPendingAlbumLocation(location);
+    setEditingAlbumEntry(undefined);
+    setIsAlbumEditorOpen(true);
+  }, []);
 
   function handleDeleteAlbumEntry(entryId: string) {
     setAlbum((prev) => prev.filter((entry) => entry.id !== entryId));
@@ -764,6 +773,7 @@ export function HomeFormNew({ existing, onSaved, registerOnAutoSave }: HomeFormN
       return next;
     });
     setIsAlbumEditorOpen(false);
+    setPendingAlbumLocation(null);
     setEditingAlbumEntry(undefined);
   }
 
@@ -1326,10 +1336,30 @@ export function HomeFormNew({ existing, onSaved, registerOnAutoSave }: HomeFormN
   function renderLayoutTab() {
     return (
       <div className="flex flex-col overflow-hidden" style={{ height: '100%' }}>
-        <HomeLayout stories={stories} onChange={setStories} editable homeId={draftHomeId} onRoomSelectedChange={setRoomSelected} />
+        <HomeLayout
+          stories={stories}
+          onChange={setStories}
+          editable
+          homeId={draftHomeId}
+          onRoomSelectedChange={setRoomSelected}
+          onOpenAlbumEditor={handleOpenAlbumEditor}
+        />
       </div>
     );
   }
+
+  const albumEditorEntry = pendingAlbumLocation
+    ? ({
+        id: `album-draft:${uuidv4()}`,
+        date: '',
+        entryKind: 'photo',
+        location: {
+          latitude: 0,
+          longitude: 0,
+          placeName: pendingAlbumLocation,
+        },
+      } satisfies AlbumEntry)
+    : editingAlbumEntry;
 
   function handleTabChange(nextTab: string) {
     if (nextTab === 'links' && !currentExisting && !existing && canSave) {
@@ -1363,10 +1393,11 @@ export function HomeFormNew({ existing, onSaved, registerOnAutoSave }: HomeFormN
 
       {isAlbumEditorOpen ? (
         <AlbumEntryEditor
-          entry={editingAlbumEntry}
+          entry={albumEditorEntry}
           onSave={handleSaveAlbumEntry}
           onCancel={() => {
             setIsAlbumEditorOpen(false);
+            setPendingAlbumLocation(null);
             setEditingAlbumEntry(undefined);
           }}
         />

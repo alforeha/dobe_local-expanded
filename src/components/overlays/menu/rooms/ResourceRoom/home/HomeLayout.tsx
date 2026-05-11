@@ -18,6 +18,7 @@ interface HomeLayoutProps {
 	showSelectedItemPanel?: boolean;
 	onRoomSelectedChange?: (hasRoomSelected: boolean) => void;
 	onFloorEditChange?: (isEditing: boolean) => void;
+	onOpenAlbumEditor?: (location: string) => void;
 }
 
 type StoryDialogState =
@@ -150,6 +151,7 @@ export function HomeLayout({
 	showSelectedItemPanel = false,
 	onRoomSelectedChange,
 	onFloorEditChange,
+	onOpenAlbumEditor,
 }: HomeLayoutProps) {
 	const [activeStoryId, setActiveStoryId] = useState<string | null>(stories[0]?.id ?? null);
 	const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
@@ -673,6 +675,7 @@ export function HomeLayout({
 					onUpdateStoryPlacedItems={editable ? handleUpdateStoryPlacedItems : undefined}
 					onUpdateRoomPhotos={editable ? handleUpdateRoomPhotos : undefined}
 					onUpdateStoryPhotos={editable ? handleUpdateStoryPhotos : undefined}
+					onOpenAlbumEditor={onOpenAlbumEditor}
 					/>
 				</div>
 			) : (
