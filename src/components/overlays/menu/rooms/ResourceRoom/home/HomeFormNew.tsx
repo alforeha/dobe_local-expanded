@@ -26,12 +26,14 @@ import { awardStat, awardXP } from '../../../../../../engine/awardPipeline';
 import { generateGTDItems, generateScheduledTasks } from '../../../../../../engine/resourceEngine';
 import { ICON_MAP } from '../../../../../../constants/iconMap';
 import { getAppDate, getAppNowISO } from '../../../../../../utils/dateUtils';
+import { forwardGeocode } from '../../../../../../utils/geocode';
 import { IconPicker } from '../../../../../shared/IconPicker';
 import { IconDisplay } from '../../../../../shared/IconDisplay';
 import { ResourceFormShell, type ResourceFormTab } from '../../../../../shared/ResourceFormShell';
 import { ResourceLinksTabNew } from '../../../../../shared/ResourceLinksTabNew';
 import { AlbumViewer } from '../../../../../shared/AlbumViewer';
 import { AlbumEntryEditor } from '../../../../../shared/AlbumEntryEditor';
+import { AlbumLocationPicker } from '../../../../../shared/AlbumLocationPicker';
 import { TaskTypeConfigEditor } from '../../../../../shared/TaskTypeConfigEditor';
 import { TaskTypeInputRenderer } from '../../../../../overlays/event/TaskTypeInputRenderer';
 import { HomeLayout } from './HomeLayout';
@@ -287,6 +289,14 @@ export function HomeFormNew({ existing, onSaved, registerOnAutoSave }: HomeFormN
   const [streetAddress, setStreetAddress] = useState(existing?.address ?? currentExisting?.address ?? '');
   const [city, setCity] = useState(existing?.city ?? currentExisting?.city ?? '');
   const [stateCode, setStateCode] = useState(existing?.state ?? currentExisting?.state ?? '');
+  const [lat, setLat] = useState<number | undefined>(existing?.lat ?? currentExisting?.lat);
+  const [lon, setLon] = useState<number | undefined>(existing?.lon ?? currentExisting?.lon);
+  const [locationLocked, setLocationLocked] = useState(
+    Boolean(existing?.lat && existing?.lon),
+  );
+  const [geocodeStatus, setGeocodeStatus] = useState<'idle' | 'loading' | 'found' | 'not-found'>('idle');
+  const [geocodedLabel, setGeocodedLabel] = useState<string | null>(null);
+  const [showLocationPicker, setShowLocationPicker] = useState(false);
   const [album, setAlbum] = useState<AlbumEntry[]>(existing?.album ?? currentExisting?.album ?? []);
   const [stories, setStories] = useState<HomeStory[]>(
     (existing?.stories ?? currentExisting?.stories ?? []).map((story) => ({
@@ -319,6 +329,7 @@ export function HomeFormNew({ existing, onSaved, registerOnAutoSave }: HomeFormN
   const [pendingAlbumLocation, setPendingAlbumLocation] = useState<string | null>(null);
 
   const canSave = displayName.trim().length > 0;
+  const addressLabel = [streetAddress.trim(), city.trim(), stateCode.trim()].filter(Boolean).join(', ');
   const liveLinks = currentExisting?.links ?? existing?.links;
   const memberIds = useMemo(
     () => collectHomeMemberIds(draftHomeId, resources, liveLinks),
@@ -356,6 +367,49 @@ export function HomeFormNew({ existing, onSaved, registerOnAutoSave }: HomeFormN
     }, 3000);
     return () => window.clearTimeout(timeoutId);
   }, [gtdPushFeedbackTaskId]);
+
+  useEffect(() => {
+    if (locationLocked) return undefined;
+
+    const query = [streetAddress.trim(), city.trim(), stateCode.trim()].filter(Boolean).join(', ');
+    let cancelled = false;
+    if (!query) {
+      const timeoutId = window.setTimeout(() => {
+        if (cancelled) return;
+        setGeocodeStatus('idle');
+        setGeocodedLabel(null);
+        setLat(undefined);
+        setLon(undefined);
+      }, 0);
+      return () => {
+        cancelled = true;
+        window.clearTimeout(timeoutId);
+      };
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      void (async () => {
+        const result = await forwardGeocode(query);
+        if (cancelled) return;
+        if (result) {
+          setGeocodeStatus('found');
+          setGeocodedLabel(result.displayName ?? query);
+          setLat(result.lat);
+          setLon(result.lng);
+        } else {
+          setGeocodeStatus('not-found');
+          setGeocodedLabel(null);
+          setLat(undefined);
+          setLon(undefined);
+        }
+      })();
+    }, 800);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeoutId);
+    };
+  }, [city, locationLocked, stateCode, streetAddress]);
 
   function updateChoreDraft(taskId: string, patch: Partial<HomeChoreDraft>) {
     setExpandedChoreDraft((prev) => (
@@ -669,6 +723,8 @@ export function HomeFormNew({ existing, onSaved, registerOnAutoSave }: HomeFormN
       address: streetAddress.trim() || undefined,
       city: city.trim() || undefined,
       state: stateCode.trim() || undefined,
+      lat,
+      lon,
       members: nextMemberIds.length > 0 ? nextMemberIds : undefined,
       stories: finalStories.length > 0 ? finalStories : undefined,
       chores: finalChores.length > 0 ? finalChores : undefined,
@@ -733,6 +789,8 @@ export function HomeFormNew({ existing, onSaved, registerOnAutoSave }: HomeFormN
     stateCode,
     stories,
     streetAddress,
+    lat,
+    lon,
     user,
     mergeExpandedChoreIntoTaskDrafts,
   ]);
@@ -779,6 +837,25 @@ export function HomeFormNew({ existing, onSaved, registerOnAutoSave }: HomeFormN
   }
 
   function renderDetailsTab() {
+    const hasPinnedLocation = typeof lat === 'number' && typeof lon === 'number';
+    const handleStreetAddressChange = (value: string) => {
+      setStreetAddress(value);
+      setLocationLocked(false);
+      setGeocodeStatus(value.trim() || city.trim() || stateCode.trim() ? 'loading' : 'idle');
+    };
+
+    const handleCityChange = (value: string) => {
+      setCity(value);
+      setLocationLocked(false);
+      setGeocodeStatus(streetAddress.trim() || value.trim() || stateCode.trim() ? 'loading' : 'idle');
+    };
+
+    const handleStateCodeChange = (value: string) => {
+      setStateCode(value);
+      setLocationLocked(false);
+      setGeocodeStatus(streetAddress.trim() || city.trim() || value.trim() ? 'loading' : 'idle');
+    };
+
     return (
       <div className="px-4 py-4">
         <div className="grid gap-3 sm:grid-cols-2">
@@ -800,7 +877,7 @@ export function HomeFormNew({ existing, onSaved, registerOnAutoSave }: HomeFormN
             <input
               type="text"
               value={streetAddress}
-              onChange={(event) => setStreetAddress(event.target.value)}
+              onChange={(event) => handleStreetAddressChange(event.target.value)}
               placeholder="123 Main St"
               maxLength={200}
               className={INPUT_CLS}
@@ -811,7 +888,7 @@ export function HomeFormNew({ existing, onSaved, registerOnAutoSave }: HomeFormN
             <input
               type="text"
               value={city}
-              onChange={(event) => setCity(event.target.value)}
+              onChange={(event) => handleCityChange(event.target.value)}
               placeholder="Denver"
               maxLength={120}
               className={INPUT_CLS}
@@ -822,11 +899,54 @@ export function HomeFormNew({ existing, onSaved, registerOnAutoSave }: HomeFormN
             <input
               type="text"
               value={stateCode}
-              onChange={(event) => setStateCode(event.target.value)}
+              onChange={(event) => handleStateCodeChange(event.target.value)}
               placeholder="CO"
               maxLength={40}
               className={INPUT_CLS}
             />
+          </div>
+          <div className="sm:col-span-2">
+            {locationLocked && hasPinnedLocation ? (
+              <div className="mt-1 flex items-center gap-1 text-xs text-green-600 dark:text-green-400">
+                <IconDisplay iconKey="home-icon-house" size={12} alt="" />
+                <span>Location set</span>
+                <button
+                  type="button"
+                  onClick={() => setShowLocationPicker(true)}
+                  className="ml-1 text-blue-500 underline"
+                >
+                  Adjust
+                </button>
+              </div>
+            ) : null}
+            {!locationLocked && geocodeStatus === 'found' ? (
+              <div className="mt-1 flex items-center gap-1 text-xs text-green-600 dark:text-green-400">
+                <IconDisplay iconKey="home-icon-house" size={12} alt="" />
+                <span>Address recognized</span>
+                <button
+                  type="button"
+                  onClick={() => setShowLocationPicker(true)}
+                  className="ml-1 text-blue-500 underline"
+                >
+                  Adjust
+                </button>
+              </div>
+            ) : null}
+            {!locationLocked && geocodeStatus === 'not-found' ? (
+              <div className="mt-1 space-y-1">
+                <div className="mt-1 text-xs text-red-500">Address not recognized</div>
+                <button
+                  type="button"
+                  onClick={() => setShowLocationPicker(true)}
+                  className="text-xs text-blue-500 underline"
+                >
+                  Set location on map
+                </button>
+              </div>
+            ) : null}
+            {!locationLocked && geocodeStatus === 'loading' ? (
+              <div className="mt-1 text-xs text-gray-400">Locating address...</div>
+            ) : null}
           </div>
         </div>
       </div>
@@ -1402,6 +1522,28 @@ export function HomeFormNew({ existing, onSaved, registerOnAutoSave }: HomeFormN
             setPendingAlbumLocation(null);
             setEditingAlbumEntry(undefined);
           }}
+        />
+      ) : null}
+
+      {showLocationPicker ? (
+        <AlbumLocationPicker
+          initialLocation={typeof lat === 'number' && typeof lon === 'number'
+            ? { latitude: lat, longitude: lon, placeName: addressLabel || geocodedLabel || '' }
+            : undefined}
+          onConfirm={(location) => {
+            if (!location) {
+              setShowLocationPicker(false);
+              return;
+            }
+
+            setLat(location.latitude);
+            setLon(location.longitude);
+            setGeocodedLabel(location.placeName ?? '');
+            setGeocodeStatus('found');
+            setLocationLocked(true);
+            setShowLocationPicker(false);
+          }}
+          onCancel={() => setShowLocationPicker(false)}
         />
       ) : null}
     </>

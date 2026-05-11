@@ -497,6 +497,8 @@ export interface HomeResource {
   address?: string;
   city?: string;
   state?: string;
+  lat?: number;
+  lon?: number;
   members?: string[];
   rooms?: HomeRoom[];
   stories?: HomeStory[];
