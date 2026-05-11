@@ -5,6 +5,7 @@ import type { ResourceRecurrenceRule } from '../../../../../../types/resource';
 
 interface HomeFloorPlanRoomRowsProps {
 	summary: any;
+	isEditingStory?: boolean;
 	[key: string]: any;
 }
 
@@ -61,7 +62,10 @@ export function HomeFloorPlanRoomRows({ summary, ...props }: HomeFloorPlanRoomRo
 		removePlacedItem,
 		userConsumableTaskTemplates,
 		viewingContainerPlacementId,
+		isEditingStory = false,
 	} = props;
+
+	if (isEditingStory) return null;
 
 	const { room, placedContainerEntries, placedLooseItemEntries } = summary;
 	const selectedContainerEntry = placedContainerEntries.find((entry) => entry.placement.id === expandedPlacedContainerId) ?? null;

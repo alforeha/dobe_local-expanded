@@ -309,6 +309,7 @@ export function ResourceBlockExpanded({ resource, onRoomSelectedChange, roomSele
               stories={homeResource.stories ?? []}
               homeId={homeResource.id}
               hideRoomList
+              showSelectedItemPanel
               onRoomSelectedChange={handleRoomSelectedChange}
               onFloorEditChange={setFloorEditing}
             />

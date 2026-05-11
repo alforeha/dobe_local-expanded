@@ -36,6 +36,7 @@ export function HomeFloorPlanCanvas(props: HomeFloorPlanCanvasProps) {
 		getWorldPoint,
 		handlePointerMove,
 		handlePointerUp,
+		isEditingStoryName,
 		isEditingStoryOutline,
 		isEditingStoryStartPoint,
 		isImageIcon,
@@ -73,6 +74,8 @@ export function HomeFloorPlanCanvas(props: HomeFloorPlanCanvasProps) {
 		updatePlacedItem,
 		zoom,
 	} = props;
+	const canSelectRooms = !isEditingStoryName && !isEditingStoryOutline;
+	const canSelectPlacedItems = !isEditingStoryName && !isEditingStoryOutline;
 
 	return (
 	<svg
@@ -238,6 +241,7 @@ export function HomeFloorPlanCanvas(props: HomeFloorPlanCanvasProps) {
 							style={isPlacementEditable ? { cursor: 'grab' } : undefined}
 							onPointerDown={(event) => {
 								event.stopPropagation();
+								if (!canSelectPlacedItems) return;
 								onSelectRoom(null);
 								setExpandedPlacedContainerId(entry.id);
 								setSelectedPlacementId(entry.id);
@@ -285,12 +289,12 @@ export function HomeFloorPlanCanvas(props: HomeFloorPlanCanvasProps) {
 								stroke="none"
 								onPointerDown={(event) => {
 									event.stopPropagation();
-										if (editingContainersRoomId === room.id && activeEditablePlacementId) {
+									if (editingContainersRoomId === room.id && activeEditablePlacementId) {
 										const nextPoint = getWorldPoint(event);
-											updatePlacedItem(room.id, activeEditablePlacementId, { x: nextPoint.x, y: nextPoint.y });
+										updatePlacedItem(room.id, activeEditablePlacementId, { x: nextPoint.x, y: nextPoint.y });
 										return;
 									}
-									if (!editingRoom) onSelectRoom(room.id);
+									if (!editingRoom && canSelectRooms) onSelectRoom(room.id);
 								}}
 							/>
 						) : null}
@@ -306,7 +310,7 @@ export function HomeFloorPlanCanvas(props: HomeFloorPlanCanvasProps) {
 									updatePlacedItem(room.id, activeEditablePlacementId, { x: nextPoint.x, y: nextPoint.y });
 									return;
 								}
-								onSelectRoom(room.id);
+								if (canSelectRooms) onSelectRoom(room.id);
 								if (isEditingThisRoom) setSelectedSegmentIndex(index);
 							};
 							return (
@@ -370,11 +374,12 @@ export function HomeFloorPlanCanvas(props: HomeFloorPlanCanvasProps) {
 											style={isPlacementEditable ? { cursor: 'grab' } : undefined}
 											onPointerDown={(event) => {
 												event.stopPropagation();
+												if (!canSelectPlacedItems) return;
 												flushSync(() => {
 													setExpandedPlacedContainerId(entry.id);
 													setSelectedPlacementId(entry.id);
 												});
-												onSelectRoom(room.id);
+												if (canSelectRooms) onSelectRoom(room.id);
 												if (!isPlacementEditable) return;
 												const point = getWorldPoint(event);
 												setInteraction({ type: 'drag-container', roomId: room.id, placementId: entry.id, offsetX: point.x - entry.x, offsetY: point.y - entry.y });

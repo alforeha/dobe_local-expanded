@@ -15,6 +15,7 @@ interface ResourceFormShellProps {
   resourceName?: string;
   hideChrome?: boolean;
   hideTabs?: boolean;
+  noScrollContent?: boolean;
   tabs: ResourceFormTab[];
   activeTab: string;
   onTabChange: (tab: string) => void;
@@ -28,6 +29,7 @@ export function ResourceFormShell({
   resourceName,
   hideChrome = false,
   hideTabs = false,
+  noScrollContent = false,
   tabs,
   activeTab,
   onTabChange,
@@ -84,7 +86,7 @@ export function ResourceFormShell({
         </div>
       ) : null}
 
-      <div className="flex-1 overflow-y-auto">{children}</div>
+      <div className={noScrollContent ? 'overflow-hidden flex-1' : 'flex-1 overflow-y-auto'}>{children}</div>
     </div>
   );
 }

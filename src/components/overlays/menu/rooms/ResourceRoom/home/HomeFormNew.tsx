@@ -1325,15 +1325,7 @@ export function HomeFormNew({ existing, onSaved, registerOnAutoSave }: HomeFormN
 
   function renderLayoutTab() {
     return (
-      <div className="px-4 py-4">
-        {!roomSelected ? (
-        <div className="mb-2 flex items-center justify-between">
-          <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Floor plan</span>
-          <span className="text-[11px] text-gray-400 dark:text-gray-500">
-            {stories.length} stor{stories.length === 1 ? 'y' : 'ies'} · {stories.reduce((sum, story) => sum + story.rooms.length, 0)} rooms
-          </span>
-        </div>
-        ) : null}
+      <div className="flex flex-col overflow-hidden" style={{ height: '100%' }}>
         <HomeLayout stories={stories} onChange={setStories} editable homeId={draftHomeId} onRoomSelectedChange={setRoomSelected} />
       </div>
     );
@@ -1360,6 +1352,7 @@ export function HomeFormNew({ existing, onSaved, registerOnAutoSave }: HomeFormN
         onTabChange={handleTabChange}
         hideChrome={hasExpandedChore}
         hideTabs={roomSelected}
+        noScrollContent={activeTab === 'layout'}
       >
         {activeTab === 'details' ? renderDetailsTab() : null}
         {activeTab === 'tasks' ? renderTasksTab() : null}

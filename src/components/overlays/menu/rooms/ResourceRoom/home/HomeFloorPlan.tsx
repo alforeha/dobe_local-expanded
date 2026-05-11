@@ -74,6 +74,8 @@ interface HomeFloorPlanProps {
 	onEditingStoryOutlineChange?: (outline: StoryOutlineDraft | null) => void;
 	onSaveStoryChanges?: () => void;
 	onCancelStoryChanges?: () => void;
+	onDeleteStory?: () => void;
+	onEditStoryOutline?: () => void;
 	onAddStory?: () => void;
 	onOutlineRoom?: () => void;
 	onSaveStoryOutline?: () => void;
@@ -147,6 +149,8 @@ export function HomeFloorPlan({
 	onEditingStoryOutlineChange,
 	onSaveStoryChanges,
 	onCancelStoryChanges,
+	onDeleteStory,
+	onEditStoryOutline,
 	onAddStory,
 	onOutlineRoom,
 	onSaveStoryOutline,
@@ -210,6 +214,7 @@ export function HomeFloorPlan({
 	const [viewedLayoutDepthHeightGrid, setViewedLayoutDepthHeightGrid] = useState<FaceGridInputDraft>({ columns: '1', rows: '1' });
 	const [viewedLayoutError, setViewedLayoutError] = useState('');
 	const [isEditingStoryStartPoint, setIsEditingStoryStartPoint] = useState(false);
+	const [roomRowsHeight, setRoomRowsHeight] = useState(200);
 	const resources = useResourceStore((s) => s.resources);
 	const setResource = useResourceStore((s) => s.setResource);
 	const setTask = useScheduleStore((s) => s.setTask);
@@ -554,6 +559,10 @@ export function HomeFloorPlan({
 		: findRoomContainerRecord(selectedRoomSummary.room, viewedContainerEntry.container.id);
 	const viewedContainerLayoutPanelOpen = showViewedContainerLayoutPanel && Boolean(viewedContainerEntry?.container);
 	const onPlacedItemSelectRef = useRef(onPlacedItemSelect);
+	const rootRef = useRef<HTMLDivElement>(null);
+	const storyControlsRef = useRef<HTMLDivElement>(null);
+	const canvasRef = useRef<HTMLDivElement>(null);
+	const actionBarRef = useRef<HTMLDivElement>(null);
 
 	useEffect(() => {
 		if (!viewingContainerPlacementId || viewedContainerEntry) return;
@@ -562,12 +571,44 @@ export function HomeFloorPlan({
 	}, [viewedContainerEntry, viewingContainerPlacementId]);
 
 	useEffect(() => {
+		const root = rootRef.current;
+		const canvas = canvasRef.current;
+		const actionBar = actionBarRef.current;
+		if (!root || !canvas || !actionBar) return;
+
+		const homeLayoutRoot = root.parentElement?.parentElement;
+		const storyControls = Array.from(homeLayoutRoot?.children ?? []).find((element) => (
+			element instanceof HTMLDivElement && element.className === 'flex items-center gap-2'
+		));
+		storyControlsRef.current = storyControls instanceof HTMLDivElement ? storyControls : null;
+
+		const calculate = () => {
+			const totalHeight = root.clientHeight;
+			const storyControlsHeight = selectedRoomId
+				? 0
+				: (storyControlsRef.current?.clientHeight ?? 0);
+			const canvasHeight = canvas.clientHeight;
+			const actionBarHeight = actionBar.clientHeight;
+			const usedHeight = storyControlsHeight + canvasHeight + actionBarHeight;
+			setRoomRowsHeight(Math.max(80, totalHeight - usedHeight - 32));
+		};
+
+		calculate();
+		const observer = new ResizeObserver(calculate);
+		observer.observe(root);
+		if (storyControlsRef.current) observer.observe(storyControlsRef.current);
+		return () => observer.disconnect();
+	}, [selectedRoomId]);
+
+	useEffect(() => {
 		const resetId = window.setTimeout(() => {
 			setSelectedSegmentIndex(null);
 			setSelectedOutlineSegmentIndex(null);
 			setRoomEditMode('add-point');
 			setOutlineEditMode('add-point');
-			setIsEditingStoryStartPoint(false);
+			if (!editingStoryOutline) {
+				setIsEditingStoryStartPoint(false);
+			}
 		}, 0);
 		return () => window.clearTimeout(resetId);
 	}, [editingMode, editingRoom?.id, editingStoryOutline, isPlacingStartPoint]);
@@ -2086,6 +2127,7 @@ export function HomeFloorPlan({
 		isEditingStoryName,
 		isEditingStoryOutline,
 		isEditingRoom: Boolean(editingRoom),
+		activeStoryId: story.id,
 		selectedRoomId: selectedRoomSummary?.room.id ?? null,
 		selectedPlacedId: selectedItemAction?.id ?? null,
 		activeStoryHasOutline,
@@ -2129,6 +2171,10 @@ export function HomeFloorPlan({
 				void captureAndAppendToHomeAlbum(selectedRoomSummary.room.id, selectedRoomSummary.room.id, 'manual');
 			}
 		},
+		onTakeHomePhoto: () => {
+			if (!homeId) return;
+			void captureAndAppendToHomeAlbum(homeId, undefined, 'manual');
+		},
 		onOutlineRoom: () => onOutlineRoom?.(),
 		onAddStory: () => onAddStory?.(),
 		onSave: () => {
@@ -2145,7 +2191,8 @@ export function HomeFloorPlan({
 			}
 			onCancelStoryChanges?.();
 		},
-		onEditStartPoint: () => setIsEditingStoryStartPoint(true),
+		onDeleteStory: () => onDeleteStory?.(),
+		onEditStoryOutline: () => onEditStoryOutline?.(),
 		onEditPoints: () => setActiveRoomEditMode('add-point'),
 		onEditLines: () => setActiveRoomEditMode('select-segment'),
 		onDeleteItem: () => {
@@ -2228,14 +2275,14 @@ export function HomeFloorPlan({
 	}
 
 	const roomRowsProps = {
-		IconDisplay, INPUT_CLS, ITEM_TASK_TYPE_OPTIONS, DOW_LABELS, captureAndAppendToHomeAlbum, describeReminder, describeTaskRecurrence, executePlacedRecurringTask, expandedPlacedContainerId, expandedPlacedTaskId, getDayOfMonth, getItemTaskTypeLabel, isPlacedTaskInQuickActions, isPlacementCleanInQuickActions, mergedItemTemplates, normalizeRecurrenceMode, onDeleteRoom, onPlacedItemSelectRef, onSelectRoom, onStartEditRoom, photoStatusByScope, photoUploadBusyByScope, pushPlacedRecurringTaskReminder, pushRoomCleanTasks, renderContainerItems, renderPhotoSection, resolvePlacedTaskDisplay, setAddingItemContainerId, setEditingPlacedContainerId, setExpandedPlacedContainerId, setExpandedPlacedTaskId, setRoomAddContainerRoomId, setRoomAddItemRoomId, setSelectedPlacementId, setViewingContainerFace, setViewingContainerPlacementId, updatePlacedItem, updatePlacedRecurringTask, updatePlacedRecurringTaskName, updatePlacedRecurringTaskType, updatePlacedRecurringTaskRecurrence, togglePlacedRecurringTaskDay, addPlacedRecurringTask, removePlacedRecurringTask, addPlacedRecurringTaskConsumeEntry, updatePlacedRecurringTaskConsumeEntry, removePlacedRecurringTaskConsumeEntry, updatePlacedRecurringTaskTextInput, removePlacedItem, userConsumableTaskTemplates, viewingContainerPlacementId,
+		IconDisplay, INPUT_CLS, ITEM_TASK_TYPE_OPTIONS, DOW_LABELS, captureAndAppendToHomeAlbum, describeReminder, describeTaskRecurrence, executePlacedRecurringTask, expandedPlacedContainerId, expandedPlacedTaskId, getDayOfMonth, getItemTaskTypeLabel, isPlacedTaskInQuickActions, isPlacementCleanInQuickActions, mergedItemTemplates, normalizeRecurrenceMode, onDeleteRoom, onPlacedItemSelectRef, onSelectRoom, onStartEditRoom, photoStatusByScope, photoUploadBusyByScope, pushPlacedRecurringTaskReminder, pushRoomCleanTasks, renderContainerItems, renderPhotoSection, resolvePlacedTaskDisplay, setAddingItemContainerId, setEditingPlacedContainerId, setExpandedPlacedContainerId, setExpandedPlacedTaskId, setRoomAddContainerRoomId, setRoomAddItemRoomId, setSelectedPlacementId, setViewingContainerFace, setViewingContainerPlacementId, updatePlacedItem, updatePlacedRecurringTask, updatePlacedRecurringTaskName, updatePlacedRecurringTaskType, updatePlacedRecurringTaskRecurrence, togglePlacedRecurringTaskDay, addPlacedRecurringTask, removePlacedRecurringTask, addPlacedRecurringTaskConsumeEntry, updatePlacedRecurringTaskConsumeEntry, removePlacedRecurringTaskConsumeEntry, updatePlacedRecurringTaskTextInput, removePlacedItem, userConsumableTaskTemplates, viewingContainerPlacementId, isEditingStory: isEditingStoryName || isEditingStoryOutline,
 	};
 
 	const canvasProps = {
-		VIEWBOX_WIDTH, VIEWBOX_HEIGHT, QUICK_ACTIONS_BADGE_RADIUS, QUICK_ACTIONS_BADGE_OFFSET_X, QUICK_ACTIONS_BADGE_OFFSET_Y, VERTEX_VISIBLE_RADIUS, VERTEX_HIT_RADIUS, STORY_SCOPE_ID, activeEditablePlacementId, beginOriginDrag, canvasRooms, currentPoint, editingContainersRoomId, editingPlacedContainerId, editingRoom, editingStoryOutline, findInventoryContainerRecord, findInventoryItemRecord, findRoomContainerRecord, flushSync, formatDistance, getPointDistance, getPointsBounds, getRotatedRectPoints, getSegmentLines, getWorldPoint, handlePointerMove, handlePointerUp, isEditingStoryOutline, isEditingStoryStartPoint, isImageIcon, isPlacementCleanInQuickActions, isPlacingStartPoint, midpoint, onSelectRoom, outlineEditMode, pan, placedItemHasQuickActionsTask, pointsMatch, previewPoint, resolveIcon, resolvePlacedItemEntry, selectedOutlineSegmentIndex, selectedPlacementId, selectedRoom, selectedSegmentIndex, selectStartPointAnchor, segmentsToPoints, setExpandedPlacedContainerId, setInteraction, setSelectedOutlineSegmentIndex, setSelectedPlacementId, setSelectedSegmentIndex, showPointPreview, startPointAnchor, startPointAnchorIndex, startPointAnchors, startPointPreview, story, storyOutline, storyOutlinePoints, svgRef, updatePlacedItem, zoom,
+		VIEWBOX_WIDTH, VIEWBOX_HEIGHT, QUICK_ACTIONS_BADGE_RADIUS, QUICK_ACTIONS_BADGE_OFFSET_X, QUICK_ACTIONS_BADGE_OFFSET_Y, VERTEX_VISIBLE_RADIUS, VERTEX_HIT_RADIUS, STORY_SCOPE_ID, activeEditablePlacementId, beginOriginDrag, canvasRooms, currentPoint, editingContainersRoomId, editingPlacedContainerId, editingRoom, editingStoryOutline, findInventoryContainerRecord, findInventoryItemRecord, findRoomContainerRecord, flushSync, formatDistance, getPointDistance, getPointsBounds, getRotatedRectPoints, getSegmentLines, getWorldPoint, handlePointerMove, handlePointerUp, isEditingStoryName, isEditingStoryOutline, isEditingStoryStartPoint: isEditingStoryOutline || isEditingStoryStartPoint, isImageIcon, isPlacementCleanInQuickActions, isPlacingStartPoint, midpoint, onSelectRoom, outlineEditMode, pan, placedItemHasQuickActionsTask, pointsMatch, previewPoint, resolveIcon, resolvePlacedItemEntry, selectedOutlineSegmentIndex, selectedPlacementId, selectedRoom, selectedSegmentIndex, selectStartPointAnchor, segmentsToPoints, setExpandedPlacedContainerId, setInteraction, setSelectedOutlineSegmentIndex, setSelectedPlacementId, setSelectedSegmentIndex, showPointPreview, startPointAnchor, startPointAnchorIndex, startPointAnchors, startPointPreview, story, storyOutline, storyOutlinePoints, svgRef, updatePlacedItem, zoom,
 	};
 
-	const outsideRoomsPanel = !hideRoomList && !editingRoom && !editingStoryOutline ? (
+	const outsideRoomsPanel = !hideRoomList && !editingRoom && !isEditingStoryName && !isEditingStoryOutline ? (
 		<div className="border-t border-gray-200 bg-gray-50/80 px-3 py-3 dark:border-gray-700 dark:bg-gray-950/40">
 			<div className="mx-auto w-full max-w-4xl space-y-2">
 				<div className="rounded-2xl bg-white/95 shadow-sm ring-1 ring-black/5 backdrop-blur dark:bg-gray-900/95">
@@ -2279,18 +2326,11 @@ export function HomeFloorPlan({
 	) : null;
 
 	return (
-		<div className="space-y-3">
-			<div className="overflow-visible rounded-xl border border-gray-200 bg-white dark:border-gray-600 dark:bg-gray-900/60">
-				{!selectedRoomId ? (
-					<div className="flex items-center justify-between gap-3 border-b border-gray-200 px-3 py-2 dark:border-gray-700">
-						<div>
-							<div className="text-sm font-semibold text-gray-800 dark:text-gray-100">{story.name}</div>
-						</div>
-					</div>
-				) : null}
+		<div ref={rootRef} className="flex h-full min-h-0 flex-col gap-3">
+			<div className="shrink-0 overflow-visible rounded-xl border border-gray-200 bg-white dark:border-gray-600 dark:bg-gray-900/60">
 				{roomEditorPanel}
 
-				<div className="relative">
+				<div ref={canvasRef} className="relative shrink-0">
 					{viewedContainerEntry?.container ? (
 						<div className="space-y-3 rounded-2xl border border-gray-200 bg-white/95 p-3 shadow-sm ring-1 ring-black/5 backdrop-blur dark:border-gray-700 dark:bg-gray-900/95">
 							<div className="flex flex-wrap items-center justify-between gap-3">
@@ -2356,7 +2396,11 @@ export function HomeFloorPlan({
 					) : null}
 				</div>
 
-				{editable && !viewedContainerEntry?.container ? <HomeFloorPlanActionBar {...actionBarProps} /> : null}
+				{editable && !viewedContainerEntry?.container ? (
+					<div ref={actionBarRef} className="shrink-0">
+						<HomeFloorPlanActionBar {...actionBarProps} />
+					</div>
+				) : null}
 
 				{editable && editingRoom && isPlacingStartPoint ? (
 					<div className="border-t border-gray-200 bg-gray-50/80 px-3 py-3 dark:border-gray-700 dark:bg-gray-950/40">
@@ -2555,11 +2599,12 @@ export function HomeFloorPlan({
 					</div>
 				) : null}
 
-				{!hideRoomList && !editingRoom && !editingStoryOutline && roomSummaries.length > 0 ? (
-					<div className="border-t border-gray-200 bg-gray-50/80 px-3 py-3 dark:border-gray-700 dark:bg-gray-950/40">
-						<div className="mx-auto w-full max-w-4xl space-y-2">
+				{!hideRoomList && !editingRoom && !isEditingStoryName && !editingStoryOutline && roomSummaries.length > 0 ? (
+					<div className="flex min-h-0 flex-1 flex-col border-t border-gray-200 bg-gray-50/80 px-3 py-3 dark:border-gray-700 dark:bg-gray-950/40">
+						<div className="mx-auto flex min-h-0 w-full max-w-4xl flex-1 flex-col space-y-2">
 							<div className="px-1 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Rooms</div>
-							<div className="space-y-2">
+							<div className="overflow-y-auto" style={{ height: roomRowsHeight }}>
+								<div className="space-y-2 pr-1">
 								{visibleRoomSummaries.map(({ room, bounds, placedContainerEntries, placedLooseItemEntries, placedLooseItemCount }) => {
 									const isExpanded = effectiveExpandedRoomId === room.id;
 									const isSelected = selectedRoom?.id === room.id;
@@ -2598,6 +2643,8 @@ export function HomeFloorPlan({
 										</div>
 									);
 								})}
+									{!selectedRoomId && outsideRoomsPanel}
+								</div>
 							</div>
 						</div>
 					</div>
@@ -3027,8 +3074,6 @@ export function HomeFloorPlan({
 						</div>
 					</PopupShell>
 				) : null}
-
-				{outsideRoomsPanel}
 			</div>
 		</div>
 	);

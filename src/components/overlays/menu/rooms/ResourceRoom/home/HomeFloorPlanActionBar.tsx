@@ -1,9 +1,12 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+
+import { IconDisplay } from '../../../../../shared/IconDisplay';
 
 interface HomeFloorPlanActionBarProps {
 	isEditingStoryName: boolean;
 	isEditingStoryOutline: boolean;
 	isEditingRoom: boolean;
+	activeStoryId: string | null;
 	selectedRoomId: string | null;
 	selectedPlacedId: string | null;
 	activeStoryHasOutline: boolean;
@@ -25,11 +28,13 @@ interface HomeFloorPlanActionBarProps {
 	onAddContainer: () => void;
 	onCleanRoom: () => void;
 	onTakePhoto: () => void;
+	onTakeHomePhoto: () => void;
 	onOutlineRoom: () => void;
 	onAddStory: () => void;
 	onSave: () => void;
 	onCancel: () => void;
-	onEditStartPoint: () => void;
+	onDeleteStory: () => void;
+	onEditStoryOutline: () => void;
 	onEditPoints: () => void;
 	onEditLines: () => void;
 	onDeleteItem: () => void;
@@ -47,6 +52,7 @@ export function HomeFloorPlanActionBar({
 	isEditingStoryName,
 	isEditingStoryOutline,
 	isEditingRoom,
+	activeStoryId,
 	selectedRoomId,
 	selectedPlacedId,
 	activeStoryHasOutline,
@@ -68,11 +74,13 @@ export function HomeFloorPlanActionBar({
 	onAddContainer,
 	onCleanRoom,
 	onTakePhoto,
+	onTakeHomePhoto,
 	onOutlineRoom,
 	onAddStory,
 	onSave,
 	onCancel,
-	onEditStartPoint,
+	onDeleteStory,
+	onEditStoryOutline,
 	onEditPoints,
 	onEditLines,
 	onDeleteItem,
@@ -83,11 +91,18 @@ export function HomeFloorPlanActionBar({
 }: HomeFloorPlanActionBarProps) {
 	const [confirmDeleteRoomActionId, setConfirmDeleteRoomActionId] = useState<string | null>(null);
 	const [confirmDeleteItemActionId, setConfirmDeleteItemActionId] = useState<string | null>(null);
+	const [confirmDeleteStoryActionId, setConfirmDeleteStoryActionId] = useState<string | null>(null);
+	const [showAddChoice, setShowAddChoice] = useState(false);
 	const [editingSelectedItemDimensionsId, setEditingSelectedItemDimensionsId] = useState<string | null>(null);
 	const [selectedItemDimensionDraft, setSelectedItemDimensionDraft] = useState<{ width: string; depth: string }>({ width: '', depth: '' });
+	const addChoiceRef = useRef<HTMLDivElement | null>(null);
+
 	const activeConfirmDeleteRoomActionId = confirmDeleteRoomActionId === selectedRoomId ? confirmDeleteRoomActionId : null;
 	const activeConfirmDeleteItemActionId = confirmDeleteItemActionId === selectedPlacedId ? confirmDeleteItemActionId : null;
+	const activeConfirmDeleteStoryActionId = confirmDeleteStoryActionId === activeStoryId ? confirmDeleteStoryActionId : null;
+	const isDeleteStoryConfirming = Boolean(activeConfirmDeleteStoryActionId && activeStoryId && activeConfirmDeleteStoryActionId === activeStoryId);
 	const isEditingSelectedItemDimensions = editingSelectedItemDimensionsId === selectedPlacedId;
+	const isRoomAddChoiceOpen = showAddChoice && Boolean(selectedRoomId) && !isEditingRoom && !selectedPlacedId;
 	const currentDimensionDraft = isEditingSelectedItemDimensions
 		? selectedItemDimensionDraft
 		: {
@@ -95,8 +110,66 @@ export function HomeFloorPlanActionBar({
 			depth: String(selectedItemDepth),
 		};
 
+	useEffect(() => {
+		if (!showAddChoice) return;
+
+		const handlePointerDown = (event: PointerEvent) => {
+			if (!addChoiceRef.current?.contains(event.target as Node)) {
+				setShowAddChoice(false);
+			}
+		};
+
+		document.addEventListener('pointerdown', handlePointerDown);
+		return () => document.removeEventListener('pointerdown', handlePointerDown);
+	}, [showAddChoice]);
+
 	const actionContent = (() => {
-		if (isEditingStoryName || isEditingStoryOutline) {
+		if (isEditingStoryOutline) {
+			return (
+				<div className="flex flex-wrap items-center justify-center gap-2 md:justify-start">
+					<button
+						type="button"
+						onClick={onSave}
+						disabled={!canSaveStoryChanges}
+						className={canSaveStoryChanges ? activeIconButtonClassName : `${iconButtonClassName} text-gray-400`}
+						title="Save outline"
+						aria-label="Save outline"
+					>
+						<IconDisplay iconKey="fp-save" size={18} alt="Save outline" />
+					</button>
+					<button type="button" onClick={onCancel} className={iconButtonClassName} title="Cancel edit" aria-label="Cancel edit">
+						<IconDisplay iconKey="fp-cancel" size={18} alt="Cancel edit" />
+					</button>
+				</div>
+			);
+		}
+
+		if (isEditingStoryName) {
+			if (isDeleteStoryConfirming) {
+				return (
+					<div className="flex flex-wrap items-center justify-center gap-2 md:justify-start">
+						<span className="text-sm font-medium text-gray-700 dark:text-gray-200">Confirm delete?</span>
+						<button
+							type="button"
+							onClick={onDeleteStory}
+							className={destructiveIconButtonClassName}
+							title="Confirm delete story"
+							aria-label="Confirm delete story"
+						>
+							<IconDisplay iconKey="fp-delete" size={18} alt="Confirm delete story" />
+						</button>
+						<button
+							type="button"
+							onClick={() => setConfirmDeleteStoryActionId(null)}
+							className={iconButtonClassName}
+							title="Cancel delete story"
+							aria-label="Cancel delete story"
+						>
+							<IconDisplay iconKey="fp-cancel" size={18} alt="Cancel delete story" />
+						</button>
+					</div>
+				);
+			}
 			return (
 				<div className="flex flex-wrap items-center justify-center gap-2 md:justify-start">
 					<button
@@ -107,18 +180,31 @@ export function HomeFloorPlanActionBar({
 						title="Save story changes"
 						aria-label="Save story changes"
 					>
-						✓
+						<IconDisplay iconKey="fp-save" size={18} alt="Save story changes" />
 					</button>
-					<button type="button" onClick={onCancel} className={iconButtonClassName} title="Cancel story changes" aria-label="Cancel story changes">✗</button>
-					{isEditingStoryOutline ? (
+					<button type="button" onClick={onCancel} className={iconButtonClassName} title="Cancel story changes" aria-label="Cancel story changes">
+						<IconDisplay iconKey="fp-cancel" size={18} alt="Cancel story changes" />
+					</button>
+					{activeStoryId ? (
 						<button
 							type="button"
-							onClick={onEditStartPoint}
-							className={iconButtonClassName}
-							title="Edit story start point"
-							aria-label="Edit story start point"
+							onClick={() => setConfirmDeleteStoryActionId(activeStoryId)}
+							className={destructiveIconButtonClassName}
+							title="Delete story"
+							aria-label="Delete story"
 						>
-							📍
+							<IconDisplay iconKey="fp-delete" size={18} alt="Delete story" />
+						</button>
+					) : null}
+					{isEditingStoryName ? (
+						<button
+							type="button"
+							onClick={onEditStoryOutline}
+							className={iconButtonClassName}
+							title="Edit story outline"
+							aria-label="Edit story outline"
+						>
+							<IconDisplay iconKey="fp-edit-lines" size={18} alt="Edit story outline" />
 						</button>
 					) : null}
 				</div>
@@ -126,6 +212,35 @@ export function HomeFloorPlanActionBar({
 		}
 
 		if (isEditingRoom && roomEditMode) {
+			if (activeConfirmDeleteRoomActionId === selectedRoomId && selectedRoomId) {
+				return (
+					<div className="flex flex-wrap items-center justify-center gap-2 md:justify-start">
+						<span className="text-sm font-medium text-gray-700 dark:text-gray-200">Confirm delete?</span>
+						<button
+							type="button"
+							onClick={() => {
+								onDeleteRoom();
+								setConfirmDeleteRoomActionId(null);
+							}}
+							className={destructiveIconButtonClassName}
+							title="Confirm delete room"
+							aria-label="Confirm delete room"
+						>
+							<IconDisplay iconKey="fp-delete" size={18} alt="Confirm delete room" />
+						</button>
+						<button
+							type="button"
+							onClick={() => setConfirmDeleteRoomActionId(null)}
+							className={iconButtonClassName}
+							title="Cancel delete room"
+							aria-label="Cancel delete room"
+						>
+							<IconDisplay iconKey="fp-cancel" size={18} alt="Cancel delete room" />
+						</button>
+					</div>
+				);
+			}
+
 			return (
 				<div className="flex flex-wrap items-center justify-center gap-2 md:justify-start">
 					<button
@@ -136,9 +251,11 @@ export function HomeFloorPlanActionBar({
 						title="Save room changes"
 						aria-label="Save room changes"
 					>
-						✓
+						<IconDisplay iconKey="fp-save" size={18} alt="Save room changes" />
 					</button>
-					<button type="button" onClick={onCancel} className={iconButtonClassName} title="Cancel room editing" aria-label="Cancel room editing">✗</button>
+					<button type="button" onClick={onCancel} className={iconButtonClassName} title="Cancel room editing" aria-label="Cancel room editing">
+						<IconDisplay iconKey="fp-cancel" size={18} alt="Cancel room editing" />
+					</button>
 					<button
 						type="button"
 						onClick={onEditPoints}
@@ -146,7 +263,7 @@ export function HomeFloorPlanActionBar({
 						title="Edit room points"
 						aria-label="Edit room points"
 					>
-						⬡
+						<IconDisplay iconKey="fp-edit-points" size={18} alt="Edit room points" />
 					</button>
 					<button
 						type="button"
@@ -155,7 +272,20 @@ export function HomeFloorPlanActionBar({
 						title="Edit room lines"
 						aria-label="Edit room lines"
 					>
-						／
+						<IconDisplay iconKey="fp-edit-lines" size={18} alt="Edit room lines" />
+					</button>
+					<button
+						type="button"
+						onClick={() => {
+							if (!selectedRoomId) return;
+							setConfirmDeleteRoomActionId(selectedRoomId);
+						}}
+						disabled={!selectedRoomId}
+						className={destructiveIconButtonClassName}
+						title="Delete room"
+						aria-label="Delete room"
+					>
+						<IconDisplay iconKey="fp-delete" size={18} alt="Delete room" />
 					</button>
 				</div>
 			);
@@ -178,10 +308,18 @@ export function HomeFloorPlanActionBar({
 						title={activeConfirmDeleteItemActionId === selectedPlacedId ? 'Confirm delete item' : 'Delete item'}
 						aria-label={activeConfirmDeleteItemActionId === selectedPlacedId ? 'Confirm delete item' : 'Delete item'}
 					>
-						🗑️
+						<IconDisplay
+							iconKey="fp-delete"
+							size={18}
+							alt={activeConfirmDeleteItemActionId === selectedPlacedId ? 'Confirm delete item' : 'Delete item'}
+						/>
 					</button>
-					<button type="button" onClick={onTakePhoto} disabled={selectedItemPhotoBusy} className={iconButtonClassName} title="Take item photo" aria-label="Take item photo">📷</button>
-					<button type="button" onClick={onCleanItem} disabled={!selectedItemCanClean} className={iconButtonClassName} title="Clean item" aria-label="Clean item">🧹</button>
+					<button type="button" onClick={onTakePhoto} disabled={selectedItemPhotoBusy} className={iconButtonClassName} title="Take item photo" aria-label="Take item photo">
+						<IconDisplay iconKey="fp-camera" size={18} alt="Take item photo" />
+					</button>
+					<button type="button" onClick={onCleanItem} disabled={!selectedItemCanClean} className={iconButtonClassName} title="Clean item" aria-label="Clean item">
+						<IconDisplay iconKey="fp-clean" size={18} alt="Clean item" />
+					</button>
 					{isEditingSelectedItemDimensions ? (
 						<div
 							className="flex items-center gap-2 rounded-full bg-white px-3 py-1 shadow-sm ring-1 ring-black/5 dark:bg-gray-900"
@@ -209,7 +347,7 @@ export function HomeFloorPlanActionBar({
 								className="w-16 rounded-md border border-gray-300 bg-white px-2 py-1 text-xs text-gray-900 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
 								aria-label="Selected item width"
 							/>
-							<span className="text-xs text-gray-500 dark:text-gray-400">×</span>
+							<span className="text-xs text-gray-500 dark:text-gray-400">x</span>
 							<input
 								type="number"
 								min={1}
@@ -230,7 +368,7 @@ export function HomeFloorPlanActionBar({
 								title="Save item dimensions"
 								aria-label="Save item dimensions"
 							>
-								✓
+								<IconDisplay iconKey="fp-save" size={18} alt="Save item dimensions" />
 							</button>
 							<button
 								type="button"
@@ -245,7 +383,7 @@ export function HomeFloorPlanActionBar({
 								title="Cancel item dimension editing"
 								aria-label="Cancel item dimension editing"
 							>
-								✗
+								<IconDisplay iconKey="fp-cancel" size={18} alt="Cancel item dimension editing" />
 							</button>
 						</div>
 					) : (
@@ -262,11 +400,15 @@ export function HomeFloorPlanActionBar({
 							title="Edit item dimensions"
 							aria-label="Edit item dimensions"
 						>
-							{`${selectedItemWidth}×${selectedItemDepth}`}
+							<IconDisplay iconKey="fp-edit" size={18} alt="Edit item dimensions" />
 						</button>
 					)}
-					<button type="button" onClick={onLayerUp} disabled={!selectedItemCanMoveUp} className={iconButtonClassName} title="Move item forward" aria-label="Move item forward">▲</button>
-					<button type="button" onClick={onLayerDown} disabled={!selectedItemCanMoveDown} className={iconButtonClassName} title="Move item backward" aria-label="Move item backward">▼</button>
+					<button type="button" onClick={onLayerUp} disabled={!selectedItemCanMoveUp} className={iconButtonClassName} title="Move item forward" aria-label="Move item forward">
+						<IconDisplay iconKey="fp-layer-up" size={18} alt="Move item forward" />
+					</button>
+					<button type="button" onClick={onLayerDown} disabled={!selectedItemCanMoveDown} className={iconButtonClassName} title="Move item backward" aria-label="Move item backward">
+						<IconDisplay iconKey="fp-layer-down" size={18} alt="Move item backward" />
+					</button>
 				</div>
 			);
 		}
@@ -274,36 +416,73 @@ export function HomeFloorPlanActionBar({
 		if (selectedRoomId) {
 			return (
 				<div className="flex flex-wrap items-center justify-center gap-2 md:justify-start">
-					<button type="button" onClick={onExitRoom} className={iconButtonClassName} title="Exit room" aria-label="Exit room">←</button>
-					<button type="button" onClick={onEditRoom} className={iconButtonClassName} title="Edit room" aria-label="Edit room">✏️</button>
-					<button
-						type="button"
-						onClick={() => {
-							if (activeConfirmDeleteRoomActionId === selectedRoomId) {
-								onDeleteRoom();
-								setConfirmDeleteRoomActionId(null);
-								return;
-							}
-							setConfirmDeleteRoomActionId(selectedRoomId);
-						}}
-						className={activeConfirmDeleteRoomActionId === selectedRoomId ? activeIconButtonClassName : destructiveIconButtonClassName}
-						title={activeConfirmDeleteRoomActionId === selectedRoomId ? 'Confirm delete room' : 'Delete room'}
-						aria-label={activeConfirmDeleteRoomActionId === selectedRoomId ? 'Confirm delete room' : 'Delete room'}
-					>
-						🗑️
+					<button type="button" onClick={onExitRoom} className={iconButtonClassName} title="Exit room" aria-label="Exit room">
+						<IconDisplay iconKey="fp-exit" size={18} alt="Exit room" />
 					</button>
-					<button type="button" onClick={onTakePhoto} disabled={selectedRoomPhotoBusy} className={iconButtonClassName} title="Take room photo" aria-label="Take room photo">📷</button>
-					<button type="button" onClick={onAddContainer} className={iconButtonClassName} title="Add container" aria-label="Add container">📦</button>
-					<button type="button" onClick={onAddItem} className={iconButtonClassName} title="Add item" aria-label="Add item">➕</button>
-					<button type="button" onClick={onCleanRoom} disabled={!selectedRoomCanClean} className={iconButtonClassName} title="Clean room" aria-label="Clean room">🧹</button>
+					<button type="button" onClick={onEditRoom} className={iconButtonClassName} title="Edit room" aria-label="Edit room">
+						<IconDisplay iconKey="fp-edit" size={18} alt="Edit room" />
+					</button>
+					<button type="button" onClick={onTakePhoto} disabled={selectedRoomPhotoBusy} className={iconButtonClassName} title="Take room photo" aria-label="Take room photo">
+						<IconDisplay iconKey="fp-camera" size={18} alt="Take room photo" />
+					</button>
+					<div ref={addChoiceRef} className="relative">
+						<button
+							type="button"
+							onClick={() => setShowAddChoice((current) => !current)}
+							className={isRoomAddChoiceOpen ? activeIconButtonClassName : iconButtonClassName}
+							title="Add"
+							aria-label="Add"
+							aria-expanded={isRoomAddChoiceOpen}
+						>
+							<IconDisplay iconKey="fp-add-item" size={18} alt="Add" />
+						</button>
+						{isRoomAddChoiceOpen ? (
+							<div className="absolute left-0 top-full z-10 mt-2 flex min-w-max flex-col gap-2 rounded-2xl bg-white/95 p-2 shadow-lg ring-1 ring-black/5 backdrop-blur dark:bg-gray-900/95">
+								<button
+									type="button"
+									onClick={() => {
+										onAddItem();
+										setShowAddChoice(false);
+									}}
+									className={iconButtonClassName}
+									title="Add item"
+									aria-label="Add item"
+								>
+									<IconDisplay iconKey="fp-add-item" size={18} alt="Add item" />
+								</button>
+								<button
+									type="button"
+									onClick={() => {
+										onAddContainer();
+										setShowAddChoice(false);
+									}}
+									className={iconButtonClassName}
+									title="Add container"
+									aria-label="Add container"
+								>
+									<IconDisplay iconKey="fp-add-container" size={18} alt="Add container" />
+								</button>
+							</div>
+						) : null}
+					</div>
+					<button type="button" onClick={onCleanRoom} disabled={!selectedRoomCanClean} className={iconButtonClassName} title="Clean room" aria-label="Clean room">
+						<IconDisplay iconKey="fp-clean" size={18} alt="Clean room" />
+					</button>
 				</div>
 			);
 		}
 
 		return (
 			<div className="flex flex-wrap items-center justify-center gap-2 md:justify-start">
-				<button type="button" onClick={onOutlineRoom} disabled={!activeStoryHasOutline} className={iconButtonClassName} title="Outline room" aria-label="Outline room">🏠</button>
-				<button type="button" onClick={onAddStory} className={iconButtonClassName} title="Add story" aria-label="Add story">➕</button>
+				<button type="button" onClick={onTakeHomePhoto} className={iconButtonClassName} title="Take home photo" aria-label="Take home photo">
+					<IconDisplay iconKey="fp-camera" size={18} alt="Take home photo" />
+				</button>
+				<button type="button" onClick={onOutlineRoom} disabled={!activeStoryHasOutline} className={iconButtonClassName} title="Add Room" aria-label="Add Room">
+					<IconDisplay iconKey="fp-add-room" size={18} alt="Add Room" />
+				</button>
+				<button type="button" onClick={onAddStory} className={iconButtonClassName} title="Add Story" aria-label="Add Story">
+					<IconDisplay iconKey="fp-add-story" size={18} alt="Add Story" />
+				</button>
 			</div>
 		);
 	})();

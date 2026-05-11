@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import type { AlbumEntry, FloorPlanRoom, FloorPlanSegment, HomeStory, InventoryResource, PlacedInstance } from '../../../../../../types/resource';
 import { useResourceStore } from '../../../../../../stores/useResourceStore';
@@ -15,6 +15,7 @@ interface HomeLayoutProps {
 	editable?: boolean;
 	homeId?: string;
 	hideRoomList?: boolean;
+	showSelectedItemPanel?: boolean;
 	onRoomSelectedChange?: (hasRoomSelected: boolean) => void;
 	onFloorEditChange?: (isEditing: boolean) => void;
 }
@@ -146,6 +147,7 @@ export function HomeLayout({
 	editable = false,
 	homeId,
 	hideRoomList = false,
+	showSelectedItemPanel = false,
 	onRoomSelectedChange,
 	onFloorEditChange,
 }: HomeLayoutProps) {
@@ -160,8 +162,6 @@ export function HomeLayout({
 	const [editingMode, setEditingMode] = useState<'create' | 'update' | null>(null);
 	const [editingStoryOutline, setEditingStoryOutline] = useState<StoryOutlineDraft | null>(null);
 	const [deleteDialog, setDeleteDialog] = useState<DeleteDialogState>(null);
-	const [isDeleteStoryConfirming, setIsDeleteStoryConfirming] = useState(false);
-	const deleteStoryButtonRef = useRef<HTMLDivElement | null>(null);
 	const resources = useResourceStore((state) => state.resources);
 	const setResource = useResourceStore((state) => state.setResource);
 	const user = useUserStore((state) => state.user);
@@ -241,7 +241,6 @@ export function HomeLayout({
 	}
 
 	function handleAddStory() {
-		setIsDeleteStoryConfirming(false);
 		setEditingStoryId(null);
 		setEditingStoryOutline(null);
 		setStoryDialog({ mode: 'add' });
@@ -261,7 +260,6 @@ export function HomeLayout({
 			handleCancelStoryEdit();
 		}
 		setDeleteDialog(null);
-		setIsDeleteStoryConfirming(false);
 	}
 
 	function deleteRoom(roomId: string) {
@@ -352,7 +350,6 @@ export function HomeLayout({
 
 	function handleStartEditStoryOutline() {
 		if (!activeStory) return;
-		setIsDeleteStoryConfirming(false);
 		setEditingMode(null);
 		setEditingRoom(null);
 		setSelectedRoomId(null);
@@ -364,7 +361,6 @@ export function HomeLayout({
 
 	function handleStartEditStoryName() {
 		if (!activeStory) return;
-		setIsDeleteStoryConfirming(false);
 		setEditingMode(null);
 		setEditingRoom(null);
 		setSelectedRoomId(null);
@@ -372,6 +368,10 @@ export function HomeLayout({
 		setStoryName(activeStory.name);
 		setStoryError('');
 		setEditingStoryOutline(null);
+	}
+
+	function handleStoryEditButtonClick() {
+		handleStartEditStoryName();
 	}
 
 	function handleStartEditRoom(room: FloorPlanRoom) {
@@ -390,13 +390,42 @@ export function HomeLayout({
 		setStoryName('');
 		setStoryError('');
 		setEditingStoryOutline(null);
-		setIsDeleteStoryConfirming(false);
 	}
 
 	function handleCancelStoryEdit() {
-		setIsDeleteStoryConfirming(false);
 		setEditingStoryId(null);
 		setStoryName('');
+		setStoryError('');
+		setEditingStoryOutline(null);
+	}
+
+	function handleCancelStoryOutlineEdit() {
+		if (!activeStory) return;
+		setEditingStoryId(activeStory.id);
+		setStoryName(activeStory.name);
+		setStoryError('');
+		setEditingStoryOutline(null);
+	}
+
+	function handleSaveStoryOutline() {
+		if (!activeStory || editingStoryId !== activeStory.id || !editingStoryOutline) return;
+		const trimmed = storyName.trim();
+		if (!trimmed) {
+			setStoryError('Story name is required.');
+			return;
+		}
+		commit(stories.map((story) => (
+			story.id !== activeStory.id
+				? story
+				: {
+					...story,
+					name: trimmed,
+					outlineOrigin: { ...editingStoryOutline.origin },
+					outlineSegments: closeFloorPlanSegments(editingStoryOutline.origin, editingStoryOutline.segments).map((segment) => ({ ...segment })),
+				}
+		)));
+		setEditingStoryId(activeStory.id);
+		setStoryName(trimmed);
 		setStoryError('');
 		setEditingStoryOutline(null);
 	}
@@ -533,18 +562,6 @@ export function HomeLayout({
 	const showStoryControls = !effectiveSelectedRoomId;
 
 	useEffect(() => {
-		if (!isDeleteStoryConfirming) return undefined;
-
-		function handlePointerDown(event: PointerEvent) {
-			if (deleteStoryButtonRef.current?.contains(event.target as Node)) return;
-			setIsDeleteStoryConfirming(false);
-		}
-
-		document.addEventListener('pointerdown', handlePointerDown);
-		return () => document.removeEventListener('pointerdown', handlePointerDown);
-	}, [isDeleteStoryConfirming]);
-
-	useEffect(() => {
 		onRoomSelectedChange?.(Boolean(effectiveSelectedRoomId));
 	}, [effectiveSelectedRoomId, onRoomSelectedChange]);
 
@@ -553,7 +570,7 @@ export function HomeLayout({
 	}, [isEditingStoryOutline, onFloorEditChange]);
 
 	return (
-		<div className="space-y-3 rounded-xl border border-gray-200 bg-gray-50 dark:border-gray-600 dark:bg-gray-800/40">
+		<div className="flex h-full flex-col rounded-xl border border-gray-200 bg-gray-50 dark:border-gray-600 dark:bg-gray-800/40">
 			{showStoryControls ? (
 				<>
 					<div className="flex items-center gap-2">
@@ -571,20 +588,6 @@ export function HomeLayout({
 										placeholder="Story name"
 										aria-label="Story name"
 									/>
-									<button
-										type="button"
-										onClick={handleSaveStoryEdits}
-										className="shrink-0 text-xs font-semibold text-blue-600 hover:text-blue-700 dark:text-blue-300 dark:hover:text-blue-200"
-									>
-										Save
-									</button>
-									<button
-										type="button"
-										onClick={handleCancelStoryEdit}
-										className="shrink-0 text-xs font-semibold text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-									>
-										Cancel
-									</button>
 								</div>
 							) : (
 								<select
@@ -610,35 +613,15 @@ export function HomeLayout({
 						</div>
 						{showHeaderStoryActions ? (
 							<div className="flex shrink-0 items-center gap-2">
-								{stories.length > 1 ? (
-									<div ref={deleteStoryButtonRef}>
-										<button
-											type="button"
-											onClick={() => {
-												if (!activeStory) return;
-												if (isDeleteStoryConfirming) {
-													confirmDeleteStory(activeStory.id);
-													return;
-												}
-												setIsDeleteStoryConfirming(true);
-											}}
-											className={isDeleteStoryConfirming
-												? 'inline-flex h-9 items-center justify-center rounded-full bg-red-500 px-3 text-xs font-semibold text-white hover:bg-red-600'
-												: 'inline-flex h-9 items-center justify-center rounded-full bg-white px-3 text-xs font-semibold text-red-600 hover:bg-red-50 dark:bg-gray-900 dark:text-red-300 dark:hover:bg-red-900/20'}
-										>
-											{isDeleteStoryConfirming ? 'Confirm delete?' : 'Delete'}
-										</button>
-									</div>
-								) : null}
 								<button
 									type="button"
-									onClick={isEditingStoryName ? handleStartEditStoryOutline : handleStartEditStoryName}
+									onClick={handleStoryEditButtonClick}
 									disabled={!activeStory}
 									className={isEditingStoryName || isEditingStoryOutline
 										? 'inline-flex h-9 w-9 items-center justify-center rounded-full bg-blue-500 text-white hover:bg-blue-600 disabled:cursor-not-allowed disabled:bg-gray-200 disabled:text-gray-400 dark:disabled:bg-gray-700'
 										: 'inline-flex h-9 w-9 items-center justify-center rounded-full bg-white text-gray-700 hover:bg-gray-100 disabled:cursor-not-allowed disabled:bg-gray-200 disabled:text-gray-400 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800 dark:disabled:bg-gray-700'}
-									aria-label={isEditingStoryName ? (activeStoryHasOutline ? 'Edit outline' : 'Outline story') : 'Edit story'}
-									title={isEditingStoryName ? (activeStoryHasOutline ? 'Edit outline' : 'Outline story') : 'Edit story'}
+									aria-label="Edit story"
+									title="Edit story"
 								>
 									<IconDisplay iconKey="edit" size={16} className="h-4 w-4 object-contain" alt="" />
 								</button>
@@ -650,7 +633,8 @@ export function HomeLayout({
 			) : null}
 
 			{activeStory ? (
-				<HomeFloorPlan
+				<div className="flex flex-col min-h-0 flex-1">
+					<HomeFloorPlan
 					story={cloneStory(activeStory)}
 					selectedRoomId={effectiveSelectedRoomId}
 					selectedPlacedId={selectedPlacedId}
@@ -673,10 +657,12 @@ export function HomeLayout({
 					canSaveStoryChanges={storyName.trim().length > 0}
 					onEditingStoryOutlineChange={editable ? setEditingStoryOutline : undefined}
 					onSaveStoryChanges={editable ? handleSaveStoryEdits : undefined}
-					onCancelStoryChanges={editable ? handleCancelStoryEdit : undefined}
+					onCancelStoryChanges={editable ? (isEditingStoryOutline ? handleCancelStoryOutlineEdit : handleCancelStoryEdit) : undefined}
+					onDeleteStory={editable && activeStory ? () => confirmDeleteStory(activeStory.id) : undefined}
+					onEditStoryOutline={editable ? handleStartEditStoryOutline : undefined}
 					onAddStory={editable ? handleAddStory : undefined}
 					onOutlineRoom={editable ? handleStartCreateRoom : undefined}
-					onSaveStoryOutline={editable ? handleSaveStoryEdits : undefined}
+					onSaveStoryOutline={editable ? handleSaveStoryOutline : undefined}
 					onEditingRoomChange={editable ? setEditingRoom : undefined}
 					onSaveEditingRoom={editable ? handleSaveEditingRoom : undefined}
 					onCancelEditingRoom={editable ? () => { setEditingRoom(null); setEditingMode(null); handleCancelStoryEdit(); } : undefined}
@@ -687,14 +673,15 @@ export function HomeLayout({
 					onUpdateStoryPlacedItems={editable ? handleUpdateStoryPlacedItems : undefined}
 					onUpdateRoomPhotos={editable ? handleUpdateRoomPhotos : undefined}
 					onUpdateStoryPhotos={editable ? handleUpdateStoryPhotos : undefined}
-				/>
+					/>
+				</div>
 			) : (
 				<div className="rounded-xl border border-dashed border-gray-300 px-4 py-6 text-center text-xs text-gray-500 dark:border-gray-600 dark:text-gray-400">
 					{editable ? 'Add a story to start building the floor plan.' : 'No floor-plan stories saved.'}
 				</div>
 			)}
 
-			{selectedPlacedItemSummary ? (
+			{showSelectedItemPanel && selectedPlacedItemSummary ? (
 				<div className="rounded-xl border border-gray-200 bg-white/80 p-3 dark:border-gray-700 dark:bg-gray-900/50">
 					<div className="flex items-start justify-between gap-3">
 						<div className="flex min-w-0 items-center gap-3">
