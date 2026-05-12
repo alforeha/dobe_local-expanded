@@ -424,6 +424,7 @@ export function deleteShoppingList(listId: string, user: User): void {
 export function addManualGTDItem(
   fields: {
     title: string;
+    icon?: string;
     note: string | null;
     templateRef?: string | null;
     taskType?: string;
@@ -436,6 +437,7 @@ export function addManualGTDItem(
   const item: GTDItem = {
     id: uuidv4(),
     title: fields.title,
+    icon: fields.icon ?? undefined,
     note: fields.note,
     templateRef: fields.templateRef ?? null,
     taskType: fields.taskType ?? 'CHECK',
@@ -515,6 +517,7 @@ export function completeManualGTDItem(
     templateRef: null,
     isUnique: true,
     title: item.title,
+    icon: item.icon ?? undefined,
     taskType: item.taskType ?? 'CHECK',
     completionState: 'complete',
     completedAt: now,

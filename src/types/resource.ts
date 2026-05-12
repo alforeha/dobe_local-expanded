@@ -136,6 +136,7 @@ export interface HomeStory {
 export interface ItemRecurringTask {
   id: string;
   taskTemplateRef: string;
+  icon?: string;
   taskType?: string;
   inputFields?: Partial<InputFields>;
   recurrenceMode?: 'recurring' | 'never';
@@ -208,6 +209,7 @@ export interface InventoryContainer {
   carryTask?: {
     id: string;
     name: string;
+    icon?: string;
     taskType?: string;
     recurrenceMode?: 'recurring' | 'never';
     recurrence: ResourceRecurrenceRule;

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { v4 as uuidv4 } from 'uuid';
 import { addManualGTDItem, completeManualGTDItem } from '../../../../../../engine/listsEngine';
+import { getItemTaskTemplateMeta } from '../../../../../../coach/ItemLibrary';
 import { ColorPicker } from '../../../../../shared/ColorPicker';
 import { IconPicker } from '../../../../../shared/IconPicker';
 import { IconDisplay } from '../../../../../shared/IconDisplay';
@@ -196,7 +197,7 @@ export function HomeFloorPlan({
 	const [expandedPlacedContainerId, setExpandedPlacedContainerId] = useState<string | null>(null);
 	const prevExpandedPlacedContainerIdRef = useRef<string | null>(null);
 	const [expandedPlacedTaskId, setExpandedPlacedTaskId] = useState<string | null>(null);
-	const [executePlacedTaskPrompt, setExecutePlacedTaskPrompt] = useState<{ name: string; taskType: string | null | undefined } | null>(null);
+	const [executePlacedTaskPrompt, setExecutePlacedTaskPrompt] = useState<{ name: string; icon?: string; taskType: string | null | undefined } | null>(null);
 	const [editingPlacedContainerId, setEditingPlacedContainerId] = useState<string | null>(null);
 	const [addingItemContainerId, setAddingItemContainerId] = useState<string | null>(null);
 	const [newItemTemplateRefByContainer, setNewItemTemplateRefByContainer] = useState<Record<string, string>>({});
@@ -1176,8 +1177,11 @@ export function HomeFloorPlan({
 		setExpandedPlacedTaskId((current) => current === `${placementId}:${taskId}` ? null : current);
 	}
 
-	function executePlacedRecurringTask(taskName: string, taskType: string | null | undefined) {
-		setExecutePlacedTaskPrompt({ name: taskName, taskType });
+	function executePlacedRecurringTask(taskName: string, task: ItemRecurringTask, itemTemplateRef: string) {
+		const taskMeta = getItemTaskTemplateMeta(task.taskTemplateRef);
+		const resolvedItem = resolveInventoryItemTemplate(itemTemplateRef, mergedItemTemplates);
+		const taskIcon = task.icon ?? taskMeta?.icon ?? resolvedItem?.icon ?? undefined;
+		setExecutePlacedTaskPrompt({ name: taskName, icon: taskIcon, taskType: task.taskType });
 	}
 
 	function confirmExecutePlacedRecurringTask() {
@@ -1185,6 +1189,7 @@ export function HomeFloorPlan({
 		if (!executePlacedTaskPrompt) return;
 		const item = addManualGTDItem({
 			title: executePlacedTaskPrompt.name,
+			icon: executePlacedTaskPrompt.icon,
 			note: 'Executed from a room facility task.',
 			templateRef: null,
 			taskType: executePlacedTaskPrompt.taskType ?? 'CHECK',
@@ -2411,7 +2416,7 @@ export function HomeFloorPlan({
 	}
 
 	const roomRowsProps = {
-		IconDisplay, INPUT_CLS, ITEM_TASK_TYPE_OPTIONS, DOW_LABELS, captureAndAppendToHomeAlbum, describeReminder, describeTaskRecurrence, executePlacedRecurringTask, expandedPlacedContainerId, expandedPlacedTaskId, getDayOfMonth, getItemTaskTypeLabel, homeAlbum, isPlacedTaskInQuickActions, isPlacementCleanInQuickActions, mergedItemTemplates, normalizeRecurrenceMode, onDeleteRoom, onPlacedItemSelectRef, onSelectRoom, onStartEditRoom, photoStatusByScope, photoUploadBusyByScope, pushPlacedRecurringTaskReminder, pushRoomCleanTasks, renderContainerItems, renderPhotoSection, resolvePlacedTaskDisplay, setAddingItemContainerId, setEditingPlacedContainerId, setExpandedPlacedContainerId, setExpandedPlacedTaskId, setRoomAddContainerRoomId, setRoomAddItemRoomId, setSelectedPlacementId, setViewingContainerFace, setViewingContainerPlacementId, updatePlacedItem, updatePlacedRecurringTask, updatePlacedRecurringTaskName, updatePlacedRecurringTaskType, updatePlacedRecurringTaskRecurrence, togglePlacedRecurringTaskDay, addPlacedRecurringTask, removePlacedRecurringTask, addPlacedRecurringTaskConsumeEntry, updatePlacedRecurringTaskConsumeEntry, removePlacedRecurringTaskConsumeEntry, updatePlacedRecurringTaskTextInput, removePlacedItem, userConsumableTaskTemplates, viewingContainerPlacementId, isEditingStory: isEditingStoryName || isEditingStoryOutline,
+		IconDisplay, IconPicker, INPUT_CLS, ITEM_TASK_TYPE_OPTIONS, DOW_LABELS, captureAndAppendToHomeAlbum, describeReminder, describeTaskRecurrence, executePlacedRecurringTask, expandedPlacedContainerId, expandedPlacedTaskId, getDayOfMonth, getItemTaskTypeLabel, homeAlbum, isPlacedTaskInQuickActions, isPlacementCleanInQuickActions, mergedItemTemplates, normalizeRecurrenceMode, onDeleteRoom, onPlacedItemSelectRef, onSelectRoom, onStartEditRoom, photoStatusByScope, photoUploadBusyByScope, pushPlacedRecurringTaskReminder, pushRoomCleanTasks, renderContainerItems, renderPhotoSection, resolvePlacedTaskDisplay, setAddingItemContainerId, setEditingPlacedContainerId, setExpandedPlacedContainerId, setExpandedPlacedTaskId, setRoomAddContainerRoomId, setRoomAddItemRoomId, setSelectedPlacementId, setViewingContainerFace, setViewingContainerPlacementId, updatePlacedItem, updatePlacedRecurringTask, updatePlacedRecurringTaskName, updatePlacedRecurringTaskType, updatePlacedRecurringTaskRecurrence, togglePlacedRecurringTaskDay, addPlacedRecurringTask, removePlacedRecurringTask, addPlacedRecurringTaskConsumeEntry, updatePlacedRecurringTaskConsumeEntry, removePlacedRecurringTaskConsumeEntry, updatePlacedRecurringTaskTextInput, removePlacedItem, userConsumableTaskTemplates, viewingContainerPlacementId, isEditingStory: isEditingStoryName || isEditingStoryOutline,
 	};
 
 	const canvasProps = {

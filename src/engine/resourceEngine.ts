@@ -235,6 +235,7 @@ export function triggerVehicleInspectionTask(resource: VehicleResource): 'queued
     inspectionTask.name,
     { label: inspectionTask.name } as Task['resultFields'],
     {
+      icon: inspectionTask.icon ?? undefined,
       taskType: inspectionTask.taskType ?? 'CIRCUIT',
       inputFields: inspectionTask.inputFields,
     },
@@ -659,6 +660,7 @@ function buildResourceTaskDedupKey(resourceTaskId: string, dueDate: string): str
 
 interface UniqueResourceTaskConfig {
   taskType?: string | null;
+  icon?: string | null;
   inputFields?: Partial<InputFields> | null;
 }
 
@@ -738,6 +740,7 @@ function buildResourceReminderTask(
     templateRef: templateKey,
     isUnique: resolvedTaskType ? true : undefined,
     title: title ?? null,
+    icon: uniqueTaskConfig?.icon ?? undefined,
     taskType: resolvedTaskType,
     completionState: 'pending',
     completedAt: null,
@@ -944,7 +947,11 @@ function _genAccountGTD(resource: AccountResource, referenceDate: string): Task[
         next.date,
         task.name,
         { label: task.name } as Task['resultFields'],
-        { taskType: task.taskType ?? 'CHECK', inputFields: task.inputFields ?? null },
+        {
+          icon: task.icon ?? undefined,
+          taskType: task.taskType ?? 'CHECK',
+          inputFields: task.inputFields ?? null,
+        },
       ),
     );
   }
@@ -1039,7 +1046,10 @@ function _genInventoryGTD(resource: InventoryResource, referenceDate: string): T
           next.date,
           resolveTaskTemplateName(recurringTask.taskTemplateRef),
           { label: resolveTaskTemplateName(recurringTask.taskTemplateRef) } as Task['resultFields'],
-          { taskType: recurringTask.taskType ?? 'CHECK' },
+          {
+            icon: recurringTask.icon ?? undefined,
+            taskType: recurringTask.taskType ?? 'CHECK',
+          },
         ),
       );
     }
@@ -1067,7 +1077,10 @@ function _genInventoryGTD(resource: InventoryResource, referenceDate: string): T
         next.date,
         label,
         { label } as Task['resultFields'],
-        { taskType: carryTask.taskType ?? 'CHECK' },
+        {
+          icon: carryTask.icon ?? undefined,
+          taskType: carryTask.taskType ?? 'CHECK',
+        },
       ),
     );
   }
@@ -1172,7 +1185,11 @@ function _genHomeGTD(resource: HomeResource, referenceDate: string): Task[] {
         next.date,
         chore.name,
         { label: chore.name } as Task['resultFields'],
-        { taskType: chore.taskType ?? 'CHECK', inputFields: chore.inputFields ?? null },
+        {
+          icon: chore.icon ?? undefined,
+          taskType: chore.taskType ?? 'CHECK',
+          inputFields: chore.inputFields ?? null,
+        },
       ),
     );
   }
@@ -1206,7 +1223,10 @@ function _genHomeGTD(resource: HomeResource, referenceDate: string): Task[] {
             next.date,
             resolvedName,
             { label: resolvedName } as Task['resultFields'],
-            { taskType: recurringTask.taskType ?? 'CHECK' },
+            {
+              icon: recurringTask.icon ?? template.icon ?? undefined,
+              taskType: recurringTask.taskType ?? 'CHECK',
+            },
           ),
         );
       }
@@ -1287,6 +1307,7 @@ function _genVehicleGTD(resource: VehicleResource, referenceDate: string): Task[
         task.name,
         { label: task.name } as Task['resultFields'],
         {
+          icon: task.icon ?? undefined,
           taskType: task.taskType ?? 'CHECK',
           inputFields: task.inputFields,
         },

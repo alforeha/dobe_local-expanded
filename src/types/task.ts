@@ -32,6 +32,8 @@ export interface Task {
   isUnique?: boolean;
   /** Unique task display title. Template-backed tasks leave this null/absent. */
   title?: string | null;
+  /** Optional explicit icon key used when display should override template/type fallback. */
+  icon?: string;
   /** Unique task input type. Template-backed tasks resolve taskType from their TaskTemplate. */
   taskType?: string | null;
   completionState: TaskCompletionState;
@@ -80,6 +82,8 @@ export interface GTDItem {
   /** uuid */
   id: string;
   title: string;
+  /** Optional explicit icon key preserved onto the completed Task when present. */
+  icon?: string;
   note: string | null;
   /** Optional TaskTemplate ref chosen in the Add GTD popup */
   templateRef?: string | null;

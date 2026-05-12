@@ -14,6 +14,7 @@ interface HomeFloorPlanRoomRowsProps {
 export function HomeFloorPlanRoomRows({ summary, ...props }: HomeFloorPlanRoomRowsProps) {
 	const {
 		IconDisplay,
+		IconPicker,
 		INPUT_CLS,
 		ITEM_TASK_TYPE_OPTIONS,
 		DOW_LABELS,
@@ -210,6 +211,14 @@ export function HomeFloorPlanRoomRows({ summary, ...props }: HomeFloorPlanRoomRo
 																						</div>
 																					) : (
 																						<>
+																							<div className="space-y-1">
+																								<span className="text-[11px] font-medium text-gray-600 dark:text-gray-300">Icon</span>
+																								<IconPicker
+																									value={task.icon ?? ''}
+																									onChange={(icon) => updatePlacedRecurringTask(room.id, entry.placement.id, task.id, 'icon', icon || undefined)}
+																									align="left"
+																								/>
+																							</div>
 																							<label className="space-y-1">
 																								<span className="text-[11px] font-medium text-gray-600 dark:text-gray-300">Task name</span>
 																								<input value={task.taskTemplateRef} onChange={(event) => updatePlacedRecurringTaskName(room.id, entry.placement.id, task.id, event.target.value)} className={`${INPUT_CLS} w-full`} />
@@ -330,7 +339,7 @@ export function HomeFloorPlanRoomRows({ summary, ...props }: HomeFloorPlanRoomRo
 																					</div>
 																				) : (
 																					<div className="flex flex-wrap items-center gap-2">
-																						<button type="button" onClick={() => executePlacedRecurringTask(taskDisplay.name, task.taskType)} className="rounded-full bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-900/20 dark:text-emerald-200 dark:hover:bg-emerald-900/40">Execute</button>
+																						<button type="button" onClick={() => executePlacedRecurringTask(taskDisplay.name, task, entry.itemTemplateRef)} className="rounded-full bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-900/20 dark:text-emerald-200 dark:hover:bg-emerald-900/40">Execute</button>
 																						<button type="button" disabled={isTaskInQuickActions} onClick={() => { if (!isTaskInQuickActions) pushPlacedRecurringTaskReminder(entry.placement.id, task.id, taskDisplay.name, task.taskType); }} className={isTaskInQuickActions ? 'rounded-full bg-sky-100 px-3 py-2 text-xs font-semibold text-sky-700 dark:bg-sky-900/30 dark:text-sky-200' : 'rounded-full bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700 hover:bg-amber-100 dark:bg-amber-900/20 dark:text-amber-200 dark:hover:bg-amber-900/40'}>{isTaskInQuickActions ? 'In Quick Actions' : 'Push Reminder'}</button>
 																					</div>
 																				)}
