@@ -28,7 +28,7 @@ interface SelectedGearState {
   mode: 'equip' | 'unequip';
 }
 
-export function EquipmentRoom() {
+export function EquipmentRoom({ onBack }: { onBack: () => void }) {
   const ownedGearIds = useUserStore((state) => state.user?.progression.equipment.equipment ?? []);
   const equippedGear = useUserStore((state) => state.user?.progression.avatar.equippedGear ?? {});
   const equipGear = useUserStore((state) => state.equipGear);
@@ -226,6 +226,16 @@ export function EquipmentRoom() {
               <InventoryListView className="flex min-h-0 flex-1 border-0 bg-transparent p-0 shadow-none" />
             )}
           </div>
+        </div>
+
+        <div className="flex items-center p-3">
+          <button
+            type="button"
+            className="rounded-full bg-gray-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-gray-700 dark:bg-gray-100 dark:text-gray-900 dark:hover:bg-gray-300"
+            onClick={onBack}
+          >
+            ← Back
+          </button>
         </div>
       </div>
 

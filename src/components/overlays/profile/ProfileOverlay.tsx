@@ -19,17 +19,17 @@ export function ProfileOverlay({ onClose }: ProfileOverlayProps) {
   return (
     <div className="flex flex-col h-full bg-white dark:bg-gray-900">
       {/* TOP HALF — avatar area with 4 corner buttons */}
-      <ProfileTopSection onNav={setActiveRoom} onClose={onClose} />
+      <ProfileTopSection activeRoom={activeRoom} onNav={setActiveRoom} onClose={onClose} />
 
       {/* BOTTOM HALF — active room content */}
       <div className="flex-1 overflow-hidden">
         {activeRoom === 'stats' && (
           <StatGroupRoom onTalentTree={() => setActiveRoom('talent')} />
         )}
-        {activeRoom === 'preferences' && <PreferencesRoom />}
-        {activeRoom === 'storage' && <StorageRoom />}
-        {activeRoom === 'badges' && <BadgeRoom />}
-        {activeRoom === 'equipment' && <EquipmentRoom />}
+        {activeRoom === 'preferences' && <PreferencesRoom onBack={() => setActiveRoom('stats')} />}
+        {activeRoom === 'storage' && <StorageRoom onBack={() => setActiveRoom('stats')} />}
+        {activeRoom === 'badges' && <BadgeRoom onBack={() => setActiveRoom('stats')} />}
+        {activeRoom === 'equipment' && <EquipmentRoom onBack={() => setActiveRoom('stats')} />}
         {activeRoom === 'talent' && <TalentTreeRoom onBack={() => setActiveRoom('stats')} />}
       </div>
     </div>

@@ -12,7 +12,7 @@ function formatKB(bytes: number): string {
   return `${(bytes / 1024).toFixed(1)} KB`;
 }
 
-export function StorageRoom() {
+export function StorageRoom({ onBack }: { onBack: () => void }) {
   const usage = measureStorageUsage();
   const percentUsed = Math.min(usage.percentUsed, 100);
   const tone =
@@ -86,6 +86,16 @@ export function StorageRoom() {
         {Object.keys(usage.perKey).length === 0 && (
           <p className="px-4 py-6 text-center text-sm text-gray-400">No data stored yet.</p>
         )}
+      </div>
+
+      <div className="flex items-center p-3">
+        <button
+          type="button"
+          className="rounded-full bg-gray-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-gray-700 dark:bg-gray-100 dark:text-gray-900 dark:hover:bg-gray-300"
+          onClick={onBack}
+        >
+          ← Back
+        </button>
       </div>
     </div>
   );

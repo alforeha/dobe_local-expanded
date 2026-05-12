@@ -81,7 +81,7 @@ function formatSourceType(sourceType: string): string {
     .join(' ');
 }
 
-export function PreferencesRoom() {
+export function PreferencesRoom({ onBack }: { onBack: () => void }) {
   const [activeTab, setActiveTab] = useState<PreferencesTab>('filter');
   const [iconPickerOpen, setIconPickerOpen] = useState(false);
   const [nameEditorOpen, setNameEditorOpen] = useState(false);
@@ -329,6 +329,16 @@ export function PreferencesRoom() {
             </section>
           ) : null}
         </div>
+      </div>
+
+      <div className="flex items-center p-3">
+        <button
+          type="button"
+          className="rounded-full bg-gray-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-gray-700 dark:bg-gray-100 dark:text-gray-900 dark:hover:bg-gray-300"
+          onClick={onBack}
+        >
+          ← Back
+        </button>
       </div>
     </div>
   );

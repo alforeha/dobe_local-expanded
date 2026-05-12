@@ -39,14 +39,14 @@ const STAT_TEXT: Record<StatGroupKey, string> = {
 };
 
 const DATE_COUNT = 91;
-const LABEL_W = 124;
-const ROW_GAP = 10;
-const CUBE_GAP = 6;
+const LABEL_W = 75;
+const ROW_GAP = 5;
+const CUBE_GAP = 5;
 const H_PAD = 10;
-const DATE_H = 32;
-const DATE_GAP = 12;
-const GRID_PAD_TOP = 27;
-const GRID_PAD_BOT = 12;
+const DATE_H = 14;
+const DATE_GAP = 6;
+const GRID_PAD_TOP = 4;
+const GRID_PAD_BOT = 4;
 
 function buildDates(): string[] {
   const dates: string[] = [];
@@ -274,8 +274,8 @@ export function StatGroupGrid({ talents, historyEvents, tasks, taskTemplates }: 
 
   const todayIso = localISODate(new Date());
   const scrollWidth = DATE_COUNT * cubeSize + (DATE_COUNT - 1) * CUBE_GAP + H_PAD * 2;
-  const statIconSize = 57;
-  const pointSize = '1.9rem';
+  const statIconSize = cubeSize;
+  const pointSize = '1rem';
   const cubeTextSize = `${Math.max(33, Math.min(50, Math.round((cubeSize / 36) * 90)))}%`;
   const dateSize = '1.5rem';
 
@@ -285,8 +285,8 @@ export function StatGroupGrid({ talents, historyEvents, tasks, taskTemplates }: 
         <div className="shrink-0" style={{ height: GRID_PAD_TOP + DATE_H + DATE_GAP }} />
         <div className="flex min-h-0 flex-1 flex-col" style={{ gap: ROW_GAP }}>
           {STAT_ORDER.map((stat) => (
-            <div key={stat} className="flex flex-1 items-center justify-center">
-              <div className="flex min-w-[82px] items-center justify-center gap-3">
+            <div key={stat} className="flex flex-1 items-center justify-start">
+              <div className="flex min-w-[82px] items-center justify-start gap-2">
                 <IconDisplay iconKey={stat} size={statIconSize} className="h-[34px] w-[34px] shrink-0 object-contain" />
                 <span className={`font-bold leading-none ${STAT_TEXT[stat]}`} style={{ fontSize: pointSize }}>
                   {talents[stat]?.statPoints ?? 0}
@@ -295,7 +295,7 @@ export function StatGroupGrid({ talents, historyEvents, tasks, taskTemplates }: 
             </div>
           ))}
         </div>
-        <div className="shrink-0" style={{ height: '37px' }} />
+        <div className="shrink-0" style={{ height: `${GRID_PAD_BOT}px` }} />
       </div>
 
       <div ref={scrollRef} className="flex-1 overflow-x-auto overflow-y-hidden">
