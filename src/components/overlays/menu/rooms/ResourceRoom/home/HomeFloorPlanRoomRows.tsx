@@ -1,7 +1,6 @@
 /* eslint-disable @typescript-eslint/ban-ts-comment, @typescript-eslint/no-explicit-any */
 // @ts-nocheck
 import { useEffect, useState } from 'react';
-import { AlbumEntryEditor } from '../../../../../shared/AlbumEntryEditor';
 import { AlbumViewer } from '../../../../../shared/AlbumViewer';
 import type { AlbumEntry, ResourceRecurrenceRule } from '../../../../../../types/resource';
 import type { ConsumeInputFields, TextInputFields } from '../../../../../../types/taskTemplate';
@@ -25,13 +24,13 @@ export function HomeFloorPlanRoomRows({ summary, ...props }: HomeFloorPlanRoomRo
 		expandedPlacedTaskId,
 		getDayOfMonth,
 		getItemTaskTypeLabel,
+		homeAlbum,
 		isPlacedTaskInQuickActions,
 		isPlacementCleanInQuickActions,
 		mergedItemTemplates,
 		normalizeRecurrenceMode,
 		onPlacedItemSelectRef,
 		onSelectRoom,
-		onUpdateRoomPhotos,
 		photoStatusByScope,
 		pushPlacedRecurringTaskReminder,
 		renderContainerItems,
@@ -75,42 +74,14 @@ export function HomeFloorPlanRoomRows({ summary, ...props }: HomeFloorPlanRoomRo
 		if (isContainer) setActiveRoomTab('containers');
 		else if (isItem) setActiveRoomTab('items');
 	}, [expandedPlacedContainerId]); // eslint-disable-line react-hooks/exhaustive-deps
-
-	const [isAlbumEditorOpen, setIsAlbumEditorOpen] = useState(false);
-	const [editingAlbumEntry, setEditingAlbumEntry] = useState<AlbumEntry | undefined>(undefined);
-
 	if (isEditingStory) return null;
 
 	const { room, placedContainerEntries, placedLooseItemEntries } = summary;
+	const roomAlbumEntries = ((homeAlbum ?? []) as AlbumEntry[]).filter((entry) => entry.sourceRef === room.id);
 	const selectedContainerEntry = placedContainerEntries.find((entry) => entry.placement.id === expandedPlacedContainerId) ?? null;
 	const selectedLooseItemEntry = placedLooseItemEntries.find((entry) => entry.placement.id === expandedPlacedContainerId) ?? null;
 	const visibleContainerEntries = selectedContainerEntry ? [selectedContainerEntry] : selectedLooseItemEntry ? [] : placedContainerEntries;
 	const visibleLooseItemEntries = selectedLooseItemEntry ? [selectedLooseItemEntry] : selectedContainerEntry ? [] : placedLooseItemEntries;
-
-	function handleAddAlbumEntry() {
-		setEditingAlbumEntry(undefined);
-		setIsAlbumEditorOpen(true);
-	}
-
-	function handleEditAlbumEntry(entry: AlbumEntry) {
-		setEditingAlbumEntry(entry);
-		setIsAlbumEditorOpen(true);
-	}
-
-	function handleDeleteAlbumEntry(entryId: string) {
-		onUpdateRoomPhotos?.(room.id, (room.photos ?? []).filter((entry) => entry.id !== entryId));
-	}
-
-	function handleSaveAlbumEntry(entry: AlbumEntry) {
-		const existingPhotos = room.photos ?? [];
-		const existingIndex = existingPhotos.findIndex((candidate) => candidate.id === entry.id);
-		const nextPhotos = existingIndex === -1
-			? [...existingPhotos, entry]
-			: existingPhotos.map((candidate, index) => (index === existingIndex ? entry : candidate));
-		onUpdateRoomPhotos?.(room.id, nextPhotos);
-		setIsAlbumEditorOpen(false);
-		setEditingAlbumEntry(undefined);
-	}
 
 	return (
 		<>
@@ -457,26 +428,12 @@ export function HomeFloorPlanRoomRows({ summary, ...props }: HomeFloorPlanRoomRo
 				{activeRoomTab === 'album' ? (
 				<div className="rounded-xl bg-gray-50 px-3 py-3 dark:bg-gray-800/60">
 					<AlbumViewer
-						entries={room.photos ?? []}
-						onAdd={handleAddAlbumEntry}
-						onEdit={handleEditAlbumEntry}
-						onDelete={handleDeleteAlbumEntry}
-						title="Album"
+						entries={roomAlbumEntries}
+						title="Room Photos"
 					/>
 				</div>
 				) : null}
 			</div>
-
-			{isAlbumEditorOpen ? (
-				<AlbumEntryEditor
-					entry={editingAlbumEntry}
-					onSave={handleSaveAlbumEntry}
-					onCancel={() => {
-						setIsAlbumEditorOpen(false);
-						setEditingAlbumEntry(undefined);
-					}}
-				/>
-			) : null}
 		</>
 	);
 }

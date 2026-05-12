@@ -14,12 +14,13 @@ interface HomeLayoutProps {
 	onChange?: (stories: HomeStory[]) => void;
 	editable?: boolean;
 	homeId?: string;
+	homeAlbum?: AlbumEntry[];
 	hideRoomList?: boolean;
 	showSelectedItemPanel?: boolean;
 	onRoomSelectedChange?: (hasRoomSelected: boolean) => void;
 	onPlacementExpandedChange?: (isExpanded: boolean) => void;
 	onFloorEditChange?: (isEditing: boolean) => void;
-	onOpenAlbumEditor?: (location: string) => void;
+	onOpenAlbumEditor?: (location: string, sourceRef?: string) => void;
 }
 
 type StoryDialogState =
@@ -148,6 +149,7 @@ export function HomeLayout({
 	onChange,
 	editable = false,
 	homeId,
+	homeAlbum,
 	hideRoomList = false,
 	showSelectedItemPanel = false,
 	onRoomSelectedChange,
@@ -642,6 +644,7 @@ export function HomeLayout({
 					story={cloneStory(activeStory)}
 					selectedRoomId={effectiveSelectedRoomId}
 					selectedPlacedId={selectedPlacedId}
+					homeAlbum={homeAlbum}
 					onPlacedItemSelect={(id) => setSelectedPlacedId(id)}
 					onSelectRoom={(id) => {
 						if (id !== selectedRoomId) {

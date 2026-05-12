@@ -298,6 +298,7 @@ export function HomeFormNew({ existing, onSaved, registerOnAutoSave }: HomeFormN
   const [geocodedLabel, setGeocodedLabel] = useState<string | null>(null);
   const [showLocationPicker, setShowLocationPicker] = useState(false);
   const [album, setAlbum] = useState<AlbumEntry[]>(existing?.album ?? currentExisting?.album ?? []);
+  const [albumRoomFilter, setAlbumRoomFilter] = useState<string>('all');
   const [stories, setStories] = useState<HomeStory[]>(
     (existing?.stories ?? currentExisting?.stories ?? []).map((story) => ({
       ...story,
@@ -327,6 +328,7 @@ export function HomeFormNew({ existing, onSaved, registerOnAutoSave }: HomeFormN
   const [isAlbumEditorOpen, setIsAlbumEditorOpen] = useState(false);
   const [editingAlbumEntry, setEditingAlbumEntry] = useState<AlbumEntry | undefined>(undefined);
   const [pendingAlbumLocation, setPendingAlbumLocation] = useState<string | null>(null);
+  const [pendingAlbumSourceRef, setPendingAlbumSourceRef] = useState<string | null>(null);
 
   const canSave = displayName.trim().length > 0;
   const addressLabel = [streetAddress.trim(), city.trim(), stateCode.trim()].filter(Boolean).join(', ');
@@ -334,6 +336,27 @@ export function HomeFormNew({ existing, onSaved, registerOnAutoSave }: HomeFormN
   const memberIds = useMemo(
     () => collectHomeMemberIds(draftHomeId, resources, liveLinks),
     [draftHomeId, liveLinks, resources],
+  );
+  const allRooms = useMemo(
+    () => {
+      const seen = new Set<string>();
+      return stories.flatMap((story) => story.rooms.flatMap((room) => {
+        if (seen.has(room.id)) return [];
+        seen.add(room.id);
+        return [{ id: room.id, name: room.name }];
+      }));
+    },
+    [stories],
+  );
+  const filteredAlbum = useMemo(
+    () => (
+      albumRoomFilter === 'all'
+        ? album
+        : albumRoomFilter === 'outside'
+          ? album.filter((entry) => !entry.sourceRef || !allRooms.some((room) => room.id === entry.sourceRef))
+          : album.filter((entry) => entry.sourceRef === albumRoomFilter)
+    ),
+    [album, albumRoomFilter, allRooms],
   );
   const memberContacts = useMemo(
     () => memberIds
@@ -803,18 +826,21 @@ export function HomeFormNew({ existing, onSaved, registerOnAutoSave }: HomeFormN
 
   function handleAddAlbumEntry() {
     setPendingAlbumLocation(null);
+    setPendingAlbumSourceRef(null);
     setEditingAlbumEntry(undefined);
     setIsAlbumEditorOpen(true);
   }
 
   function handleEditAlbumEntry(entry: AlbumEntry) {
     setPendingAlbumLocation(null);
+    setPendingAlbumSourceRef(null);
     setEditingAlbumEntry(entry);
     setIsAlbumEditorOpen(true);
   }
 
-  const handleOpenAlbumEditor = useCallback((location: string) => {
+  const handleOpenAlbumEditor = useCallback((location: string, sourceRef?: string) => {
     setPendingAlbumLocation(location);
+    setPendingAlbumSourceRef(sourceRef ?? null);
     setEditingAlbumEntry(undefined);
     setIsAlbumEditorOpen(true);
   }, []);
@@ -824,15 +850,32 @@ export function HomeFormNew({ existing, onSaved, registerOnAutoSave }: HomeFormN
   }
 
   function handleSaveAlbumEntry(entry: AlbumEntry) {
+    const finalEntry: AlbumEntry = pendingAlbumLocation
+      ? {
+          ...entry,
+          location: {
+            ...(entry.location ?? {}),
+            latitude: entry.location?.latitude ?? 0,
+            longitude: entry.location?.longitude ?? 0,
+            placeName: pendingAlbumLocation,
+          },
+          sourceRef: pendingAlbumSourceRef ?? entry.sourceRef,
+        }
+      : {
+          ...entry,
+          sourceRef: pendingAlbumSourceRef ?? entry.sourceRef,
+        };
+
     setAlbum((prev) => {
-      const existingIndex = prev.findIndex((candidate) => candidate.id === entry.id);
-      if (existingIndex === -1) return [...prev, entry];
+      const existingIndex = prev.findIndex((candidate) => candidate.id === finalEntry.id);
+      if (existingIndex === -1) return [...prev, finalEntry];
       const next = [...prev];
-      next[existingIndex] = entry;
+      next[existingIndex] = finalEntry;
       return next;
     });
     setIsAlbumEditorOpen(false);
     setPendingAlbumLocation(null);
+    setPendingAlbumSourceRef(null);
     setEditingAlbumEntry(undefined);
   }
 
@@ -1443,8 +1486,22 @@ export function HomeFormNew({ existing, onSaved, registerOnAutoSave }: HomeFormN
   function renderAlbumTab() {
     return (
       <div className="px-4 py-4">
+        <label className="mb-2 block">
+          <span className="sr-only">Filter album by room</span>
+          <select
+            value={albumRoomFilter}
+            onChange={(event) => setAlbumRoomFilter(event.target.value)}
+            className="rounded border px-2 py-1 text-xs"
+          >
+            <option value="all">All Photos</option>
+            {allRooms.map((room) => (
+              <option key={room.id} value={room.id}>{room.name}</option>
+            ))}
+            <option value="outside">Outside Rooms</option>
+          </select>
+        </label>
         <AlbumViewer
-          entries={album}
+          entries={filteredAlbum}
           onAdd={handleAddAlbumEntry}
           onEdit={handleEditAlbumEntry}
           onDelete={handleDeleteAlbumEntry}
@@ -1462,6 +1519,7 @@ export function HomeFormNew({ existing, onSaved, registerOnAutoSave }: HomeFormN
           onChange={setStories}
           editable
           homeId={draftHomeId}
+          homeAlbum={album}
           onRoomSelectedChange={setRoomSelected}
           onPlacementExpandedChange={setPlacementExpanded}
           onOpenAlbumEditor={handleOpenAlbumEditor}
@@ -1480,6 +1538,7 @@ export function HomeFormNew({ existing, onSaved, registerOnAutoSave }: HomeFormN
           longitude: 0,
           placeName: pendingAlbumLocation,
         },
+        sourceRef: pendingAlbumSourceRef ?? undefined,
       } satisfies AlbumEntry)
     : editingAlbumEntry;
 
@@ -1520,6 +1579,7 @@ export function HomeFormNew({ existing, onSaved, registerOnAutoSave }: HomeFormN
           onCancel={() => {
             setIsAlbumEditorOpen(false);
             setPendingAlbumLocation(null);
+            setPendingAlbumSourceRef(null);
             setEditingAlbumEntry(undefined);
           }}
         />

@@ -32,7 +32,7 @@ interface HomeFloorPlanActionBarProps {
 	roomName: string | null;
 	itemName: string | null;
 	containerName: string | null;
-	onOpenAlbumEditor?: (location: string) => void;
+	onOpenAlbumEditor?: (location: string, sourceRef?: string) => void;
 	onExitRoom: () => void;
 	onExitItem: () => void;
 	onExitContainer: () => void;
@@ -162,7 +162,6 @@ export function HomeFloorPlanActionBar({
 	const normalizedItemName = itemName?.trim() || 'Item';
 	const normalizedContainerName = containerName?.trim() || 'Container';
 	const openHomeAlbumEditor = () => onOpenAlbumEditor?.(normalizedHomeName);
-	const openRoomAlbumEditor = () => onOpenAlbumEditor?.(`${normalizedHomeName} · ${normalizedRoomName}`);
 	const openItemAlbumEditor = () => onOpenAlbumEditor?.(`${normalizedHomeName} · ${normalizedRoomName} · ${normalizedItemName}`);
 	const openContainerAlbumEditor = () => onOpenAlbumEditor?.(`${normalizedHomeName} · ${normalizedRoomName} · ${normalizedContainerName}`);
 
@@ -552,7 +551,7 @@ export function HomeFloorPlanActionBar({
 					<button type="button" onClick={onEditRoom} className={iconButtonClassName} title="Edit room" aria-label="Edit room">
 						<IconDisplay iconKey="fp-edit" size={18} alt="Edit room" />
 					</button>
-					<button type="button" onClick={openRoomAlbumEditor} disabled={selectedRoomPhotoBusy} className={iconButtonClassName} title="Take room photo" aria-label="Take room photo">
+					<button type="button" onClick={() => onOpenAlbumEditor?.(`${normalizedHomeName} · ${normalizedRoomName}`, selectedRoomId ?? undefined)} disabled={selectedRoomPhotoBusy} className={iconButtonClassName} title="Take room photo" aria-label="Take room photo">
 						<IconDisplay iconKey="fp-camera" size={18} alt="Take room photo" />
 					</button>
 					<div ref={addChoiceRef} className="relative">

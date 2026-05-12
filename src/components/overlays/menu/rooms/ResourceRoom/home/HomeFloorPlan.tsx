@@ -59,6 +59,7 @@ interface HomeFloorPlanProps {
 	story: HomeStory;
 	selectedRoomId: string | null;
 	selectedPlacedId?: string | null;
+	homeAlbum?: AlbumEntry[];
 	onPlacedItemSelect?: (placedId: string | null) => void;
 	onPlacementExpandedChange?: (isExpanded: boolean) => void;
 	onSelectRoom: (roomId: string | null) => void;
@@ -89,7 +90,7 @@ interface HomeFloorPlanProps {
 	onUpdateStoryPlacedItems?: (placedItems: PlacedInstance[]) => void;
 	onUpdateRoomPhotos?: (roomId: string, photos: AlbumEntry[]) => void;
 	onUpdateStoryPhotos?: (photos: AlbumEntry[]) => void;
-	onOpenAlbumEditor?: (location: string) => void;
+	onOpenAlbumEditor?: (location: string, sourceRef?: string) => void;
 }
 
 
@@ -136,6 +137,7 @@ export function HomeFloorPlan({
 	story,
 	selectedRoomId,
 	selectedPlacedId = null,
+	homeAlbum: homeAlbumProp,
 	onPlacedItemSelect,
 	onPlacementExpandedChange,
 	onSelectRoom,
@@ -2003,6 +2005,8 @@ export function HomeFloorPlan({
 		return candidate && isHome(candidate) ? candidate : null;
 	}
 
+	const homeAlbum = homeAlbumProp ?? [];
+
 	async function captureAndAppendToHomeAlbum(
 		scopeId: string,
 		sourceRef: string | undefined,
@@ -2407,7 +2411,7 @@ export function HomeFloorPlan({
 	}
 
 	const roomRowsProps = {
-		IconDisplay, INPUT_CLS, ITEM_TASK_TYPE_OPTIONS, DOW_LABELS, captureAndAppendToHomeAlbum, describeReminder, describeTaskRecurrence, executePlacedRecurringTask, expandedPlacedContainerId, expandedPlacedTaskId, getDayOfMonth, getItemTaskTypeLabel, isPlacedTaskInQuickActions, isPlacementCleanInQuickActions, mergedItemTemplates, normalizeRecurrenceMode, onDeleteRoom, onPlacedItemSelectRef, onSelectRoom, onStartEditRoom, photoStatusByScope, photoUploadBusyByScope, pushPlacedRecurringTaskReminder, pushRoomCleanTasks, renderContainerItems, renderPhotoSection, resolvePlacedTaskDisplay, setAddingItemContainerId, setEditingPlacedContainerId, setExpandedPlacedContainerId, setExpandedPlacedTaskId, setRoomAddContainerRoomId, setRoomAddItemRoomId, setSelectedPlacementId, setViewingContainerFace, setViewingContainerPlacementId, updatePlacedItem, updatePlacedRecurringTask, updatePlacedRecurringTaskName, updatePlacedRecurringTaskType, updatePlacedRecurringTaskRecurrence, togglePlacedRecurringTaskDay, addPlacedRecurringTask, removePlacedRecurringTask, addPlacedRecurringTaskConsumeEntry, updatePlacedRecurringTaskConsumeEntry, removePlacedRecurringTaskConsumeEntry, updatePlacedRecurringTaskTextInput, removePlacedItem, userConsumableTaskTemplates, viewingContainerPlacementId, isEditingStory: isEditingStoryName || isEditingStoryOutline,
+		IconDisplay, INPUT_CLS, ITEM_TASK_TYPE_OPTIONS, DOW_LABELS, captureAndAppendToHomeAlbum, describeReminder, describeTaskRecurrence, executePlacedRecurringTask, expandedPlacedContainerId, expandedPlacedTaskId, getDayOfMonth, getItemTaskTypeLabel, homeAlbum, isPlacedTaskInQuickActions, isPlacementCleanInQuickActions, mergedItemTemplates, normalizeRecurrenceMode, onDeleteRoom, onPlacedItemSelectRef, onSelectRoom, onStartEditRoom, photoStatusByScope, photoUploadBusyByScope, pushPlacedRecurringTaskReminder, pushRoomCleanTasks, renderContainerItems, renderPhotoSection, resolvePlacedTaskDisplay, setAddingItemContainerId, setEditingPlacedContainerId, setExpandedPlacedContainerId, setExpandedPlacedTaskId, setRoomAddContainerRoomId, setRoomAddItemRoomId, setSelectedPlacementId, setViewingContainerFace, setViewingContainerPlacementId, updatePlacedItem, updatePlacedRecurringTask, updatePlacedRecurringTaskName, updatePlacedRecurringTaskType, updatePlacedRecurringTaskRecurrence, togglePlacedRecurringTaskDay, addPlacedRecurringTask, removePlacedRecurringTask, addPlacedRecurringTaskConsumeEntry, updatePlacedRecurringTaskConsumeEntry, removePlacedRecurringTaskConsumeEntry, updatePlacedRecurringTaskTextInput, removePlacedItem, userConsumableTaskTemplates, viewingContainerPlacementId, isEditingStory: isEditingStoryName || isEditingStoryOutline,
 	};
 
 	const canvasProps = {

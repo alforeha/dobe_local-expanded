@@ -160,7 +160,10 @@ export function AlbumEntryEditor({
   function applyCaptureResult(result: Awaited<ReturnType<typeof readPhotoFile>>) {
     trackObjectUrl(result.uri);
     setPhotoUri(result.uri);
-    setLocation(result.location);
+    // Only use photo EXIF location if no location is already set.
+    if (!location) {
+      setLocation(result.location);
+    }
     setDate(result.capturedAt ? result.capturedAt.slice(0, 10) : '');
     setPhotoStatus(result.location || result.capturedAt ? 'Photo metadata loaded.' : 'Photo updated.');
   }
