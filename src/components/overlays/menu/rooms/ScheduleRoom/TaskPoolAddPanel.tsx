@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { taskTemplateLibrary } from '../../../../../coach';
 import { starterTaskTemplates } from '../../../../../coach/StarterQuestLibrary';
@@ -9,15 +9,17 @@ import { useUserStore } from '../../../../../stores/useUserStore';
 import type { InlineTaskEntry, ResourceTaskEntry, TaskEntry, TaskType, TemplateTaskEntry } from '../../../../../types';
 import type { InventoryItemTemplate, ItemRecurringTask } from '../../../../../types/resource';
 import type { InputFields, TaskTemplate } from '../../../../../types/taskTemplate';
+import type { StatGroupKey } from '../../../../../types/user';
 import { normalizeRecurrenceMode } from '../../../../../types/resource';
 import { getUserInventoryItemTemplates, mergeInventoryItemTemplates, resolveInventoryItemTemplate } from '../../../../../utils/inventoryItems';
 import { getCustomTemplatePool, getLibraryTemplatePool, resolveTaskTemplate } from '../../../../../utils/resolveTaskTemplate';
 import { IconDisplay } from '../../../../shared/IconDisplay';
+import { IconPicker } from '../../../../shared/IconPicker';
 import { TaskTypeConfigEditor } from '../../../../shared/TaskTypeConfigEditor';
 import { PopupShell } from '../../../../shared/popups/PopupShell';
 
 type AddPanelTab = 'library' | 'templates' | 'new' | 'resource';
-type DraftTaskType = Extract<TaskType, 'CHECK' | 'COUNTER' | 'DURATION' | 'TIMER' | 'RATING' | 'TEXT' | 'CONSUME'> | 'USE';
+type DraftTaskType = Extract<TaskType, 'CHECK' | 'COUNTER' | 'DURATION' | 'TIMER' | 'RATING' | 'TEXT'>;
 
 const ADD_PANEL_TABS: Array<{ id: AddPanelTab; label: string }> = [
   { id: 'library', label: 'Library' },
@@ -33,8 +35,15 @@ const DRAFT_TASK_TYPES: Array<{ value: DraftTaskType; label: string }> = [
   { value: 'TIMER', label: 'Timer' },
   { value: 'RATING', label: 'Rating' },
   { value: 'TEXT', label: 'Text' },
-  { value: 'CONSUME', label: 'Consume' },
-  { value: 'USE', label: 'Use' },
+];
+
+const STAT_GROUP_OPTIONS: Array<{ value: StatGroupKey; label: string }> = [
+  { value: 'health', label: 'Health' },
+  { value: 'strength', label: 'Strength' },
+  { value: 'agility', label: 'Agility' },
+  { value: 'defense', label: 'Defense' },
+  { value: 'charisma', label: 'Charisma' },
+  { value: 'wisdom', label: 'Wisdom' },
 ];
 
 interface TaskPoolAddPanelProps {
@@ -57,15 +66,33 @@ interface ResourceTaskRow {
   detail?: string;
 }
 
-function buildDraftInputFields(
-  taskType: DraftTaskType,
-  inputFields: Partial<InputFields>,
-): { taskType: TaskType; inputFields: Partial<InputFields> } {
-  if (taskType === 'USE') {
-    return { taskType: 'TEXT', inputFields };
+function defaultInputFields(taskType: DraftTaskType): InputFields {
+  switch (taskType) {
+    case 'CHECK':
+      return { label: 'Done' };
+    case 'COUNTER':
+      return { target: 10, unit: 'count', step: 1 };
+    case 'DURATION':
+      return { targetDuration: 1800, unit: 'seconds' };
+    case 'TIMER':
+      return { countdownFrom: 300 };
+    case 'RATING':
+      return { scale: 5, label: 'Rate this' };
+    case 'TEXT':
+      return { prompt: 'Enter your response', maxLength: null };
   }
+}
 
-  return { taskType, inputFields };
+function buildXpAward(statGroup: StatGroupKey, xpValue: number) {
+  return {
+    health: 0,
+    strength: 0,
+    agility: 0,
+    defense: 0,
+    charisma: 0,
+    wisdom: 0,
+    [statGroup]: xpValue,
+  };
 }
 
 function createTemplateEntry(templateRef: string): TemplateTaskEntry {
@@ -87,13 +114,27 @@ function createResourceEntry(row: ResourceTaskRow): ResourceTaskEntry {
   };
 }
 
-function createInlineEntry(name: string, taskType: TaskType, inputFields: Partial<InputFields>): InlineTaskEntry {
+function createInlineEntry(
+  name: string,
+  taskType: TaskType,
+  inputFields: Partial<InputFields>,
+  icon: string,
+  description: string,
+  xpAward: ReturnType<typeof buildXpAward>,
+): InlineTaskEntry & {
+  icon?: string;
+  description: string | null;
+  xpAward: ReturnType<typeof buildXpAward>;
+} {
   return {
     kind: 'inline',
     id: uuidv4(),
     name,
     taskType,
     inputFields,
+    icon: icon || undefined,
+    description: description.trim() || null,
+    xpAward,
   };
 }
 
@@ -160,9 +201,16 @@ export function TaskPoolAddPanel({ onAdd, onClose }: TaskPoolAddPanelProps) {
   const [activeTab, setActiveTab] = useState<AddPanelTab>('library');
   const [searchQuery, setSearchQuery] = useState('');
   const [title, setTitle] = useState('');
+  const [icon, setIcon] = useState<string>('');
+  const [description, setDescription] = useState<string>('');
+  const [statGroup, setStatGroup] = useState<StatGroupKey>('health');
   const [taskType, setTaskType] = useState<DraftTaskType>('CHECK');
-  const [draftInputFields, setDraftInputFields] = useState<Partial<InputFields>>({});
+  const [draftInputFields, setDraftInputFields] = useState<Partial<InputFields>>(defaultInputFields(taskType));
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    setDraftInputFields(defaultInputFields(taskType));
+  }, [taskType]);
 
   const libraryTemplates = useMemo(
     () => getLibraryTemplatePool().filter((template): template is TaskTemplate & { id: string } => Boolean(template.id) && template.isSystem !== true),
@@ -369,9 +417,38 @@ export function TaskPoolAddPanel({ onAdd, onClose }: TaskPoolAddPanelProps) {
       return;
     }
 
-    const built = buildDraftInputFields(taskType, draftInputFields);
+    const fields = draftInputFields as Record<string, unknown>;
 
-    onAdd(createInlineEntry(title.trim(), built.taskType, built.inputFields));
+    const normalizedInputFields: Partial<InputFields> = taskType === 'CHECK'
+      ? { ...draftInputFields, label: typeof fields.label === 'string' && fields.label.trim() ? fields.label.trim() : 'Done' }
+      : taskType === 'COUNTER'
+        ? {
+            ...draftInputFields,
+            target: typeof fields.target === 'number' && fields.target > 0 ? fields.target : 10,
+            step: typeof fields.step === 'number' && fields.step > 0 ? fields.step : 1,
+            unit: typeof fields.unit === 'string' ? fields.unit.trim() : '',
+          }
+        : taskType === 'RATING'
+          ? {
+              ...draftInputFields,
+              scale: typeof fields.scale === 'number' && fields.scale >= 2 ? fields.scale : 5,
+              label: typeof fields.label === 'string' && fields.label.trim() ? fields.label.trim() : 'Rate this',
+            }
+          : taskType === 'TEXT'
+            ? {
+                ...draftInputFields,
+                prompt: typeof fields.prompt === 'string' ? fields.prompt.trim() : '',
+              }
+            : draftInputFields;
+
+    onAdd(createInlineEntry(
+      title.trim(),
+      taskType,
+      normalizedInputFields,
+      icon,
+      description,
+      buildXpAward(statGroup, 5),
+    ));
     onClose();
   }
 
@@ -452,12 +529,40 @@ export function TaskPoolAddPanel({ onAdd, onClose }: TaskPoolAddPanelProps) {
             </div>
 
             <div>
+              <IconPicker value={icon} onChange={setIcon} align="left" />
+            </div>
+
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">Description</label>
+              <textarea
+                value={description}
+                onChange={(event) => setDescription(event.target.value)}
+                placeholder="Optional description"
+                rows={2}
+                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-purple-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
+              />
+            </div>
+
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">Stat Group</label>
+              <select
+                value={statGroup}
+                onChange={(event) => setStatGroup(event.target.value as StatGroupKey)}
+                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-purple-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
+              >
+                {STAT_GROUP_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
               <label className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">Task type</label>
               <select
                 value={taskType}
                 onChange={(event) => {
                   setTaskType(event.target.value as DraftTaskType);
-                  setDraftInputFields({});
+                  setDraftInputFields(defaultInputFields(event.target.value as DraftTaskType));
                 }}
                 className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-purple-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
               >

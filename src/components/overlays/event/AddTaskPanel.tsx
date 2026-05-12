@@ -1,6 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { PopupShell } from '../../shared/popups/PopupShell';
 import { IconPicker } from '../../shared/IconPicker';
+import { TaskTypeConfigEditor } from '../../shared/TaskTypeConfigEditor';
 import { useScheduleStore } from '../../../stores/useScheduleStore';
 import { addTaskToEvent, addUniqueTaskToEvent } from '../../../engine/eventExecution';
 import { getCustomTemplatePool, getEventLibraryTemplatePool } from '../../../utils/resolveTaskTemplate';
@@ -34,6 +35,23 @@ interface AddTaskPanelProps {
   onClose: () => void;
 }
 
+function defaultInputFields(taskType: NewTaskType): InputFields {
+  switch (taskType) {
+    case 'CHECK':
+      return { label: 'Done' };
+    case 'COUNTER':
+      return { target: 10, unit: 'count', step: 1 };
+    case 'DURATION':
+      return { targetDuration: 1800, unit: 'seconds' };
+    case 'TIMER':
+      return { countdownFrom: 300 };
+    case 'RATING':
+      return { scale: 5, label: 'Rate this' };
+    case 'TEXT':
+      return { prompt: 'Enter your response', maxLength: null };
+  }
+}
+
 function buildXpAward(statGroup: StatGroupKey, xpValue: number) {
   return {
     health: 0,
@@ -46,31 +64,6 @@ function buildXpAward(statGroup: StatGroupKey, xpValue: number) {
   };
 }
 
-function buildUniqueTaskResultFields(taskType: NewTaskType, values: {
-  counterTarget: number;
-  counterUnit: string;
-  durationMinutes: number;
-  timerSeconds: number;
-  ratingScale: number;
-  ratingPrompt: string;
-  textPrompt: string;
-}): Partial<InputFields> {
-  switch (taskType) {
-    case 'CHECK':
-      return { label: 'Done' };
-    case 'COUNTER':
-      return { target: values.counterTarget, unit: values.counterUnit.trim(), step: 1 };
-    case 'DURATION':
-      return { targetDuration: values.durationMinutes * 60, unit: 'minutes' };
-    case 'TIMER':
-      return { countdownFrom: values.timerSeconds };
-    case 'RATING':
-      return { scale: values.ratingScale, label: values.ratingPrompt.trim() || 'Rate this' };
-    case 'TEXT':
-      return { prompt: values.textPrompt.trim(), maxLength: null };
-  }
-}
-
 export function AddTaskPanel({ eventId, onClose }: AddTaskPanelProps) {
   const taskTemplates = useScheduleStore((state) => state.taskTemplates);
   const [activeTab, setActiveTab] = useState<AddTaskTab>('library');
@@ -80,14 +73,12 @@ export function AddTaskPanel({ eventId, onClose }: AddTaskPanelProps) {
   const [description, setDescription] = useState<string>('');
   const [statGroup, setStatGroup] = useState<StatGroupKey>('health');
   const [taskType, setTaskType] = useState<NewTaskType>('CHECK');
-  const [counterTarget, setCounterTarget] = useState(10);
-  const [counterUnit, setCounterUnit] = useState('count');
-  const [durationMinutes, setDurationMinutes] = useState(30);
-  const [timerSeconds, setTimerSeconds] = useState(300);
-  const [ratingScale, setRatingScale] = useState(5);
-  const [ratingPrompt, setRatingPrompt] = useState('');
-  const [textPrompt, setTextPrompt] = useState('');
+  const [inputFields, setInputFields] = useState<Partial<InputFields>>(defaultInputFields(taskType));
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    setInputFields(defaultInputFields(taskType));
+  }, [taskType]);
 
   const libraryTemplates = useMemo(() => getEventLibraryTemplatePool(), []);
   const customTemplates = useMemo(() => getCustomTemplatePool(taskTemplates), [taskTemplates]);
@@ -114,6 +105,30 @@ export function AddTaskPanel({ eventId, onClose }: AddTaskPanelProps) {
       return;
     }
 
+    const fields = inputFields as Record<string, unknown>;
+
+    const normalizedInputFields: Partial<InputFields> = taskType === 'CHECK'
+      ? { ...inputFields, label: typeof fields.label === 'string' && fields.label.trim() ? fields.label.trim() : 'Done' }
+      : taskType === 'COUNTER'
+        ? {
+            ...inputFields,
+            target: typeof fields.target === 'number' && fields.target > 0 ? fields.target : 10,
+            step: typeof fields.step === 'number' && fields.step > 0 ? fields.step : 1,
+            unit: typeof fields.unit === 'string' ? fields.unit.trim() : '',
+          }
+        : taskType === 'RATING'
+          ? {
+              ...inputFields,
+              scale: typeof fields.scale === 'number' && fields.scale >= 2 ? fields.scale : 5,
+              label: typeof fields.label === 'string' && fields.label.trim() ? fields.label.trim() : 'Rate this',
+            }
+          : taskType === 'TEXT'
+            ? {
+                ...inputFields,
+                prompt: typeof fields.prompt === 'string' ? fields.prompt.trim() : '',
+              }
+            : inputFields;
+
     const newTask: Omit<Task, 'id'> = {
       templateRef: null,
       isUnique: true,
@@ -124,15 +139,7 @@ export function AddTaskPanel({ eventId, onClose }: AddTaskPanelProps) {
       xpAward: buildXpAward(statGroup, 5),
       completionState: 'pending',
       completedAt: null,
-      resultFields: buildUniqueTaskResultFields(taskType, {
-        counterTarget,
-        counterUnit,
-        durationMinutes,
-        timerSeconds,
-        ratingScale,
-        ratingPrompt,
-        textPrompt,
-      }),
+      resultFields: normalizedInputFields,
       attachmentRef: null,
       resourceRef: null,
       location: null,
@@ -270,52 +277,11 @@ export function AddTaskPanel({ eventId, onClose }: AddTaskPanelProps) {
               </select>
             </div>
 
-            {taskType === 'COUNTER' && (
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">Target number</label>
-                  <input type="number" min={1} value={counterTarget} onChange={(event) => setCounterTarget(Number(event.target.value) || 1)} className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100" />
-                </div>
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">Unit text</label>
-                  <input type="text" value={counterUnit} onChange={(event) => setCounterUnit(event.target.value)} className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100" />
-                </div>
-              </div>
-            )}
-
-            {taskType === 'DURATION' && (
-              <div>
-                <label className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">Minutes</label>
-                <input type="number" min={1} value={durationMinutes} onChange={(event) => setDurationMinutes(Number(event.target.value) || 1)} className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100" />
-              </div>
-            )}
-
-            {taskType === 'TIMER' && (
-              <div>
-                <label className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">Seconds</label>
-                <input type="number" min={1} value={timerSeconds} onChange={(event) => setTimerSeconds(Number(event.target.value) || 1)} className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100" />
-              </div>
-            )}
-
-            {taskType === 'RATING' && (
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">Out of</label>
-                  <input type="number" min={2} value={ratingScale} onChange={(event) => setRatingScale(Number(event.target.value) || 2)} className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100" />
-                </div>
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">Prompt text</label>
-                  <input type="text" value={ratingPrompt} onChange={(event) => setRatingPrompt(event.target.value)} className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100" />
-                </div>
-              </div>
-            )}
-
-            {taskType === 'TEXT' && (
-              <div>
-                <label className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">Prompt text</label>
-                <input type="text" value={textPrompt} onChange={(event) => setTextPrompt(event.target.value)} className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100" />
-              </div>
-            )}
+            <TaskTypeConfigEditor
+              taskType={taskType}
+              inputFields={inputFields}
+              onChange={(updated) => setInputFields((fields) => ({ ...fields, ...updated }))}
+            />
 
             {error && <p className="text-sm text-red-500">{error}</p>}
 
