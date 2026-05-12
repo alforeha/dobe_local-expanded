@@ -15,6 +15,7 @@ interface TaskPoolEditorProps {
   activeCursor: number;
   onChange: (pools: TaskSet[], cursor: number) => void;
   readOnly?: boolean;
+  singlePool?: boolean;
 }
 
 function reorderList<T>(list: T[], from: number, to: number): T[] {
@@ -43,7 +44,7 @@ function buildDisplayTask(templateRef: string): Task {
   };
 }
 
-export function TaskPoolEditor({ pools, activeCursor, onChange, readOnly = false }: TaskPoolEditorProps) {
+export function TaskPoolEditor({ pools, activeCursor, onChange, readOnly = false, singlePool = false }: TaskPoolEditorProps) {
   const taskTemplates = useScheduleStore((state) => state.taskTemplates);
   const resources = useResourceStore((state) => state.resources);
   const [draggedId, setDraggedId] = useState<string | null>(null);
@@ -94,50 +95,54 @@ export function TaskPoolEditor({ pools, activeCursor, onChange, readOnly = false
 
   return (
     <div className="flex h-full min-h-0 flex-col rounded-xl border border-gray-200 bg-gray-50/60 p-3 dark:border-gray-700 dark:bg-gray-900/20">
-      <div className="mb-3 flex flex-wrap items-center gap-2">
-        {safePools.map((pool, index) => (
-          <div key={pool.id} className="inline-flex items-center gap-1">
-            <button
-              type="button"
-              onClick={() => onChange(safePools, index)}
-              className={`rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${
-                index === safeCursor
-                  ? 'bg-purple-600 text-white'
-                  : 'bg-white text-gray-600 hover:bg-gray-100 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700'
-              }`}
-            >
-              Pool {index + 1}
-            </button>
-            {!readOnly && safePools.length >= 2 ? (
+      {!singlePool ? (
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          {safePools.map((pool, index) => (
+            <div key={pool.id} className="inline-flex items-center gap-1">
               <button
                 type="button"
-                onClick={() => handleRemovePool(pool.id)}
-                className="rounded-full px-2 py-1 text-sm text-gray-400 transition-colors hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-900/20"
-                aria-label={`Remove pool ${index + 1}`}
+                onClick={() => onChange(safePools, index)}
+                className={`rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${
+                  index === safeCursor
+                    ? 'bg-purple-600 text-white'
+                    : 'bg-white text-gray-600 hover:bg-gray-100 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700'
+                }`}
               >
-                ×
+                Pool {index + 1}
               </button>
-            ) : null}
-          </div>
-        ))}
+              {!readOnly && safePools.length >= 2 ? (
+                <button
+                  type="button"
+                  onClick={() => handleRemovePool(pool.id)}
+                  className="rounded-full px-2 py-1 text-sm text-gray-400 transition-colors hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-900/20"
+                  aria-label={`Remove pool ${index + 1}`}
+                >
+                  ×
+                </button>
+              ) : null}
+            </div>
+          ))}
 
-        {!readOnly ? (
-          <button
-            type="button"
-            onClick={handleAddPool}
-            className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-dashed border-gray-300 bg-white text-lg text-gray-500 transition-colors hover:border-purple-400 hover:text-purple-600 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:border-purple-500 dark:hover:text-purple-300"
-            aria-label="Add pool"
-          >
-            +
-          </button>
-        ) : null}
-      </div>
+          {!readOnly ? (
+            <button
+              type="button"
+              onClick={handleAddPool}
+              className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-dashed border-gray-300 bg-white text-lg text-gray-500 transition-colors hover:border-purple-400 hover:text-purple-600 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:border-purple-500 dark:hover:text-purple-300"
+              aria-label="Add pool"
+            >
+              +
+            </button>
+          ) : null}
+        </div>
+      ) : null}
 
       <div className="mb-3 flex items-center justify-between gap-3">
-        <div>
-          <p className="text-xs font-medium uppercase tracking-[0.12em] text-gray-500 dark:text-gray-400">Active Pool</p>
-          <p className="text-sm text-gray-600 dark:text-gray-300">Pool {safeCursor + 1}</p>
-        </div>
+        {!singlePool ? (
+          <div>
+            <p className="text-xs font-medium uppercase tracking-[0.12em] text-gray-500 dark:text-gray-400">Active Pool</p>
+            <p className="text-sm text-gray-600 dark:text-gray-300">Pool {safeCursor + 1}</p>
+          </div>
+        ) : <div />}
         {!readOnly ? (
           <button
             type="button"

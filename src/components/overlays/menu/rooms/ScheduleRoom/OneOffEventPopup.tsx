@@ -389,6 +389,9 @@ export function OneOffEventPopup({ editEvent, onClose }: OneOffEventPopupProps) 
   const startsAt = `${startDate}T${startTime}:00`;
   const endsAt = `${endDate}T${endTime}:00`;
   const endsAfterStart = new Date(endsAt).getTime() > new Date(startsAt).getTime();
+  const singlePool = pools[taskPoolCursor] ?? pools[0] ?? { id: crypto.randomUUID(), entries: [] };
+  const savedPools = [singlePool];
+  const savedTaskPoolCursor = 0;
 
   function handleSave() {
     if (!name.trim()) {
@@ -431,8 +434,8 @@ export function OneOffEventPopup({ editEvent, onClose }: OneOffEventPopupProps) 
         conflictMode,
         startTime,
         endTime,
-        pools,
-        taskPoolCursor,
+        pools: savedPools,
+        taskPoolCursor: savedTaskPoolCursor,
         location,
         coAttendees,
       };
@@ -466,8 +469,8 @@ export function OneOffEventPopup({ editEvent, onClose }: OneOffEventPopupProps) 
         dieDate: endDate,
         recurrenceInterval,
         activeState: 'active',
-        pools,
-        taskPoolCursor,
+        pools: savedPools,
+        taskPoolCursor: savedTaskPoolCursor,
         taskList: [],
         conflictMode,
         startTime,
@@ -652,6 +655,7 @@ export function OneOffEventPopup({ editEvent, onClose }: OneOffEventPopupProps) 
                       setPools(nextPools);
                       setTaskPoolCursor(nextCursor);
                     }}
+                    singlePool
                   />
                 </Field>
               </div>
