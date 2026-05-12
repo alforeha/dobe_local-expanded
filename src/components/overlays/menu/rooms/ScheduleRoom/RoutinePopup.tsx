@@ -401,12 +401,18 @@ export function RoutinePopup({ editRoutine, prefill, onClose, isPrebuilt = false
   const addRoutineRef = useUserStore((s) => s.addRoutineRef);
   const removeRoutineRef = useUserStore((s) => s.removeRoutineRef);
   const libraryTemplates = useMemo(() => getLibraryTemplatePool(), []);
+  const tabOptions: Array<{ key: 'details' | 'tasks' | 'additional'; label: string }> = [
+    { key: 'details', label: 'Details' },
+    { key: 'tasks', label: 'Tasks' },
+    { key: 'additional', label: 'Additional' },
+  ];
 
   const isEditMode = editRoutine !== null;
   void isPrebuilt;
   const initialPools = ensureTaskPools(isEditMode ? editRoutine.pools : prefill?.pools);
 
   const [name, setName] = useState(isEditMode ? editRoutine.name : (prefill?.name ?? ''));
+  const [description, setDescription] = useState(isEditMode ? editRoutine.description : '');
   const [iconKey, setIconKey] = useState(isEditMode ? editRoutine.icon : (prefill?.icon ?? 'routine'));
   const [color, setColor] = useState(isEditMode ? editRoutine.color : (prefill?.color ?? '#6366f1'));
   const [pools, setPools] = useState<TaskSet[]>(initialPools);
@@ -439,6 +445,7 @@ export function RoutinePopup({ editRoutine, prefill, onClose, isPrebuilt = false
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [error, setError] = useState('');
   const [seedDate, setSeedDate] = useState(isEditMode ? editRoutine.seedDate : todayISO());
+  const [activeTab, setActiveTab] = useState<'details' | 'tasks' | 'additional'>('details');
 
   const isOvernight = prefill?.isOvernight === true || (startTime !== '' && endTime !== '' && endTime < startTime);
   const inputCls =
@@ -484,6 +491,7 @@ export function RoutinePopup({ editRoutine, prefill, onClose, isPrebuilt = false
       const updated: PlannedEvent = {
         ...editRoutine,
         name: name.trim(),
+        description: description.trim(),
         icon: iconKey,
         color,
         seedDate,
@@ -504,7 +512,7 @@ export function RoutinePopup({ editRoutine, prefill, onClose, isPrebuilt = false
       const newRoutine: PlannedEvent = {
         id,
         name: name.trim(),
-        description: '',
+        description: description.trim(),
         icon: iconKey,
         color,
         seedDate,
@@ -558,8 +566,8 @@ export function RoutinePopup({ editRoutine, prefill, onClose, isPrebuilt = false
 
   return (
     <PopupShell title={isEditMode ? 'Edit Routine' : 'Add Routine'} onClose={onClose} size="large">
-      <div className="flex h-full min-h-0 flex-col gap-4">
-        <div className="grid grid-cols-[56px_minmax(0,1fr)_56px] gap-3 sm:gap-4">
+      <div className="flex min-h-0 flex-col gap-4" style={{ height: 'calc(100vh - 120px)' }}>
+        <div className="shrink-0 grid grid-cols-[56px_minmax(0,1fr)_56px] gap-3 sm:gap-4">
           <Field label="Icon">
             <IconPicker value={iconKey} onChange={setIconKey} align="left" />
           </Field>
@@ -582,164 +590,206 @@ export function RoutinePopup({ editRoutine, prefill, onClose, isPrebuilt = false
           </Field>
         </div>
 
-        <div className="grid grid-cols-2 gap-3 sm:gap-4">
-          <div className="min-w-0 space-y-3">
-            <label className="text-xs font-medium uppercase tracking-[0.12em] text-gray-500 dark:text-gray-400">Start</label>
-            <div className="flex flex-col gap-1">
-              <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Date</label>
-              <input type="date" value={seedDate} onChange={(event) => setSeedDate(event.target.value)} className={inputCls} />
-              <p className="text-xs text-gray-400 italic">When this routine begins.</p>
-            </div>
-            <div className="flex flex-col gap-1">
-              <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Time</label>
-              <input type="time" value={startTime} onChange={(event) => setStartTime(event.target.value)} className={inputCls} />
-            </div>
-          </div>
-
-          <div className="min-w-0 space-y-3">
-            <label className="text-xs font-medium uppercase tracking-[0.12em] text-gray-500 dark:text-gray-400">End</label>
-            <div className="flex flex-col gap-1">
-              <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Date</label>
-              <input type="date" value={dieDate} onChange={(event) => setDieDate(event.target.value)} className={inputCls} />
-              <p className="text-xs text-gray-400 italic">Leave empty to keep this routine forever.</p>
-            </div>
-            <div className="flex flex-col gap-1">
-              <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Time</label>
-              <input type="time" value={endTime} onChange={(event) => setEndTime(event.target.value)} className={inputCls} />
-              {isOvernight && <p className="text-xs text-gray-400 italic">Overnight routine: ends the following day.</p>}
-            </div>
-          </div>
-        </div>
-
-        <div className="rounded-xl border border-gray-200 bg-gray-50/60 p-4 dark:border-gray-700 dark:bg-gray-900/20">
-          <div className="mb-2 text-sm font-medium text-gray-500 dark:text-gray-300">Repeats</div>
-          <div className="mb-3 flex flex-wrap items-end gap-3 pb-1">
-            <div className="flex shrink-0 flex-col gap-1">
-              <label className="text-sm font-medium text-gray-500 dark:text-gray-300">Frequency</label>
-              <select
-                value={frequency}
-                onChange={(event) => setFrequency(event.target.value as RecurrenceFrequency)}
-                className={`${inputCls} w-[8.5rem] shrink-0`}
+        <div className="inline-flex w-full shrink-0 rounded-xl border border-gray-200 bg-gray-50 p-1 dark:border-gray-700 dark:bg-gray-900/30">
+          {tabOptions.map((tab) => {
+            const isActive = activeTab === tab.key;
+            return (
+              <button
+                key={tab.key}
+                type="button"
+                onClick={() => setActiveTab(tab.key)}
+                className={`flex-1 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                  isActive
+                    ? 'bg-white text-gray-900 shadow-sm dark:bg-gray-800 dark:text-gray-100'
+                    : 'text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200'
+                }`}
               >
-                <option value="daily">Daily</option>
-                <option value="weekly">Weekly</option>
-                <option value="monthly">Monthly</option>
-                <option value="custom">Custom</option>
-              </select>
-            </div>
-            <div className="flex shrink-0 flex-col gap-1">
-              <label className="text-sm font-medium text-gray-500 dark:text-gray-300">Every</label>
-              <div className="flex items-center gap-2">
-                <input
-                  type="number"
-                  min={1}
-                  step={1}
-                  value={interval}
-                  onChange={(event) => setInterval(event.target.value === '' ? '' : Number(event.target.value))}
-                  className={`${inputNoWidthCls} w-14 shrink-0`}
-                  title={getIntervalHint(frequency)}
-                />
-                <span className="shrink-0 text-sm text-gray-500 dark:text-gray-300">{getIntervalUnitLabel(frequency)}</span>
-              </div>
-            </div>
-          </div>
+                {tab.label}
+              </button>
+            );
+          })}
+        </div>
 
-          <div className="grid grid-cols-1 gap-4">
-              {frequency === 'monthly' && (
-                <div className="grid grid-cols-1 gap-3 sm:gap-4 md:grid-cols-[110px_minmax(0,1fr)]">
-                  {frequency === 'monthly' && (
-                    <Field label="Day" hint="31 uses the last day in shorter months.">
-                      <input
-                        type="number"
-                        min={1}
-                        max={31}
-                        step={1}
-                        value={monthlyDay}
-                        onChange={(event) => setMonthlyDay(event.target.value === '' ? '' : Number(event.target.value))}
-                        className={inputCls}
-                      />
-                    </Field>
-                  )}
-                </div>
-              )}
-
-              {frequency === 'weekly' && (
-                <div className="grid grid-cols-1 gap-3">
-                  <Field label="Days">
-                    <div className="flex flex-wrap gap-2">
-                      {WEEKDAYS.map(({ key, label }) => (
-                        <button
-                          key={key}
-                          type="button"
-                          onClick={() => toggleDay(key)}
-                          className={`h-9 w-9 rounded-full border text-xs font-semibold transition-colors ${
-                            days.includes(key)
-                              ? 'border-purple-500 bg-purple-500 text-white'
-                              : 'border-gray-300 bg-white text-gray-600 hover:border-purple-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300'
-                          }`}
-                        >
-                          {label}
-                        </button>
-                      ))}
+        <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+          <div className="space-y-4">
+            {activeTab === 'details' && (
+              <>
+                <div className="grid grid-cols-2 gap-3 sm:gap-4">
+                  <div className="min-w-0 space-y-3">
+                    <label className="text-xs font-medium uppercase tracking-[0.12em] text-gray-500 dark:text-gray-400">Start</label>
+                    <div className="flex flex-col gap-1">
+                      <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Date</label>
+                      <input type="date" value={seedDate} onChange={(event) => setSeedDate(event.target.value)} className={inputCls} />
+                      <p className="text-xs text-gray-400 italic">When this routine begins.</p>
                     </div>
-                  </Field>
-                </div>
-              )}
+                    <div className="flex flex-col gap-1">
+                      <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Time</label>
+                      <input type="time" value={startTime} onChange={(event) => setStartTime(event.target.value)} className={inputCls} />
+                    </div>
+                  </div>
 
-              {frequency === 'custom' && (
-                <div className="grid grid-cols-1 gap-3">
-                  <Field label="Expression">
-                    <input
-                      type="text"
-                      value={customCondition}
-                      onChange={(event) => setCustomCondition(event.target.value)}
-                      placeholder="last-monday-of-month"
+                  <div className="min-w-0 space-y-3">
+                    <label className="text-xs font-medium uppercase tracking-[0.12em] text-gray-500 dark:text-gray-400">End</label>
+                    <div className="flex flex-col gap-1">
+                      <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Date</label>
+                      <input type="date" value={dieDate} onChange={(event) => setDieDate(event.target.value)} className={inputCls} />
+                      <p className="text-xs text-gray-400 italic">Leave empty to keep this routine forever.</p>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Time</label>
+                      <input type="time" value={endTime} onChange={(event) => setEndTime(event.target.value)} className={inputCls} />
+                      {isOvernight && <p className="text-xs text-gray-400 italic">Overnight routine: ends the following day.</p>}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-gray-200 bg-gray-50/60 p-4 dark:border-gray-700 dark:bg-gray-900/20">
+                  <div className="mb-2 text-sm font-medium text-gray-500 dark:text-gray-300">Repeats</div>
+                  <div className="mb-3 flex flex-wrap items-end gap-3 pb-1">
+                    <div className="flex shrink-0 flex-col gap-1">
+                      <label className="text-sm font-medium text-gray-500 dark:text-gray-300">Frequency</label>
+                      <select
+                        value={frequency}
+                        onChange={(event) => setFrequency(event.target.value as RecurrenceFrequency)}
+                        className={`${inputCls} w-[8.5rem] shrink-0`}
+                      >
+                        <option value="daily">Daily</option>
+                        <option value="weekly">Weekly</option>
+                        <option value="monthly">Monthly</option>
+                        <option value="custom">Custom</option>
+                      </select>
+                    </div>
+                    <div className="flex shrink-0 flex-col gap-1">
+                      <label className="text-sm font-medium text-gray-500 dark:text-gray-300">Every</label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="number"
+                          min={1}
+                          step={1}
+                          value={interval}
+                          onChange={(event) => setInterval(event.target.value === '' ? '' : Number(event.target.value))}
+                          className={`${inputNoWidthCls} w-14 shrink-0`}
+                          title={getIntervalHint(frequency)}
+                        />
+                        <span className="shrink-0 text-sm text-gray-500 dark:text-gray-300">{getIntervalUnitLabel(frequency)}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-4">
+                    {frequency === 'monthly' && (
+                      <div className="grid grid-cols-1 gap-3 sm:gap-4 md:grid-cols-[110px_minmax(0,1fr)]">
+                        <Field label="Day" hint="31 uses the last day in shorter months.">
+                          <input
+                            type="number"
+                            min={1}
+                            max={31}
+                            step={1}
+                            value={monthlyDay}
+                            onChange={(event) => setMonthlyDay(event.target.value === '' ? '' : Number(event.target.value))}
+                            className={inputCls}
+                          />
+                        </Field>
+                      </div>
+                    )}
+
+                    {frequency === 'weekly' && (
+                      <div className="grid grid-cols-1 gap-3">
+                        <Field label="Days">
+                          <div className="flex flex-wrap gap-2">
+                            {WEEKDAYS.map(({ key, label }) => (
+                              <button
+                                key={key}
+                                type="button"
+                                onClick={() => toggleDay(key)}
+                                className={`h-9 w-9 rounded-full border text-xs font-semibold transition-colors ${
+                                  days.includes(key)
+                                    ? 'border-purple-500 bg-purple-500 text-white'
+                                    : 'border-gray-300 bg-white text-gray-600 hover:border-purple-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300'
+                                }`}
+                              >
+                                {label}
+                              </button>
+                            ))}
+                          </div>
+                        </Field>
+                      </div>
+                    )}
+
+                    {frequency === 'custom' && (
+                      <div className="grid grid-cols-1 gap-3">
+                        <Field label="Expression">
+                          <input
+                            type="text"
+                            value={customCondition}
+                            onChange={(event) => setCustomCondition(event.target.value)}
+                            placeholder="last-monday-of-month"
+                            className={inputCls}
+                          />
+                        </Field>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </>
+            )}
+
+            {activeTab === 'tasks' && (
+              <div className="min-h-0 overflow-hidden">
+                <Field
+                  label="Task pool"
+                  hint="Filter by stat, switch to selected-only to drag the order, and use the list below as the rotation pool."
+                  className="h-full min-h-0"
+                >
+                  <TaskPoolEditor
+                    pools={pools}
+                    activeCursor={taskPoolCursor}
+                    onChange={(nextPools, nextCursor) => {
+                      setPools(nextPools);
+                      setTaskPoolCursor(nextCursor);
+                    }}
+                  />
+                </Field>
+              </div>
+            )}
+
+            {activeTab === 'additional' && (
+              <>
+                <Field label="Note">
+                  <textarea
+                    value={description}
+                    onChange={(event) => setDescription(event.target.value)}
+                    rows={3}
+                    className={`${inputCls} resize-none`}
+                    placeholder="Optional notes"
+                  />
+                </Field>
+
+                <ParticipantsEditor coAttendees={coAttendees} setCoAttendees={setCoAttendees} />
+
+                <LocationEditor location={location} setLocation={setLocation} />
+
+                <div>
+                  <Field label="Conflict mode">
+                    <select
+                      value={conflictMode}
+                      onChange={(event) => setConflictMode(event.target.value as ConflictMode)}
                       className={inputCls}
-                    />
+                    >
+                      {CONFLICT_MODES.map(({ value, label }) => (
+                        <option key={value} value={value}>{label}</option>
+                      ))}
+                    </select>
                   </Field>
                 </div>
-              )}
+              </>
+            )}
           </div>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-hidden">
-          <Field
-            label="Task pool"
-            hint="Filter by stat, switch to selected-only to drag the order, and use the list below as the rotation pool."
-            className="h-full min-h-0"
-          >
-            <TaskPoolEditor
-              pools={pools}
-              activeCursor={taskPoolCursor}
-              onChange={(nextPools, nextCursor) => {
-                setPools(nextPools);
-                setTaskPoolCursor(nextCursor);
-              }}
-            />
-          </Field>
-        </div>
+        {error && <p className="shrink-0 text-sm text-red-500">{error}</p>}
 
-        <ParticipantsEditor coAttendees={coAttendees} setCoAttendees={setCoAttendees} />
-
-        <LocationEditor location={location} setLocation={setLocation} />
-
-        {error && <p className="text-sm text-red-500">{error}</p>}
-
-        <div>
-          <Field label="Conflict mode">
-            <select
-              value={conflictMode}
-              onChange={(event) => setConflictMode(event.target.value as ConflictMode)}
-              className={inputCls}
-            >
-              {CONFLICT_MODES.map(({ value, label }) => (
-                <option key={value} value={value}>{label}</option>
-              ))}
-            </select>
-          </Field>
-        </div>
-
-        <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="shrink-0 flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-2">
             {isEditMode && (
               <button

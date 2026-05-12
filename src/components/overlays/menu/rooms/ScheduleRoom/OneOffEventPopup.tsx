@@ -356,6 +356,11 @@ export function OneOffEventPopup({ editEvent, onClose }: OneOffEventPopupProps) 
   const removePlannedEvent = useScheduleStore((s) => s.removePlannedEvent);
   const archiveEvent = useScheduleStore((s) => s.archiveEvent);
   const libraryTemplates = useMemo(() => getLibraryTemplatePool(), []);
+  const tabOptions: Array<{ key: 'details' | 'tasks' | 'additional'; label: string }> = [
+    { key: 'details', label: 'Details' },
+    { key: 'tasks', label: 'Tasks' },
+    { key: 'additional', label: 'Additional' },
+  ];
 
   const isEditMode = editEvent !== null;
   const initialStartDate = isEditMode ? editEvent.seedDate : todayISO();
@@ -377,6 +382,7 @@ export function OneOffEventPopup({ editEvent, onClose }: OneOffEventPopupProps) 
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [error, setError] = useState('');
   const [dateError, setDateError] = useState('');
+  const [activeTab, setActiveTab] = useState<'details' | 'tasks' | 'additional'>('details');
 
   const inputCls =
     'w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-800 focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200';
@@ -509,8 +515,8 @@ export function OneOffEventPopup({ editEvent, onClose }: OneOffEventPopupProps) 
 
   return (
     <PopupShell title={isEditMode ? 'Edit Event' : 'Add One-off Event'} onClose={onClose} size="large">
-      <div className="flex h-full min-h-0 flex-col gap-4">
-        <div className="grid grid-cols-[56px_minmax(0,1fr)_56px] gap-3 sm:gap-4">
+      <div className="flex min-h-0 flex-col gap-4" style={{ height: 'calc(100vh - 120px)' }}>
+        <div className="shrink-0 grid grid-cols-[56px_minmax(0,1fr)_56px] gap-3 sm:gap-4">
           <Field label="Icon">
             <IconPicker value={iconKey} onChange={setIconKey} align="left" />
           </Field>
@@ -533,127 +539,159 @@ export function OneOffEventPopup({ editEvent, onClose }: OneOffEventPopupProps) 
           </Field>
         </div>
 
-        <div className="grid grid-cols-2 gap-3 sm:gap-4">
-          <div className="min-w-0 space-y-3">
-            <label className="text-xs font-medium uppercase tracking-[0.12em] text-gray-500 dark:text-gray-400">Start</label>
-            <div className="flex flex-col gap-1">
-              <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Date</label>
-              <input
-                type="date"
-                value={startDate}
-                onChange={(event) => {
-                  const nextDate = event.target.value;
-                  setStartDate(nextDate);
-                  if (endDate < nextDate) {
-                    setEndDate(nextDate);
-                  }
-                  setError('');
-                  setDateError('');
-                }}
-                className={inputCls}
-              />
-            </div>
-            <div className="flex flex-col gap-1">
-              <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Time</label>
-              <input
-                type="time"
-                value={startTime}
-                onChange={(event) => {
-                  const nextTime = event.target.value;
-                  setStartTime(nextTime);
-                  if (!isEditMode && startDate === endDate) {
-                    setEndTime(addHour(nextTime));
-                  }
-                  setDateError('');
-                }}
-                className={inputCls}
-              />
-            </div>
+        <div className="inline-flex w-full shrink-0 rounded-xl border border-gray-200 bg-gray-50 p-1 dark:border-gray-700 dark:bg-gray-900/30">
+          {tabOptions.map((tab) => {
+            const isActive = activeTab === tab.key;
+            return (
+              <button
+                key={tab.key}
+                type="button"
+                onClick={() => setActiveTab(tab.key)}
+                className={`flex-1 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                  isActive
+                    ? 'bg-white text-gray-900 shadow-sm dark:bg-gray-800 dark:text-gray-100'
+                    : 'text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200'
+                }`}
+              >
+                {tab.label}
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+          <div className="space-y-4">
+            {activeTab === 'details' && (
+              <>
+                <div className="grid grid-cols-2 gap-3 sm:gap-4">
+                  <div className="min-w-0 space-y-3">
+                    <label className="text-xs font-medium uppercase tracking-[0.12em] text-gray-500 dark:text-gray-400">Start</label>
+                    <div className="flex flex-col gap-1">
+                      <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Date</label>
+                      <input
+                        type="date"
+                        value={startDate}
+                        onChange={(event) => {
+                          const nextDate = event.target.value;
+                          setStartDate(nextDate);
+                          if (endDate < nextDate) {
+                            setEndDate(nextDate);
+                          }
+                          setError('');
+                          setDateError('');
+                        }}
+                        className={inputCls}
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Time</label>
+                      <input
+                        type="time"
+                        value={startTime}
+                        onChange={(event) => {
+                          const nextTime = event.target.value;
+                          setStartTime(nextTime);
+                          if (!isEditMode && startDate === endDate) {
+                            setEndTime(addHour(nextTime));
+                          }
+                          setDateError('');
+                        }}
+                        className={inputCls}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="min-w-0 space-y-3">
+                    <label className="text-xs font-medium uppercase tracking-[0.12em] text-gray-500 dark:text-gray-400">End</label>
+                    <div className="flex flex-col gap-1">
+                      <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Date</label>
+                      <input
+                        type="date"
+                        value={endDate}
+                        min={startDate}
+                        onChange={(event) => {
+                          setEndDate(event.target.value);
+                          setError('');
+                          setDateError('');
+                        }}
+                        className={inputCls}
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Time</label>
+                      <input
+                        type="time"
+                        value={endTime}
+                        onChange={(event) => {
+                          setEndTime(event.target.value);
+                          setError('');
+                          setDateError('');
+                        }}
+                        className={inputCls}
+                      />
+                      {!endsAfterStart && <p className="text-xs text-gray-400 italic">End date/time must be after the start.</p>}
+                    </div>
+                  </div>
+                </div>
+
+                {dateError && <p className="text-sm text-red-500">{dateError}</p>}
+              </>
+            )}
+
+            {activeTab === 'tasks' && (
+              <div className="min-h-0 overflow-hidden">
+                <Field
+                  label="Task pool"
+                  hint="Filter by stat, toggle selected-only, and drag rows to control task order."
+                  className="h-full min-h-0"
+                >
+                  <TaskPoolEditor
+                    pools={pools}
+                    activeCursor={taskPoolCursor}
+                    onChange={(nextPools, nextCursor) => {
+                      setPools(nextPools);
+                      setTaskPoolCursor(nextCursor);
+                    }}
+                  />
+                </Field>
+              </div>
+            )}
+
+            {activeTab === 'additional' && (
+              <>
+                <Field label="Note">
+                  <textarea
+                    value={description}
+                    onChange={(event) => setDescription(event.target.value)}
+                    rows={2}
+                    className={`${inputCls} resize-none`}
+                    placeholder="Optional notes"
+                  />
+                </Field>
+
+                <ParticipantsEditor coAttendees={coAttendees} setCoAttendees={setCoAttendees} />
+
+                <LocationEditor location={location} setLocation={setLocation} />
+
+                <Field label="Conflict mode">
+                  <select
+                    value={conflictMode}
+                    onChange={(event) => setConflictMode(event.target.value as ConflictMode)}
+                    className={inputCls}
+                  >
+                    {CONFLICT_MODES.map(({ value, label }) => (
+                      <option key={value} value={value}>{label}</option>
+                    ))}
+                  </select>
+                </Field>
+              </>
+            )}
           </div>
-
-          <div className="min-w-0 space-y-3">
-            <label className="text-xs font-medium uppercase tracking-[0.12em] text-gray-500 dark:text-gray-400">End</label>
-            <div className="flex flex-col gap-1">
-              <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Date</label>
-              <input
-                type="date"
-                value={endDate}
-                min={startDate}
-                onChange={(event) => {
-                  setEndDate(event.target.value);
-                  setError('');
-                  setDateError('');
-                }}
-                className={inputCls}
-              />
-            </div>
-            <div className="flex flex-col gap-1">
-              <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Time</label>
-              <input
-                type="time"
-                value={endTime}
-                onChange={(event) => {
-                  setEndTime(event.target.value);
-                  setError('');
-                  setDateError('');
-                }}
-                className={inputCls}
-              />
-              {!endsAfterStart && <p className="text-xs text-gray-400 italic">End date/time must be after the start.</p>}
-            </div>
-          </div>
         </div>
 
-        {dateError && <p className="text-sm text-red-500">{dateError}</p>}
+        {error && <p className="shrink-0 text-sm text-red-500">{error}</p>}
 
-        <div className="min-h-0 flex-1 overflow-hidden">
-          <Field
-            label="Task pool"
-            hint="Filter by stat, toggle selected-only, and drag rows to control task order."
-            className="h-full min-h-0"
-          >
-            <TaskPoolEditor
-              pools={pools}
-              activeCursor={taskPoolCursor}
-              onChange={(nextPools, nextCursor) => {
-                setPools(nextPools);
-                setTaskPoolCursor(nextCursor);
-              }}
-            />
-          </Field>
-        </div>
-
-        <ParticipantsEditor coAttendees={coAttendees} setCoAttendees={setCoAttendees} />
-
-        <LocationEditor location={location} setLocation={setLocation} />
-
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
-          <Field label="Conflict mode">
-            <select
-              value={conflictMode}
-              onChange={(event) => setConflictMode(event.target.value as ConflictMode)}
-              className={inputCls}
-            >
-              {CONFLICT_MODES.map(({ value, label }) => (
-                <option key={value} value={value}>{label}</option>
-              ))}
-            </select>
-          </Field>
-
-          <Field label="Description">
-            <textarea
-              value={description}
-              onChange={(event) => setDescription(event.target.value)}
-              rows={2}
-              className={`${inputCls} resize-none`}
-              placeholder="Optional notes"
-            />
-          </Field>
-        </div>
-
-        {error && <p className="text-sm text-red-500">{error}</p>}
-
-        <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="shrink-0 flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-2">
             {isEditMode && (
               <button

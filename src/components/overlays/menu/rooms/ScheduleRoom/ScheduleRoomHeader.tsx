@@ -17,24 +17,26 @@ interface ScheduleRoomHeaderProps {
 export function ScheduleRoomHeader({ activeTab, onTabChange }: ScheduleRoomHeaderProps) {
   return (
     <div className="px-4 pt-4 pb-2 border-b border-gray-100 dark:border-gray-700">
-      <h2 className="text-base font-semibold text-gray-800">Schedule</h2>
-      <div className="flex gap-2 mt-2">
-        {SCHEDULE_TABS.map(({ tab, label, iconKey }) => (
-          <button
-            key={tab}
-            type="button"
-            onClick={() => onTabChange(tab)}
-            aria-label={label}
-            title={label}
-            className={`flex h-9 w-10 items-center justify-center rounded-full transition-colors ${
-              activeTab === tab
-                ? 'bg-blue-500 text-white'
-                : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700'
-            }`}
-          >
-            <IconDisplay iconKey={iconKey} size={18} className="leading-none" />
-          </button>
-        ))}
+      <div className="flex items-center justify-between py-2">
+        <h2 className="flex-1 text-lg font-semibold text-gray-800 dark:text-gray-100">Schedule</h2>
+        <div className="flex items-center gap-2">
+          {SCHEDULE_TABS.map(({ tab, label, iconKey }) => (
+            <button
+              key={tab}
+              type="button"
+              onClick={() => onTabChange(tab)}
+              aria-label={label}
+              title={label}
+              className={`flex h-7 w-8 items-center justify-center rounded-full transition-colors ${
+                activeTab === tab
+                  ? 'bg-blue-500 text-white'
+                  : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700'
+              }`}
+            >
+              <IconDisplay iconKey={iconKey} size={18} className="leading-none" />
+            </button>
+          ))}
+        </div>
       </div>
     </div>
   );

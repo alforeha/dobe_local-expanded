@@ -136,6 +136,17 @@ export function PlannedEventBlock({ event, onEdit, onDelete, expandedId, setExpa
         </button>
 
         {expanded && (
+          <div className="relative w-full">
+            <div className="w-full border-t border-gray-200 dark:border-gray-700" />
+            <div className="pointer-events-none absolute inset-x-0 top-0 flex -translate-y-1/2 justify-center">
+              <span className="rounded-full bg-white px-2 py-0.5 text-[10px] text-gray-400 dark:bg-gray-800 dark:text-gray-500">
+                ▼
+              </span>
+            </div>
+          </div>
+        )}
+
+        {expanded && (
           <div className={`border-t border-gray-100 dark:border-gray-700 ${soloExpanded ? 'flex min-h-0 flex-1 flex-col' : 'flex flex-col'}`}>
             <div className="px-4 py-3">
               <div className="inline-flex rounded-full bg-gray-100 p-1 dark:bg-gray-900/60">
