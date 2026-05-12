@@ -226,6 +226,7 @@ export function TaskTemplatePopup({
   readOnly = false,
 }: TaskTemplatePopupProps) {
   const setTaskTemplate = useScheduleStore((s) => s.setTaskTemplate);
+  const removeTaskTemplate = useScheduleStore((s) => s.removeTaskTemplate);
   const user = useUserStore((s) => s.user);
   const isEditMode = editKey !== null && editTemplate !== null;
 
@@ -259,6 +260,7 @@ export function TaskTemplatePopup({
       : defaultInputFields(taskType),
   );
   const [error, setError] = useState('');
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [expandedCircuitStepId, setExpandedCircuitStepId] = useState<string | null>(null);
   const availableConsumeTemplates = useMemo<InventoryItemTemplate[]>(() => (
     mergeInventoryItemTemplates(
@@ -948,6 +950,17 @@ export function TaskTemplatePopup({
     onClose();
   }
 
+  function handleDelete() {
+    if (!isEditMode || !editKey || readOnly) return;
+    if (!confirmingDelete) {
+      setConfirmingDelete(true);
+      return;
+    }
+
+    removeTaskTemplate(editKey);
+    onClose();
+  }
+
   const title = readOnly
     ? 'View Task Template'
     : isEditMode
@@ -1083,7 +1096,19 @@ export function TaskTemplatePopup({
 
         {error && <p className="mb-3 text-sm text-red-500">{error}</p>}
 
-        <div className="flex items-center justify-end gap-3 border-t border-gray-200 pt-4 dark:border-gray-700">
+        <div className="flex items-center justify-between gap-3 border-t border-gray-200 pt-4 dark:border-gray-700">
+          <div>
+            {isEditMode && editTemplate?.isCustom === true && !readOnly ? (
+              <button
+                type="button"
+                onClick={handleDelete}
+                className="text-xs text-red-500 hover:text-red-700"
+              >
+                {confirmingDelete ? 'Confirm delete?' : 'Delete'}
+              </button>
+            ) : null}
+          </div>
+          <div className="flex items-center gap-3">
           <button
             type="button"
             onClick={onClose}
@@ -1103,6 +1128,7 @@ export function TaskTemplatePopup({
           >
             Save
           </button>
+          </div>
         </div>
       </div>
     </PopupShell>
