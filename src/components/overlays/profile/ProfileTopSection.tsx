@@ -1,4 +1,3 @@
-import { useEffect, useRef, useState } from 'react';
 import { resolveIcon } from '../../../constants/iconMap';
 import { deriveLevelFromXP } from '../../../engine/awardPipeline';
 import { autoCompleteSystemTask } from '../../../engine/resourceEngine';
@@ -6,7 +5,6 @@ import { useGlows } from '../../../hooks/useOnboardingGlow';
 import { useUserStore } from '../../../stores/useUserStore';
 import type { StatGroupKey } from '../../../types/user';
 import { IconDisplay } from '../../shared/IconDisplay';
-import { StatIcon } from '../../shared/StatIcon';
 import { ONBOARDING_GLOW } from '../../../constants/onboardingKeys';
 import { ProfileXPBar } from './ProfileXPBar';
 import {
@@ -35,6 +33,7 @@ type ProfileRoom = 'stats' | 'preferences' | 'storage' | 'badges' | 'equipment' 
 
 interface ProfileTopSectionProps {
   onNav: (room: ProfileRoom) => void;
+  onClose: () => void;
 }
 
 const STAT_ORDER: StatGroupKey[] = ['health', 'strength', 'agility', 'defense', 'charisma', 'wisdom'];
@@ -47,7 +46,7 @@ const FLOATING_SLOT_CLASSES = {
   accessory: 'top-1/2 right-2 -translate-y-1/2',
 } as const;
 
-export function ProfileTopSection({ onNav }: ProfileTopSectionProps) {
+export function ProfileTopSection({ onNav, onClose }: ProfileTopSectionProps) {
   const user = useUserStore((state) => state.user);
   const stats = user?.progression.stats;
   const equippedGear = user?.progression.avatar.equippedGear ?? {};
@@ -66,23 +65,10 @@ export function ProfileTopSection({ onNav }: ProfileTopSectionProps) {
   const topStatValue = stats?.talents[topStat]?.statPoints ?? 0;
   const stake = getStake(level);
 
-  const avatarRef = useRef<HTMLButtonElement>(null);
-  const [avatarPx, setAvatarPx] = useState(0);
-
-  useEffect(() => {
-    const element = avatarRef.current;
-    if (!element) return;
-
-    const observer = new ResizeObserver(([entry]) => setAvatarPx(entry.contentRect.width));
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, []);
-
   const equippedDefinitions = GEAR_SLOT_ORDER.map((slot) => ({
     slot,
     gear: getGearDefinition(equippedGear[slot]),
   }));
-  const centerIconFontSize = avatarPx > 0 ? `${Math.round(avatarPx * 0.42)}px` : '3.25rem';
 
   const handleBadgeNav = () => {
     autoCompleteSystemTask('task-sys-open-badge-room');
@@ -95,98 +81,112 @@ export function ProfileTopSection({ onNav }: ProfileTopSectionProps) {
   };
 
   return (
-    <div className="flex flex-1 flex-col border-b border-gray-100 dark:border-gray-700">
-      <div className="relative isolate overflow-visible px-3 pt-3">
-        <div className="flex items-center gap-2 pr-24">
-          <button
-            type="button"
-            className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-white text-3xl shadow-md transition-transform hover:scale-105 dark:bg-gray-700"
-            onClick={() => onNav('preferences')}
-            aria-label="Preferences"
-          >
-            <IconDisplay iconKey={profileIcon} size={36} className="h-9 w-9 object-contain" alt="Preferences" />
-          </button>
+    <div className="relative flex flex-1 flex-col overflow-hidden border-b border-gray-100 dark:border-gray-700">
+      <div className="absolute inset-0 bg-gradient-to-br from-emerald-100 via-emerald-50 to-teal-100 dark:from-emerald-950 dark:via-gray-900 dark:to-teal-950" />
+      <div className="absolute inset-0 bg-black/10 dark:bg-black/30" />
 
-          <div className="w-44 shrink-0 rounded-2xl border border-gray-100 bg-white px-3 py-2.5 shadow-sm dark:border-gray-700 dark:bg-gray-800">
-            <p className="truncate text-sm font-bold leading-tight text-gray-800 dark:text-gray-100">{displayName}</p>
-            <div className="mt-1.5 flex items-center gap-2">
-              <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-indigo-600 text-xs font-bold text-white">
-                {level}
-              </div>
-              <span className="select-none text-gray-300 dark:text-gray-600">•</span>
-              <StatIcon stat={topStat} value={topStatValue} />
-            </div>
-          </div>
+      <div className="absolute inset-0 overflow-hidden">
+        <div className="absolute inset-0 flex items-center justify-center">
+          <span className="pointer-events-none select-none text-[12rem] leading-none opacity-20 sm:text-[15rem]">
+            {resolveIcon(stake.iconKey)}
+          </span>
         </div>
 
-        <button
-          type="button"
-          className="absolute right-3 top-4 z-30 flex h-20 w-20 items-center justify-center rounded-full bg-white text-3xl shadow-md transition-transform hover:scale-105 dark:bg-gray-700"
-          onClick={() => onNav('storage')}
-          aria-label="Storage"
-        >
-          {resolveIcon('lock')}
-        </button>
+        {equippedDefinitions.map(({ slot, gear }) => (
+          <div
+            key={slot}
+            className={`absolute z-10 flex h-12 w-12 flex-col items-center justify-center rounded-2xl border bg-white/85 shadow-sm backdrop-blur-sm dark:bg-gray-900/80 ${FLOATING_SLOT_CLASSES[slot]} ${
+              gear ? 'border-emerald-200' : 'border-dashed border-white/40 dark:border-gray-600'
+            }`}
+            aria-label={`${GEAR_SLOT_LABELS[slot]} slot`}
+            title={gear ? `${GEAR_SLOT_LABELS[slot]}: ${gear.name}` : `${GEAR_SLOT_LABELS[slot]} slot empty`}
+          >
+            {gear ? (
+              <span className="text-2xl leading-none">{getGearIcon(gear)}</span>
+            ) : (
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Empty</span>
+            )}
+          </div>
+        ))}
       </div>
 
-      <div className="relative flex flex-1 items-center justify-center px-3 pb-3 pt-2">
+      <div className="absolute right-3 top-3 z-20 flex flex-col gap-2">
         <button
-          ref={avatarRef}
           type="button"
-          className="relative flex h-full aspect-square flex-col items-center justify-center overflow-visible rounded-3xl bg-emerald-50 px-6 py-6 transition-transform hover:scale-105 dark:bg-emerald-900/30"
-          onClick={() => onNav('stats')}
-          aria-label="View stat groups"
+          onClick={onClose}
+          className="relative flex h-10 w-10 items-center justify-center rounded-full bg-red-500/80 text-white backdrop-blur transition hover:bg-red-600"
+          aria-label="Close profile"
         >
-          <div className="pointer-events-none flex flex-col items-center justify-center">
-            <span className="leading-none" style={{ fontSize: centerIconFontSize }}>
-              {resolveIcon(stake.iconKey)}
-            </span>
-          </div>
-
-          {equippedDefinitions.map(({ slot, gear }) => (
-            <div
-              key={slot}
-              className={`absolute z-10 flex h-12 w-12 flex-col items-center justify-center rounded-2xl border bg-white/95 shadow-sm dark:bg-gray-900/90 ${FLOATING_SLOT_CLASSES[slot]} ${
-                gear ? 'border-emerald-200' : 'border-dashed border-gray-300 dark:border-gray-600'
-              }`}
-              aria-label={`${GEAR_SLOT_LABELS[slot]} slot`}
-              title={gear ? `${GEAR_SLOT_LABELS[slot]}: ${gear.name}` : `${GEAR_SLOT_LABELS[slot]} slot empty`}
-            >
-              {gear ? (
-                <span className="text-2xl leading-none">{getGearIcon(gear)}</span>
-              ) : (
-                <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">Empty</span>
-              )}
-            </div>
-          ))}
+          <IconDisplay iconKey="close" size={14} className="h-3.5 w-3.5 object-contain invert" alt="Close" />
         </button>
-
         <button
           type="button"
-          className="absolute bottom-3 left-3 z-20 flex h-20 w-20 items-center justify-center rounded-full bg-white text-3xl shadow-md transition-transform hover:scale-105 dark:bg-gray-700"
-          onClick={handleBadgeNav}
-          aria-label="Badge Room"
+          onClick={() => onNav('stats')}
+          className="relative flex h-10 w-10 items-center justify-center rounded-full bg-black/30 text-white backdrop-blur transition hover:bg-black/45"
+          aria-label="Stats"
         >
-          {resolveIcon('badge')}
+          <IconDisplay iconKey="profile-stats" size={16} className="h-4 w-4 object-contain" alt="Stats" />
+        </button>
+        <button
+          type="button"
+          onClick={() => onNav('storage')}
+          className="relative flex h-10 w-10 items-center justify-center rounded-full bg-black/30 text-white backdrop-blur transition hover:bg-black/45"
+          aria-label="Storage"
+        >
+          <IconDisplay iconKey="resource-tab-inventory" size={16} className="h-4 w-4 object-contain" alt="Storage" />
+        </button>
+        <button
+          type="button"
+          onClick={handleBadgeNav}
+          className="relative flex h-10 w-10 items-center justify-center rounded-full bg-black/30 text-white backdrop-blur transition hover:bg-black/45"
+          aria-label="Achievements"
+        >
+          <IconDisplay iconKey="badge" size={16} className="h-4 w-4 object-contain" alt="Achievements" />
           {badgeRoomGlows ? (
             <div className="pointer-events-none absolute inset-0 animate-pulse rounded-full ring-2 ring-emerald-400" />
           ) : null}
         </button>
-
         <button
           type="button"
-          className="absolute bottom-3 right-3 z-20 flex h-20 w-20 items-center justify-center rounded-full bg-white text-3xl shadow-md transition-transform hover:scale-105 dark:bg-gray-700"
           onClick={handleEquipmentNav}
-          aria-label="Equipment"
+          className="relative flex h-10 w-10 items-center justify-center rounded-full bg-black/30 text-white backdrop-blur transition hover:bg-black/45"
+          aria-label="Gear"
         >
-          {resolveIcon('equipment')}
+          <IconDisplay iconKey="equipment" size={16} className="h-4 w-4 object-contain" alt="Gear" />
           {equipmentRoomGlows ? (
             <div className="pointer-events-none absolute inset-0 animate-pulse rounded-full ring-2 ring-emerald-400" />
           ) : null}
         </button>
       </div>
 
-      <ProfileXPBar xp={xp} />
+      <button
+        type="button"
+        onClick={() => onNav('preferences')}
+        className="absolute left-3 top-3 z-20 flex max-w-[calc(100%-5rem)] rounded-xl border border-white/40 bg-black/30 px-3 py-2 text-left backdrop-blur transition hover:bg-black/40"
+        aria-label="Open preferences"
+      >
+        <div className="flex items-stretch gap-2">
+          <div className="flex items-center px-1">
+            <IconDisplay iconKey={profileIcon} size={40} className="h-10 w-10 object-contain" alt="Profile icon" />
+          </div>
+
+          <div className="flex min-w-0 flex-col justify-center gap-1">
+            <div className="flex items-center gap-2">
+              <span className="rounded-full bg-blue-500 px-1.5 text-xs font-bold text-white">{level}</span>
+              <span className="truncate text-sm font-semibold text-white">{displayName}</span>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <IconDisplay iconKey={topStat} size={14} className="h-3.5 w-3.5 object-contain" alt={topStat} />
+              <span className="text-xs text-white">{topStatValue}</span>
+            </div>
+          </div>
+        </div>
+      </button>
+
+      <div className="relative z-10 mt-auto">
+        <ProfileXPBar xp={xp} />
+      </div>
     </div>
   );
 }

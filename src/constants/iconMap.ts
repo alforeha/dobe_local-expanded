@@ -240,11 +240,13 @@ export const ICON_MAP: Record<string, string> = {
   // ui controls
   star: '⭐',
   'star-outline': '☆',
+  'profile-stats': '\uD83D\uDCCA',
   close: '✕',
   expand: '▼',
   collapse: '▲',
   add: '+',
   edit: '✏️',
+  'settings-gear': '⚙️',
   delete: '🗑️',
   lock: '🔒',
   unlock: '🔓',

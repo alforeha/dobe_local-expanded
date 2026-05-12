@@ -13,9 +13,9 @@ export function ProfileXPBar({ xp }: ProfileXPBarProps) {
   return (
     <div className="w-full px-4 pb-3 pt-1">
       {/* Bar with labels overlaid inside */}
-      <div className="relative h-6 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
+      <div className="relative h-6 w-full overflow-hidden rounded-none bg-gray-200 dark:bg-gray-700">
         <div
-          className="h-full rounded-full bg-gradient-to-r from-emerald-400 to-purple-500 transition-all duration-300"
+          className="h-full rounded-none bg-gradient-to-r from-emerald-400 to-purple-500 transition-all duration-300"
           style={{ width: `${pct}%` }}
           role="progressbar"
           aria-valuenow={pct}
