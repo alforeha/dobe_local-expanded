@@ -8,11 +8,12 @@ import { useScheduleStore } from '../../../../../stores/useScheduleStore';
 import { useUserStore } from '../../../../../stores/useUserStore';
 import type { InlineTaskEntry, ResourceTaskEntry, TaskEntry, TaskType, TemplateTaskEntry } from '../../../../../types';
 import type { InventoryItemTemplate, ItemRecurringTask } from '../../../../../types/resource';
-import type { TaskTemplate } from '../../../../../types/taskTemplate';
+import type { InputFields, TaskTemplate } from '../../../../../types/taskTemplate';
 import { normalizeRecurrenceMode } from '../../../../../types/resource';
 import { getUserInventoryItemTemplates, mergeInventoryItemTemplates, resolveInventoryItemTemplate } from '../../../../../utils/inventoryItems';
 import { getCustomTemplatePool, getLibraryTemplatePool, resolveTaskTemplate } from '../../../../../utils/resolveTaskTemplate';
 import { IconDisplay } from '../../../../shared/IconDisplay';
+import { TaskTypeConfigEditor } from '../../../../shared/TaskTypeConfigEditor';
 import { PopupShell } from '../../../../shared/popups/PopupShell';
 
 type AddPanelTab = 'library' | 'templates' | 'new' | 'resource';
@@ -56,59 +57,15 @@ interface ResourceTaskRow {
   detail?: string;
 }
 
-function buildDraftInputFields(taskType: DraftTaskType, values: {
-  title: string;
-  counterTarget: number;
-  counterUnit: string;
-  durationMinutes: number;
-  timerSeconds: number;
-  ratingScale: number;
-  ratingPrompt: string;
-  textPrompt: string;
-}): { taskType: TaskType; inputFields: TaskTemplate['inputFields'] } {
-  switch (taskType) {
-    case 'COUNTER':
-      return {
-        taskType: 'COUNTER',
-        inputFields: { target: values.counterTarget, unit: values.counterUnit.trim() || 'count', step: 1 },
-      };
-    case 'DURATION':
-      return {
-        taskType: 'DURATION',
-        inputFields: { targetDuration: values.durationMinutes * 60, unit: 'seconds' },
-      };
-    case 'TIMER':
-      return {
-        taskType: 'TIMER',
-        inputFields: { countdownFrom: values.timerSeconds },
-      };
-    case 'RATING':
-      return {
-        taskType: 'RATING',
-        inputFields: { scale: values.ratingScale, label: values.ratingPrompt.trim() || values.title.trim() || 'Rate this' },
-      };
-    case 'TEXT':
-      return {
-        taskType: 'TEXT',
-        inputFields: { prompt: values.textPrompt.trim() || values.title.trim() || 'Add details', maxLength: null },
-      };
-    case 'CONSUME':
-      return {
-        taskType: 'CONSUME',
-        inputFields: { label: values.title.trim() || 'Consume items', entries: [] },
-      };
-    case 'USE':
-      return {
-        taskType: 'TEXT',
-        inputFields: { prompt: values.textPrompt.trim() || `How did you use ${values.title.trim() || 'this'}?`, maxLength: null },
-      };
-    case 'CHECK':
-    default:
-      return {
-        taskType: 'CHECK',
-        inputFields: { label: values.title.trim() || 'Done' },
-      };
+function buildDraftInputFields(
+  taskType: DraftTaskType,
+  inputFields: Partial<InputFields>,
+): { taskType: TaskType; inputFields: Partial<InputFields> } {
+  if (taskType === 'USE') {
+    return { taskType: 'TEXT', inputFields };
   }
+
+  return { taskType, inputFields };
 }
 
 function createTemplateEntry(templateRef: string): TemplateTaskEntry {
@@ -130,7 +87,7 @@ function createResourceEntry(row: ResourceTaskRow): ResourceTaskEntry {
   };
 }
 
-function createInlineEntry(name: string, taskType: TaskType, inputFields: TaskTemplate['inputFields']): InlineTaskEntry {
+function createInlineEntry(name: string, taskType: TaskType, inputFields: Partial<InputFields>): InlineTaskEntry {
   return {
     kind: 'inline',
     id: uuidv4(),
@@ -204,13 +161,7 @@ export function TaskPoolAddPanel({ onAdd, onClose }: TaskPoolAddPanelProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [title, setTitle] = useState('');
   const [taskType, setTaskType] = useState<DraftTaskType>('CHECK');
-  const [counterTarget, setCounterTarget] = useState(10);
-  const [counterUnit, setCounterUnit] = useState('count');
-  const [durationMinutes, setDurationMinutes] = useState(30);
-  const [timerSeconds, setTimerSeconds] = useState(300);
-  const [ratingScale, setRatingScale] = useState(5);
-  const [ratingPrompt, setRatingPrompt] = useState('');
-  const [textPrompt, setTextPrompt] = useState('');
+  const [draftInputFields, setDraftInputFields] = useState<Partial<InputFields>>({});
   const [error, setError] = useState('');
 
   const libraryTemplates = useMemo(
@@ -418,16 +369,7 @@ export function TaskPoolAddPanel({ onAdd, onClose }: TaskPoolAddPanelProps) {
       return;
     }
 
-    const built = buildDraftInputFields(taskType, {
-      title,
-      counterTarget,
-      counterUnit,
-      durationMinutes,
-      timerSeconds,
-      ratingScale,
-      ratingPrompt,
-      textPrompt,
-    });
+    const built = buildDraftInputFields(taskType, draftInputFields);
 
     onAdd(createInlineEntry(title.trim(), built.taskType, built.inputFields));
     onClose();
@@ -513,7 +455,10 @@ export function TaskPoolAddPanel({ onAdd, onClose }: TaskPoolAddPanelProps) {
               <label className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">Task type</label>
               <select
                 value={taskType}
-                onChange={(event) => setTaskType(event.target.value as DraftTaskType)}
+                onChange={(event) => {
+                  setTaskType(event.target.value as DraftTaskType);
+                  setDraftInputFields({});
+                }}
                 className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-purple-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
               >
                 {DRAFT_TASK_TYPES.map((option) => (
@@ -522,52 +467,11 @@ export function TaskPoolAddPanel({ onAdd, onClose }: TaskPoolAddPanelProps) {
               </select>
             </div>
 
-            {taskType === 'COUNTER' && (
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">Target</label>
-                  <input type="number" min={1} value={counterTarget} onChange={(event) => setCounterTarget(Number(event.target.value) || 1)} className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-purple-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100" />
-                </div>
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">Unit</label>
-                  <input type="text" value={counterUnit} onChange={(event) => setCounterUnit(event.target.value)} className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-purple-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100" />
-                </div>
-              </div>
-            )}
-
-            {taskType === 'DURATION' && (
-              <div>
-                <label className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">Minutes</label>
-                <input type="number" min={1} value={durationMinutes} onChange={(event) => setDurationMinutes(Number(event.target.value) || 1)} className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-purple-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100" />
-              </div>
-            )}
-
-            {taskType === 'TIMER' && (
-              <div>
-                <label className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">Seconds</label>
-                <input type="number" min={1} value={timerSeconds} onChange={(event) => setTimerSeconds(Number(event.target.value) || 1)} className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-purple-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100" />
-              </div>
-            )}
-
-            {taskType === 'RATING' && (
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">Scale</label>
-                  <input type="number" min={2} value={ratingScale} onChange={(event) => setRatingScale(Number(event.target.value) || 2)} className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-purple-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100" />
-                </div>
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">Prompt</label>
-                  <input type="text" value={ratingPrompt} onChange={(event) => setRatingPrompt(event.target.value)} className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-purple-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100" />
-                </div>
-              </div>
-            )}
-
-            {(taskType === 'TEXT' || taskType === 'USE') && (
-              <div>
-                <label className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">Prompt</label>
-                <input type="text" value={textPrompt} onChange={(event) => setTextPrompt(event.target.value)} className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-purple-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100" />
-              </div>
-            )}
+            <TaskTypeConfigEditor
+              taskType={taskType ?? 'CHECK'}
+              inputFields={draftInputFields}
+              onChange={setDraftInputFields}
+            />
 
             {error ? <p className="text-sm text-red-500">{error}</p> : null}
 
