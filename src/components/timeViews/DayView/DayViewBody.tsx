@@ -451,7 +451,7 @@ export function DayViewBody({ date, onEventOpen, onEditPlanned }: DayViewBodyPro
 
   // Project planned events (future/planned recurrences)
   const dateISO = format(date, 'iso');
-  const showPlannedPreviews = dateISO >= getAppDate();
+  const showPlannedPreviews = dateISO > getAppDate();
   if (showPlannedPreviews) {
     const allPlanned = Object.values(plannedEvents);
     for (const planned of allPlanned) {

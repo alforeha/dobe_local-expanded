@@ -362,6 +362,19 @@ function step8_updateRecurrence(resolved: PlannedEvent[], rolloverDate: string):
   }
 }
 
+function step8_sleepExpiredPlannedEvents(rolloverDate: string): void {
+  const scheduleStore = useScheduleStore.getState();
+
+  for (const plannedEvent of Object.values(scheduleStore.plannedEvents)) {
+    if (plannedEvent.dieDate && plannedEvent.dieDate < rolloverDate && plannedEvent.activeState === 'active') {
+      scheduleStore.setPlannedEvent({
+        ...plannedEvent,
+        activeState: 'sleep',
+      });
+    }
+  }
+}
+
 // ── STEP 9 — Coach review + new QuickActionsEvent ────────────────────────────
 
 async function step9_coachReview(newDate: string): Promise<void> {
@@ -635,6 +648,7 @@ export async function executeRollover(
   if (resumeFrom <= 8) {
     systemStore.setRolloverStep(8);
     step8_updateRecurrence(resolved, rolloverDate);
+    step8_sleepExpiredPlannedEvents(rolloverDate);
   }
 
   // Step 9 — coach review + new QA event

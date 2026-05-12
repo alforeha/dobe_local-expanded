@@ -410,6 +410,8 @@ export function RoutinePopup({ editRoutine, prefill, onClose, isPrebuilt = false
   const isEditMode = editRoutine !== null;
   void isPrebuilt;
   const initialPools = ensureTaskPools(isEditMode ? editRoutine.pools : prefill?.pools);
+  const defaultStartTime = isEditMode ? editRoutine.startTime : (prefill?.startTime ?? '09:00');
+  const defaultEndTime = isEditMode ? editRoutine.endTime : (prefill?.endTime ?? '10:00');
 
   const [name, setName] = useState(isEditMode ? editRoutine.name : (prefill?.name ?? ''));
   const [description, setDescription] = useState(isEditMode ? editRoutine.description : '');
@@ -437,9 +439,14 @@ export function RoutinePopup({ editRoutine, prefill, onClose, isPrebuilt = false
       ? editRoutine.recurrenceInterval.customCondition
       : (prefill?.recurrenceInterval.customCondition ?? ''),
   );
+  const [activeState, setActiveState] = useState<'active' | 'sleep'>(isEditMode ? editRoutine.activeState : 'active');
   const [conflictMode, setConflictMode] = useState<ConflictMode>(isEditMode ? editRoutine.conflictMode : 'concurrent');
-  const [startTime, setStartTime] = useState(isEditMode ? editRoutine.startTime : (prefill?.startTime ?? '09:00'));
-  const [endTime, setEndTime] = useState(isEditMode ? editRoutine.endTime : (prefill?.endTime ?? '10:00'));
+  const [startTime, setStartTime] = useState(defaultStartTime);
+  const [endTime, setEndTime] = useState(defaultEndTime);
+  const [savedScheduleTimes, setSavedScheduleTimes] = useState({
+    startTime: defaultStartTime || '09:00',
+    endTime: defaultEndTime || '10:00',
+  });
   const [coAttendees, setCoAttendees] = useState<EventAttendee[]>(isEditMode ? (editRoutine.coAttendees ?? []) : []);
   const [location, setLocation] = useState<EventLocation | null>(isEditMode ? (editRoutine.location ?? null) : null);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -454,6 +461,37 @@ export function RoutinePopup({ editRoutine, prefill, onClose, isPrebuilt = false
 
   function toggleDay(day: Weekday) {
     setDays((prev) => (prev.includes(day) ? prev.filter((entry) => entry !== day) : [...prev, day]));
+  }
+
+  function handleStartTimeChange(nextTime: string) {
+    setStartTime(nextTime);
+    if (nextTime !== '') {
+      setSavedScheduleTimes((prev) => ({ ...prev, startTime: nextTime }));
+    }
+  }
+
+  function handleEndTimeChange(nextTime: string) {
+    setEndTime(nextTime);
+    if (nextTime !== '') {
+      setSavedScheduleTimes((prev) => ({ ...prev, endTime: nextTime }));
+    }
+  }
+
+  function handleOnDemandChange(checked: boolean) {
+    if (checked) {
+      setSavedScheduleTimes((prev) => ({
+        startTime: startTime || prev.startTime || defaultStartTime || '09:00',
+        endTime: endTime || prev.endTime || defaultEndTime || '10:00',
+      }));
+      setActiveState('sleep');
+      setStartTime('');
+      setEndTime('');
+      return;
+    }
+
+    setActiveState('active');
+    setStartTime(savedScheduleTimes.startTime || defaultStartTime || '09:00');
+    setEndTime(savedScheduleTimes.endTime || defaultEndTime || '10:00');
   }
 
   function handleSave() {
@@ -499,6 +537,7 @@ export function RoutinePopup({ editRoutine, prefill, onClose, isPrebuilt = false
         pools,
         taskPoolCursor,
         recurrenceInterval,
+        activeState,
         conflictMode,
         startTime,
         endTime,
@@ -518,7 +557,7 @@ export function RoutinePopup({ editRoutine, prefill, onClose, isPrebuilt = false
         seedDate,
         dieDate: dieDate || null,
         recurrenceInterval,
-        activeState: 'active',
+        activeState,
         pools,
         taskPoolCursor,
         taskList: [],
@@ -622,10 +661,12 @@ export function RoutinePopup({ editRoutine, prefill, onClose, isPrebuilt = false
                       <input type="date" value={seedDate} onChange={(event) => setSeedDate(event.target.value)} className={inputCls} />
                       <p className="text-xs text-gray-400 italic">When this routine begins.</p>
                     </div>
-                    <div className="flex flex-col gap-1">
-                      <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Time</label>
-                      <input type="time" value={startTime} onChange={(event) => setStartTime(event.target.value)} className={inputCls} />
-                    </div>
+                    {activeState === 'active' && (
+                      <div className="flex flex-col gap-1">
+                        <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Time</label>
+                        <input type="time" value={startTime} onChange={(event) => handleStartTimeChange(event.target.value)} className={inputCls} />
+                      </div>
+                    )}
                   </div>
 
                   <div className="min-w-0 space-y-3">
@@ -635,13 +676,24 @@ export function RoutinePopup({ editRoutine, prefill, onClose, isPrebuilt = false
                       <input type="date" value={dieDate} onChange={(event) => setDieDate(event.target.value)} className={inputCls} />
                       <p className="text-xs text-gray-400 italic">Leave empty to keep this routine forever.</p>
                     </div>
-                    <div className="flex flex-col gap-1">
-                      <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Time</label>
-                      <input type="time" value={endTime} onChange={(event) => setEndTime(event.target.value)} className={inputCls} />
-                      {isOvernight && <p className="text-xs text-gray-400 italic">Overnight routine: ends the following day.</p>}
-                    </div>
+                    {activeState === 'active' && (
+                      <div className="flex flex-col gap-1">
+                        <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Time</label>
+                        <input type="time" value={endTime} onChange={(event) => handleEndTimeChange(event.target.value)} className={inputCls} />
+                        {isOvernight && <p className="text-xs text-gray-400 italic">Overnight routine: ends the following day.</p>}
+                      </div>
+                    )}
                   </div>
                 </div>
+
+                <label className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
+                  <input
+                    type="checkbox"
+                    checked={activeState === 'sleep'}
+                    onChange={(event) => handleOnDemandChange(event.target.checked)}
+                  />
+                  On demand (no scheduled time)
+                </label>
 
                 <div className="rounded-xl border border-gray-200 bg-gray-50/60 p-4 dark:border-gray-700 dark:bg-gray-900/20">
                   <div className="mb-2 text-sm font-medium text-gray-500 dark:text-gray-300">Repeats</div>

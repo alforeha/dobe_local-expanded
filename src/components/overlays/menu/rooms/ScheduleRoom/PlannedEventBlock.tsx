@@ -124,7 +124,7 @@ export function PlannedEventBlock({ event, onEdit, onDelete, expandedId, setExpa
                 </p>
                 {event.activeState === 'sleep' && (
                   <span className="shrink-0 rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-gray-500 dark:bg-gray-700 dark:text-gray-300">
-                    Paused
+                    Inactive
                   </span>
                 )}
               </div>
