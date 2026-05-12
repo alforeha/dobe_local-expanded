@@ -40,7 +40,9 @@ export function ScheduleRoom({ onGoToResource, onExpandedChange }: ScheduleRoomP
   }, []);
 
   useEffect(() => {
-    setExpandedRowId(null);
+    setTimeout(() => {
+      setExpandedRowId(null);
+    }, 0);
   }, [tab]);
 
   useEffect(() => {

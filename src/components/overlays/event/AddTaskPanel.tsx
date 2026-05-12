@@ -1,10 +1,12 @@
 import { useMemo, useState } from 'react';
 import { PopupShell } from '../../shared/popups/PopupShell';
+import { IconPicker } from '../../shared/IconPicker';
 import { useScheduleStore } from '../../../stores/useScheduleStore';
 import { addTaskToEvent, addUniqueTaskToEvent } from '../../../engine/eventExecution';
 import { getCustomTemplatePool, getEventLibraryTemplatePool } from '../../../utils/resolveTaskTemplate';
 import type { InputFields, TaskType } from '../../../types';
 import type { Task } from '../../../types/task';
+import type { StatGroupKey } from '../../../types/user';
 
 type AddTaskTab = 'library' | 'templates' | 'new';
 type NewTaskType = Extract<TaskType, 'CHECK' | 'COUNTER' | 'DURATION' | 'TIMER' | 'RATING' | 'TEXT'>;
@@ -18,9 +20,30 @@ const NEW_TASK_TYPES: Array<{ value: NewTaskType; label: string }> = [
   { value: 'TEXT', label: 'Text' },
 ];
 
+const STAT_GROUP_OPTIONS: Array<{ value: StatGroupKey; label: string }> = [
+  { value: 'health', label: 'Health' },
+  { value: 'strength', label: 'Strength' },
+  { value: 'agility', label: 'Agility' },
+  { value: 'defense', label: 'Defense' },
+  { value: 'charisma', label: 'Charisma' },
+  { value: 'wisdom', label: 'Wisdom' },
+];
+
 interface AddTaskPanelProps {
   eventId: string;
   onClose: () => void;
+}
+
+function buildXpAward(statGroup: StatGroupKey, xpValue: number) {
+  return {
+    health: 0,
+    strength: 0,
+    agility: 0,
+    defense: 0,
+    charisma: 0,
+    wisdom: 0,
+    [statGroup]: xpValue,
+  };
 }
 
 function buildUniqueTaskResultFields(taskType: NewTaskType, values: {
@@ -53,6 +76,9 @@ export function AddTaskPanel({ eventId, onClose }: AddTaskPanelProps) {
   const [activeTab, setActiveTab] = useState<AddTaskTab>('library');
   const [searchQuery, setSearchQuery] = useState('');
   const [title, setTitle] = useState('');
+  const [icon, setIcon] = useState<string>('');
+  const [description, setDescription] = useState<string>('');
+  const [statGroup, setStatGroup] = useState<StatGroupKey>('health');
   const [taskType, setTaskType] = useState<NewTaskType>('CHECK');
   const [counterTarget, setCounterTarget] = useState(10);
   const [counterUnit, setCounterUnit] = useState('count');
@@ -92,7 +118,10 @@ export function AddTaskPanel({ eventId, onClose }: AddTaskPanelProps) {
       templateRef: null,
       isUnique: true,
       title: title.trim(),
+      icon: icon || undefined,
+      description: description.trim() || null,
       taskType,
+      xpAward: buildXpAward(statGroup, 5),
       completionState: 'pending',
       completedAt: null,
       resultFields: buildUniqueTaskResultFields(taskType, {
@@ -198,6 +227,34 @@ export function AddTaskPanel({ eventId, onClose }: AddTaskPanelProps) {
                 }}
                 className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-purple-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
               />
+            </div>
+
+            <div>
+              <IconPicker value={icon} onChange={setIcon} align="left" />
+            </div>
+
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">Description</label>
+              <textarea
+                value={description}
+                onChange={(event) => setDescription(event.target.value)}
+                placeholder="Optional description"
+                rows={2}
+                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-purple-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
+              />
+            </div>
+
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">Stat Group</label>
+              <select
+                value={statGroup}
+                onChange={(event) => setStatGroup(event.target.value as StatGroupKey)}
+                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-purple-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
+              >
+                {STAT_GROUP_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </select>
             </div>
 
             <div>

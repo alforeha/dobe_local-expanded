@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { itemLibrary } from '../../coach/ItemLibrary';
 import { useUserStore } from '../../stores/useUserStore';
@@ -118,6 +118,7 @@ export function TaskTypeConfigEditor({
   readOnly = false,
 }: TaskTypeConfigEditorProps) {
   const user = useUserStore((s) => s.user);
+  const [expandedStepId, setExpandedStepId] = useState<string | null>(null);
   const availableConsumeTemplates = useMemo<InventoryItemTemplate[]>(() => (
     mergeInventoryItemTemplates(
       getUserInventoryItemTemplates(user),
@@ -126,6 +127,12 @@ export function TaskTypeConfigEditor({
         .filter((item): item is InventoryItemTemplate => item != null),
     )
   ), [user]);
+
+  useEffect(() => {
+    setTimeout(() => {
+      setExpandedStepId(null);
+    }, 0);
+  }, [taskType]);
 
   function updateField(key: string, value: unknown) {
     onChange({ ...inputFields, [key]: value });
@@ -292,6 +299,7 @@ export function TaskTypeConfigEditor({
       function addStep() {
         const newStep = makeDefaultCircuitStep();
         setCircuitFields({ ...circuitFields, steps: [...circuitFields.steps, newStep] });
+        setExpandedStepId(newStep.id);
       }
 
       return (
@@ -348,17 +356,16 @@ export function TaskTypeConfigEditor({
                   No circuit steps yet.
                 </p>
               )}
-              {circuitFields.steps.map((step, idx) => (
-                <details key={step.id} className="rounded-xl border border-gray-200 bg-white px-3 py-3 dark:border-gray-700 dark:bg-gray-900/40">
-                  <summary className="flex cursor-pointer items-start gap-2 list-none">
+              {circuitFields.steps.map((step, idx) => {
+                const isExpanded = expandedStepId === step.id;
+                return (
+                <div key={step.id} className="rounded-xl border border-gray-200 bg-white px-3 py-3 dark:border-gray-700 dark:bg-gray-900/40">
+                  <div className="flex items-start gap-2">
                     <div className="flex shrink-0 flex-col gap-0.5">
                       <button
                         type="button"
                         disabled={readOnly || idx === 0}
-                        onClick={(event) => {
-                          event.preventDefault();
-                          moveStep(idx, -1);
-                        }}
+                        onClick={() => moveStep(idx, -1)}
                         className="flex h-5 w-5 items-center justify-center rounded text-xs leading-none text-gray-400 hover:bg-gray-100 disabled:opacity-30 dark:hover:bg-gray-700"
                       >
                         ^
@@ -366,36 +373,38 @@ export function TaskTypeConfigEditor({
                       <button
                         type="button"
                         disabled={readOnly || idx === circuitFields.steps.length - 1}
-                        onClick={(event) => {
-                          event.preventDefault();
-                          moveStep(idx, 1);
-                        }}
+                        onClick={() => moveStep(idx, 1)}
                         className="flex h-5 w-5 items-center justify-center rounded text-xs leading-none text-gray-400 hover:bg-gray-100 disabled:opacity-30 dark:hover:bg-gray-700"
                       >
                         v
                       </button>
                     </div>
-                    <div className="flex flex-1 items-center justify-between gap-3 text-left">
+                    <button
+                      type="button"
+                      onClick={() => setExpandedStepId((prev) => prev === step.id ? null : step.id)}
+                      className="flex flex-1 items-center justify-between gap-3 text-left"
+                    >
                       <div className="min-w-0">
                         <p className="truncate text-sm font-medium text-gray-800 dark:text-gray-100">{step.label.trim() || 'Untitled step'}</p>
                         <p className="text-xs text-gray-500 dark:text-gray-400">{step.stepType}</p>
                       </div>
-                      <span className="text-xs font-medium text-blue-500">Edit</span>
-                    </div>
+                      <span className="text-xs font-medium text-blue-500">{isExpanded ? 'Close' : 'Edit'}</span>
+                    </button>
                     {!readOnly && (
                       <button
                         type="button"
-                        onClick={(event) => {
-                          event.preventDefault();
+                        onClick={() => {
                           setCircuitFields({ ...circuitFields, steps: circuitFields.steps.filter((entry) => entry.id !== step.id) });
+                          setExpandedStepId((prev) => prev === step.id ? null : prev);
                         }}
                         className="shrink-0 px-1 text-sm text-gray-400 hover:text-red-400"
                       >
                         x
                       </button>
                     )}
-                  </summary>
+                  </div>
 
+                  {isExpanded && (
                   <div className="mt-3 space-y-3 border-t border-gray-200 pt-3 dark:border-gray-700">
                     <div className="grid grid-cols-2 gap-3">
                       <div>
@@ -531,8 +540,9 @@ export function TaskTypeConfigEditor({
                       />
                     ))}
                   </div>
-                </details>
-              ))}
+                  )}
+                </div>
+              );})}
             </div>
           </div>
         </div>

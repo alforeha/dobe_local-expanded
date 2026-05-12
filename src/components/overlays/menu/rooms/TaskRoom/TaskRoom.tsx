@@ -28,7 +28,9 @@ export function TaskRoom({ onGoToResource, onExpandedChange }: TaskRoomProps) {
 
   useEffect(() => {
     if (tab === 'resourceTasks') {
-      setTaskExpanded(false);
+      setTimeout(() => {
+        setTaskExpanded(false);
+      }, 0);
     }
   }, [tab]);
 

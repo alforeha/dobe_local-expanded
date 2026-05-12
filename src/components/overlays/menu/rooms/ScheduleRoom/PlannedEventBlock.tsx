@@ -96,7 +96,9 @@ export function PlannedEventBlock({ event, onEdit, onDelete, expandedId, setExpa
 
   useEffect(() => {
     if (!expanded) {
-      setActiveTab('details');
+      setTimeout(() => {
+        setActiveTab('details');
+      }, 0);
     }
   }, [expanded]);
 

@@ -5,7 +5,7 @@
 // UUID needed for undo and quest logging.
 // ─────────────────────────────────────────
 
-import type { InputFields, TaskSecondaryTag } from './taskTemplate';
+import type { InputFields, TaskSecondaryTag, XpAward } from './taskTemplate';
 
 // ── LOCATION ─────────────────────────────────────────────────────────────────
 
@@ -34,8 +34,12 @@ export interface Task {
   title?: string | null;
   /** Optional explicit icon key used when display should override template/type fallback. */
   icon?: string;
+  /** Optional description copied onto unique tasks when created inline. */
+  description?: string | null;
   /** Unique task input type. Template-backed tasks resolve taskType from their TaskTemplate. */
   taskType?: string | null;
+  /** Optional per-task stat award payload for unique tasks that do not resolve through a template. */
+  xpAward?: XpAward | null;
   completionState: TaskCompletionState;
   completedAt: string | null; // ISO date
   /** Recorded values matching inputFields shape of TaskTemplate (D41) */
