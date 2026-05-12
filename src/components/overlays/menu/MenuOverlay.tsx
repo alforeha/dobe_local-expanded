@@ -13,6 +13,7 @@ interface MenuOverlayProps {
 export function MenuOverlay({ onClose, onGoToDay, initialRoom = 'quickaction' }: MenuOverlayProps) {
   const [activeRoom, setActiveRoom] = useState<MenuRoom>(initialRoom);
   const [navCollapsed, setNavCollapsed] = useState(false);
+  const [taskExpanded, setTaskExpanded] = useState(false);
   const [scheduleExpanded, setScheduleExpanded] = useState(false);
   const [resourceOverlayActive, setResourceOverlayActive] = useState(false);
 
@@ -22,12 +23,15 @@ export function MenuOverlay({ onClose, onGoToDay, initialRoom = 'quickaction' }:
     if (room !== 'schedule') {
       setScheduleExpanded(false);
     }
+    if (room !== 'task') {
+      setTaskExpanded(false);
+    }
     if (room !== 'resource') {
       setResourceOverlayActive(false);
     }
   };
 
-  const showNav = !scheduleExpanded && !(activeRoom === 'resource' && resourceOverlayActive);
+  const showNav = !scheduleExpanded && !taskExpanded && !(activeRoom === 'resource' && resourceOverlayActive);
 
   return (
     <div className="flex h-full">
@@ -35,6 +39,7 @@ export function MenuOverlay({ onClose, onGoToDay, initialRoom = 'quickaction' }:
         activeRoom={activeRoom}
         onNavigate={handleNavigate}
         onGoToDay={onGoToDay}
+        onTaskExpandedChange={setTaskExpanded}
         onScheduleExpandedChange={setScheduleExpanded}
         onResourceOverlayActiveChange={setResourceOverlayActive}
       />

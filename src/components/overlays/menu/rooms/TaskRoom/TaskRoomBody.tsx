@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { TaskTemplate, TaskSecondaryTag, XpAward } from '../../../../../types';
 import type { StatGroupKey } from '../../../../../types/user';
 import { useScheduleStore } from '../../../../../stores/useScheduleStore';
@@ -11,6 +11,7 @@ interface TaskRoomBodyProps {
   mode: TaskRoomBodyMode;
   onAdd: () => void;
   onEdit: (key: string, template: TaskTemplate) => void;
+  onExpandedChange?: (isExpanded: boolean) => void;
 }
 
 interface TaskEntry {
@@ -69,13 +70,17 @@ function getModeEmptyMessage(mode: TaskRoomBodyMode): string {
   }
 }
 
-function TaskRoomBodyContent({ mode, onAdd, onEdit }: TaskRoomBodyProps) {
+function TaskRoomBodyContent({ mode, onAdd, onEdit, onExpandedChange }: TaskRoomBodyProps) {
   const [search, setSearch] = useState('');
   const [statFilter, setStatFilter] = useState<StatGroupKey | 'All'>('All');
   const [tagFilter, setTagFilter] = useState<TaskSecondaryTag | 'All'>('All');
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
   const taskTemplates = useScheduleStore((s) => s.taskTemplates);
   const favouritesList = useUserStore((s) => s.user?.lists.favouritesList ?? []);
+
+  useEffect(() => {
+    onExpandedChange?.(Boolean(expandedKey));
+  }, [expandedKey, onExpandedChange]);
 
   const templates = useMemo<TaskEntry[]>(() => {
     if (mode === 'resourceTasks') return [];

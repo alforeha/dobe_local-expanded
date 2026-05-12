@@ -12,6 +12,7 @@ interface MenuOverlayContentProps {
   activeRoom: MenuRoom;
   onNavigate: (room: MenuRoom) => void;
   onGoToDay: (dateIso: string) => void;
+  onTaskExpandedChange?: (isExpanded: boolean) => void;
   onScheduleExpandedChange?: (isExpanded: boolean) => void;
   onResourceOverlayActiveChange?: (active: boolean) => void;
 }
@@ -20,6 +21,7 @@ export function MenuOverlayContent({
   activeRoom,
   onNavigate,
   onGoToDay,
+  onTaskExpandedChange,
   onScheduleExpandedChange,
   onResourceOverlayActiveChange,
 }: MenuOverlayContentProps) {
@@ -32,7 +34,7 @@ export function MenuOverlayContent({
       {activeRoom === 'world' && <WorldView onGoToDay={onGoToDay} />}
       {activeRoom === 'goal' && <GoalRoom />}
       {activeRoom === 'task' && (
-        <TaskRoom onGoToResource={handleGoToResource} />
+        <TaskRoom onGoToResource={handleGoToResource} onExpandedChange={onTaskExpandedChange} />
       )}
       {activeRoom === 'schedule' && (
         <ScheduleRoom

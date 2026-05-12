@@ -14,15 +14,27 @@ type PopupState =
 
 interface TaskRoomProps {
   onGoToResource?: (resourceId: string, resourceType: ResourceType) => void;
+  onExpandedChange?: (isExpanded: boolean) => void;
 }
 
-export function TaskRoom({ onGoToResource }: TaskRoomProps) {
+export function TaskRoom({ onGoToResource, onExpandedChange }: TaskRoomProps) {
   const [tab, setTab] = useState<TaskRoomBodyMode>('userTasks');
+  const [taskExpanded, setTaskExpanded] = useState(false);
   const [popup, setPopup] = useState<PopupState>(null);
 
   useEffect(() => {
     autoCompleteSystemTask('task-sys-explore-task-room');
   }, []);
+
+  useEffect(() => {
+    if (tab === 'resourceTasks') {
+      setTaskExpanded(false);
+    }
+  }, [tab]);
+
+  useEffect(() => {
+    onExpandedChange?.(taskExpanded);
+  }, [taskExpanded, onExpandedChange]);
 
   function handleEdit(key: string, template: TaskTemplate) {
     setPopup({ mode: 'edit', key, template });
@@ -34,7 +46,12 @@ export function TaskRoom({ onGoToResource }: TaskRoomProps) {
       {tab === 'resourceTasks' ? (
         <ResourceTasksTab onGoToResource={onGoToResource} />
       ) : (
-        <TaskRoomBody mode={tab} onAdd={() => setPopup({ mode: 'add' })} onEdit={handleEdit} />
+        <TaskRoomBody
+          mode={tab}
+          onAdd={() => setPopup({ mode: 'add' })}
+          onEdit={handleEdit}
+          onExpandedChange={setTaskExpanded}
+        />
       )}
       {popup && (
         <TaskTemplatePopup
