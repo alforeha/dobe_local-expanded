@@ -133,6 +133,15 @@ export const ICON_MAP: Record<string, string> = {
   'home-icon-studio': '🏠',
   'home-icon-condo': '🏙️',
   'home-icon-farm': '🏡',
+  // VEHICLE ICONS
+  'vehicle-icon-car': '\uD83D\uDE97',
+  'vehicle-icon-truck': '\uD83D\uDE9A',
+  'vehicle-icon-suv': '\uD83D\uDE99',
+  'vehicle-icon-motorcycle': '\uD83C\uDFCD',
+  'vehicle-icon-van': '\uD83D\uDE90',
+  'vehicle-icon-rv': '\uD83D\uDE8C',
+  'vehicle-icon-boat': '\u26F5',
+  'vehicle-icon-bicycle': '\uD83D\uDEB2',
   // EVENT OVERLAY NAV
   'event-nav-actions': '📋',
   'event-nav-participants': '👥',

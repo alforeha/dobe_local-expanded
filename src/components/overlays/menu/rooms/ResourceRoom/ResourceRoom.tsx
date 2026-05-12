@@ -10,6 +10,7 @@ import { ResourceRoomBody } from './ResourceRoomBody';
 import { TypeSelectorSheet } from './TypeSelectorSheet';
 import { ContactFormNew } from './contact/ContactFormNew';
 import { HomeFormNew } from './home/HomeFormNew';
+import { VehicleFormNew } from './vehicle/VehicleFormNew';
 import { VehicleForm } from './vehicle/VehicleForm';
 import { AccountFormNew } from './account/AccountFormNew';
 import { InventoryForm } from './inventory/InventoryForm';
@@ -219,7 +220,7 @@ export function ResourceRoom({ onOverlayActiveChange }: ResourceRoomProps) {
     return (
       <div className="flex flex-col h-full">
         {editingResource.type === 'home'      && <HomeFormNew existing={editingResource} onSaved={handleEditDone} registerOnAutoSave={registerResourceFormAutoSave} />}
-        {editingResource.type === 'vehicle'   && <VehicleForm existing={editingResource} onSaved={handleEditDone} onCancel={handleEditDone} />}
+        {editingResource.type === 'vehicle'   && <VehicleFormNew existing={editingResource} onSaved={handleEditDone} registerOnAutoSave={registerResourceFormAutoSave} />}
         {editingResource.type === 'account'   && <AccountFormNew existing={editingResource} onSaved={handleEditDone} onCancel={handleEditDone} />}
         {editingResource.type === 'inventory' && <InventoryForm existing={editingResource} onSaved={handleEditDone} onCancel={handleEditDone} editorMode={inventoryEditMode} editingContainerId={editingInventoryContainerId} />}
         {editingResource.type === 'doc'       && <DocForm existing={editingResource} onSaved={handleEditDone} onCancel={handleEditDone} />}
@@ -250,7 +251,7 @@ export function ResourceRoom({ onOverlayActiveChange }: ResourceRoomProps) {
     return <div className="flex flex-col h-full"><HomeFormNew onSaved={handleAdded} registerOnAutoSave={registerResourceFormAutoSave} /></div>;
   }
   if (addStep === 'vehicle-form') {
-    return <div className="flex flex-col h-full"><VehicleForm   onSaved={handleAdded} onCancel={handleBackToSelector} /></div>;
+    return <div className="flex flex-col h-full"><VehicleFormNew onSaved={handleAdded} registerOnAutoSave={registerResourceFormAutoSave} /></div>;
   }
   if (addStep === 'account-form') {
     return <div className="flex flex-col h-full"><AccountFormNew   onSaved={handleAdded} onCancel={handleBackToSelector} /></div>;
