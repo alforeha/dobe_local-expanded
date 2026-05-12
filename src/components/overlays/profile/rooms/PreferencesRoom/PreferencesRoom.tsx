@@ -138,78 +138,6 @@ export function PreferencesRoom({ onBack }: { onBack: () => void }) {
 
       <div className="flex-1 overflow-y-auto px-4 py-4">
         <div className="space-y-4">
-          <section className="rounded-3xl border border-gray-200 bg-white/90 p-4 shadow-sm dark:border-gray-700 dark:bg-gray-900/80">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-              <div className="flex items-center gap-3">
-                <button
-                  type="button"
-                  onClick={() => setIconPickerOpen((current) => !current)}
-                  className="flex h-16 w-16 items-center justify-center rounded-2xl bg-emerald-50 text-3xl shadow-sm transition hover:scale-[1.02] dark:bg-emerald-950/40"
-                  aria-label="Change profile icon"
-                >
-                  <IconDisplay iconKey={selectedIconKey} size={40} className="h-10 w-10 object-contain" alt="Profile icon" />
-                </button>
-                <div className="min-w-0">
-                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">Name</p>
-                  <p className="truncate text-lg font-semibold text-gray-900 dark:text-gray-100">{displayName}</p>
-                </div>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => setNameEditorOpen(true)}
-                className="sm:ml-auto rounded-full border border-emerald-400 px-4 py-2 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-50 dark:border-emerald-500 dark:text-emerald-300 dark:hover:bg-emerald-500/10"
-              >
-                Change Name
-              </button>
-            </div>
-
-            {iconPickerOpen ? (
-              <div className="mt-4 rounded-2xl border border-gray-200 bg-gray-50/90 p-3 dark:border-gray-700 dark:bg-gray-800/80">
-                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">Choose icon</p>
-                <div className="mt-3 grid grid-cols-4 gap-2 sm:grid-cols-8">
-                  {ICON_PRESET_KEYS.map((iconKey) => (
-                    <button
-                      key={iconKey}
-                      type="button"
-                      onClick={() => updateIcon(iconKey)}
-                      className={`flex aspect-square items-center justify-center rounded-2xl border text-2xl transition ${
-                        selectedIconKey === iconKey
-                          ? 'border-emerald-500 bg-emerald-100 dark:bg-emerald-950/40'
-                          : 'border-gray-200 bg-white hover:border-emerald-300 dark:border-gray-700 dark:bg-gray-900/70'
-                      }`}
-                      title={formatSourceType(iconKey)}
-                    >
-                      <IconDisplay iconKey={iconKey} size={32} className="h-8 w-8 object-contain" alt={formatSourceType(iconKey)} />
-                    </button>
-                  ))}
-                </div>
-                <div className="mt-3 flex items-center justify-between gap-3 rounded-2xl border border-dashed border-amber-300 bg-amber-50 px-3 py-3 dark:border-amber-700/70 dark:bg-amber-950/20">
-                  <div>
-                    <p className="text-sm font-semibold text-amber-900 dark:text-amber-200">Custom (costs 50 gold)</p>
-                    <p className="text-xs text-amber-700 dark:text-amber-300">Bring your own icon later.</p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setCustomStubOpen((current) => !current)}
-                    className="rounded-full bg-amber-500 px-3 py-1.5 text-sm font-semibold text-white hover:bg-amber-400"
-                  >
-                    Custom
-                  </button>
-                </div>
-                {customStubOpen ? (
-                  <p className="mt-2 text-xs font-medium text-amber-700 dark:text-amber-300">Coming soon.</p>
-                ) : null}
-              </div>
-            ) : null}
-
-            {nameEditorOpen ? (
-              <div className="mt-4">
-                <DisplayNameChange compact open onClose={() => setNameEditorOpen(false)} />
-              </div>
-            ) : null}
-          </section>
-
           <div className="flex rounded-2xl bg-gray-100 p-1 dark:bg-gray-800">
             {TABS.map((tab) => (
               <button
@@ -315,6 +243,78 @@ export function PreferencesRoom({ onBack }: { onBack: () => void }) {
 
           {activeTab === 'appearance' ? (
             <section className="space-y-4 rounded-3xl border border-gray-200 bg-white/90 p-4 shadow-sm dark:border-gray-700 dark:bg-gray-900/80">
+              <div className="space-y-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setIconPickerOpen((current) => !current)}
+                      className="flex h-16 w-16 items-center justify-center rounded-2xl bg-emerald-50 text-3xl shadow-sm transition hover:scale-[1.02] dark:bg-emerald-950/40"
+                      aria-label="Change profile icon"
+                    >
+                      <IconDisplay iconKey={selectedIconKey} size={40} className="h-10 w-10 object-contain" alt="Profile icon" />
+                    </button>
+                    <div className="min-w-0">
+                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">Name</p>
+                      <p className="truncate text-lg font-semibold text-gray-900 dark:text-gray-100">{displayName}</p>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setNameEditorOpen(true)}
+                    className="sm:ml-auto rounded-full border border-emerald-400 px-4 py-2 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-50 dark:border-emerald-500 dark:text-emerald-300 dark:hover:bg-emerald-500/10"
+                  >
+                    Change Name
+                  </button>
+                </div>
+
+                {iconPickerOpen ? (
+                  <div className="rounded-2xl border border-gray-200 bg-gray-50/90 p-3 dark:border-gray-700 dark:bg-gray-800/80">
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">Choose icon</p>
+                    <div className="mt-3 grid grid-cols-4 gap-2 sm:grid-cols-8">
+                      {ICON_PRESET_KEYS.map((iconKey) => (
+                        <button
+                          key={iconKey}
+                          type="button"
+                          onClick={() => updateIcon(iconKey)}
+                          className={`flex aspect-square items-center justify-center rounded-2xl border text-2xl transition ${
+                            selectedIconKey === iconKey
+                              ? 'border-emerald-500 bg-emerald-100 dark:bg-emerald-950/40'
+                              : 'border-gray-200 bg-white hover:border-emerald-300 dark:border-gray-700 dark:bg-gray-900/70'
+                          }`}
+                          title={formatSourceType(iconKey)}
+                        >
+                          <IconDisplay iconKey={iconKey} size={32} className="h-8 w-8 object-contain" alt={formatSourceType(iconKey)} />
+                        </button>
+                      ))}
+                    </div>
+                    <div className="mt-3 flex items-center justify-between gap-3 rounded-2xl border border-dashed border-amber-300 bg-amber-50 px-3 py-3 dark:border-amber-700/70 dark:bg-amber-950/20">
+                      <div>
+                        <p className="text-sm font-semibold text-amber-900 dark:text-amber-200">Custom (costs 50 gold)</p>
+                        <p className="text-xs text-amber-700 dark:text-amber-300">Bring your own icon later.</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setCustomStubOpen((current) => !current)}
+                        className="rounded-full bg-amber-500 px-3 py-1.5 text-sm font-semibold text-white hover:bg-amber-400"
+                      >
+                        Custom
+                      </button>
+                    </div>
+                    {customStubOpen ? (
+                      <p className="mt-2 text-xs font-medium text-amber-700 dark:text-amber-300">Coming soon.</p>
+                    ) : null}
+                  </div>
+                ) : null}
+
+                {nameEditorOpen ? (
+                  <div>
+                    <DisplayNameChange compact open onClose={() => setNameEditorOpen(false)} />
+                  </div>
+                ) : null}
+              </div>
+
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">Mode</p>
                 <div className="mt-3">

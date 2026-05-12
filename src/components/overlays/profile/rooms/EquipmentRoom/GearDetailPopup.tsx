@@ -6,25 +6,20 @@ import {
   formatXpBoost,
   getGearIcon,
 } from './equipmentRoomData';
-import type { GearSlot } from '../../../../../types';
 import type { GearDefinition } from '../../../../../types/coach';
 
 interface GearDetailPopupProps {
   gear: GearDefinition;
-  actionLabel: string;
+  isEquipped: boolean;
   onAction: () => void;
   onClose: () => void;
-  actionDisabled?: boolean;
-  slotOverride?: GearSlot;
 }
 
 export function GearDetailPopup({
   gear,
-  actionLabel,
+  isEquipped,
   onAction,
   onClose,
-  actionDisabled = false,
-  slotOverride,
 }: GearDetailPopupProps) {
   const xpBoost = formatXpBoost(gear);
 
@@ -38,7 +33,7 @@ export function GearDetailPopup({
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap gap-2">
               <span className="rounded-full bg-gray-100 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-gray-600 dark:bg-gray-700 dark:text-gray-200">
-                {formatSlot(slotOverride ?? gear.slot)}
+                {formatSlot(gear.slot)}
               </span>
               <span className={`rounded-full px-2 py-1 text-[11px] font-semibold uppercase tracking-wide ${RARITY_BADGE[gear.rarity]}`}>
                 {gear.rarity}
@@ -57,14 +52,11 @@ export function GearDetailPopup({
         <button
           type="button"
           onClick={onAction}
-          disabled={actionDisabled}
-          className={`w-full rounded-xl px-4 py-3 text-sm font-semibold transition ${
-            actionDisabled
-              ? 'cursor-default bg-gray-100 text-gray-400 dark:bg-gray-700 dark:text-gray-500'
-              : 'bg-emerald-600 text-white hover:bg-emerald-500'
+          className={`w-full rounded-xl px-4 py-3 text-sm font-semibold text-white transition ${
+            isEquipped ? 'bg-red-600 hover:bg-red-500' : 'bg-emerald-600 hover:bg-emerald-500'
           }`}
         >
-          {actionLabel}
+          {isEquipped ? 'Unequip' : 'Equip'}
         </button>
       </div>
     </PopupShell>
