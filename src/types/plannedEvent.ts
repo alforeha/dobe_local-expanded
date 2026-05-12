@@ -7,7 +7,7 @@
 // ─────────────────────────────────────────
 
 import type { EventAttendee } from './event';
-import type { RecurrenceRule } from './taskTemplate';
+import type { InputFields, RecurrenceRule, TaskType } from './taskTemplate';
 
 // ── EVENT LOCATION ────────────────────────────────────────────────────────────
 
@@ -31,7 +31,7 @@ export type PlannedEventSharedWithStub = null;
 /** STUB: APP-STORE — reserved for scheduled local/device reminder metadata once the APP-STORE chapter ships. */
 export type PushReminderStub = null;
 
-export type TaskEntryKind = 'template' | 'resource';
+export type TaskEntryKind = 'template' | 'resource' | 'inline';
 
 export interface TemplateTaskEntry {
   kind: 'template';
@@ -48,7 +48,15 @@ export interface ResourceTaskEntry {
   taskName: string;
 }
 
-export type TaskEntry = TemplateTaskEntry | ResourceTaskEntry;
+export interface InlineTaskEntry {
+  kind: 'inline';
+  id: string;
+  name: string;
+  taskType: TaskType;
+  inputFields: Partial<InputFields>;
+}
+
+export type TaskEntry = TemplateTaskEntry | ResourceTaskEntry | InlineTaskEntry;
 
 export interface TaskSet {
   id: string;

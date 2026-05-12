@@ -1,15 +1,16 @@
-import { useMemo } from 'react';
+import { useEffect, useState } from 'react';
 import type { PlannedEvent } from '../../../../../types';
 import { isOneOffEvent } from '../../../../../utils/isOneOffEvent';
-import { useScheduleStore } from '../../../../../stores/useScheduleStore';
-import { getAllTemplateRefs } from '../../../../../utils/taskPools';
 import { IconDisplay } from '../../../../shared/IconDisplay';
+import { TaskPoolEditor } from './TaskPoolEditor';
 
 interface PlannedEventBlockProps {
   event: PlannedEvent;
   onEdit: (event: PlannedEvent) => void;
+  onDelete: (event: PlannedEvent) => void;
   expandedId: string | null;
   setExpandedId: (id: string | null) => void;
+  soloExpanded?: boolean;
 }
 
 function formatInterval(frequency: string, interval: number): string {
@@ -77,10 +78,6 @@ function formatEventSchedule(event: PlannedEvent): string {
   return `${dateText} · ${event.startTime} - ${event.endTime}`;
 }
 
-function formatConflictMode(mode: PlannedEvent['conflictMode']): string {
-  return mode.charAt(0).toUpperCase() + mode.slice(1);
-}
-
 function getOrdinalSuffix(day: number): string {
   const mod100 = day % 100;
   if (mod100 >= 11 && mod100 <= 13) return 'th';
@@ -91,167 +88,171 @@ function getOrdinalSuffix(day: number): string {
   return 'th';
 }
 
-export function PlannedEventBlock({ event, onEdit, expandedId, setExpandedId }: PlannedEventBlockProps) {
-  const taskTemplates = useScheduleStore((s) => s.taskTemplates);
+export function PlannedEventBlock({ event, onEdit, onDelete, expandedId, setExpandedId, soloExpanded = false }: PlannedEventBlockProps) {
   const oneOff = isOneOffEvent(event);
   const expanded = expandedId === event.id;
+  const coAttendees = event.coAttendees ?? [];
+  const [activeTab, setActiveTab] = useState<'details' | 'tasks'>('details');
 
-  const orderedTasks = useMemo(() => {
-    return getAllTemplateRefs(event.pools)
-      .map((id) => {
-        const template = taskTemplates[id];
-        return template
-          ? {
-              id,
-              name: template.name,
-            }
-          : null;
-      })
-      .filter((entry): entry is { id: string; name: string } => entry !== null);
-  }, [event.pools, taskTemplates]);
+  useEffect(() => {
+    if (!expanded) {
+      setActiveTab('details');
+    }
+  }, [expanded]);
 
   const scheduleSummary = oneOff ? formatEventSchedule(event) : formatRecurrence(event);
 
   return (
-    <div className="overflow-hidden rounded-xl border border-gray-100 bg-white dark:border-gray-700 dark:bg-gray-800">
-      <div className="flex items-stretch">
-        <div
-          className="w-1 shrink-0 self-stretch"
-          style={{ backgroundColor: event.color || '#6366f1' }}
-        />
+    <div className={`flex flex-row items-stretch overflow-hidden rounded-xl border border-gray-100 bg-white dark:border-gray-700 dark:bg-gray-800 ${expanded && soloExpanded ? 'h-full' : ''}`}>
+      <div
+        className="w-1 shrink-0 self-stretch"
+        style={{ backgroundColor: event.color || '#6366f1' }}
+      />
 
-        <div className="min-w-0 flex-1">
-          <button
-            type="button"
-            onClick={() => setExpandedId(expanded ? null : event.id)}
-            className="w-full px-4 py-3 text-left"
-          >
-            <div className="flex items-center gap-3">
-              <IconDisplay iconKey={event.icon} size={32} className="h-8 w-8 shrink-0 object-contain" alt="" />
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                  <p className="truncate text-sm font-semibold text-gray-900 dark:text-gray-100">
-                    {event.name}
-                  </p>
-                  {event.activeState === 'sleep' && (
-                    <span className="shrink-0 rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-gray-500 dark:bg-gray-700 dark:text-gray-300">
-                      Paused
-                    </span>
-                  )}
-                </div>
-                <p className="mt-1 truncate text-xs text-gray-500 dark:text-gray-300">
-                  {scheduleSummary}
+      <div className={`min-w-0 flex-1 ${expanded && soloExpanded ? 'flex min-h-0 flex-col' : 'flex flex-col'}`}>
+        <button
+          type="button"
+          onClick={() => setExpandedId(expanded ? null : event.id)}
+          className="w-full px-4 py-3 text-left"
+        >
+          <div className="flex items-center gap-3">
+            <IconDisplay iconKey={event.icon} size={32} className="h-8 w-8 shrink-0 object-contain" alt="" />
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2">
+                <p className="truncate text-sm font-semibold text-gray-900 dark:text-gray-100">
+                  {event.name}
                 </p>
+                {event.activeState === 'sleep' && (
+                  <span className="shrink-0 rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-gray-500 dark:bg-gray-700 dark:text-gray-300">
+                    Paused
+                  </span>
+                )}
               </div>
+              <p className="mt-1 truncate text-xs text-gray-500 dark:text-gray-300">
+                {scheduleSummary}
+              </p>
             </div>
-          </button>
+          </div>
+        </button>
 
-          {expanded && (
-            <div className="border-t border-gray-100 px-4 py-3 dark:border-gray-700">
-              {oneOff ? (
-                <div className="space-y-3 text-sm text-gray-700 dark:text-gray-200">
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <p className="text-xs uppercase tracking-wide text-gray-400">Start date</p>
-                      <p>{formatDateLabel(event.seedDate)}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs uppercase tracking-wide text-gray-400">End date</p>
-                      <p>{formatDateLabel(event.dieDate ?? event.seedDate)}</p>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <p className="text-xs uppercase tracking-wide text-gray-400">Begin time</p>
-                      <p>{event.startTime}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs uppercase tracking-wide text-gray-400">End time</p>
-                      <p>{event.endTime}</p>
-                    </div>
-                  </div>
-
-                  {event.description.trim() && (
-                    <div>
-                      <p className="text-xs uppercase tracking-wide text-gray-400">Description</p>
-                      <p className="whitespace-pre-wrap">{event.description}</p>
-                    </div>
-                  )}
-
-                  <div>
-                    <p className="text-xs uppercase tracking-wide text-gray-400">Task pool</p>
-                    {orderedTasks.length > 0 ? (
-                      <ul className="mt-1 space-y-1">
-                        {orderedTasks.map((task) => (
-                          <li key={task.id} className="truncate rounded-lg bg-gray-50 px-3 py-2 dark:bg-gray-900/40">
-                            {task.name}
-                          </li>
-                        ))}
-                      </ul>
-                    ) : (
-                      <p className="mt-1 text-gray-400">No tasks selected.</p>
-                    )}
-                  </div>
-                </div>
-              ) : (
-                <div className="space-y-3 text-sm text-gray-700 dark:text-gray-200">
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <p className="text-xs uppercase tracking-wide text-gray-400">Seed date</p>
-                      <p>{formatDateLabel(event.seedDate)}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs uppercase tracking-wide text-gray-400">Die date</p>
-                      <p>{formatDateLabel(event.dieDate)}</p>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <p className="text-xs uppercase tracking-wide text-gray-400">Begin time</p>
-                      <p>{event.startTime}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs uppercase tracking-wide text-gray-400">End time</p>
-                      <p>{event.endTime}</p>
-                    </div>
-                  </div>
-
-                  <div>
-                    <p className="text-xs uppercase tracking-wide text-gray-400">Task pool</p>
-                    {orderedTasks.length > 0 ? (
-                      <ul className="mt-1 space-y-1">
-                        {orderedTasks.map((task) => (
-                          <li key={task.id} className="truncate rounded-lg bg-gray-50 px-3 py-2 dark:bg-gray-900/40">
-                            {task.name}
-                          </li>
-                        ))}
-                      </ul>
-                    ) : (
-                      <p className="mt-1 text-gray-400">No tasks selected.</p>
-                    )}
-                  </div>
-
-                  <div>
-                    <p className="text-xs uppercase tracking-wide text-gray-400">Conflict mode</p>
-                    <p>{formatConflictMode(event.conflictMode)}</p>
-                  </div>
-                </div>
-              )}
-
-              <div className="mt-4 flex items-center justify-end gap-2">
+        {expanded && (
+          <div className={`border-t border-gray-100 dark:border-gray-700 ${soloExpanded ? 'flex min-h-0 flex-1 flex-col' : 'flex flex-col'}`}>
+            <div className="px-4 py-3">
+              <div className="inline-flex rounded-full bg-gray-100 p-1 dark:bg-gray-900/60">
                 <button
                   type="button"
-                  onClick={() => onEdit(event)}
-                  className="rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700"
+                  onClick={() => setActiveTab('details')}
+                  className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${activeTab === 'details' ? 'bg-white text-gray-900 shadow-sm dark:bg-gray-800 dark:text-gray-100' : 'text-gray-500 dark:text-gray-400'}`}
                 >
-                  Edit
+                  Details
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('tasks')}
+                  className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${activeTab === 'tasks' ? 'bg-white text-gray-900 shadow-sm dark:bg-gray-800 dark:text-gray-100' : 'text-gray-500 dark:text-gray-400'}`}
+                >
+                  Tasks
                 </button>
               </div>
             </div>
-          )}
-        </div>
+
+            {activeTab === 'details' ? (
+              <div className="space-y-4 px-4 pb-3 text-sm text-gray-700 dark:text-gray-200">
+                {oneOff ? (
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <div className="rounded-lg bg-gray-50 px-3 py-3 dark:bg-gray-900/40">
+                      <p className="text-xs uppercase tracking-wide text-gray-400">Start</p>
+                      <p className="mt-1">{formatDateLabel(event.seedDate)}</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">{event.startTime}</p>
+                    </div>
+                    <div className="rounded-lg bg-gray-50 px-3 py-3 dark:bg-gray-900/40">
+                      <p className="text-xs uppercase tracking-wide text-gray-400">End</p>
+                      <p className="mt-1">{formatDateLabel(event.dieDate ?? event.seedDate)}</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">{event.endTime}</p>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <div className="rounded-lg bg-gray-50 px-3 py-3 dark:bg-gray-900/40">
+                        <p className="text-xs uppercase tracking-wide text-gray-400">Recurrence</p>
+                        <p className="mt-1">{formatRecurrence(event)}</p>
+                      </div>
+                      <div className="rounded-lg bg-gray-50 px-3 py-3 dark:bg-gray-900/40">
+                        <p className="text-xs uppercase tracking-wide text-gray-400">Time</p>
+                        <p className="mt-1">{event.startTime} - {event.endTime}</p>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <div className="rounded-lg bg-gray-50 px-3 py-3 dark:bg-gray-900/40">
+                        <p className="text-xs uppercase tracking-wide text-gray-400">Seed Date</p>
+                        <p className="mt-1">Starting {formatDateLabel(event.seedDate)}</p>
+                      </div>
+                      {event.dieDate ? (
+                        <div className="rounded-lg bg-gray-50 px-3 py-3 dark:bg-gray-900/40">
+                          <p className="text-xs uppercase tracking-wide text-gray-400">Die Date</p>
+                          <p className="mt-1">Until {formatDateLabel(event.dieDate)}</p>
+                        </div>
+                      ) : null}
+                    </div>
+                  </>
+                )}
+
+                <div>
+                  <p className="text-xs uppercase tracking-wide text-gray-400">Description</p>
+                  <p className="mt-1 whitespace-pre-wrap rounded-lg bg-gray-50 px-3 py-3 dark:bg-gray-900/40">{event.description.trim() || 'No description.'}</p>
+                </div>
+
+                {event.location?.placeName?.trim() && (
+                  <div>
+                    <p className="text-xs uppercase tracking-wide text-gray-400">Location</p>
+                    <div className="mt-1 text-sm text-gray-600 dark:text-gray-300">{event.location.placeName.trim()}</div>
+                  </div>
+                )}
+
+                {coAttendees.length > 0 && (
+                  <div>
+                    <p className="text-xs uppercase tracking-wide text-gray-400">Co-attendees</p>
+                    <div className="mt-2 flex flex-wrap gap-1">
+                      {coAttendees.map((attendee) => (
+                        <span key={attendee.contactId} className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-700 dark:bg-gray-700 dark:text-gray-200">
+                          {attendee.displayName}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="min-h-0 flex-1 overflow-hidden px-4 pb-3">
+                <TaskPoolEditor
+                  pools={event.pools}
+                  activeCursor={event.taskPoolCursor}
+                  onChange={() => undefined}
+                  readOnly
+                />
+              </div>
+            )}
+
+            <div className="mt-auto flex shrink-0 items-center justify-end gap-2 border-t border-gray-200 px-4 py-2 dark:border-gray-700">
+              <button
+                type="button"
+                onClick={() => onDelete(event)}
+                className="text-xs font-medium text-red-500 transition-colors hover:text-red-600"
+              >
+                Delete
+              </button>
+              <button
+                type="button"
+                onClick={() => onEdit(event)}
+                className="text-xs font-medium text-blue-500 transition-colors hover:text-blue-600"
+              >
+                Edit
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

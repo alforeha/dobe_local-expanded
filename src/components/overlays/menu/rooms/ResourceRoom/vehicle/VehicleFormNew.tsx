@@ -156,7 +156,7 @@ function buildTaskInputFields(taskType: string, title: string, inputFields?: Par
     case 'DURATION':
       return { target: 5, label: title || 'Duration', ...(inputFields ?? {}) };
     case 'TIMER':
-      return { seconds: 60, label: title || 'Timer', ...(inputFields ?? {}) };
+      return { countdownFrom: 60, ...(inputFields ?? {}) };
     case 'RATING':
       return { scale: 5, label: title || 'Rate this', ...(inputFields ?? {}) };
     case 'TEXT':

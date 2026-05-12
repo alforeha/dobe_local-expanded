@@ -3,11 +3,10 @@ import { v4 as uuidv4 } from 'uuid';
 import { taskTemplateLibrary } from '../../../../../coach';
 import { starterTaskTemplates } from '../../../../../coach/StarterQuestLibrary';
 import { CUSTOM_ITEM_TEMPLATE_PREFIX, getItemTaskTemplateMeta } from '../../../../../coach/ItemLibrary';
-import { getTaskTypeIconKey, normalizeTaskTemplateIconKey } from '../../../../../constants/iconMap';
 import { useResourceStore } from '../../../../../stores/useResourceStore';
 import { useScheduleStore } from '../../../../../stores/useScheduleStore';
 import { useUserStore } from '../../../../../stores/useUserStore';
-import type { ResourceTaskEntry, TaskEntry, TaskType, TemplateTaskEntry } from '../../../../../types';
+import type { InlineTaskEntry, ResourceTaskEntry, TaskEntry, TaskType, TemplateTaskEntry } from '../../../../../types';
 import type { InventoryItemTemplate, ItemRecurringTask } from '../../../../../types/resource';
 import type { TaskTemplate } from '../../../../../types/taskTemplate';
 import { normalizeRecurrenceMode } from '../../../../../types/resource';
@@ -131,6 +130,16 @@ function createResourceEntry(row: ResourceTaskRow): ResourceTaskEntry {
   };
 }
 
+function createInlineEntry(name: string, taskType: TaskType, inputFields: TaskTemplate['inputFields']): InlineTaskEntry {
+  return {
+    kind: 'inline',
+    id: uuidv4(),
+    name,
+    taskType,
+    inputFields,
+  };
+}
+
 function resolveInventoryTaskName(taskTemplateRef: string, itemTemplateRef: string, itemTemplates: ReturnType<typeof mergeInventoryItemTemplates>): string {
   if (itemTemplateRef.startsWith(CUSTOM_ITEM_TEMPLATE_PREFIX)) {
     const customTemplate = itemTemplates.find((template) => template.id === itemTemplateRef);
@@ -187,7 +196,6 @@ interface ResourceTaskGroup {
 }
 
 export function TaskPoolAddPanel({ onAdd, onClose }: TaskPoolAddPanelProps) {
-  const setTaskTemplate = useScheduleStore((state) => state.setTaskTemplate);
   const taskTemplates = useScheduleStore((state) => state.taskTemplates);
   const resources = useResourceStore((state) => state.resources);
   const user = useUserStore((state) => state.user);
@@ -410,7 +418,6 @@ export function TaskPoolAddPanel({ onAdd, onClose }: TaskPoolAddPanelProps) {
       return;
     }
 
-    const templateId = uuidv4();
     const built = buildDraftInputFields(taskType, {
       title,
       counterTarget,
@@ -422,28 +429,7 @@ export function TaskPoolAddPanel({ onAdd, onClose }: TaskPoolAddPanelProps) {
       textPrompt,
     });
 
-    setTaskTemplate(templateId, {
-      isCustom: true,
-      name: title.trim(),
-      description: '',
-      icon: normalizeTaskTemplateIconKey(getTaskTypeIconKey(built.taskType), built.taskType),
-      taskType: built.taskType,
-      inputFields: built.inputFields,
-      xpAward: {
-        health: 5,
-        strength: 0,
-        agility: 0,
-        defense: 0,
-        charisma: 0,
-        wisdom: 0,
-      },
-      cooldown: null,
-      media: null,
-      items: [],
-      secondaryTag: null,
-    });
-
-    onAdd(createTemplateEntry(templateId));
+    onAdd(createInlineEntry(title.trim(), built.taskType, built.inputFields));
     onClose();
   }
 

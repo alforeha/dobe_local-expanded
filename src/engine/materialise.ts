@@ -10,7 +10,7 @@
 // ─────────────────────────────────────────
 
 import { v4 as uuidv4 } from 'uuid';
-import type { PlannedEvent, ResourceTaskEntry } from '../types/plannedEvent';
+import type { InlineTaskEntry, PlannedEvent, ResourceTaskEntry } from '../types/plannedEvent';
 import type { Event } from '../types/event';
 import type { Task } from '../types/task';
 import type { InputFields, TaskSecondaryTag, TaskTemplate, TaskType } from '../types/taskTemplate';
@@ -173,6 +173,26 @@ function instantiateResourceTask(entry: ResourceTaskEntry): Task {
   };
 }
 
+function instantiateInlineTask(entry: InlineTaskEntry): Task {
+  return {
+    id: uuidv4(),
+    templateRef: null,
+    isUnique: true,
+    title: entry.name,
+    taskType: entry.taskType,
+    completionState: 'pending',
+    completedAt: null,
+    resultFields: { ...entry.inputFields },
+    attachmentRef: null,
+    resourceRef: null,
+    location: null,
+    sharedWith: null,
+    questRef: null,
+    actRef: null,
+    secondaryTag: null,
+  };
+}
+
 // ── QUEST REF LOOKUP ─────────────────────────────────────────────────────────
 
 /**
@@ -251,6 +271,11 @@ export function materialisePlannedEvent(
           `[materialise] TaskTemplate "${templateRef}" not found in store — task skipped for PlannedEvent "${pe.id}"`,
         );
       }
+      continue;
+    }
+
+    if (entry.kind === 'inline') {
+      tasks.push(instantiateInlineTask(entry));
       continue;
     }
 

@@ -12,10 +12,17 @@ interface MenuOverlayContentProps {
   activeRoom: MenuRoom;
   onNavigate: (room: MenuRoom) => void;
   onGoToDay: (dateIso: string) => void;
+  onScheduleExpandedChange?: (isExpanded: boolean) => void;
   onResourceOverlayActiveChange?: (active: boolean) => void;
 }
 
-export function MenuOverlayContent({ activeRoom, onNavigate, onGoToDay, onResourceOverlayActiveChange }: MenuOverlayContentProps) {
+export function MenuOverlayContent({
+  activeRoom,
+  onNavigate,
+  onGoToDay,
+  onScheduleExpandedChange,
+  onResourceOverlayActiveChange,
+}: MenuOverlayContentProps) {
   const handleGoToResource = (_resourceId: string, _resourceType: ResourceType) => {
     onNavigate('resource');
   };
@@ -27,7 +34,12 @@ export function MenuOverlayContent({ activeRoom, onNavigate, onGoToDay, onResour
       {activeRoom === 'task' && (
         <TaskRoom onGoToResource={handleGoToResource} />
       )}
-      {activeRoom === 'schedule' && <ScheduleRoom onGoToResource={handleGoToResource} />}
+      {activeRoom === 'schedule' && (
+        <ScheduleRoom
+          onGoToResource={handleGoToResource}
+          onExpandedChange={onScheduleExpandedChange}
+        />
+      )}
       {activeRoom === 'resource' && <ResourceRoom onOverlayActiveChange={onResourceOverlayActiveChange} />}
       {activeRoom === 'quickaction' && <QuickActionRoom />}
     </div>

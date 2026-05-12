@@ -14,6 +14,7 @@ interface TaskPoolEditorProps {
   pools: TaskSet[];
   activeCursor: number;
   onChange: (pools: TaskSet[], cursor: number) => void;
+  readOnly?: boolean;
 }
 
 function reorderList<T>(list: T[], from: number, to: number): T[] {
@@ -42,7 +43,7 @@ function buildDisplayTask(templateRef: string): Task {
   };
 }
 
-export function TaskPoolEditor({ pools, activeCursor, onChange }: TaskPoolEditorProps) {
+export function TaskPoolEditor({ pools, activeCursor, onChange, readOnly = false }: TaskPoolEditorProps) {
   const taskTemplates = useScheduleStore((state) => state.taskTemplates);
   const resources = useResourceStore((state) => state.resources);
   const [draggedId, setDraggedId] = useState<string | null>(null);
@@ -69,11 +70,13 @@ export function TaskPoolEditor({ pools, activeCursor, onChange }: TaskPoolEditor
   }
 
   function handleAddPool() {
+    if (readOnly) return;
     const nextPools = [...safePools, { id: crypto.randomUUID(), entries: [] }];
     onChange(nextPools, nextPools.length - 1);
   }
 
   function handleRemovePool(poolId: string) {
+    if (readOnly) return;
     if (safePools.length <= 1) return;
     const removedIndex = safePools.findIndex((pool) => pool.id === poolId);
     const nextPools = safePools.filter((pool) => pool.id !== poolId);
@@ -84,6 +87,7 @@ export function TaskPoolEditor({ pools, activeCursor, onChange }: TaskPoolEditor
   }
 
   function moveEntry(targetId: string) {
+    if (readOnly) return;
     if (!draggedId || draggedId === targetId) return;
     updateEntries(reorderList(activePool.entries, activePool.entries.findIndex((entry) => entry.id === draggedId), activePool.entries.findIndex((entry) => entry.id === targetId)));
   }
@@ -104,7 +108,7 @@ export function TaskPoolEditor({ pools, activeCursor, onChange }: TaskPoolEditor
             >
               Pool {index + 1}
             </button>
-            {safePools.length >= 2 ? (
+            {!readOnly && safePools.length >= 2 ? (
               <button
                 type="button"
                 onClick={() => handleRemovePool(pool.id)}
@@ -117,14 +121,16 @@ export function TaskPoolEditor({ pools, activeCursor, onChange }: TaskPoolEditor
           </div>
         ))}
 
-        <button
-          type="button"
-          onClick={handleAddPool}
-          className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-dashed border-gray-300 bg-white text-lg text-gray-500 transition-colors hover:border-purple-400 hover:text-purple-600 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:border-purple-500 dark:hover:text-purple-300"
-          aria-label="Add pool"
-        >
-          +
-        </button>
+        {!readOnly ? (
+          <button
+            type="button"
+            onClick={handleAddPool}
+            className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-dashed border-gray-300 bg-white text-lg text-gray-500 transition-colors hover:border-purple-400 hover:text-purple-600 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:border-purple-500 dark:hover:text-purple-300"
+            aria-label="Add pool"
+          >
+            +
+          </button>
+        ) : null}
       </div>
 
       <div className="mb-3 flex items-center justify-between gap-3">
@@ -132,19 +138,21 @@ export function TaskPoolEditor({ pools, activeCursor, onChange }: TaskPoolEditor
           <p className="text-xs font-medium uppercase tracking-[0.12em] text-gray-500 dark:text-gray-400">Active Pool</p>
           <p className="text-sm text-gray-600 dark:text-gray-300">Pool {safeCursor + 1}</p>
         </div>
-        <button
-          type="button"
-          onClick={() => setIsAddPanelOpen(true)}
-          className="rounded-lg bg-purple-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-purple-500"
-        >
-          Add Task
-        </button>
+        {!readOnly ? (
+          <button
+            type="button"
+            onClick={() => setIsAddPanelOpen(true)}
+            className="rounded-lg bg-purple-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-purple-500"
+          >
+            Add Task
+          </button>
+        ) : null}
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
         {activePool.entries.length === 0 ? (
           <div className="flex h-full min-h-24 items-center justify-center px-4 text-sm text-gray-400">
-            No tasks in this pool. Add tasks using the button above.
+            {readOnly ? 'No tasks in this pool.' : 'No tasks in this pool. Add tasks using the button above.'}
           </div>
         ) : (
           <ol className="divide-y divide-gray-100 dark:divide-gray-700">
@@ -156,17 +164,17 @@ export function TaskPoolEditor({ pools, activeCursor, onChange }: TaskPoolEditor
                 return (
                   <li
                     key={entry.id}
-                    draggable
-                    onDragStart={() => setDraggedId(entry.id)}
-                    onDragOver={(event) => event.preventDefault()}
-                    onDrop={(event: DragEvent<HTMLLIElement>) => {
+                    draggable={!readOnly}
+                    onDragStart={readOnly ? undefined : () => setDraggedId(entry.id)}
+                    onDragOver={readOnly ? undefined : (event) => event.preventDefault()}
+                    onDrop={readOnly ? undefined : (event: DragEvent<HTMLLIElement>) => {
                       event.preventDefault();
                       moveEntry(entry.id);
                     }}
-                    onDragEnd={() => setDraggedId(null)}
+                    onDragEnd={readOnly ? undefined : () => setDraggedId(null)}
                     className="flex items-center gap-3 px-3 py-3"
                   >
-                    <span className="text-sm text-gray-400">☰</span>
+                    {!readOnly ? <span className="text-sm text-gray-400">☰</span> : null}
                     <div className="min-w-0 flex-1">
                       <div className="truncate text-sm font-medium text-gray-800 dark:text-gray-100">{displayName}</div>
                       <div className="mt-1 flex flex-wrap items-center gap-2">
@@ -175,13 +183,51 @@ export function TaskPoolEditor({ pools, activeCursor, onChange }: TaskPoolEditor
                         </span>
                       </div>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => updateEntries(activePool.entries.filter((activeEntry) => activeEntry.id !== entry.id))}
-                      className="rounded-lg border border-red-300 px-3 py-2 text-xs font-medium text-red-600 transition-colors hover:bg-red-50 dark:border-red-700 dark:text-red-400 dark:hover:bg-red-900/20"
-                    >
-                      Remove
-                    </button>
+                    {!readOnly ? (
+                      <button
+                        type="button"
+                        onClick={() => updateEntries(activePool.entries.filter((activeEntry) => activeEntry.id !== entry.id))}
+                        className="rounded-lg border border-red-300 px-3 py-2 text-xs font-medium text-red-600 transition-colors hover:bg-red-50 dark:border-red-700 dark:text-red-400 dark:hover:bg-red-900/20"
+                      >
+                        Remove
+                      </button>
+                    ) : null}
+                  </li>
+                );
+              }
+
+              if (entry.kind === 'inline') {
+                return (
+                  <li
+                    key={entry.id}
+                    draggable={!readOnly}
+                    onDragStart={readOnly ? undefined : () => setDraggedId(entry.id)}
+                    onDragOver={readOnly ? undefined : (event) => event.preventDefault()}
+                    onDrop={readOnly ? undefined : (event: DragEvent<HTMLLIElement>) => {
+                      event.preventDefault();
+                      moveEntry(entry.id);
+                    }}
+                    onDragEnd={readOnly ? undefined : () => setDraggedId(null)}
+                    className="flex items-center gap-3 px-3 py-3"
+                  >
+                    {!readOnly ? <span className="text-sm text-gray-400">☰</span> : null}
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-sm font-medium text-gray-800 dark:text-gray-100">{entry.name}</div>
+                      <div className="mt-1 flex flex-wrap items-center gap-2">
+                        <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
+                          {entry.taskType}
+                        </span>
+                      </div>
+                    </div>
+                    {!readOnly ? (
+                      <button
+                        type="button"
+                        onClick={() => updateEntries(activePool.entries.filter((activeEntry) => activeEntry.id !== entry.id))}
+                        className="rounded-lg border border-red-300 px-3 py-2 text-xs font-medium text-red-600 transition-colors hover:bg-red-50 dark:border-red-700 dark:text-red-400 dark:hover:bg-red-900/20"
+                      >
+                        Remove
+                      </button>
+                    ) : null}
                   </li>
                 );
               }
@@ -191,17 +237,17 @@ export function TaskPoolEditor({ pools, activeCursor, onChange }: TaskPoolEditor
               return (
                 <li
                   key={entry.id}
-                  draggable
-                  onDragStart={() => setDraggedId(entry.id)}
-                  onDragOver={(event) => event.preventDefault()}
-                  onDrop={(event: DragEvent<HTMLLIElement>) => {
+                  draggable={!readOnly}
+                  onDragStart={readOnly ? undefined : () => setDraggedId(entry.id)}
+                  onDragOver={readOnly ? undefined : (event) => event.preventDefault()}
+                  onDrop={readOnly ? undefined : (event: DragEvent<HTMLLIElement>) => {
                     event.preventDefault();
                     moveEntry(entry.id);
                   }}
-                  onDragEnd={() => setDraggedId(null)}
+                  onDragEnd={readOnly ? undefined : () => setDraggedId(null)}
                   className="flex items-center gap-3 px-3 py-3"
                 >
-                  <span className="text-sm text-gray-400">☰</span>
+                  {!readOnly ? <span className="text-sm text-gray-400">☰</span> : null}
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-sm font-medium text-gray-800 dark:text-gray-100">{entry.taskName}</div>
                     <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
@@ -212,13 +258,15 @@ export function TaskPoolEditor({ pools, activeCursor, onChange }: TaskPoolEditor
                       <span>{resource?.name ?? entry.resourceId}</span>
                     </div>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => updateEntries(activePool.entries.filter((activeEntry) => activeEntry.id !== entry.id))}
-                    className="rounded-lg border border-red-300 px-3 py-2 text-xs font-medium text-red-600 transition-colors hover:bg-red-50 dark:border-red-700 dark:text-red-400 dark:hover:bg-red-900/20"
-                  >
-                    Remove
-                  </button>
+                  {!readOnly ? (
+                    <button
+                      type="button"
+                      onClick={() => updateEntries(activePool.entries.filter((activeEntry) => activeEntry.id !== entry.id))}
+                      className="rounded-lg border border-red-300 px-3 py-2 text-xs font-medium text-red-600 transition-colors hover:bg-red-50 dark:border-red-700 dark:text-red-400 dark:hover:bg-red-900/20"
+                    >
+                      Remove
+                    </button>
+                  ) : null}
                 </li>
               );
             })}
@@ -226,7 +274,7 @@ export function TaskPoolEditor({ pools, activeCursor, onChange }: TaskPoolEditor
         )}
       </div>
 
-      {isAddPanelOpen ? (
+      {!readOnly && isAddPanelOpen ? (
         <TaskPoolAddPanel
           onAdd={(entry) => updateEntries([...activePool.entries, entry])}
           onClose={() => setIsAddPanelOpen(false)}
