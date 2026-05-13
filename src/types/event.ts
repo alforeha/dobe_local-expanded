@@ -111,6 +111,7 @@ export interface QuickActionsWeatherSnapshot {
   icon: string;
   high: number;
   low: number;
+  label?: string;
   /** Actual total precipitation in mm (recorded for past days, forecast for current/future) */
   precipitation?: number;
   /** Max wind speed in km/h for the day. */

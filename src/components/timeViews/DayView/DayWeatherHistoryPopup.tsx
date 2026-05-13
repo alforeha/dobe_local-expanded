@@ -10,6 +10,9 @@ import type { QuickActionsEvent, QuickActionsWeatherSnapshot } from '../../../ty
 interface DayWeatherHistoryPopupProps {
   date: Date;
   onClose: () => void;
+  onPrev: () => void;
+  onNext: () => void;
+  nextDisabled: boolean;
 }
 
 function isQuickActionsEvent(event: unknown): event is QuickActionsEvent {
@@ -83,7 +86,13 @@ function LocationCard({ name, isActive, snapshot }: LocationCardProps) {
   );
 }
 
-export function DayWeatherHistoryPopup({ date, onClose }: DayWeatherHistoryPopupProps) {
+export function DayWeatherHistoryPopup({
+  date,
+  onClose,
+  onPrev,
+  onNext,
+  nextDisabled,
+}: DayWeatherHistoryPopupProps) {
   const { activeEvents, historyEvents } = useScheduleStore(
     useShallow((s) => ({ activeEvents: s.activeEvents, historyEvents: s.historyEvents })),
   );
@@ -107,6 +116,15 @@ export function DayWeatherHistoryPopup({ date, onClose }: DayWeatherHistoryPopup
 
     if (qa.locationSnapshots && Object.keys(qa.locationSnapshots).length > 0) {
       return Object.entries(qa.locationSnapshots).map(([locId, snapshot]) => {
+        if (locId === 'auto') {
+          return {
+            locId,
+            name: snapshot.label ?? 'Auto',
+            isActive: locId === activeLocationId,
+            snapshot,
+          };
+        }
+
         const loc = locations.find((l) => l.id === locId);
         const name = loc
           ? `${loc.label}${loc.cityName ? ` — ${loc.cityName}` : ''}`
@@ -139,7 +157,30 @@ export function DayWeatherHistoryPopup({ date, onClose }: DayWeatherHistoryPopup
   );
 
   return (
-    <PopupShell title={`Weather — ${formatDate(date)}`} onClose={onClose} size="large">
+    <PopupShell
+      title={`Weather — ${formatDate(date)}`}
+      onClose={onClose}
+      size="large"
+      headerRight={
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={onPrev}
+            className="rounded-lg border border-gray-300 px-2 py-1 text-sm text-gray-600 hover:bg-gray-100 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800"
+          >
+            ←
+          </button>
+          <button
+            type="button"
+            onClick={onNext}
+            disabled={nextDisabled}
+            className="rounded-lg border border-gray-300 px-2 py-1 text-sm text-gray-600 hover:bg-gray-100 disabled:opacity-40 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800"
+          >
+            →
+          </button>
+        </div>
+      }
+    >
       {sortedEntries.length > 0 ? (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {sortedEntries.map((entry) => (

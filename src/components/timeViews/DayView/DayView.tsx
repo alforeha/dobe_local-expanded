@@ -112,6 +112,7 @@ export function DayView({ onEventOpen, onResourceOpen, onEditPlanned, todaySigna
 
   const todayISO = format(appDate, 'iso');
   const currentDateISO = format(currentDate, 'iso');
+  const isToday = currentDateISO === todayISO;
   const storedWeatherByDate = useMemo(
     () => buildStoredWeatherMap(activeEvents, historyEvents),
     [activeEvents, historyEvents],
@@ -162,6 +163,9 @@ export function DayView({ onEventOpen, onResourceOpen, onEditPlanned, todaySigna
         <DayWeatherHistoryPopup
           date={currentDate}
           onClose={() => setWeatherHistoryPopupOpen(false)}
+          onPrev={() => goBack()}
+          onNext={() => goForward()}
+          nextDisabled={isToday}
         />
       )}
     </div>

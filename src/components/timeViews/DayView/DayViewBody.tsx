@@ -10,12 +10,12 @@ import { WeatherCapturePopup } from './WeatherCapturePopup';
 import { IconDisplay } from '../../shared/IconDisplay';
 import { resolveTaskIcon, resolveTemplate, findQAEventForDate } from './qaUtils';
 import { createQuickActionsEvent } from '../../../utils/qaUtils';
-import { fetchWeatherForecast } from '../../../utils/weatherService';
+import { fetchHourlyWeather, fetchWeatherForecast } from '../../../utils/weatherService';
 import { format, getAppDate, hourLabel, isSameDay, getOffsetNow } from '../../../utils/dateUtils';
 import { isOneOffEvent } from '../../../utils/isOneOffEvent';
 import { isPlannedEventDue } from '../../../engine/rollover';
 import type { Event, PlannedEvent, QAAlbumEntry, QuickActionsCompletion, QuickActionsEvent } from '../../../types';
-import type { WeatherDay } from '../../../utils/weatherService';
+import type { WeatherDay, WeatherHour } from '../../../utils/weatherService';
 import { ONBOARDING_GLOW } from '../../../constants/onboardingKeys';
 import { useGlows } from '../../../hooks/useOnboardingGlow';
 
@@ -285,6 +285,7 @@ export function DayViewBody({ date, onEventOpen, onEditPlanned }: DayViewBodyPro
   const [openCompletion, setOpenCompletion] = useState<QuickActionsCompletion | null>(null);
   const [openAlbumEntry, setOpenAlbumEntry] = useState<QAAlbumEntry | null>(null);
   const [weatherCaptureQa, setWeatherCaptureQa] = useState<QuickActionsEvent | null>(null);
+  const [currentHourWeather, setCurrentHourWeather] = useState<WeatherHour | null>(null);
   const [todayWeatherState, setTodayWeatherState] = useState<{
     locationId: string;
     weather: WeatherDay | null;
@@ -367,6 +368,31 @@ export function DayViewBody({ date, onEventOpen, onEditPlanned }: DayViewBodyPro
   const locations = locationPreferences?.locations ?? [];
   const activeLocationId = locationPreferences?.activeLocationId ?? null;
   const activeLocation = locations.find((location) => location.id === activeLocationId) ?? locations[0] ?? null;
+
+  useEffect(() => {
+    if (!isToday || !activeLocation) {
+      setCurrentHourWeather(null);
+      return;
+    }
+
+    let cancelled = false;
+    const currentHour = new Date().getHours();
+
+    void fetchHourlyWeather(activeLocation.lat, activeLocation.lng, getAppDate())
+      .then((hours) => {
+        if (cancelled) return;
+        setCurrentHourWeather(hours.find((hour) => hour.hour === currentHour) ?? null);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setCurrentHourWeather(null);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeLocation, isToday]);
 
   useEffect(() => {
     if (!isToday || !activeLocation) return;
@@ -565,7 +591,9 @@ export function DayViewBody({ date, onEventOpen, onEditPlanned }: DayViewBodyPro
   const weatherCaptureTopPx = nowY >= 0 ? nowY - 32 : Math.max(0, scaledSlotTop[startHour] - clipOffsetPx + 4);
   const liveTodayWeather = todayWeatherState?.weather ?? null;
   const currentWeatherSnapshot = isToday
-    ? (liveTodayWeather ? { icon: liveTodayWeather.icon, high: liveTodayWeather.high } : (qaEvent?.weatherSnapshot ?? null))
+    ? (currentHourWeather
+        ? { icon: currentHourWeather.icon, high: currentHourWeather.temp }
+        : (liveTodayWeather ? { icon: liveTodayWeather.icon, high: liveTodayWeather.high } : (qaEvent?.weatherSnapshot ?? null)))
     : null;
 
   function handleOpenWeatherCapture() {

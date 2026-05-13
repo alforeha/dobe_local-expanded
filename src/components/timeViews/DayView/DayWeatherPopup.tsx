@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { IconDisplay } from '../../shared/IconDisplay';
 import { PopupShell } from '../../shared/popups/PopupShell';
 import { LocationManager } from '../../weather/LocationManager';
@@ -33,6 +33,7 @@ export function DayWeatherPopup({
   onClose,
 }: DayWeatherPopupProps) {
   const [locationManagerOpen, setLocationManagerOpen] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   const locationPreferences = useSystemStore((s) => s.settings?.locationPreferences);
   const locations = useMemo(() => locationPreferences?.locations ?? [], [locationPreferences]);
@@ -112,12 +113,19 @@ export function DayWeatherPopup({
     [displayWeather],
   );
 
-  function handleForecastWheel(event: React.WheelEvent<HTMLDivElement>) {
-    const container = event.currentTarget;
-    if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
-    container.scrollLeft += event.deltaY;
-    event.preventDefault();
-  }
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+
+    const handler = (event: WheelEvent) => {
+      if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
+      el.scrollLeft += event.deltaY;
+      event.preventDefault();
+    };
+
+    el.addEventListener('wheel', handler, { passive: false });
+    return () => el.removeEventListener('wheel', handler);
+  }, []);
 
   if (locationManagerOpen) {
     return (
@@ -133,8 +141,8 @@ export function DayWeatherPopup({
         <div className="min-h-0 flex-1">
           {sortedWeather.length > 0 ? (
             <div
+              ref={scrollRef}
               className="flex h-full items-stretch gap-3 overflow-x-auto pb-2"
-              onWheel={handleForecastWheel}
             >
               {sortedWeather.map((day) => {
                 const isSelected = day.date === currentDateISO;

@@ -29,6 +29,7 @@ import { computeGTDList } from './resourceEngine';
 import { ribbet } from '../coach/ribbet';
 import { appendFeedEntry, FEED_SOURCE } from './feedEngine';
 import { localISODate, addDays, getAppDate } from '../utils/dateUtils';
+import { reverseGeocode } from '../utils/geocode';
 import { buildQuickActionsWeatherSnapshot, fetchWeatherSummaryForDate } from '../utils/weatherService';
 
 // ── DATE HELPERS ────────────────────────────────────────────────────────────────────────────────
@@ -381,14 +382,47 @@ async function step9_coachReview(newDate: string): Promise<void> {
   const scheduleStore = useScheduleStore.getState();
   const userStore = useUserStore.getState();
   const locationPreferences = useSystemStore.getState().settings?.locationPreferences;
+  const autoLocationEnabled = locationPreferences?.autoLocationEnabled ?? true;
   const locations = locationPreferences?.locations ?? [];
   const activeLocationId = locationPreferences?.activeLocationId ?? null;
   const activeLocation =
     locations.find((l) => l.id === activeLocationId) ?? locations[0];
 
+  async function fetchAutoSnapshot(): Promise<[string, QuickActionsWeatherSnapshot] | null> {
+    if (!autoLocationEnabled || typeof navigator === 'undefined' || !navigator.geolocation) {
+      return null;
+    }
+
+    try {
+      const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          enableHighAccuracy: false,
+          maximumAge: 60 * 60 * 1000,
+          timeout: 10000,
+        });
+      });
+
+      const lat = position.coords.latitude;
+      const lng = position.coords.longitude;
+      const cityName = await reverseGeocode(lat, lng);
+      const weather = await fetchWeatherSummaryForDate(lat, lng, newDate);
+      if (!weather) return null;
+
+      return [
+        'auto',
+        {
+          ...buildQuickActionsWeatherSnapshot(weather),
+          label: cityName ? `Auto · ${cityName}` : 'Auto',
+        },
+      ];
+    } catch {
+      return null;
+    }
+  }
+
   // Fetch weather for every saved location in parallel
-  const locationSnapshotEntries = await Promise.all(
-    locations.map(async (loc) => {
+  const locationSnapshotRequests: Array<Promise<[string, QuickActionsWeatherSnapshot] | null>> = locations.map(
+    async (loc) => {
       try {
         const weather = await fetchWeatherSummaryForDate(loc.lat, loc.lng, newDate);
         if (!weather) return null;
@@ -397,8 +431,14 @@ async function step9_coachReview(newDate: string): Promise<void> {
       } catch {
         return null;
       }
-    }),
+    },
   );
+
+  if (autoLocationEnabled) {
+    locationSnapshotRequests.push(fetchAutoSnapshot());
+  }
+
+  const locationSnapshotEntries = await Promise.all(locationSnapshotRequests);
 
   const locationSnapshots: Record<string, QuickActionsWeatherSnapshot> = Object.fromEntries(
     locationSnapshotEntries.filter(
@@ -408,7 +448,11 @@ async function step9_coachReview(newDate: string): Promise<void> {
 
   // weatherSnapshot stays as the active location's entry for backward-compat consumers
   const weatherSnapshot: QuickActionsEvent['weatherSnapshot'] =
-    activeLocation ? (locationSnapshots[activeLocation.id] ?? null) : null;
+    activeLocationId === 'auto'
+      ? (locationSnapshots.auto ?? null)
+      : activeLocation
+        ? (locationSnapshots[activeLocation.id] ?? null)
+        : null;
 
   // Create (or update) the day's QuickActionsEvent.
   // Preserve completions/xpAwarded if a QA already exists for this date
