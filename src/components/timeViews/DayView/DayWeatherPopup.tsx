@@ -7,6 +7,8 @@ import { fetchWeatherForecast } from '../../../utils/weatherService';
 import { format } from '../../../utils/dateUtils';
 import type { WeatherDay } from '../../../utils/weatherService';
 
+const AUTO_LOCATION_ID = 'auto';
+
 interface DayWeatherPopupProps {
   currentDate: Date;
   weather: WeatherDay[];
@@ -34,6 +36,7 @@ export function DayWeatherPopup({
 
   const locationPreferences = useSystemStore((s) => s.settings?.locationPreferences);
   const locations = useMemo(() => locationPreferences?.locations ?? [], [locationPreferences]);
+  const autoLocationEnabled = locationPreferences?.autoLocationEnabled ?? true;
   const activeLocationId = locationPreferences?.activeLocationId ?? null;
 
   // viewLocationId is local to this popup — switching it does NOT change activeLocationId
@@ -86,6 +89,24 @@ export function DayWeatherPopup({
   const displayWeather = isViewingActiveLocation || altWeather === null ? weather : altWeather;
 
   const currentDateISO = format(currentDate, 'iso');
+  const switcherOptions = useMemo(
+    () => (autoLocationEnabled
+      ? [
+          {
+            id: AUTO_LOCATION_ID,
+            label: activeLocation?.cityName ? `Auto · ${activeLocation.cityName}` : 'Auto',
+          },
+          ...locations.map((location) => ({
+            id: location.id,
+            label: location.cityName || location.label,
+          })),
+        ]
+      : locations.map((location) => ({
+          id: location.id,
+          label: location.cityName || location.label,
+        }))),
+    [activeLocation, autoLocationEnabled, locations],
+  );
   const sortedWeather = useMemo(
     () => displayWeather.slice().sort((a, b) => a.date.localeCompare(b.date)),
     [displayWeather],
@@ -168,16 +189,16 @@ export function DayWeatherPopup({
         </div>
 
         <div className="flex shrink-0 items-center justify-between border-t border-gray-200 pt-3 dark:border-gray-700">
-          {locations.length > 1 ? (
+          {switcherOptions.length > 1 ? (
             <select
               value={viewLocationId ?? ''}
               onChange={(e) => setViewLocationId(e.target.value)}
               className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 transition-colors focus:border-purple-500 focus:outline-none dark:border-gray-600 dark:bg-gray-900 dark:text-gray-200"
             >
-              {locations.map((loc) => (
-                <option key={loc.id} value={loc.id}>
-                  {loc.cityName || loc.label}
-                  {loc.id === activeLocationId ? ' ★' : ''}
+              {switcherOptions.map((option) => (
+                <option key={option.id} value={option.id}>
+                  {option.label}
+                  {option.id === activeLocationId ? ' ★' : ''}
                 </option>
               ))}
             </select>

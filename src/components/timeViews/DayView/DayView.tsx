@@ -8,6 +8,7 @@ import { DayViewBody } from './DayViewBody';
 import { DayWeatherPopup } from './DayWeatherPopup';
 import { DayWeatherHistoryPopup } from './DayWeatherHistoryPopup';
 import { DayResourcePopup } from './DayResourcePopup';
+import { TodayWeatherPopup } from '../../weather/TodayWeatherPopup';
 import { format } from '../../../utils/dateUtils';
 import { fetchWeatherForecast, type WeatherDay } from '../../../utils/weatherService';
 import { buildStoredWeatherMap, mergeWeatherForDates } from '../../../utils/weatherHistory';
@@ -36,12 +37,20 @@ export function DayView({ onEventOpen, onResourceOpen, onEditPlanned, todaySigna
   const [weather, setWeather] = useState<WeatherDay[]>([]);
   const [weatherResolved, setWeatherResolved] = useState(false);
   const [weatherPopupOpen, setWeatherPopupOpen] = useState(false);
+  const [todayWeatherPopupOpen, setTodayWeatherPopupOpen] = useState(false);
   const [weatherHistoryPopupOpen, setWeatherHistoryPopupOpen] = useState(false);
   const [resourcePopupOpen, setResourcePopupOpen] = useState(false);
 
   function handleWeatherOpen() {
     const dateISO = format(currentDate, 'iso');
     const todayISOValue = format(appDate, 'iso');
+    const isToday = dateISO === todayISOValue;
+
+    if (isToday && activeLocation) {
+      setTodayWeatherPopupOpen(true);
+      return;
+    }
+
     // Past day: open history popup if a snapshot exists for that day
     if (dateISO < todayISOValue) {
       const qaId = `qa-${dateISO}`;
@@ -116,7 +125,6 @@ export function DayView({ onEventOpen, onResourceOpen, onEditPlanned, todaySigna
     )[0] ?? null,
     [currentDateISO, activeLocation, storedWeatherByDate, todayISO, weather],
   );
-
   return (
     <div className="flex h-full flex-col overflow-visible">
       <DayViewHeader
@@ -142,6 +150,12 @@ export function DayView({ onEventOpen, onResourceOpen, onEditPlanned, todaySigna
           currentDate={currentDate}
           weather={weather}
           onClose={() => setWeatherPopupOpen(false)}
+        />
+      )}
+      {todayWeatherPopupOpen && activeLocation && (
+        <TodayWeatherPopup
+          date={todayISO}
+          onClose={() => setTodayWeatherPopupOpen(false)}
         />
       )}
       {weatherHistoryPopupOpen && (

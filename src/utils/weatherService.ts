@@ -23,6 +23,17 @@ export interface WeatherDay extends WeatherSummaryDay {
   sunset: string;
 }
 
+export interface WeatherHour {
+  hour: number;
+  time: string;
+  icon: string;
+  temp: number;
+  precipChance: number;
+  windSpeed: number;
+  humidity: number;
+  uvIndex: number;
+}
+
 interface OpenMeteoDaily {
   time: string[];
   weathercode: number[];
@@ -39,6 +50,20 @@ interface OpenMeteoDaily {
 
 interface OpenMeteoResponse {
   daily?: OpenMeteoDaily;
+}
+
+interface OpenMeteoHourly {
+  time: string[];
+  weathercode: number[];
+  temperature_2m: number[];
+  precipitation_probability: number[];
+  wind_speed_10m: number[];
+  relative_humidity_2m: number[];
+  uv_index: number[];
+}
+
+interface OpenMeteoHourlyResponse {
+  hourly?: OpenMeteoHourly;
 }
 
 const WEATHER_ICON_MAP: Record<number, string> = {
@@ -163,4 +188,56 @@ export async function fetchWeatherForecast(
     sunrise: daily.sunrise[index] ?? '',
     sunset: daily.sunset[index] ?? '',
   }));
+}
+
+export async function fetchHourlyWeather(
+  lat: number,
+  lng: number,
+  date: string,
+): Promise<WeatherHour[]> {
+  const params = new URLSearchParams({
+    latitude: String(lat),
+    longitude: String(lng),
+    hourly: [
+      'weathercode',
+      'temperature_2m',
+      'precipitation_probability',
+      'wind_speed_10m',
+      'relative_humidity_2m',
+      'uv_index',
+    ].join(','),
+    start_date: date,
+    end_date: date,
+    temperature_unit: 'fahrenheit',
+    timezone: 'auto',
+    wind_speed_unit: 'mph',
+  });
+
+  const response = await fetch(`https://api.open-meteo.com/v1/forecast?${params.toString()}`);
+  if (!response.ok) {
+    throw new Error(`Weather request failed with status ${response.status}`);
+  }
+
+  const payload = (await response.json()) as OpenMeteoHourlyResponse;
+  const hourly = payload.hourly;
+  if (!hourly) return [];
+
+  return hourly.time
+    .map((time, index) => ({ time, index }))
+    .filter(({ time }) => time.startsWith(date))
+    .map(({ time, index }) => {
+      const hourToken = time.split('T')[1]?.slice(0, 2);
+      const parsedHour = Number.parseInt(hourToken ?? '', 10);
+
+      return {
+        hour: Number.isNaN(parsedHour) ? 0 : parsedHour,
+        time,
+        icon: iconForWeatherCode(hourly.weathercode[index] ?? -1),
+        temp: Math.round(hourly.temperature_2m[index] ?? 0),
+        precipChance: Math.round(hourly.precipitation_probability[index] ?? 0),
+        windSpeed: Math.round(hourly.wind_speed_10m[index] ?? 0),
+        humidity: Math.round(hourly.relative_humidity_2m[index] ?? 0),
+        uvIndex: Math.round((hourly.uv_index[index] ?? 0) * 10) / 10,
+      } satisfies WeatherHour;
+    });
 }

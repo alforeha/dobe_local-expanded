@@ -563,7 +563,10 @@ export function DayViewBody({ date, onEventOpen, onEditPlanned }: DayViewBodyPro
   const sunriseHour = todayWeather?.sunrise ? new Date(todayWeather.sunrise).getHours() : null;
   const sunsetHour = todayWeather?.sunset ? new Date(todayWeather.sunset).getHours() : null;
   const weatherCaptureTopPx = nowY >= 0 ? nowY - 32 : Math.max(0, scaledSlotTop[startHour] - clipOffsetPx + 4);
-  const currentWeatherSnapshot = isToday ? (qaEvent?.weatherSnapshot ?? null) : null;
+  const liveTodayWeather = todayWeatherState?.weather ?? null;
+  const currentWeatherSnapshot = isToday
+    ? (liveTodayWeather ? { icon: liveTodayWeather.icon, high: liveTodayWeather.high } : (qaEvent?.weatherSnapshot ?? null))
+    : null;
 
   function handleOpenWeatherCapture() {
     const todayIso = getAppDate();
