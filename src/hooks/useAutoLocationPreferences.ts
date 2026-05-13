@@ -1,78 +1,51 @@
-import { useEffect, useRef } from 'react';
-import { v4 as uuidv4 } from 'uuid';
+import { useEffect, useState } from 'react';
 import { useSystemStore } from '../stores/useSystemStore';
-import { useScheduleStore } from '../stores/useScheduleStore';
 import { reverseGeocode } from '../utils/geocode';
-import { buildQuickActionsWeatherSnapshot, fetchWeatherSummaryForDate } from '../utils/weatherService';
-import { getAppDate } from '../utils/dateUtils';
-import type { NamedLocation, QuickActionsEvent } from '../types';
-
-async function backfillTodayWeather(location: NamedLocation): Promise<void> {
-  const today = getAppDate();
-  const qaId = `qa-${today}`;
-  const scheduleStore = useScheduleStore.getState();
-  const qa = scheduleStore.activeEvents[qaId] ?? scheduleStore.historyEvents[qaId];
-  if (!qa || !('weatherSnapshot' in qa) || (qa as QuickActionsEvent).weatherSnapshot !== null) {
-    return;
-  }
-  try {
-    const weather = await fetchWeatherSummaryForDate(location.lat, location.lng, today);
-    if (weather) {
-      const snapshot = buildQuickActionsWeatherSnapshot(weather);
-      scheduleStore.setActiveEvent({
-        ...(qa as QuickActionsEvent),
-        weatherSnapshot: snapshot,
-        locationSnapshots: {
-          ...(qa as QuickActionsEvent).locationSnapshots,
-          [location.id]: snapshot,
-        },
-      });
-    }
-  } catch {
-    // Best-effort; leave snapshot as null if fetch fails.
-  }
-}
+import type { NamedLocation } from '../types';
 
 export function useAutoLocationPreferences(): NamedLocation | undefined {
   const locationPreferences = useSystemStore((s) => s.settings?.locationPreferences);
-  const addNamedLocation = useSystemStore((s) => s.addNamedLocation);
-  const attemptedRef = useRef(false);
+  const [detectedLocation, setDetectedLocation] = useState<NamedLocation | undefined>();
+  const autoLocationEnabled = locationPreferences?.autoLocationEnabled ?? true;
+  const canUseAutoLocation = autoLocationEnabled && typeof navigator !== 'undefined' && !!navigator.geolocation;
 
   useEffect(() => {
-    // Only run auto-geolocation when no locations have been saved yet.
-    if ((locationPreferences?.locations.length ?? 0) > 0 || attemptedRef.current) return;
-    if (typeof navigator === 'undefined' || !navigator.geolocation) return;
+    if (!canUseAutoLocation) {
+      return;
+    }
 
-    attemptedRef.current = true;
+    let cancelled = false;
     navigator.geolocation.getCurrentPosition(
       (position) => {
         const { latitude: lat, longitude: lng } = position.coords;
         reverseGeocode(lat, lng)
           .then((cityName) => {
-            const location: NamedLocation = {
-              id: uuidv4(),
-              label: 'Auto',
-              lat,
-              lng,
-              cityName,
-            };
-            addNamedLocation(location);
-            void backfillTodayWeather(location);
+            if (!cancelled) {
+              setDetectedLocation({
+                id: 'auto-location',
+                label: 'Auto',
+                lat,
+                lng,
+                cityName,
+              });
+            }
           })
           .catch(() => {
-            const location: NamedLocation = {
-              id: uuidv4(),
-              label: 'Auto',
-              lat,
-              lng,
-              cityName: '',
-            };
-            addNamedLocation(location);
-            void backfillTodayWeather(location);
+            if (!cancelled) {
+              setDetectedLocation({
+                id: 'auto-location',
+                label: 'Auto',
+                lat,
+                lng,
+                cityName: '',
+              });
+            }
           });
       },
       () => {
-        // Silent fallback: weather simply stays unavailable if the user denies location.
+        if (!cancelled) {
+          setDetectedLocation(undefined);
+        }
       },
       {
         enableHighAccuracy: false,
@@ -80,9 +53,17 @@ export function useAutoLocationPreferences(): NamedLocation | undefined {
         timeout: 10000,
       },
     );
-  }, [locationPreferences, addNamedLocation]);
+    return () => {
+      cancelled = true;
+    };
+  }, [canUseAutoLocation]);
+
+  if (autoLocationEnabled) {
+    return canUseAutoLocation ? detectedLocation : undefined;
+  }
 
   if (!locationPreferences) return undefined;
-  const { locations, activeLocationId } = locationPreferences;
-  return locations.find((l) => l.id === activeLocationId) ?? locations[0];
+  const locations = locationPreferences.locations.filter((location) => location.label !== 'Auto');
+  const { activeLocationId } = locationPreferences;
+  return locations.find((location) => location.id === activeLocationId) ?? locations[0];
 }

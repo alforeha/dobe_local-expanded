@@ -61,6 +61,7 @@ export interface NamedLocation {
 export interface LocationPreferences {
   locations: NamedLocation[];
   activeLocationId: string | null;
+  autoLocationEnabled: boolean;
 }
 
 // ── SETTINGS ROOT ─────────────────────────────────────────────────────────────

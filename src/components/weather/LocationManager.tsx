@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { useSystemStore } from '../../stores/useSystemStore';
 import { useResourceStore } from '../../stores/useResourceStore';
@@ -10,21 +10,65 @@ interface LocationManagerProps {
   onClose: () => void;
 }
 
+const AUTO_LOCATION_ID = 'auto';
+
 export function LocationManager({ onClose }: LocationManagerProps) {
   const locationPreferences = useSystemStore((s) => s.settings?.locationPreferences);
   const addNamedLocation = useSystemStore((s) => s.addNamedLocation);
   const removeNamedLocation = useSystemStore((s) => s.removeNamedLocation);
   const setActiveLocation = useSystemStore((s) => s.setActiveLocation);
+  const setAutoLocationEnabled = useSystemStore((s) => s.setAutoLocationEnabled);
   const updateNamedLocation = useSystemStore((s) => s.updateNamedLocation);
   const resources = useResourceStore((s) => s.resources);
 
   const locations = locationPreferences?.locations ?? [];
   const activeLocationId = locationPreferences?.activeLocationId ?? null;
+  const autoLocationEnabled = locationPreferences?.autoLocationEnabled ?? true;
+  const isAutoActive = activeLocationId === AUTO_LOCATION_ID;
+  const canUseAutoLocation = autoLocationEnabled && typeof navigator !== 'undefined' && !!navigator.geolocation;
+  const savedLocations = locations.filter((location) => location.label !== 'Auto');
 
-  // Home resources that have an address
+    // Home resources that already have stored coordinates
   const homesWithAddress = Object.values(resources)
     .filter(isHome)
-    .filter((h) => h.address && h.address.trim() !== '');
+      .filter((h) => typeof h.lat === 'number' && typeof h.lon === 'number');
+
+  const [detectedCityName, setDetectedCityName] = useState('');
+
+  useEffect(() => {
+    if (!canUseAutoLocation) {
+      return;
+    }
+
+    let cancelled = false;
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const lat = position.coords.latitude;
+        const lng = position.coords.longitude;
+        reverseGeocode(lat, lng)
+          .then((cityName) => {
+            if (!cancelled) {
+              setDetectedCityName(cityName || '');
+            }
+          })
+          .catch(() => {
+            if (!cancelled) {
+              setDetectedCityName('');
+            }
+          });
+      },
+      () => {
+        if (!cancelled) {
+          setDetectedCityName('');
+        }
+      },
+      { enableHighAccuracy: false, maximumAge: 60 * 60 * 1000, timeout: 10000 },
+    );
+
+    return () => {
+      cancelled = true;
+    };
+  }, [canUseAutoLocation]);
 
   // ── GPS add ───────────────────────────────────────────────────────────────
   const [gpsState, setGpsState] = useState<'idle' | 'locating' | 'labelling'>('idle');
@@ -128,19 +172,12 @@ export function LocationManager({ onClose }: LocationManagerProps) {
   const [homeLabel, setHomeLabel] = useState('');
   const [homeLabelling, setHomeLabelling] = useState(false);
 
-  async function handleHomeSelect(homeId: string, address: string, defaultLabel: string) {
+  async function handleHomeSelect(homeId: string, defaultLabel: string, lat: number, lon: number) {
     setHomeAddingId(homeId);
     setHomeAddState('searching');
     setHomeAddError(null);
-    const coords = await forwardGeocode(address);
-    if (!coords) {
-      setHomeAddState('idle');
-      setHomeAddError('Could not geocode that address.');
-      setHomeAddingId(null);
-      return;
-    }
-    const cityName = await reverseGeocode(coords.lat, coords.lng);
-    setHomePending({ ...coords, cityName, defaultLabel });
+    const cityName = await reverseGeocode(lat, lon);
+    setHomePending({ lat, lng: lon, cityName, defaultLabel });
     setHomeLabel(defaultLabel);
     setHomeLabelling(true);
     setHomeAddState('idle');
@@ -153,6 +190,13 @@ export function LocationManager({ onClose }: LocationManagerProps) {
     setHomeLabel('');
     setHomeLabelling(false);
     setHomeAddingId(null);
+  }
+
+  function handleAutoLocationToggle() {
+    if (autoLocationEnabled && activeLocationId === AUTO_LOCATION_ID) {
+      setActiveLocation(savedLocations[0]?.id ?? null);
+    }
+    setAutoLocationEnabled(!autoLocationEnabled);
   }
 
   return (
@@ -170,12 +214,49 @@ export function LocationManager({ onClose }: LocationManagerProps) {
         </button>
       </div>
 
+      <div
+        className={`flex items-center gap-3 rounded-xl border px-3 py-2 ${isAutoActive ? 'border-purple-400 bg-purple-50 dark:border-purple-600 dark:bg-purple-900/20' : 'border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900/40'}`}
+      >
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium text-gray-800 dark:text-gray-100">
+              {canUseAutoLocation && detectedCityName ? `Auto · ${detectedCityName}` : 'Auto'}
+            </span>
+            {isAutoActive && (
+              <span className="rounded-full bg-purple-100 px-2 py-0.5 text-[10px] font-semibold text-purple-700 dark:bg-purple-800/40 dark:text-purple-300">Active</span>
+            )}
+          </div>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          {!isAutoActive && autoLocationEnabled && (
+            <button
+              type="button"
+              onClick={() => setActiveLocation(AUTO_LOCATION_ID)}
+              className="rounded-lg border border-gray-300 px-2 py-1 text-xs text-gray-600 transition-colors hover:bg-gray-100 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800"
+            >
+              Set active
+            </button>
+          )}
+          <button
+            type="button"
+            role="switch"
+            aria-checked={autoLocationEnabled}
+            onClick={handleAutoLocationToggle}
+            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${autoLocationEnabled ? 'bg-purple-600' : 'bg-gray-300 dark:bg-gray-600'}`}
+          >
+            <span
+              className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${autoLocationEnabled ? 'translate-x-6' : 'translate-x-1'}`}
+            />
+          </button>
+        </div>
+      </div>
+
       {/* Saved locations list */}
-      {locations.length === 0 ? (
+      {savedLocations.length === 0 ? (
         <p className="text-sm text-gray-500 dark:text-gray-400">No saved locations yet.</p>
       ) : (
         <ul className="flex flex-col gap-2">
-          {locations.map((loc) => {
+          {savedLocations.map((loc) => {
             const isActive = loc.id === activeLocationId;
             return (
               <li
@@ -336,7 +417,7 @@ export function LocationManager({ onClose }: LocationManagerProps) {
                     <button
                       type="button"
                       disabled={homeAddingId === home.id && homeAddState === 'searching'}
-                      onClick={() => void handleHomeSelect(home.id, home.address!, home.name)}
+                      onClick={() => void handleHomeSelect(home.id, home.name, home.lat!, home.lon!)}
                       className="shrink-0 rounded-lg border border-gray-300 px-2 py-1 text-xs text-gray-600 transition-colors hover:bg-gray-100 disabled:opacity-40 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800"
                     >
                       {homeAddingId === home.id && homeAddState === 'searching' ? 'Searching…' : 'Use'}

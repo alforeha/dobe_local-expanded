@@ -7,7 +7,6 @@
 
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { v4 as uuidv4 } from 'uuid';
 import type { NamedLocation, Settings } from '../types';
 import type { ResourceType } from '../types/resource';
 
@@ -55,6 +54,7 @@ interface SystemActions {
   addNamedLocation: (location: NamedLocation) => void;
   removeNamedLocation: (id: string) => void;
   setActiveLocation: (id: string) => void;
+  setAutoLocationEnabled: (enabled: boolean) => void;
   updateNamedLocation: (id: string, patch: Partial<NamedLocation>) => void;
   setOnboardingComplete: (complete: boolean) => void;
   setDevMode: (val: boolean) => void;
@@ -79,6 +79,12 @@ const initialState: SystemState = {
   appTime: null,
   timeOffset: 0,
   menuResourceTarget: null,
+};
+
+const DEFAULT_LOCATION_PREFERENCES = {
+  locations: [],
+  activeLocationId: null,
+  autoLocationEnabled: true,
 };
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -122,13 +128,13 @@ export const useSystemStore = create<SystemState & SystemActions>()(
       addNamedLocation: (location) =>
         set((state) => {
           const current = state.settings ?? DEFAULT_SETTINGS;
-          const existing = current.locationPreferences ?? { locations: [], activeLocationId: null };
+          const existing = current.locationPreferences ?? DEFAULT_LOCATION_PREFERENCES;
           const locations = [...existing.locations, location];
           const activeLocationId = existing.activeLocationId ?? location.id;
           return {
             settings: {
               ...current,
-              locationPreferences: { locations, activeLocationId },
+              locationPreferences: { ...existing, locations, activeLocationId },
             },
           };
         }),
@@ -136,7 +142,7 @@ export const useSystemStore = create<SystemState & SystemActions>()(
       removeNamedLocation: (id) =>
         set((state) => {
           const current = state.settings ?? DEFAULT_SETTINGS;
-          const existing = current.locationPreferences ?? { locations: [], activeLocationId: null };
+          const existing = current.locationPreferences ?? DEFAULT_LOCATION_PREFERENCES;
           const locations = existing.locations.filter((l) => l.id !== id);
           const activeLocationId =
             existing.activeLocationId === id
@@ -145,7 +151,7 @@ export const useSystemStore = create<SystemState & SystemActions>()(
           return {
             settings: {
               ...current,
-              locationPreferences: { locations, activeLocationId },
+              locationPreferences: { ...existing, locations, activeLocationId },
             },
           };
         }),
@@ -153,7 +159,7 @@ export const useSystemStore = create<SystemState & SystemActions>()(
       setActiveLocation: (id) =>
         set((state) => {
           const current = state.settings ?? DEFAULT_SETTINGS;
-          const existing = current.locationPreferences ?? { locations: [], activeLocationId: null };
+          const existing = current.locationPreferences ?? DEFAULT_LOCATION_PREFERENCES;
           return {
             settings: {
               ...current,
@@ -162,10 +168,22 @@ export const useSystemStore = create<SystemState & SystemActions>()(
           };
         }),
 
+      setAutoLocationEnabled: (enabled) =>
+        set((state) => {
+          const current = state.settings ?? DEFAULT_SETTINGS;
+          const existing = current.locationPreferences ?? DEFAULT_LOCATION_PREFERENCES;
+          return {
+            settings: {
+              ...current,
+              locationPreferences: { ...existing, autoLocationEnabled: enabled },
+            },
+          };
+        }),
+
       updateNamedLocation: (id, patch) =>
         set((state) => {
           const current = state.settings ?? DEFAULT_SETTINGS;
-          const existing = current.locationPreferences ?? { locations: [], activeLocationId: null };
+          const existing = current.locationPreferences ?? DEFAULT_LOCATION_PREFERENCES;
           const locations = existing.locations.map((l) =>
             l.id === id ? { ...l, ...patch } : l,
           );
@@ -220,12 +238,11 @@ export const useSystemStore = create<SystemState & SystemActions>()(
           | { lat?: number; lng?: number; locations?: unknown }
           | undefined;
         if (lp && typeof lp.lat === 'number' && typeof lp.lng === 'number' && !lp.locations) {
-          const id = uuidv4();
           state.setSettings({
             ...(state.settings!),
             locationPreferences: {
-              locations: [{ id, label: 'Auto', lat: lp.lat, lng: lp.lng, cityName: '' }],
-              activeLocationId: id,
+              ...DEFAULT_LOCATION_PREFERENCES,
+              autoLocationEnabled: true,
             },
           });
         }
