@@ -235,8 +235,15 @@ export const useSystemStore = create<SystemState & SystemActions>()(
         if (!state) return;
         // ── Migration: convert old { lat, lng } locationPreferences to NamedLocation array ──
         const lp = state.settings?.locationPreferences as
-          | { lat?: number; lng?: number; locations?: unknown }
+          | {
+              lat?: number;
+              lng?: number;
+              locations?: Array<NamedLocation & { isAuto?: boolean }>;
+            }
           | undefined;
+        if (lp?.locations) {
+          lp.locations = lp.locations.filter((l) => !l.isAuto);
+        }
         if (lp && typeof lp.lat === 'number' && typeof lp.lng === 'number' && !lp.locations) {
           state.setSettings({
             ...(state.settings!),
