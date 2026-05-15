@@ -634,12 +634,17 @@ export function completeEvent(eventId: string): void {
     });
 
     // +1 gold per event completion (D98)
+    const activeEventForGold = useScheduleStore.getState().activeEvents[eventId];
+    const goldAlreadyAwarded = activeEventForGold
+      && activeEventForGold.eventType !== 'quickActions'
+      && (activeEventForGold as Event).goldAwarded === true;
     const userForGold = useUserStore.getState().user;
-    if (userForGold) {
+    if (!goldAlreadyAwarded && userForGold) {
       userStoreRef.setUser(awardGold(1, userForGold, {
         source: `event.complete:${updatedEvent.name}`,
         suppressLog: true,
       }));
+      scheduleStore.updateEvent(eventId, { goldAwarded: true });
       console.info('[event-complete]', {
         eventId,
         eventName: updatedEvent.name,
