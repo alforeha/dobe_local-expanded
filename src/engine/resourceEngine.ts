@@ -767,7 +767,8 @@ function clearPendingResourceTasks(templateRef: string, resourceRef: string): vo
       (task) =>
         task.templateRef === templateRef &&
         task.resourceRef === resourceRef &&
-        task.completionState === 'pending',
+        task.completionState === 'pending' &&
+        !task.isUnique,
     )
     .map((task) => task.id);
 

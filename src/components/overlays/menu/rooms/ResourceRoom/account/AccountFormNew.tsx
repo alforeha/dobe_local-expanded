@@ -2482,14 +2482,15 @@ export function AccountFormNew({ existing, onSaved, onCancel }: AccountFormNewPr
       addResourceLink(resource.id, autoLinkTargetId, autoLinkRelationship, { isPullLink: true });
     }
 
-    if (!existing && user) {
+    const latestUser = useUserStore.getState().user ?? user;
+    if (!existing && latestUser) {
       setUser({
-        ...user,
+        ...latestUser,
         resources: {
-          ...user.resources,
-          accounts: user.resources.accounts.includes(resource.id)
-            ? user.resources.accounts
-            : [...user.resources.accounts, resource.id],
+          ...latestUser.resources,
+          accounts: latestUser.resources.accounts.includes(resource.id)
+            ? latestUser.resources.accounts
+            : [...latestUser.resources.accounts, resource.id],
         },
       });
     }
