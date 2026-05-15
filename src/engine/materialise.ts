@@ -119,6 +119,8 @@ function buildUniqueResourceTaskInputFields(
 function findResourceTaskConfig(entry: ResourceTaskEntry): {
   taskType: TaskType;
   inputFields?: Partial<InputFields> | null;
+  icon?: string | null;
+  anticipatedValue?: number | null;
 } {
   const resource = useResourceStore.getState().resources[entry.resourceId];
   if (!resource) {
@@ -127,17 +129,44 @@ function findResourceTaskConfig(entry: ResourceTaskEntry): {
 
   if (resource.type === 'home') {
     const task = (resource.chores ?? []).find((chore) => chore.id === entry.taskId);
-    return { taskType: ((task?.taskType as TaskType | undefined) ?? 'CHECK') };
+    if (task) {
+      return {
+        taskType: ((task.taskType as TaskType | undefined) ?? 'CHECK'),
+        inputFields: task.inputFields ?? null,
+        icon: task.icon ?? null,
+      };
+    }
+
+    const placedTasks = (resource.stories ?? []).flatMap((story) => (
+      story.rooms.flatMap((room) => (
+        room.placedItems.flatMap((placement) => placement.recurringTasks ?? [])
+      ))
+    ));
+    const placedTask = placedTasks.find((recurringTask) => recurringTask.id === entry.taskId);
+    return {
+      taskType: ((placedTask?.taskType as TaskType | undefined) ?? 'CHECK'),
+      inputFields: placedTask?.inputFields ?? null,
+      icon: placedTask?.icon ?? null,
+    };
   }
 
   if (resource.type === 'vehicle') {
     const task = (resource.maintenanceTasks ?? []).find((maintenanceTask) => maintenanceTask.id === entry.taskId);
-    return { taskType: ((task?.taskType as TaskType | undefined) ?? 'CHECK'), inputFields: task?.inputFields ?? null };
+    return {
+      taskType: ((task?.taskType as TaskType | undefined) ?? 'CHECK'),
+      inputFields: task?.inputFields ?? null,
+      icon: task?.icon ?? null,
+    };
   }
 
   if (resource.type === 'account') {
     const task = (resource.accountTasks ?? []).find((accountTask) => accountTask.id === entry.taskId);
-    return { taskType: ((task?.taskType as TaskType | undefined) ?? 'CHECK'), inputFields: task?.inputFields ?? null };
+    return {
+      taskType: ((task?.taskType as TaskType | undefined) ?? 'CHECK'),
+      inputFields: task?.inputFields ?? null,
+      icon: task?.icon ?? null,
+      anticipatedValue: task?.anticipatedValue ?? null,
+    };
   }
 
   if (resource.type === 'inventory') {
@@ -146,23 +175,41 @@ function findResourceTaskConfig(entry: ResourceTaskEntry): {
       ...(resource.containers ?? []).flatMap((container) => container.items.flatMap((item) => item.recurringTasks ?? [])),
     ];
     const task = inventoryTasks.find((inventoryTask) => inventoryTask.id === entry.taskId);
-    return { taskType: ((task?.taskType as TaskType | undefined) ?? 'CHECK'), inputFields: task?.inputFields ?? null };
+    if (task) {
+      return {
+        taskType: ((task.taskType as TaskType | undefined) ?? 'CHECK'),
+        inputFields: task.inputFields ?? null,
+        icon: task.icon ?? null,
+      };
+    }
+
+    const carryTask = (resource.containers ?? [])
+      .map((container) => container.carryTask)
+      .find((containerCarryTask) => containerCarryTask?.id === entry.taskId);
+    return {
+      taskType: ((carryTask?.taskType as TaskType | undefined) ?? 'CHECK'),
+      icon: carryTask?.icon ?? null,
+    };
   }
 
   return { taskType: 'CHECK' };
 }
 
-function instantiateResourceTask(entry: ResourceTaskEntry): Task {
+export function instantiateResourceTask(entry: ResourceTaskEntry): Task {
   const config = findResourceTaskConfig(entry);
   return {
     id: uuidv4(),
     templateRef: null,
     isUnique: true,
     title: entry.taskName,
+    icon: config.icon?.trim() || undefined,
     taskType: config.taskType,
     completionState: 'pending',
     completedAt: null,
-    resultFields: buildUniqueResourceTaskInputFields(config.taskType, entry.taskName, config.inputFields),
+    resultFields: {
+      ...buildUniqueResourceTaskInputFields(config.taskType, entry.taskName, config.inputFields),
+      ...(config.anticipatedValue != null ? { anticipatedValue: config.anticipatedValue } : {}),
+    },
     attachmentRef: null,
     resourceRef: entry.resourceId,
     location: null,

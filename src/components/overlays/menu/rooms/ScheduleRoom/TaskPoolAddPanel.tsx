@@ -49,6 +49,8 @@ const STAT_GROUP_OPTIONS: Array<{ value: StatGroupKey; label: string }> = [
 interface TaskPoolAddPanelProps {
   onAdd: (entry: TaskEntry) => void;
   onClose: () => void;
+  embedded?: boolean;
+  initialTab?: AddPanelTab;
 }
 
 interface ResourceTaskRow {
@@ -193,12 +195,12 @@ interface ResourceTaskGroup {
   subgroups: ResourceTaskSubgroup[];
 }
 
-export function TaskPoolAddPanel({ onAdd, onClose }: TaskPoolAddPanelProps) {
+export function TaskPoolAddPanel({ onAdd, onClose, embedded = false, initialTab = 'library' }: TaskPoolAddPanelProps) {
   const taskTemplates = useScheduleStore((state) => state.taskTemplates);
   const resources = useResourceStore((state) => state.resources);
   const user = useUserStore((state) => state.user);
 
-  const [activeTab, setActiveTab] = useState<AddPanelTab>('library');
+  const [activeTab, setActiveTab] = useState<AddPanelTab>(initialTab);
   const [searchQuery, setSearchQuery] = useState('');
   const [title, setTitle] = useState('');
   const [icon, setIcon] = useState<string>('');
@@ -471,25 +473,26 @@ export function TaskPoolAddPanel({ onAdd, onClose }: TaskPoolAddPanelProps) {
     );
   }
 
-  return (
-    <PopupShell title="Add Task" onClose={onClose} size="large">
+  const content = (
       <div className="flex flex-col gap-4">
-        <div className="flex flex-wrap gap-2 border-b border-gray-200 pb-3 dark:border-gray-700">
-          {ADD_PANEL_TABS.map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => setActiveTab(tab.id)}
-              className={`rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${
-                activeTab === tab.id
-                  ? 'bg-purple-600 text-white'
-                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600'
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
+        {!embedded && (
+          <div className="flex flex-wrap gap-2 border-b border-gray-200 pb-3 dark:border-gray-700">
+            {ADD_PANEL_TABS.map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setActiveTab(tab.id)}
+                className={`rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${
+                  activeTab === tab.id
+                    ? 'bg-purple-600 text-white'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600'
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+        )}
 
         {(activeTab === 'library' || activeTab === 'templates' || activeTab === 'resource') && (
           <input
@@ -653,6 +656,15 @@ export function TaskPoolAddPanel({ onAdd, onClose }: TaskPoolAddPanelProps) {
           )
         )}
       </div>
+  );
+
+  if (embedded) {
+    return content;
+  }
+
+  return (
+    <PopupShell title="Add Task" onClose={onClose} size="large">
+      {content}
     </PopupShell>
   );
 }

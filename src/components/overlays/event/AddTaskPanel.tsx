@@ -4,12 +4,14 @@ import { IconPicker } from '../../shared/IconPicker';
 import { TaskTypeConfigEditor } from '../../shared/TaskTypeConfigEditor';
 import { useScheduleStore } from '../../../stores/useScheduleStore';
 import { addTaskToEvent, addUniqueTaskToEvent } from '../../../engine/eventExecution';
+import { instantiateResourceTask } from '../../../engine/materialise';
 import { getCustomTemplatePool, getEventLibraryTemplatePool } from '../../../utils/resolveTaskTemplate';
-import type { InputFields, TaskType } from '../../../types';
+import { TaskPoolAddPanel } from '../menu/rooms/ScheduleRoom/TaskPoolAddPanel';
+import type { InputFields, ResourceTaskEntry, TaskType } from '../../../types';
 import type { Task } from '../../../types/task';
 import type { StatGroupKey } from '../../../types/user';
 
-type AddTaskTab = 'library' | 'templates' | 'new';
+type AddTaskTab = 'library' | 'templates' | 'new' | 'resource';
 type NewTaskType = Extract<TaskType, 'CHECK' | 'COUNTER' | 'DURATION' | 'TIMER' | 'RATING' | 'TEXT'>;
 
 const NEW_TASK_TYPES: Array<{ value: NewTaskType; label: string }> = [
@@ -99,6 +101,13 @@ export function AddTaskPanel({ eventId, onClose }: AddTaskPanelProps) {
     onClose();
   };
 
+  const handleResourceTaskAdd = (entry: ResourceTaskEntry) => {
+    const task = instantiateResourceTask(entry);
+    const { id: _id, ...taskWithoutId } = task;
+    addUniqueTaskToEvent(taskWithoutId, eventId);
+    onClose();
+  };
+
   const handleCreateTask = () => {
     if (!title.trim()) {
       setError('Title is required.');
@@ -185,6 +194,7 @@ export function AddTaskPanel({ eventId, onClose }: AddTaskPanelProps) {
             { id: 'library', label: 'Library' },
             { id: 'templates', label: 'My Templates' },
             { id: 'new', label: 'New Task' },
+            { id: 'resource', label: 'Resources' },
           ].map((tab) => (
             <button
               key={tab.id}
@@ -219,6 +229,19 @@ export function AddTaskPanel({ eventId, onClose }: AddTaskPanelProps) {
         {activeTab === 'templates' && renderTemplateList(
           filteredCustom.map(({ ref, template }) => ({ ref, name: template.name, taskType: template.taskType })),
           customTemplates.length === 0 ? 'No custom templates yet - create one in the Task Room' : 'No matching custom templates.',
+        )}
+
+        {activeTab === 'resource' && (
+          <TaskPoolAddPanel
+            embedded={true}
+            initialTab="resource"
+            onAdd={(entry) => {
+              if (entry.kind === 'resource') {
+                handleResourceTaskAdd(entry);
+              }
+            }}
+            onClose={onClose}
+          />
         )}
 
         {activeTab === 'new' && (

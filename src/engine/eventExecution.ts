@@ -388,7 +388,10 @@ export function completeTask(
     ...task,
     completionState: 'complete',
     completedAt: now,
-    resultFields: result.resultFields,
+    resultFields: {
+      ...task.resultFields,
+      ...result.resultFields,
+    },
     resourceRef: result.resourceRef ?? task.resourceRef,
     location: result.location ?? task.location,
   };

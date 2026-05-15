@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useScheduleStore } from '../../../stores/useScheduleStore';
 import { completeTask, uncompleteTask, removeTaskFromEvent } from '../../../engine/eventExecution';
 import { starterTaskTemplates } from '../../../coach/StarterQuestLibrary';
@@ -120,6 +120,15 @@ export function TaskBlock({ taskId, eventId, onTaskComplete, onPreviewResultChan
     onPreviewResultChange?.(taskId, currentResult);
   }, [currentResult, onPreviewResultChange, taskId]);
 
+  const handleResultChange = useCallback(
+    (result: Partial<InputFields>) => {
+      if (!taskId) return;
+      setResultState({ taskId, result });
+      onPreviewResultChange?.(taskId, result);
+    },
+    [taskId, onPreviewResultChange],
+  );
+
   if (!taskId) {
     return (
       <div className={`flex items-center justify-center rounded-lg border border-dashed border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 ${className ?? 'min-h-16'}`}>
@@ -196,10 +205,7 @@ export function TaskBlock({ taskId, eventId, onTaskComplete, onPreviewResultChan
             eventId={eventId}
             onComplete={handleComplete}
             hideSubmit={true}
-            onResultChange={(result) => {
-              setResultState({ taskId, result });
-              onPreviewResultChange?.(taskId, result);
-            }}
+            onResultChange={handleResultChange}
           />
         )}
       </div>
