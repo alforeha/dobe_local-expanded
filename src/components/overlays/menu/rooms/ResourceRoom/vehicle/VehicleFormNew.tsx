@@ -648,6 +648,7 @@ export function VehicleFormNew({ existing, onSaved, registerOnAutoSave }: Vehicl
       templateRef: resourceTaskId,
       isUnique: true,
       title: task.name.trim() || 'Untitled vehicle task',
+      icon: task.icon?.trim() || undefined,
       taskType,
       completionState: 'pending',
       completedAt: null,

@@ -371,8 +371,9 @@ export function DayViewBody({ date, onEventOpen, onEditPlanned }: DayViewBodyPro
 
   useEffect(() => {
     if (!isToday || !activeLocation) {
-      setCurrentHourWeather(null);
-      return;
+      return () => {
+        setCurrentHourWeather(null);
+      };
     }
 
     let cancelled = false;

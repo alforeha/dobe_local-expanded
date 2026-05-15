@@ -1246,6 +1246,7 @@ export function AccountFormNew({ existing, onSaved, onCancel }: AccountFormNewPr
       templateRef: resourceTaskId,
       isUnique: true,
       title: task.name.trim() || 'Untitled account task',
+      icon: task.icon?.trim() || undefined,
       taskType,
       completionState: 'pending',
       completedAt: null,

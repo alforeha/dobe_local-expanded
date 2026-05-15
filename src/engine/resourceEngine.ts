@@ -1431,12 +1431,18 @@ export function completeGTDItem(
   }
   if (task.completionState !== 'pending') return;
 
+  const resource = task.resourceRef
+    ? useResourceStore.getState().resources[task.resourceRef]
+    : null;
+  const resourceType = resource?.type ?? null;
   const now = getAppNowISO();
   const updatedTask: Task = {
     ...task,
     completionState: 'complete',
     completedAt: now,
     resultFields,
+    icon: task.icon?.trim() || resource?.icon || 'default',
+    title: task.title?.trim() || resource?.name || 'Untitled task',
   };
 
   scheduleStore.setTask(updatedTask);
@@ -1473,8 +1479,24 @@ export function completeGTDItem(
     const updatedQa: QuickActionsEvent = {
       ...qa,
       completions: [...qa.completions, { taskRef: itemId, completedAt: now }],
+      xpAwarded: (qa.xpAwarded ?? 0) + 5,
     };
     scheduleStore.setActiveEvent(updatedQa);
+
+    const resourceStatMap: Record<string, StatGroupKey> = {
+      contact: 'charisma',
+      home: 'health',
+      inventory: 'strength',
+      vehicle: 'agility',
+      account: 'wisdom',
+      doc: 'wisdom',
+    };
+
+    const statGroup = resourceType ? resourceStatMap[resourceType] : null;
+    const statUserId = (useUserStore.getState().user ?? user).system.id;
+    if (statGroup && statUserId) {
+      awardStat(statUserId, statGroup, 5, `gtd-resource-complete:${resourceType}`);
+    }
   }
 
   // Remove from gtdList now that it's complete

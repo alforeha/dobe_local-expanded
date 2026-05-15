@@ -601,6 +601,7 @@ export function ContactFormNew({ existing, onSaved, registerOnAutoSave }: Contac
       templateRef: resourceTaskId,
       isUnique: true,
       title: task.name.trim() || 'Untitled contact task',
+      icon: task.icon?.trim() || undefined,
       taskType,
       completionState: 'pending',
       completedAt: null,

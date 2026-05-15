@@ -652,6 +652,7 @@ export function HomeFormNew({ existing, onSaved, registerOnAutoSave }: HomeFormN
       templateRef: resourceTaskId,
       isUnique: true,
       title: task.name.trim() || 'Untitled chore',
+      icon: task.icon?.trim() || undefined,
       taskType,
       completionState: 'pending',
       completedAt: null,
