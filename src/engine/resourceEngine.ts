@@ -52,6 +52,7 @@ import { taskTemplateLibrary } from '../coach';
 import { getItemTaskTemplateMeta, getItemTemplateByRef } from '../coach/ItemLibrary';
 import { isWisdomTemplate } from './xpBoosts';
 import { evaluateQuestSpecific, updateQuestProgress } from './questEngine';
+import { applyResourceTaskCompletion } from './resourceTaskEngine';
 import { getUserInventoryItemTemplates, resolveInventoryItemTemplate } from '../utils/inventoryItems';
 import { resolveTaskTemplate } from '../utils/resolveTaskTemplate';
 
@@ -947,7 +948,10 @@ function _genAccountGTD(resource: AccountResource, referenceDate: string): Task[
         templateKey,
         next.date,
         task.name,
-        { label: task.name } as Task['resultFields'],
+        {
+          label: task.name,
+          anticipatedValue: task.anticipatedValue ?? undefined,
+        } as Task['resultFields'],
         {
           icon: task.icon ?? undefined,
           taskType: task.taskType ?? 'CHECK',
@@ -1483,6 +1487,10 @@ export function completeGTDItem(
       xpAwarded: (qa.xpAwarded ?? 0) + 5,
     };
     scheduleStore.setActiveEvent(updatedQa);
+
+    if (updatedTask.resourceRef) {
+      applyResourceTaskCompletion(updatedTask);
+    }
 
     const resourceStatMap: Record<string, StatGroupKey> = {
       contact: 'charisma',

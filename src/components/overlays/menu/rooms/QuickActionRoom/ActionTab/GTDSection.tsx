@@ -6,7 +6,7 @@ import { STARTER_TEMPLATE_IDS, starterTaskTemplates } from '../../../../../../co
 import { AddGTDItemPopup } from './AddGTDItemPopup';
 import type { GTDItem, Task } from '../../../../../../types/task';
 import type { TaskTemplate, XpAward, InputFields } from '../../../../../../types/taskTemplate';
-import type { Resource } from '../../../../../../types/resource';
+import type { AccountResource, Resource } from '../../../../../../types/resource';
 import type { StatGroupKey } from '../../../../../../types/user';
 import { completeGTDItem, dismissGTDItem } from '../../../../../../engine/resourceEngine';
 import { completeManualGTDItem, removeManualGTDItem } from '../../../../../../engine/listsEngine';
@@ -312,6 +312,7 @@ export function GTDSection() {
           <ExpandedGtdCard
             entry={expandedEntry}
             deleteConfirm={deleteConfirmId === expandedEntry.id}
+            resources={resources}
             onCancel={
               expandedEntry.kind === 'system' && expandedEntry.isMilestone
                 ? null
@@ -369,6 +370,7 @@ export function GTDSection() {
 interface ExpandedGtdCardProps {
   entry: GtdEntry;
   deleteConfirm: boolean;
+  resources: Record<string, Resource>;
   onCancel: (() => void) | null;
   onDelete: (() => void) | null;
   onSystemComplete: (task: Task, resultFields: Partial<InputFields>) => void;
@@ -378,6 +380,7 @@ interface ExpandedGtdCardProps {
 function ExpandedGtdCard({
   entry,
   deleteConfirm,
+  resources,
   onCancel,
   onDelete,
   onSystemComplete,
@@ -385,9 +388,29 @@ function ExpandedGtdCard({
 }: ExpandedGtdCardProps) {
   const previewTask = buildPreviewTask(entry);
   const effectiveTemplate = entry.template ?? buildSyntheticTemplate(previewTask);
+  const taskResultFields = entry.kind === 'system'
+    ? (entry.task.resultFields as Record<string, unknown>)
+    : {};
   const detail = detailText(entry);
   const statKey = entry.template ? getPrimaryStatKey(entry.template.xpAward) : null;
+  const accountResource: AccountResource | null =
+    entry.kind === 'system' && entry.resource?.type === 'account'
+      ? entry.resource
+      : null;
+  const isTransactionLog =
+    entry.kind === 'system' &&
+    accountResource != null &&
+    typeof taskResultFields.resourceTaskId === 'string';
   const canUseTemplateInput = Boolean(effectiveTemplate && previewTask);
+  const [txAmount, setTxAmount] = useState<string>(
+    taskResultFields.anticipatedValue != null
+      ? String(taskResultFields.anticipatedValue)
+      : '',
+  );
+  const [txNote, setTxNote] = useState<string>('');
+  const linkedAccount = accountResource?.pullFromAccountId
+    ? resources[accountResource.pullFromAccountId] ?? null
+    : null;
 
   return (
     <div className={`min-h-[19rem] rounded-3xl border p-4 shadow-sm ${getTone(entry)}`}>
@@ -443,7 +466,61 @@ function ExpandedGtdCard({
           >
             Complete
           </button>
-        ) : canUseTemplateInput ? (
+        ) : isTransactionLog && entry.kind === 'system' ? (
+          <div className="space-y-3">
+            {linkedAccount ? (
+              <div className="inline-flex items-center gap-2 rounded-lg bg-white px-3 py-2 text-sm text-gray-700 shadow-sm dark:bg-gray-800 dark:text-gray-200">
+                <span>{accountResource?.kind === 'income' ? 'Deposits into:' : 'Withdraws from:'}</span>
+                <IconDisplay iconKey={linkedAccount.icon} size={16} className="h-4 w-4 object-contain" alt="" />
+                <span className="font-medium">{linkedAccount.name}</span>
+              </div>
+            ) : null}
+
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Amount</label>
+              <input
+                type="number"
+                min={0}
+                step={0.01}
+                value={txAmount}
+                onChange={(event) => setTxAmount(event.target.value)}
+                placeholder="0.00"
+                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 placeholder-gray-400 focus:border-purple-500 focus:outline-none dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Note (optional)</label>
+              <input
+                type="text"
+                value={txNote}
+                onChange={(event) => setTxNote(event.target.value)}
+                placeholder="Add a note"
+                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 placeholder-gray-400 focus:border-purple-500 focus:outline-none dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100"
+              />
+            </div>
+
+            <button
+              type="button"
+              disabled={txAmount === ''}
+              onClick={() => onSystemComplete(entry.task, ({
+                ...entry.task.resultFields,
+                amount: parseFloat(txAmount),
+                note: txNote.trim(),
+                value: txNote.trim() || txAmount,
+                direction: accountResource?.kind === 'bank' ? 'deposit' : 'withdrawal',
+                newBalance:
+                  accountResource?.kind === 'bank'
+                    ? (accountResource.balance ?? 0) + parseFloat(txAmount)
+                    : undefined,
+                linkedAccountId: (accountResource as AccountResource)?.pullFromAccountId ?? undefined,
+              } as unknown) as Partial<InputFields>)}
+              className="w-full rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Confirm
+            </button>
+          </div>
+        ) : !isTransactionLog && canUseTemplateInput ? (
           <TaskTypeInputRenderer
             taskType={effectiveTemplate!.taskType}
             template={effectiveTemplate}

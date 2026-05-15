@@ -1255,6 +1255,7 @@ export function AccountFormNew({ existing, onSaved, onCancel }: AccountFormNewPr
         resourceTaskId,
         dueDate,
         label: task.name.trim() || 'Untitled account task',
+        anticipatedValue: task.anticipatedValue ?? undefined,
       } as unknown) as Task['resultFields'],
       attachmentRef: null,
       resourceRef: existing.id,

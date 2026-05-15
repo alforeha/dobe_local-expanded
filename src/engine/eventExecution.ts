@@ -33,6 +33,7 @@ import { getTaskCooldownState } from '../utils/taskCooldown';
 import { getLibraryTemplatePool, resolveTaskTemplate } from '../utils/resolveTaskTemplate';
 import { isWisdomTemplate } from './xpBoosts';
 import { autoCompleteSystemTask, generateReplenishGTDItem } from './resourceEngine';
+import { applyResourceTaskCompletion } from './resourceTaskEngine';
 
 const DEFAULT_TASK_XP = 5;
 const STAT_GROUP_KEYS: StatGroupKey[] = ['health', 'strength', 'agility', 'defense', 'charisma', 'wisdom'];
@@ -396,6 +397,9 @@ export function completeTask(
   const resolvedTaskType = updatedTask.taskType ?? template?.taskType ?? null;
   if (resolvedTaskType === 'CONSUME') {
     applyConsumeTaskEffects(getConsumeEntries(updatedTask, template, result));
+  }
+  if (updatedTask.resourceRef) {
+    applyResourceTaskCompletion(updatedTask);
   }
   if (updatedTask.templateRef === STARTER_TEMPLATE_IDS.openWelcomeEvent) {
     autoCompleteSystemTask(STARTER_TEMPLATE_IDS.openWelcomeEvent);
