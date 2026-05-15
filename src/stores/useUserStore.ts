@@ -49,31 +49,15 @@ const initialState: UserState = {
   user: null,
 };
 
-function mergeUniqueIds<T>(current: T[] = [], incoming: T[] = []): T[] {
-  return Array.from(new Set([...current, ...incoming]));
-}
-
 // ── STORE ─────────────────────────────────────────────────────────────────────
 
 export const useUserStore = create<UserState & UserActions>()(
   persist(
-    (set, get) => ({
+    (set) => ({
       ...initialState,
 
       setUser: (user) => {
-        const current = get().user;
-        const mergedUser = current
-          ? {
-              ...user,
-              lists: {
-                ...user.lists,
-                ...current.lists,
-                gtdList: mergeUniqueIds(current.lists?.gtdList, user.lists?.gtdList),
-                manualGtdList: mergeUniqueIds(current.lists?.manualGtdList, user.lists?.manualGtdList),
-              },
-            }
-          : user;
-        set({ user: normalizeUser(mergedUser) });
+        set({ user: normalizeUser(user) });
         // TODO: MVP06 — storageSet(STORAGE_KEY_USER, user)
       },
 

@@ -110,7 +110,6 @@ export function LocationTrailInput({ eventId, inputFields, task, onComplete, onR
   const dragMarkerRef = useRef<L.Marker | null>(null);
   const onResultChangeRef = useRef(onResultChange);
   const lastPreviewResultKeyRef = useRef<string | null>(null);
-  const previousIsCompleteRef = useRef(isComplete);
 
   const persistedWaypoints = useMemo(() => {
     const taskWaypoints = (task.resultFields as Partial<LocationTrailInputFields>).waypoints;
@@ -165,21 +164,6 @@ export function LocationTrailInput({ eventId, inputFields, task, onComplete, onR
     lastPreviewResultKeyRef.current = previewResultKey;
     onResultChangeRef.current?.(previewResult);
   }, [isComplete, previewResult, previewResultKey]);
-
-  useEffect(() => {
-    if (previousIsCompleteRef.current && !isComplete) {
-      const resetId = window.setTimeout(() => {
-        setPhase('idle');
-        setWaypoints([]);
-      }, 0);
-
-      previousIsCompleteRef.current = isComplete;
-      return () => window.clearTimeout(resetId);
-    }
-
-    previousIsCompleteRef.current = isComplete;
-    return undefined;
-  }, [isComplete]);
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return undefined;

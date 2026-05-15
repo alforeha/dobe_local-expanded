@@ -33,7 +33,6 @@ import { getTaskCooldownState } from '../utils/taskCooldown';
 import { getLibraryTemplatePool, resolveTaskTemplate } from '../utils/resolveTaskTemplate';
 import { isWisdomTemplate } from './xpBoosts';
 import { autoCompleteSystemTask, generateReplenishGTDItem } from './resourceEngine';
-import { applyResourceTaskCompletion } from './resourceTaskEngine';
 
 const DEFAULT_TASK_XP = 5;
 const STAT_GROUP_KEYS: StatGroupKey[] = ['health', 'strength', 'agility', 'defense', 'charisma', 'wisdom'];
@@ -377,6 +376,11 @@ export function completeTask(
     return;
   }
 
+  // FIX-13 trace — confirm questRef/actRef are populated before milestone routing
+  console.log(
+    `[completeTask] taskId=${taskId} questRef=${task.questRef ?? 'null'} actRef=${task.actRef ?? 'null'}`,
+  );
+
   const now = getAppNowISO();
 
   const updatedTask: Task = {
@@ -392,9 +396,6 @@ export function completeTask(
   const resolvedTaskType = updatedTask.taskType ?? template?.taskType ?? null;
   if (resolvedTaskType === 'CONSUME') {
     applyConsumeTaskEffects(getConsumeEntries(updatedTask, template, result));
-  }
-  if (updatedTask.resourceRef) {
-    applyResourceTaskCompletion(updatedTask);
   }
   if (updatedTask.templateRef === STARTER_TEMPLATE_IDS.openWelcomeEvent) {
     autoCompleteSystemTask(STARTER_TEMPLATE_IDS.openWelcomeEvent);
@@ -633,17 +634,12 @@ export function completeEvent(eventId: string): void {
     });
 
     // +1 gold per event completion (D98)
-    const activeEventForGold = useScheduleStore.getState().activeEvents[eventId];
-    const goldAlreadyAwarded = activeEventForGold
-      && activeEventForGold.eventType !== 'quickActions'
-      && (activeEventForGold as Event).goldAwarded === true;
     const userForGold = useUserStore.getState().user;
-    if (!goldAlreadyAwarded && userForGold) {
+    if (userForGold) {
       userStoreRef.setUser(awardGold(1, userForGold, {
         source: `event.complete:${updatedEvent.name}`,
         suppressLog: true,
       }));
-      scheduleStore.updateEvent(eventId, { goldAwarded: true });
       console.info('[event-complete]', {
         eventId,
         eventName: updatedEvent.name,

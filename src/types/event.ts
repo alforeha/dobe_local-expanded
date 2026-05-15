@@ -82,7 +82,6 @@ export interface Event {
   completionState: EventCompletionState;
   /** Sum of completed task XP */
   xpAwarded: number;
-  goldAwarded?: boolean;
   /** Attachment refs — max 5, max 200 KB each (D09) */
   attachments: EventAttachment[];
   eventAlbum?: EventAlbumEntry[];

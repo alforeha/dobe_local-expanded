@@ -54,7 +54,6 @@ import { isWisdomTemplate } from './xpBoosts';
 import { evaluateQuestSpecific, updateQuestProgress } from './questEngine';
 import { getUserInventoryItemTemplates, resolveInventoryItemTemplate } from '../utils/inventoryItems';
 import { resolveTaskTemplate } from '../utils/resolveTaskTemplate';
-import { applyResourceTaskCompletion } from './resourceTaskEngine';
 
 const STAT_GROUP_KEYS: StatGroupKey[] = ['health', 'strength', 'agility', 'defense', 'charisma', 'wisdom'];
 
@@ -1459,10 +1458,6 @@ export function completeGTDItem(
       resourceStore.setResource(updatedVehicle);
       generateGTDItems(updatedVehicle);
     }
-  }
-
-  if (updatedTask.resourceRef) {
-    applyResourceTaskCompletion(updatedTask);
   }
 
   // Route quest milestone through the quest engine (was bypassed before — FIX)

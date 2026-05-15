@@ -1225,37 +1225,7 @@ export function AccountFormNew({ existing, onSaved, onCancel }: AccountFormNewPr
 
   const pushTaskToGtd = useCallback((task: TaskDraft) => {
     const latestUser = useUserStore.getState().user ?? user;
-    console.log('[AccountFormNew pushTaskToGtd] start', {
-      taskId: task.id,
-      existingId: existing?.id,
-      latestUserId: latestUser?.system.id,
-    });
-
-    if (!existing) {
-      console.log('[AccountFormNew pushTaskToGtd] early return: missing existing', {
-        taskId: task.id,
-        existingId: null,
-        latestUserId: latestUser?.system.id,
-      });
-      return;
-    }
-
-    if (!latestUser) {
-      console.log('[AccountFormNew pushTaskToGtd] early return: missing latestUser', {
-        taskId: task.id,
-        existingId: existing.id,
-        latestUserId: null,
-      });
-      return;
-    }
-
-    if (gtdPushFeedbackTaskId === task.id) {
-      console.log('[AccountFormNew pushTaskToGtd] early return: feedback task already active', {
-        taskId: task.id,
-        gtdPushFeedbackTaskId,
-      });
-      return;
-    }
+    if (!existing || !latestUser || gtdPushFeedbackTaskId === task.id) return;
 
     const dueDate = getAppDate();
     const resourceTaskId = `resource-task:${existing.id}:account-task:${task.id}`;
@@ -1265,17 +1235,7 @@ export function AccountFormNew({ existing, onSaved, onCancel }: AccountFormNewPr
       const fields = existingTask.resultFields as Record<string, unknown>;
       return fields.resourceTaskId === resourceTaskId && fields.dueDate === dueDate;
     });
-    console.log('[AccountFormNew pushTaskToGtd] dedupe check', {
-      existingPendingTaskId,
-      resourceTaskId,
-      dueDate,
-    });
     if (existingPendingTaskId) {
-      console.log('[AccountFormNew pushTaskToGtd] early return: existing pending task found', {
-        existingPendingTaskId,
-        resourceTaskId,
-        dueDate,
-      });
       setGtdPushFeedbackTaskId(task.id);
       return;
     }
@@ -1304,12 +1264,6 @@ export function AccountFormNew({ existing, onSaved, onCancel }: AccountFormNewPr
       secondaryTag: null,
     };
 
-    console.log('[AccountFormNew pushTaskToGtd] writing schedule task', {
-      nextTask,
-      nextTaskId: nextTask.id,
-      nextTaskResourceRef: nextTask.resourceRef,
-      nextTaskCompletionState: nextTask.completionState,
-    });
     setScheduleTask(nextTask);
     setUser({
       ...latestUser,
@@ -1318,14 +1272,6 @@ export function AccountFormNew({ existing, onSaved, onCancel }: AccountFormNewPr
         gtdList: [...new Set([...latestUser.lists.gtdList, nextTask.id])],
       },
     });
-    console.log(
-      '[AccountFormNew pushTaskToGtd] post-setUser gtdList',
-      useUserStore.getState().user?.lists?.gtdList,
-    );
-    console.log(
-      '[AccountFormNew pushTaskToGtd] post-setUser user id',
-      useUserStore.getState().user?.system.id,
-    );
     setGtdPushFeedbackTaskId(task.id);
   }, [existing, gtdPushFeedbackTaskId, setScheduleTask, setUser, user]);
 
