@@ -291,6 +291,10 @@ export function AppShell() {
   // ── OVERLAY HELPERS ──────────────────────────────────────────────────────────
 
   const handleViewChange = (newView: TimeView) => {
+    const today = new Date(`${getAppDate()}T00:00:00`);
+    if (newView === 'day') setDayViewSeed(today);
+    if (newView === 'week') setWeekViewSeed(today);
+
     if (newView === activeView) {
       // Same tab tapped while already on this view — refresh to today
       setTodaySignals((prev) => ({ ...prev, [newView]: prev[newView] + 1 }));

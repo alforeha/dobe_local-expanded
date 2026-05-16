@@ -32,6 +32,17 @@ export function WeekView({ initialWeekStart, todaySignal, onDaySelect }: WeekVie
   const goBack = () => setWeekStart((d) => addDays(d, -7));
   const goForward = () => setWeekStart((d) => addDays(d, 7));
 
+  useEffect(() => {
+    if (!initialWeekStart) return;
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (!cancelled) setWeekStart(getPrevMonday(initialWeekStart));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [initialWeekStart]);
+
   // Reset to current week when footer tab is tapped while already on week view
   useEffect(() => {
     if (todaySignal) setWeekStart(getPrevMonday(appDateRef.current));

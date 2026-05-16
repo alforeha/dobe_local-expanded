@@ -82,6 +82,17 @@ export function DayView({ onEventOpen, onResourceOpen, onEditPlanned, todaySigna
       return n;
     });
 
+  useEffect(() => {
+    if (!initialDate) return;
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (!cancelled) setCurrentDate(initialDate);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [initialDate]);
+
   // Reset to today when footer tab is tapped while already on day view
   useEffect(() => {
     if (todaySignal) setCurrentDate(appDateRef.current);
@@ -171,4 +182,3 @@ export function DayView({ onEventOpen, onResourceOpen, onEditPlanned, todaySigna
     </div>
   );
 }
-
