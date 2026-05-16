@@ -121,6 +121,7 @@ function findResourceTaskConfig(entry: ResourceTaskEntry): {
   inputFields?: Partial<InputFields> | null;
   icon?: string | null;
   anticipatedValue?: number | null;
+  resourceTaskId?: string | null;
 } {
   const resource = useResourceStore.getState().resources[entry.resourceId];
   if (!resource) {
@@ -166,6 +167,7 @@ function findResourceTaskConfig(entry: ResourceTaskEntry): {
       inputFields: task?.inputFields ?? null,
       icon: task?.icon ?? null,
       anticipatedValue: task?.anticipatedValue ?? null,
+      resourceTaskId: task ? `resource-task:${resource.id}:account-task:${task.id}` : null,
     };
   }
 
@@ -209,6 +211,7 @@ export function instantiateResourceTask(entry: ResourceTaskEntry): Task {
     resultFields: {
       ...buildUniqueResourceTaskInputFields(config.taskType, entry.taskName, config.inputFields),
       ...(config.anticipatedValue != null ? { anticipatedValue: config.anticipatedValue } : {}),
+      ...(config.resourceTaskId ? { resourceTaskId: config.resourceTaskId } : {}),
     },
     attachmentRef: null,
     resourceRef: entry.resourceId,

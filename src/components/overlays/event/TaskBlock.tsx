@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useScheduleStore } from '../../../stores/useScheduleStore';
+import { useResourceStore } from '../../../stores/useResourceStore';
 import { completeTask, uncompleteTask, removeTaskFromEvent } from '../../../engine/eventExecution';
 import { starterTaskTemplates } from '../../../coach/StarterQuestLibrary';
 import type { TaskType, InputFields, TaskTemplate } from '../../../types/taskTemplate';
+import type { AccountResource } from '../../../types/resource';
 import { TaskTypeInputRenderer } from './TaskTypeInputRenderer';
+import { IconDisplay } from '../../shared/IconDisplay';
 import { getOffsetNow } from '../../../utils/dateUtils';
 import { getTaskCooldownState } from '../../../utils/taskCooldown';
 import { resolveTaskDisplayName } from '../../../utils/resolveTaskDisplayName';
@@ -76,6 +79,7 @@ export function TaskBlock({ taskId, eventId, onTaskComplete, onPreviewResultChan
 
   const tasks = useScheduleStore((s) => s.tasks);
   const taskTemplates = useScheduleStore((s) => s.taskTemplates);
+  const resources = useResourceStore((s) => s.resources);
   const task = taskId ? tasks[taskId] : null;
   const resolvedTemplate = task?.templateRef
     ? taskTemplates[task.templateRef] ?? starterTaskTemplates.find((t) => t.id === task.templateRef) ?? null
@@ -86,6 +90,23 @@ export function TaskBlock({ taskId, eventId, onTaskComplete, onPreviewResultChan
   const taskType: TaskType = (task?.isUnique && task.taskType ? task.taskType as TaskType : template?.taskType) ?? 'CHECK';
   const taskDisplayName = task ? resolveTaskDisplayName(task, taskTemplates, starterTaskTemplates) : 'Unknown task';
   const secondaryTag = task?.secondaryTag ?? template?.secondaryTag ?? null;
+  const resource = task?.resourceRef ? resources[task.resourceRef] : null;
+  const accountResource: AccountResource | null = resource?.type === 'account' ? resource : null;
+  const linkedAccount = accountResource?.pullFromAccountId
+    ? resources[accountResource.pullFromAccountId] ?? null
+    : null;
+  const isTransactionLog =
+    accountResource != null &&
+    (
+      typeof (task?.resultFields as Record<string, unknown> | undefined)?.resourceTaskId === 'string' ||
+      Boolean(accountResource.accountTasks?.some((t) => t.id && task?.title === t.name && t.kind === 'transaction-log'))
+    );
+  const [txAmount, setTxAmount] = useState<string>(
+    (task?.resultFields as Record<string, unknown> | undefined)?.anticipatedValue != null
+      ? String((task?.resultFields as Record<string, unknown>).anticipatedValue)
+      : '',
+  );
+  const [txNote, setTxNote] = useState<string>('');
 
   const { isCoolingDown, msRemaining, progress } = useMemo(
     () => (
@@ -168,9 +189,16 @@ export function TaskBlock({ taskId, eventId, onTaskComplete, onPreviewResultChan
     >
       {/* TOP — name + tags */}
       <div className="shrink-0 flex items-start justify-between gap-2 px-3 pt-3 pb-2">
-        <span className="text-sm font-semibold text-gray-800 dark:text-gray-100">
-          {taskDisplayName}
-        </span>
+        {isTransactionLog ? (
+          <div className="flex items-center gap-2 text-sm font-semibold text-gray-800 dark:text-gray-100">
+            <IconDisplay iconKey={accountResource?.icon ?? 'finance'} size={18} className="h-[18px] w-[18px] object-contain" alt="" />
+            <span>{accountResource?.name ?? 'Account'} · Transaction</span>
+          </div>
+        ) : (
+          <span className="text-sm font-semibold text-gray-800 dark:text-gray-100">
+            {taskDisplayName}
+          </span>
+        )}
         <div className="flex shrink-0 flex-wrap gap-1">
           {secondaryTag && (
             <span className={`rounded px-1.5 py-0.5 text-xs font-medium ${tagColour}`}>
@@ -197,16 +225,114 @@ export function TaskBlock({ taskId, eventId, onTaskComplete, onPreviewResultChan
               {Math.max(1, Math.ceil(msRemaining / 60000))} min remaining
             </p>
           </div>
+        ) : task && isTransactionLog && !isComplete ? (
+          <div className="space-y-3 py-1">
+            {linkedAccount ? (
+              <div className="inline-flex items-center gap-2 rounded-lg bg-white px-3 py-2 text-sm text-gray-700 shadow-sm dark:bg-gray-800 dark:text-gray-200">
+                <span>{accountResource?.kind === 'income' ? 'Deposits into:' : 'Withdraws from:'}</span>
+                <IconDisplay
+                  iconKey={linkedAccount.icon}
+                  size={16}
+                  className="h-4 w-4 object-contain"
+                  alt=""
+                />
+                <span className="font-medium">{linkedAccount.name}</span>
+              </div>
+            ) : null}
+
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Amount</label>
+              <input
+                type="number"
+                min={0}
+                step={0.01}
+                value={txAmount}
+                onChange={(event) => setTxAmount(event.target.value)}
+                placeholder="0.00"
+                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 placeholder-gray-400 focus:border-purple-500 focus:outline-none dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Note (optional)</label>
+              <input
+                type="text"
+                value={txNote}
+                onChange={(event) => setTxNote(event.target.value)}
+                placeholder="Add a note"
+                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 placeholder-gray-400 focus:border-purple-500 focus:outline-none dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100"
+              />
+            </div>
+
+            <button
+              type="button"
+              disabled={txAmount === ''}
+              onClick={() => {
+                const direction = accountResource?.kind === 'income' ? 'deposit' : 'withdrawal';
+                handleComplete(({
+                  ...task.resultFields,
+                  amount: parseFloat(txAmount),
+                  note: txNote.trim(),
+                  value: txNote.trim() || txAmount,
+                  direction,
+                  newBalance:
+                    accountResource?.kind === 'bank'
+                      ? direction === 'deposit'
+                        ? (accountResource.balance ?? 0) + parseFloat(txAmount)
+                        : (accountResource.balance ?? 0) - parseFloat(txAmount)
+                      : undefined,
+                  linkedAccountId: accountResource?.pullFromAccountId ?? undefined,
+                  linkedAccountName: linkedAccount?.name ?? undefined,
+                  linkedAccountIcon: linkedAccount?.icon ?? undefined,
+                } as unknown) as Partial<InputFields>);
+              }}
+              className="w-full rounded-lg bg-purple-600 py-2 text-sm font-medium text-white transition-colors hover:bg-purple-700 disabled:opacity-40"
+            >
+              Confirm
+            </button>
+          </div>
+        ) : task && isTransactionLog && isComplete ? (
+          <div className="space-y-3 py-1">
+            <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-3 dark:border-gray-700 dark:bg-gray-800/60">
+              <div className="flex flex-col gap-2 text-sm text-gray-700 dark:text-gray-200">
+                <span className="font-medium text-gray-900 dark:text-gray-100">
+                  {String(
+                    (task.resultFields as Record<string, unknown> | undefined)?.value ??
+                    (task.resultFields as Record<string, unknown> | undefined)?.amount ??
+                    '',
+                  )}
+                </span>
+                {typeof (task.resultFields as Record<string, unknown> | undefined)?.direction === 'string' && (
+                  <span className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                    {(task.resultFields as Record<string, unknown>).direction === 'deposit' ? 'Deposited' : 'Withdrawn'}
+                  </span>
+                )}
+                {linkedAccount && (
+                  <div className="inline-flex items-center gap-2">
+                    <IconDisplay iconKey={linkedAccount.icon ?? 'finance'} size={16} className="h-4 w-4 object-contain" alt="" />
+                    <span>{linkedAccount.name}</span>
+                  </div>
+                )}
+                {(task.resultFields as Record<string, unknown> | undefined)?.newBalance != null && (
+                  <span className="text-xs text-gray-500 dark:text-gray-400">
+                    Balance: {String((task.resultFields as Record<string, unknown>).newBalance)}
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
         ) : (
-          <TaskTypeInputRenderer
-            taskType={taskType}
-            template={template}
-            task={displayTask ?? null}
-            eventId={eventId}
-            onComplete={handleComplete}
-            hideSubmit={true}
-            onResultChange={handleResultChange}
-          />
+          !isTransactionLog && (
+            <TaskTypeInputRenderer
+              taskType={taskType}
+              template={template}
+              task={displayTask ?? null}
+              eventId={eventId}
+              onComplete={handleComplete}
+              hideSubmit={true}
+              onResultChange={handleResultChange}
+            />
+          )
         )}
       </div>
 

@@ -23,7 +23,7 @@ import {
   type RecurrenceDayOfWeek,
   toRecurrenceRule,
 } from '../../../../../../types/resource';
-import type { QuickActionsEvent } from '../../../../../../types/event';
+import type { Event, QuickActionsEvent } from '../../../../../../types/event';
 import type { Task } from '../../../../../../types/task';
 import { useResourceStore } from '../../../../../../stores/useResourceStore';
 import { useScheduleStore } from '../../../../../../stores/useScheduleStore';
@@ -915,10 +915,11 @@ export function AccountFormNew({ existing, onSaved, onCancel }: AccountFormNewPr
   const transactionCompletions = useMemo(() => {
     if (!transactionResourceTaskId) return [];
 
-    const qaEvents = [...Object.values(activeEvents), ...Object.values(historyEvents)]
+    const allEvents = [...Object.values(activeEvents), ...Object.values(historyEvents)];
+    const qaEvents = allEvents
       .filter((event): event is QuickActionsEvent => event.eventType === 'quickActions');
 
-    return qaEvents
+    const qaCompletions = qaEvents
       .flatMap((event) =>
         event.completions
           .map((completion) => {
@@ -953,6 +954,48 @@ export function AccountFormNew({ existing, onSaved, onCancel }: AccountFormNewPr
             direction: 'deposit' | 'withdrawal' | null;
           } => Boolean(entry)),
       )
+      ;
+
+    const nonQaCompletions = allEvents
+      .filter((event) => event.eventType !== 'quickActions')
+      .flatMap((event) => (event as Event).tasks ?? [])
+      .map((taskId) => scheduleTasks[taskId])
+      .filter((task) =>
+        task &&
+        task.completionState === 'complete' &&
+        (task.resultFields as Record<string, unknown>)?.resourceTaskId === transactionResourceTaskId,
+      )
+      .map((task) => {
+        if (!task) return null;
+        const rf = task.resultFields as Record<string, unknown>;
+        return {
+          key: task.id,
+          completedAt: task.completedAt ?? '',
+          value: typeof rf.value === 'string' ? rf.value : '',
+          note: typeof rf.note === 'string' ? rf.note : '',
+          amount: typeof rf.amount === 'number' ? rf.amount : null,
+          linkedAccountId: typeof rf.linkedAccountId === 'string' ? rf.linkedAccountId : null,
+          linkedAccountName: typeof rf.linkedAccountName === 'string' ? rf.linkedAccountName : null,
+          linkedAccountIcon: typeof rf.linkedAccountIcon === 'string' ? rf.linkedAccountIcon : null,
+          direction:
+            rf.direction === 'deposit' || rf.direction === 'withdrawal'
+              ? rf.direction
+              : null,
+        };
+      })
+      .filter((entry): entry is {
+        key: string;
+        completedAt: string;
+        value: string;
+        note: string;
+        amount: number | null;
+        linkedAccountId: string | null;
+        linkedAccountName: string | null;
+        linkedAccountIcon: string | null;
+        direction: 'deposit' | 'withdrawal' | null;
+      } => Boolean(entry));
+
+    return [...qaCompletions, ...nonQaCompletions]
       .sort((left, right) => right.completedAt.localeCompare(left.completedAt));
   }, [activeEvents, historyEvents, scheduleTasks, transactionResourceTaskId]);
 
