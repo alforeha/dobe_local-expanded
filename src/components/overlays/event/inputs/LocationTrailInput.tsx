@@ -155,6 +155,7 @@ export function LocationTrailInput({ eventId, inputFields, task, onComplete, onR
 
   useEffect(() => {
     if (isComplete) return;
+    firedRef.current = false;
     const timeoutId = window.setTimeout(() => {
       setPhase('idle');
       setWaypoints([]);

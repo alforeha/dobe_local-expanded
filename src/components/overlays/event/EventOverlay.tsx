@@ -126,8 +126,8 @@ export function EventOverlay({ eventId, onClose }: EventOverlayProps) {
     nonce: 0,
   });
 
-  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const alreadyCompleteOnMount = useRef(event?.completionState === 'complete');
+  const hasAutoClosedRef = useRef(false);
   const editSnapshotRef = useRef<EditableEventSnapshot | null>(null);
   const { layerDefinitions, layerVisibility, toggleLayer } = useEventGlobeLayers(event, taskPreviewResults);
   const templates = useMemo(() => buildTemplateRecord(taskTemplates), [taskTemplates]);
@@ -158,16 +158,12 @@ export function EventOverlay({ eventId, onClose }: EventOverlayProps) {
   const isGlobeViewOpen = activeSection === 'globe';
 
   useEffect(() => {
-    if (event?.completionState === 'complete' && !alreadyCompleteOnMount.current) {
-      closeTimerRef.current = setTimeout(() => {
-        onClose();
-      }, 1200);
-    }
-    return () => {
-      if (closeTimerRef.current !== null) {
-        clearTimeout(closeTimerRef.current);
-      }
-    };
+    if (event?.completionState !== 'complete') return;
+    if (alreadyCompleteOnMount.current) return;
+    if (hasAutoClosedRef.current) return;
+    hasAutoClosedRef.current = true;
+    const t = setTimeout(() => onClose(), 1200);
+    return () => clearTimeout(t);
   }, [event?.completionState, onClose]);
 
   const effectiveSelectedTaskId = event && selectedTaskId && eventTaskIds.includes(selectedTaskId)

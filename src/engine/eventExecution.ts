@@ -383,6 +383,7 @@ export function completeTask(
   );
 
   const now = getAppNowISO();
+  const shouldAwardXp = !task.xpAwarded;
 
   const updatedTask: Task = {
     ...task,
@@ -394,6 +395,7 @@ export function completeTask(
     },
     resourceRef: result.resourceRef ?? task.resourceRef,
     location: result.location ?? task.location,
+    xpAwarded: shouldAwardXp ? true : task.xpAwarded,
   };
 
   scheduleStore.setTask(updatedTask);
@@ -445,85 +447,87 @@ export function completeTask(
   if (userStore.user) {
     const userId = userStore.user.system.id;
 
-    if (template) {
-      // Award XP — base from template + context multipliers
-      const baseXP = Object.values(template.xpAward).reduce((s, v) => s + v, 0) + (template.xpBonus ?? 0);
-      const contextBonuses: number[] = [];
-      if (hasResourceRef) contextBonuses.push(2); // +2 defense bonus
+    if (shouldAwardXp) {
+      if (template) {
+        // Award XP — base from template + context multipliers
+        const baseXP = Object.values(template.xpAward).reduce((s, v) => s + v, 0) + (template.xpBonus ?? 0);
+        const contextBonuses: number[] = [];
+        if (hasResourceRef) contextBonuses.push(2); // +2 defense bonus
 
-      const bonusTotal = contextBonuses.reduce((s, v) => s + v, 0);
-      const xpResult = awardXP(userId, baseXP + bonusTotal, {
-        isWisdomTask: isWisdomTemplate(template),
-        statGroup: getPrimaryStatGroup(template.xpAward),
-        isEventTask: Boolean(event && !isQuickActions),
-        secondaryTag: template.secondaryTag,
-        source: `task-completed:${task.templateRef}`,
-        suppressLog: true,
-      });
+        const bonusTotal = contextBonuses.reduce((s, v) => s + v, 0);
+        const xpResult = awardXP(userId, baseXP + bonusTotal, {
+          isWisdomTask: isWisdomTemplate(template),
+          statGroup: getPrimaryStatGroup(template.xpAward),
+          isEventTask: Boolean(event && !isQuickActions),
+          secondaryTag: template.secondaryTag,
+          source: `task-completed:${task.templateRef}`,
+          suppressLog: true,
+        });
 
-      // Award stat points per xpAward distribution
-      const statGroups = template.xpAward;
-      const statAwards: Array<{ group: StatGroupKey; points: number }> = [];
-      for (const [group, points] of Object.entries(statGroups) as [StatGroupKey, number][]) {
-        if (points > 0) {
-          awardStat(userId, group, points, `task.complete:${task.templateRef}`);
-          statAwards.push({ group, points });
+        // Award stat points per xpAward distribution
+        const statGroups = template.xpAward;
+        const statAwards: Array<{ group: StatGroupKey; points: number }> = [];
+        for (const [group, points] of Object.entries(statGroups) as [StatGroupKey, number][]) {
+          if (points > 0) {
+            awardStat(userId, group, points, `task.complete:${task.templateRef}`);
+            statAwards.push({ group, points });
+          }
         }
-      }
 
-      // Context-specific stat bonuses
-      if (isQuickActions) {
-        awardXP(userId, 2, {
-          statGroup: 'agility',
-          source: `task.complete.quickActions:${task.templateRef}`,
-        });
-        awardStat(userId, 'agility', 2, `task.complete.quickActions:${task.templateRef}`);
-        statAwards.push({ group: 'agility', points: 2 });
-      }
-      if (hasResourceRef) {
-        awardStat(userId, 'defense', 2, `task.complete.resource:${task.templateRef}`);
-        statAwards.push({ group: 'defense', points: 2 });
-      }
+        // Context-specific stat bonuses
+        if (isQuickActions) {
+          awardXP(userId, 2, {
+            statGroup: 'agility',
+            source: `task.complete.quickActions:${task.templateRef}`,
+          });
+          awardStat(userId, 'agility', 2, `task.complete.quickActions:${task.templateRef}`);
+          statAwards.push({ group: 'agility', points: 2 });
+        }
+        if (hasResourceRef) {
+          awardStat(userId, 'defense', 2, `task.complete.resource:${task.templateRef}`);
+          statAwards.push({ group: 'defense', points: 2 });
+        }
 
-      if (xpResult) {
-        console.info('[task-completed]', {
-          taskId: updatedTask.id,
-          templateRef: task.templateRef,
-          rawXP: xpResult.rawAmount,
-          awardedXP: xpResult.awardedAmount,
-          activeMultipliers: xpResult.activeMultipliers,
-          multiplierSnapshot: xpResult.multiplierSnapshot,
-          statAwards,
-          contextBonuses: {
-            quickActions: isQuickActions ? 2 : 0,
-            resourceRef: hasResourceRef ? 2 : 0,
-          },
+        if (xpResult) {
+          console.info('[task-completed]', {
+            taskId: updatedTask.id,
+            templateRef: task.templateRef,
+            rawXP: xpResult.rawAmount,
+            awardedXP: xpResult.awardedAmount,
+            activeMultipliers: xpResult.activeMultipliers,
+            multiplierSnapshot: xpResult.multiplierSnapshot,
+            statAwards,
+            contextBonuses: {
+              quickActions: isQuickActions ? 2 : 0,
+              resourceRef: hasResourceRef ? 2 : 0,
+            },
+          });
+        }
+      } else {
+        // No template found — apply wisdom fallback (D48)
+        const xpResult = awardXP(userId, 5, {
+          isWisdomTask: true,
+          statGroup: 'wisdom',
+          isEventTask: Boolean(event && !isQuickActions),
+          source: `task-completed:fallback:${task.templateRef}`,
+          suppressLog: true,
         });
-      }
-    } else {
-      // No template found — apply wisdom fallback (D48)
-      const xpResult = awardXP(userId, 5, {
-        isWisdomTask: true,
-        statGroup: 'wisdom',
-        isEventTask: Boolean(event && !isQuickActions),
-        source: `task-completed:fallback:${task.templateRef}`,
-        suppressLog: true,
-      });
-      awardStat(userId, 'wisdom', 25, `task.complete.fallback:${task.templateRef}`);
-      if (xpResult) {
-        console.info('[task-completed]', {
-          taskId: updatedTask.id,
-          templateRef: task.templateRef,
-          rawXP: xpResult.rawAmount,
-          awardedXP: xpResult.awardedAmount,
-          activeMultipliers: xpResult.activeMultipliers,
-          multiplierSnapshot: xpResult.multiplierSnapshot,
-          statAwards: [{ group: 'wisdom', points: 25 }],
-          contextBonuses: {
-            quickActions: 0,
-            resourceRef: 0,
-          },
-        });
+        awardStat(userId, 'wisdom', 25, `task.complete.fallback:${task.templateRef}`);
+        if (xpResult) {
+          console.info('[task-completed]', {
+            taskId: updatedTask.id,
+            templateRef: task.templateRef,
+            rawXP: xpResult.rawAmount,
+            awardedXP: xpResult.awardedAmount,
+            activeMultipliers: xpResult.activeMultipliers,
+            multiplierSnapshot: xpResult.multiplierSnapshot,
+            statAwards: [{ group: 'wisdom', points: 25 }],
+            contextBonuses: {
+              quickActions: 0,
+              resourceRef: 0,
+            },
+          });
+        }
       }
     }
 
@@ -598,6 +602,7 @@ export function completeEvent(eventId: string): void {
 
   const typedEvent = event as Event;
   if (typedEvent.completionState === 'complete') return;
+  if (typedEvent.xpAwarded) return;
 
   const allDone = typedEvent.tasks.every((taskId) => {
     const t = scheduleStore.tasks[taskId];

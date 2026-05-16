@@ -40,6 +40,7 @@ export interface Task {
   taskType?: string | null;
   /** Optional per-task stat award payload for unique tasks that do not resolve through a template. */
   xpAward?: XpAward | null;
+  xpAwarded?: boolean;
   completionState: TaskCompletionState;
   completedAt: string | null; // ISO date
   /** Recorded values matching inputFields shape of TaskTemplate (D41) */
