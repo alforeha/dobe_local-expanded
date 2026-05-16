@@ -33,6 +33,8 @@ interface ColorBlock {
   startTime: string;
   endTime: string;
   markerKey: 'morning' | 'night' | 'rainbow' | null;
+  icon?: string;
+  isComplete?: boolean;
 }
 
 interface PositionedColorBlock extends ColorBlock {
@@ -180,6 +182,8 @@ export function ExplorerWeekRow({ weekStart, weather, onSelect }: ExplorerWeekRo
       startTime: string,
       endTime: string,
       markerKey: ColorBlock['markerKey'],
+      icon?: string,
+      isComplete?: boolean,
     ) => {
       if (day < 0 || day > 6) return;
       next.push({
@@ -189,6 +193,8 @@ export function ExplorerWeekRow({ weekStart, weather, onSelect }: ExplorerWeekRo
         startTime,
         endTime,
         markerKey,
+        icon,
+        isComplete,
       });
     };
 
@@ -213,7 +219,16 @@ export function ExplorerWeekRow({ weekStart, weather, onSelect }: ExplorerWeekRo
             ? 'morning'
             : 'rainbow';
 
-      addBlock(`${event.id}:${dateISO}`, color, dayIndex, startTime, endTime, markerKey);
+      addBlock(
+        `${event.id}:${dateISO}`,
+        color,
+        dayIndex,
+        startTime,
+        endTime,
+        markerKey,
+        'icon' in event ? (event as { icon?: string }).icon : undefined,
+        'completionState' in event ? (event as { completionState?: string }).completionState === 'complete' : false,
+      );
     };
 
     const eventSources = [...Object.values(activeEvents), ...Object.values(historyEvents)];
@@ -311,12 +326,15 @@ export function ExplorerWeekRow({ weekStart, weather, onSelect }: ExplorerWeekRo
       );
 
       const dayBlocks = byDay.get(block.day) ?? [];
-      dayBlocks.push({
+        dayBlocks.push({
           id: block.id,
           color: block.color,
           markerKey: block.markerKey,
           topPx,
           heightPx,
+          endMinutes: blockEndMin,
+          icon: block.icon,
+          isComplete: block.isComplete,
           leftPercent: (block.colIndex / block.colCount) * 100,
           widthPercent: (block.colSpan / block.colCount) * 100,
         });
@@ -337,11 +355,13 @@ export function ExplorerWeekRow({ weekStart, weather, onSelect }: ExplorerWeekRo
     >
       {days.filter((_, i) => visibleDaySet.has(i)).map((day) => {
         const dateISO = format(day, 'iso');
+        const dayResourceIcons = getResourceIconsForDate(dateISO, resources);
         return (
           <ExplorerDayBlock
             key={dateISO}
             date={day}
-            resourceIcons={getResourceIconsForDate(dateISO, resources).slice(0, 1)}
+            resourceIcons={dayResourceIcons.slice(0, 1)}
+            hasMoreIndicators={dayResourceIcons.length > 1}
             weather={weatherByDate.get(dateISO) ?? null}
             eventBlocks={eventBlocksByDay.get(days.indexOf(day)) ?? []}
           />

@@ -110,15 +110,6 @@ export function EventBlock({
             </span>
           )}
           {name}
-          {crossesMidnight && (
-            <span
-              className="ml-1 inline-flex rounded-full bg-white/20 px-1 py-0.5 align-middle text-[10px] font-semibold"
-              aria-label="Overnight event"
-              title="Overnight event"
-            >
-              {'\uD83C\uDF19'}
-            </span>
-          )}
         </div>
         {heightPx >= 30 && (
           <div className="truncate text-[11px] leading-tight text-white/80">{timeLabel}</div>

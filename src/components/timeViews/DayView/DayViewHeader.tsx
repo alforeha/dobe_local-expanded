@@ -1,9 +1,9 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { IconDisplay } from '../../shared/IconDisplay';
 import { useResourceStore } from '../../../stores/useResourceStore';
 import { useAppDate } from '../../../utils/useAppDate';
 import { format } from '../../../utils/dateUtils';
-import { getResourceIndicatorsForDate, type ResourceIndicator } from '../../../utils/resourceSchedule';
+import { getResourceIndicatorsForDate } from '../../../utils/resourceSchedule';
 import type { WeatherSummaryDay } from '../../../utils/weatherService';
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -30,36 +30,44 @@ function relativeLabel(appDate: Date, date: Date): string {
   return diff < 0 ? `${Math.abs(diff)} days ago` : `${diff} days away`;
 }
 
-export function DayViewHeader({ date, weather, hasLocation, weatherLoading, onWeatherOpen, onResourceOpen, onBack, onForward }: DayViewHeaderProps) {
+export function DayViewHeader({ date, weather, hasLocation, weatherLoading, onWeatherOpen, onBack, onForward }: DayViewHeaderProps) {
   const appDate = useAppDate();
   const resourceMap = useResourceStore((s) => s.resources);
   const resources = useMemo(() => Object.values(resourceMap), [resourceMap]);
   const dateISO = format(date, 'iso');
-  const [openIndicatorKey, setOpenIndicatorKey] = useState<string | null>(null);
+  const [indicatorsOpen, setIndicatorsOpen] = useState(false);
+  const popupRef = useRef<HTMLDivElement>(null);
   const isToday = dateISO === format(appDate, 'iso');
   const resourceIndicators = getResourceIndicatorsForDate(dateISO, resources);
-  const visibleIndicators = resourceIndicators.length > 5 ? resourceIndicators.slice(0, 4) : resourceIndicators.slice(0, 5);
-  const hiddenCount = Math.max(0, resourceIndicators.length - visibleIndicators.length);
-  const activeIndicator = visibleIndicators.find((indicator) => `${dateISO}:${indicator.resourceId}:${indicator.label}` === openIndicatorKey) ?? null;
+  const maxVisible = 2;
+  const visibleIndicators = resourceIndicators.slice(0, maxVisible);
+  const hiddenCount = Math.max(0, resourceIndicators.length - maxVisible);
 
   const showWeatherButton = Boolean(weather) || (isToday && !weatherLoading);
 
-  function indicatorKey(indicator: ResourceIndicator): string {
-    return `${dateISO}:${indicator.resourceId}:${indicator.label}`;
-  }
+  useEffect(() => {
+    if (!indicatorsOpen) return;
+    function handleOutsideClick(e: MouseEvent) {
+      if (popupRef.current && !popupRef.current.contains(e.target as Node)) {
+        setIndicatorsOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleOutsideClick);
+    return () => document.removeEventListener('mousedown', handleOutsideClick);
+  }, [indicatorsOpen]);
 
   return (
-    <div className={`relative shrink-0 overflow-visible border-b ${isToday ? 'border-purple-200 bg-purple-50 dark:border-purple-700/60 dark:bg-purple-900/20' : 'border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900'}`}>
+    <div className={`relative h-16 shrink-0 overflow-visible border-b ${isToday ? 'border-purple-200 bg-purple-50 dark:border-purple-700/60 dark:bg-purple-900/20' : 'border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900'}`}>
       <button
         type="button"
         aria-label="Previous day"
         onClick={onBack}
-        className={`absolute left-0 top-[-10px] z-10 flex h-full w-[15%] items-center justify-center rounded-l-full text-xl shadow-sm transition-colors hover:bg-black/5 dark:hover:bg-white/10 ${isToday ? 'text-purple-500 dark:text-purple-400' : 'text-gray-500 dark:text-gray-400'}`}
+        className={`absolute inset-y-0 left-0 z-10 flex w-[10%] items-center justify-center rounded-l-full text-xl shadow-sm transition-colors hover:bg-black/5 dark:hover:bg-white/10 ${isToday ? 'text-purple-500 dark:text-purple-400' : 'text-gray-500 dark:text-gray-400'}`}
       >
         {'<'}
       </button>
 
-      <div className="mx-[15%] flex min-w-0 items-center justify-between gap-3 px-3 py-2">
+      <div className="mx-[10%] flex min-w-0 items-center justify-between gap-3 px-3 py-2">
         <div className="min-w-0">
           <div className={`text-sm font-semibold ${isToday ? 'text-purple-700 dark:text-purple-300' : 'text-gray-800 dark:text-gray-100'}`}>
             {DAY_NAMES[date.getDay()]} {MONTH_NAMES[date.getMonth()]} {date.getDate()}
@@ -75,11 +83,7 @@ export function DayViewHeader({ date, weather, hasLocation, weatherLoading, onWe
                   <button
                     key={`${indicator.resourceId}:${indicator.iconKey}:${index}`}
                     type="button"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      const key = indicatorKey(indicator);
-                      setOpenIndicatorKey((current) => (current === key ? null : key));
-                    }}
+                    onClick={() => setIndicatorsOpen(true)}
                     className="rounded-md p-0.5 transition-colors hover:bg-gray-100 dark:hover:bg-gray-800"
                     aria-label={`${indicator.label} for ${indicator.resourceName}`}
                   >
@@ -94,17 +98,23 @@ export function DayViewHeader({ date, weather, hasLocation, weatherLoading, onWe
                 {hiddenCount > 0 && (
                   <button
                     type="button"
-                    onClick={onResourceOpen}
+                    onClick={() => setIndicatorsOpen(true)}
                     className="flex items-center self-center rounded-full border border-gray-300 px-1 text-[10px] leading-4 transition-colors hover:bg-gray-100 dark:border-gray-600 dark:hover:bg-gray-800"
                     aria-label="Open resource reminders"
                   >
                     +{hiddenCount}
                   </button>
                 )}
-                {activeIndicator && (
-                  <div className="absolute right-0 top-full z-20 mt-1 w-52 rounded-xl border border-gray-200 bg-white p-2 text-left shadow-lg dark:border-gray-700 dark:bg-gray-900">
-                    <div className="text-xs font-semibold text-gray-800 dark:text-gray-100">{activeIndicator.label}</div>
-                    <div className="text-[11px] text-gray-500 dark:text-gray-400">{activeIndicator.resourceName}</div>
+                {indicatorsOpen && (
+                  <div ref={popupRef} className="absolute right-0 top-full z-20 mt-1 w-52 rounded-xl border border-gray-200 bg-white p-2 text-left shadow-lg dark:border-gray-700 dark:bg-gray-900">
+                    <div className="space-y-2">
+                      {resourceIndicators.map((indicator, index) => (
+                        <div key={`${indicator.resourceId}:${indicator.label}:${index}`}>
+                          <div className="text-xs font-semibold text-gray-800 dark:text-gray-100">{indicator.label}</div>
+                          <div className="text-[11px] text-gray-500 dark:text-gray-400">{indicator.resourceName}</div>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 )}
               </>
@@ -119,8 +129,11 @@ export function DayViewHeader({ date, weather, hasLocation, weatherLoading, onWe
             >
               {weather ? (
                 <>
-                  <IconDisplay iconKey={weather.icon} size={16} className="h-4 w-4 object-contain" alt="" />
-                  <span>{`${weather.high}\u00b0 / ${weather.low}\u00b0`}</span>
+                  <IconDisplay iconKey={weather.icon} size={16} className="h-4 w-4 shrink-0 object-contain" alt="" />
+                  <div className="flex flex-col leading-tight">
+                    <span className="font-semibold">{weather.high}°</span>
+                    <span className="text-gray-400 dark:text-gray-500">{weather.low}°</span>
+                  </div>
                 </>
               ) : weatherLoading ? (
                 <span className="text-gray-400 dark:text-gray-500">...</span>
@@ -136,7 +149,7 @@ export function DayViewHeader({ date, weather, hasLocation, weatherLoading, onWe
         type="button"
         aria-label="Next day"
         onClick={onForward}
-        className={`absolute right-0 top-[-10px] z-10 flex h-full w-[15%] items-center justify-center rounded-r-full text-xl shadow-sm transition-colors hover:bg-black/5 dark:hover:bg-white/10 ${isToday ? 'text-purple-500 dark:text-purple-400' : 'text-gray-500 dark:text-gray-400'}`}
+        className={`absolute inset-y-0 right-0 z-10 flex w-[10%] items-center justify-center rounded-r-full text-xl shadow-sm transition-colors hover:bg-black/5 dark:hover:bg-white/10 ${isToday ? 'text-purple-500 dark:text-purple-400' : 'text-gray-500 dark:text-gray-400'}`}
       >
         {'>'}
       </button>

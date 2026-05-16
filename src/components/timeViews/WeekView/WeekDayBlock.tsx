@@ -140,9 +140,11 @@ export function WeekDayBlock({ date, weather, onDaySelect }: WeekDayBlockProps) 
   const isToday = isSameDay(date, today);
   const isFuture = date > today;
   const dateIso = format(date, 'iso');
-  const [openIndicatorKey, setOpenIndicatorKey] = useState<string | null>(null);
-  const resourceIndicators = getResourceIndicatorsForDate(dateIso, resources).slice(0, 2);
-  const activeIndicator = resourceIndicators.find((indicator) => `${indicator.resourceId}:${indicator.label}` === openIndicatorKey) ?? null;
+  const [indicatorsOpen, setIndicatorsOpen] = useState(false);
+  const popupRef = useRef<HTMLDivElement>(null);
+  const resourceIndicators = getResourceIndicatorsForDate(dateIso, resources);
+  const visibleIndicators = resourceIndicators.slice(0, 2);
+  const hiddenCount = Math.max(0, resourceIndicators.length - visibleIndicators.length);
 
   const dayEvents: Array<WeekProjectedEvent | WeekProjectedPlannedEvent> = [];
   const projectEventForDay = (raw: Event | unknown) => {
@@ -269,6 +271,17 @@ export function WeekDayBlock({ date, weather, onDaySelect }: WeekDayBlockProps) 
     return () => clearInterval(id);
   }, [isToday]);
 
+  useEffect(() => {
+    if (!indicatorsOpen) return;
+    function handleOutsideClick(event: MouseEvent) {
+      if (popupRef.current && !popupRef.current.contains(event.target as Node)) {
+        setIndicatorsOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleOutsideClick);
+    return () => document.removeEventListener('mousedown', handleOutsideClick);
+  }, [indicatorsOpen]);
+
   const layouts = computeWeekDayLayout(dayEvents);
   const timePreferences = useSystemStore((s) => s.settings?.timePreferences);
   const startHour = parseInt((timePreferences?.weekView?.startTime ?? '06:00').split(':')[0]);
@@ -297,20 +310,19 @@ export function WeekDayBlock({ date, weather, onDaySelect }: WeekDayBlockProps) 
       onClick={() => onDaySelect?.(date)}
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onDaySelect?.(date); }}
     >
-      <div className="relative flex items-center justify-between gap-2 border-b border-gray-100 px-2 py-1 dark:border-gray-700">
+      <div className="relative flex h-10 items-center justify-between gap-2 border-b border-gray-100 px-2 dark:border-gray-700">
         <span className={`text-xs font-semibold ${isToday ? 'text-purple-600' : 'text-gray-700 dark:text-gray-200'}`}>
           {date.toLocaleDateString(undefined, { weekday: 'short' })} {format(date, 'short')}
         </span>
 
         <div className="flex min-h-3 items-center gap-1 text-[10px] text-gray-500 dark:text-gray-300">
-          {resourceIndicators.map((indicator) => (
+          {visibleIndicators.map((indicator, index) => (
             <button
-              key={`${indicator.resourceId}:${indicator.iconKey}:${indicator.label}`}
+              key={`${indicator.resourceId}:${indicator.iconKey}:${index}`}
               type="button"
               onClick={(event) => {
                 event.stopPropagation();
-                const key = `${indicator.resourceId}:${indicator.label}`;
-                setOpenIndicatorKey((current) => (current === key ? null : key));
+                setIndicatorsOpen(true);
               }}
               className="rounded-sm p-0.5 transition-colors hover:bg-gray-100 dark:hover:bg-gray-700"
               aria-label={`${indicator.label} for ${indicator.resourceName}`}
@@ -318,16 +330,36 @@ export function WeekDayBlock({ date, weather, onDaySelect }: WeekDayBlockProps) 
               <IconDisplay iconKey={indicator.iconKey} size={12} className="h-3 w-3 object-contain" alt="" />
             </button>
           ))}
+          {hiddenCount > 0 && (
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                setIndicatorsOpen(true);
+              }}
+              className="flex items-center self-center rounded-full border border-gray-300 px-1 text-[10px] leading-4 transition-colors hover:bg-gray-100 dark:border-gray-600 dark:hover:bg-gray-800"
+              aria-label="Open resource reminders"
+            >
+              +{hiddenCount}
+            </button>
+          )}
           {weather && <IconDisplay iconKey={weather.icon} size={12} className="h-3 w-3 object-contain" alt="" />}
           {weather && <span>{`${weather.high}°`}</span>}
         </div>
-        {activeIndicator && (
+        {indicatorsOpen && resourceIndicators.length > 0 && (
           <div
+            ref={popupRef}
             className="absolute right-2 top-full z-20 mt-1 w-52 rounded-xl border border-gray-200 bg-white p-2 text-left shadow-lg dark:border-gray-700 dark:bg-gray-900"
             onClick={(event) => event.stopPropagation()}
           >
-            <div className="text-xs font-semibold text-gray-800 dark:text-gray-100">{activeIndicator.label}</div>
-            <div className="text-[11px] text-gray-500 dark:text-gray-400">{activeIndicator.resourceName}</div>
+            <div className="space-y-2">
+              {resourceIndicators.map((indicator, index) => (
+                <div key={`${indicator.resourceId}:${indicator.label}:${index}`}>
+                  <div className="text-xs font-semibold text-gray-800 dark:text-gray-100">{indicator.label}</div>
+                  <div className="text-[11px] text-gray-500 dark:text-gray-400">{indicator.resourceName}</div>
+                </div>
+              ))}
+            </div>
           </div>
         )}
       </div>
@@ -373,6 +405,8 @@ export function WeekDayBlock({ date, weather, onDaySelect }: WeekDayBlockProps) 
               heightPx={clippedHeightPx}
               leftPercent={leftPercent}
               widthPercent={widthPercent}
+              icon={'icon' in ev ? ev.icon ?? undefined : undefined}
+              isComplete={('completionState' in ev ? ev.completionState : undefined) === 'complete'}
               muted={isPastEvent}
             />
           );

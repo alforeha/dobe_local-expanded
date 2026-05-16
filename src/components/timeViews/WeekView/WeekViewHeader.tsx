@@ -36,12 +36,12 @@ export function WeekViewHeader({ weekStart, onBack, onForward }: WeekViewHeaderP
         type="button"
         aria-label="Previous week"
         onClick={onBack}
-        className={`absolute left-0 top-[-10px] z-10 flex h-full w-[15%] items-center justify-center rounded-l-full text-xl shadow-sm transition-colors hover:bg-black/5 dark:hover:bg-white/10 ${isCurrentWeek ? 'text-purple-500 dark:text-purple-400' : 'text-gray-500 dark:text-gray-400'}`}
+        className={`absolute inset-y-0 left-0 z-10 flex w-[10%] items-center justify-center rounded-l-full text-xl shadow-sm transition-colors hover:bg-black/5 dark:hover:bg-white/10 ${isCurrentWeek ? 'text-purple-500 dark:text-purple-400' : 'text-gray-500 dark:text-gray-400'}`}
       >
         {'<'}
       </button>
 
-      <div className="mx-[15%] min-w-0 py-2 text-center">
+      <div className="mx-[10%] min-w-0 py-2 text-center">
         <div className={`text-sm font-semibold ${isCurrentWeek ? 'text-purple-700 dark:text-purple-300' : 'text-gray-800 dark:text-gray-100'}`}>
           {formatHeaderDate(weekStart)} {'->'} {formatHeaderDate(weekEnd)}
         </div>
@@ -52,7 +52,7 @@ export function WeekViewHeader({ weekStart, onBack, onForward }: WeekViewHeaderP
         type="button"
         aria-label="Next week"
         onClick={onForward}
-        className={`absolute right-0 top-[-10px] z-10 flex h-full w-[15%] items-center justify-center rounded-r-full text-xl shadow-sm transition-colors hover:bg-black/5 dark:hover:bg-white/10 ${isCurrentWeek ? 'text-purple-500 dark:text-purple-400' : 'text-gray-500 dark:text-gray-400'}`}
+        className={`absolute inset-y-0 right-0 z-10 flex w-[10%] items-center justify-center rounded-r-full text-xl shadow-sm transition-colors hover:bg-black/5 dark:hover:bg-white/10 ${isCurrentWeek ? 'text-purple-500 dark:text-purple-400' : 'text-gray-500 dark:text-gray-400'}`}
       >
         {'>'}
       </button>

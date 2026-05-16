@@ -431,7 +431,9 @@ export function DayViewBody({ date, onEventOpen, onEditPlanned }: DayViewBodyPro
   // labelOverride: maps eventId → label string shown inside the EventBlock.
 
   const dayEvents: (Event | PlannedEvent)[] = [];
-  const continuesOverride = new Map<string, string>();
+  const layoutEndOverride = new Map<string, string>();
+  const displayStartOverride = new Map<string, string>();
+  const displayEndOverride = new Map<string, string>();
   const labelOverride = new Map<string, string>();
 
   // --- Unified event projection and deduplication logic for all days ---
@@ -465,13 +467,17 @@ export function DayViewBody({ date, onEventOpen, onEditPlanned }: DayViewBodyPro
       if (startsToday) dayEvents.push(ev);
     } else if (startsToday) {
       dayEvents.push(ev);
-      continuesOverride.set(ev.id, '23:59');
+      layoutEndOverride.set(ev.id, '23:59');
+      displayEndOverride.set(ev.id, ev.endTime);
       labelOverride.set(ev.id, '↓ continues');
     } else if (endsToday) {
       dayEvents.push({ ...ev, startTime: '00:00' });
+      displayStartOverride.set(ev.id, ev.startTime);
       labelOverride.set(ev.id, `↑ started ${ev.startDate}`);
     } else if (ev.startDate < dateISO && ev.endDate > dateISO) {
       dayEvents.push({ ...ev, startTime: '00:00', endTime: '23:59' });
+      displayStartOverride.set(ev.id, ev.startTime);
+      displayEndOverride.set(ev.id, ev.endTime);
       labelOverride.set(ev.id, '⬛ all day');
     }
   }
@@ -523,22 +529,26 @@ export function DayViewBody({ date, onEventOpen, onEditPlanned }: DayViewBodyPro
         }
         // Project morning block if not covered, and avoid duplicate 'carry' block
         if ((dueYesterday || yesterdayIsDieDate) && !hasMaterializedMorning) {
+          const projectedId = `planned-${planned.id}:${dateISO}:morning`;
           dayEvents.push({
             ...planned,
-            id: `planned-${planned.id}:${dateISO}:morning`,
+            id: projectedId,
             startTime: '00:00',
             endTime: planned.endTime,
           });
+          displayStartOverride.set(projectedId, planned.startTime);
           labelOverride.set(`planned-${planned.id}:${dateISO}:morning`, '↑ started yesterday');
         }
         // Project evening block if not covered
         if (dueToday && !hasMaterializedEvening) {
+          const projectedId = `planned-${planned.id}:${dateISO}:evening`;
           dayEvents.push({
             ...planned,
-            id: `planned-${planned.id}:${dateISO}:evening`,
+            id: projectedId,
             startTime: planned.startTime,
             endTime: '23:59',
           });
+          displayEndOverride.set(projectedId, planned.endTime);
           labelOverride.set(`planned-${planned.id}:${dateISO}:evening`, '↓ continues');
         }
       } else {
@@ -551,15 +561,15 @@ export function DayViewBody({ date, onEventOpen, onEditPlanned }: DayViewBodyPro
   }
 
   // ── Display end-time resolver (passed to layout engine) ──────────────────
-  function getDisplayEnd(ev: Event | PlannedEvent): string {
+  function getLayoutEnd(ev: Event | PlannedEvent): string {
     return (
-      continuesOverride.get(ev.id) ??
+      layoutEndOverride.get(ev.id) ??
       (ev as { endTime?: string }).endTime ??
       '01:00'
     );
   }
 
-  const { layouts: dayLayouts, slotTop } = computeDayLayout(dayEvents, getDisplayEnd);
+  const { layouts: dayLayouts, slotTop } = computeDayLayout(dayEvents, getLayoutEnd);
 
   // Clip the rendered grid to [startHour, endHour]
   const clipTopRaw       = slotTop[startHour];
@@ -729,8 +739,15 @@ export function DayViewBody({ date, onEventOpen, onEditPlanned }: DayViewBodyPro
                 ).length;
             const evCompletionState = isPlanned ? undefined : (ev as Event).completionState;
             const mdLabel = labelOverride.get(ev.id);
+            const displayStart =
+              displayStartOverride.get(ev.id) ??
+              ('startTime' in ev ? ev.startTime : '');
             const displayEnd =
-              continuesOverride.get(ev.id) ??
+              displayEndOverride.get(ev.id) ??
+              (ev as { endTime?: string }).endTime ??
+              '';
+            const mutedEnd =
+              layoutEndOverride.get(ev.id) ??
               (ev as { endTime?: string }).endTime ??
               '';
             const evIcon = isPlanned
@@ -752,7 +769,7 @@ export function DayViewBody({ date, onEventOpen, onEditPlanned }: DayViewBodyPro
                 name={'name' in ev ? ev.name : '\u2014'}
                 color={resolvedColor}
                 startDate={'startDate' in ev ? ev.startDate : undefined}
-                startTime={'startTime' in ev ? ev.startTime : ''}
+                startTime={displayStart}
                 endDate={'endDate' in ev ? ev.endDate : undefined}
                 endTime={displayEnd}
                 icon={evIcon}
@@ -768,7 +785,7 @@ export function DayViewBody({ date, onEventOpen, onEditPlanned }: DayViewBodyPro
                 interactive={isInteractive}
                 onOpen={handleOpen}
                 muted={isToday && (() => {
-                  const [h=0,m=0] = (displayEnd).split(':').map(Number);
+                  const [h=0,m=0] = mutedEnd.split(':').map(Number);
                   return (h * 60 + m) <= (nowHour * 60 + nowMinutes);
                 })()}
                 glow={welcomeGlow}

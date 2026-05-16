@@ -602,7 +602,6 @@ export function completeEvent(eventId: string): void {
 
   const typedEvent = event as Event;
   if (typedEvent.completionState === 'complete') return;
-  if (typedEvent.xpAwarded) return;
 
   const allDone = typedEvent.tasks.every((taskId) => {
     const t = scheduleStore.tasks[taskId];
@@ -616,7 +615,7 @@ export function completeEvent(eventId: string): void {
   const updatedEvent: Event = {
     ...typedEvent,
     completionState: 'complete',
-    xpAwarded: totalXP,
+    xpAwarded: typedEvent.xpAwarded || totalXP,
   };
 
   scheduleStore.setActiveEvent(updatedEvent);
@@ -640,29 +639,32 @@ export function completeEvent(eventId: string): void {
     };
     userStoreRef.setUser(withEventCount);
 
-    const eventXpResult = awardXP(withEventCount.system.id, totalXP, {
-      source: `event.complete:${updatedEvent.name}`,
-      suppressLog: true,
-    });
-
-    // +1 gold per event completion (D98)
-    const userForGold = useUserStore.getState().user;
-    if (userForGold) {
-      userStoreRef.setUser(awardGold(1, userForGold, {
+    let eventXpResult;
+    if (!typedEvent.xpAwarded) {
+      eventXpResult = awardXP(withEventCount.system.id, totalXP, {
         source: `event.complete:${updatedEvent.name}`,
         suppressLog: true,
-      }));
-      console.info('[event-complete]', {
-        eventId,
-        eventName: updatedEvent.name,
-        taskCount: typedEvent.tasks.length,
-        baseEventXP: totalXP,
-        preMultiplierXP: eventXpResult?.rawAmount ?? totalXP,
-        awardedXP: eventXpResult?.awardedAmount ?? totalXP,
-        goldAward: 1,
-        activeMultipliers: eventXpResult?.activeMultipliers ?? [],
-        multiplierSnapshot: eventXpResult?.multiplierSnapshot ?? null,
       });
+
+      // +1 gold per event completion (D98)
+      const userForGold = useUserStore.getState().user;
+      if (userForGold) {
+        userStoreRef.setUser(awardGold(1, userForGold, {
+          source: `event.complete:${updatedEvent.name}`,
+          suppressLog: true,
+        }));
+        console.info('[event-complete]', {
+          eventId,
+          eventName: updatedEvent.name,
+          taskCount: typedEvent.tasks.length,
+          baseEventXP: totalXP,
+          preMultiplierXP: eventXpResult?.rawAmount ?? totalXP,
+          awardedXP: eventXpResult?.awardedAmount ?? totalXP,
+          goldAward: 1,
+          activeMultipliers: eventXpResult?.activeMultipliers ?? [],
+          multiplierSnapshot: eventXpResult?.multiplierSnapshot ?? null,
+        });
+      }
     }
 
     pushRibbet('event.completed');
