@@ -137,6 +137,16 @@ export function TaskBlock({ taskId, eventId, onTaskComplete, onPreviewResultChan
   }, [isCoolingDown]);
 
   useEffect(() => {
+    if (!taskId || !task) return;
+    const fields = task.resultFields;
+    if (!fields || Object.keys(fields).length === 0) return;
+    const timeoutId = window.setTimeout(() => {
+      setResultState({ taskId, result: fields });
+    }, 0);
+    return () => window.clearTimeout(timeoutId);
+  }, [task, taskId]);
+
+  useEffect(() => {
     if (!taskId) return;
     onPreviewResultChange?.(taskId, currentResult);
   }, [currentResult, onPreviewResultChange, taskId]);
@@ -169,7 +179,6 @@ export function TaskBlock({ taskId, eventId, onTaskComplete, onPreviewResultChan
 
   const handleUndo = () => {
     uncompleteTask(taskId, eventId);
-    setResultState({ taskId, result: {} });
     onPreviewResultChange?.(taskId, {});
   };
 

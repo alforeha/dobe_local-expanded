@@ -144,6 +144,73 @@ function applyAccountTransactionLogSideEffects(
   }
 }
 
+export function reverseAccountTransactionSideEffects(task: Task): void {
+  if (!task.resourceRef) return;
+  const resourceStore = useResourceStore.getState();
+  const scheduleStore = useScheduleStore.getState();
+  const resource = resourceStore.resources[task.resourceRef];
+  if (!resource || resource.type !== 'account') return;
+
+  const rf = task.resultFields as Record<string, unknown>;
+  const amount = typeof rf.amount === 'number' ? rf.amount : null;
+  if (amount === null) return;
+
+  const accountResource = resource as AccountResource;
+  const direction = typeof rf.direction === 'string' ? rf.direction : null;
+
+  if (typeof accountResource.balance === 'number') {
+    const reversedBalance = direction === 'deposit'
+      ? accountResource.balance - amount
+      : accountResource.balance + amount;
+    resourceStore.setResource({
+      ...accountResource,
+      balance: reversedBalance,
+    } as unknown as Resource);
+  }
+
+  const linkedAccountId = typeof rf.linkedAccountId === 'string' ? rf.linkedAccountId : null;
+  if (linkedAccountId) {
+    const linkedResource = resourceStore.resources[linkedAccountId];
+    if (linkedResource && linkedResource.type === 'account') {
+      const linkedAccount = linkedResource as AccountResource;
+      if (typeof linkedAccount.balance === 'number') {
+        const linkedReversedBalance = direction === 'deposit'
+          ? linkedAccount.balance - amount
+          : linkedAccount.balance + amount;
+        resourceStore.setResource({
+          ...linkedAccount,
+          balance: linkedReversedBalance,
+        } as unknown as Resource);
+      }
+    }
+  }
+
+  const resourceTaskId = typeof rf.resourceTaskId === 'string' ? rf.resourceTaskId : null;
+  if (!resourceTaskId) return;
+
+  Object.values(scheduleStore.tasks).forEach((t) => {
+    if (
+      t.completionState === 'complete' &&
+      t.id !== task.id &&
+      (t.resultFields as Record<string, unknown>)?.resourceTaskId === resourceTaskId
+    ) {
+      scheduleStore.removeTask(t.id);
+    }
+  });
+
+  if (linkedAccountId) {
+    Object.values(scheduleStore.tasks).forEach((t) => {
+      if (
+        t.completionState === 'complete' &&
+        t.resourceRef === linkedAccountId &&
+        (t.resultFields as Record<string, unknown>)?.amount === rf.amount
+      ) {
+        scheduleStore.removeTask(t.id);
+      }
+    });
+  }
+}
+
 export function applyResourceTaskCompletion(task: Task): void {
   if (!task.resourceRef) return;
 

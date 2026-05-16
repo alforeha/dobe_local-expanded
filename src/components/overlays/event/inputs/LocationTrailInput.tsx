@@ -154,6 +154,15 @@ export function LocationTrailInput({ eventId, inputFields, task, onComplete, onR
   }, [onResultChange]);
 
   useEffect(() => {
+    if (isComplete) return;
+    const timeoutId = window.setTimeout(() => {
+      setPhase('idle');
+      setWaypoints([]);
+    }, 0);
+    return () => window.clearTimeout(timeoutId);
+  }, [isComplete]);
+
+  useEffect(() => {
     if (isComplete) {
       lastPreviewResultKeyRef.current = null;
       return;

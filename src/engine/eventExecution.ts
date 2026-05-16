@@ -33,7 +33,7 @@ import { getTaskCooldownState } from '../utils/taskCooldown';
 import { getLibraryTemplatePool, resolveTaskTemplate } from '../utils/resolveTaskTemplate';
 import { isWisdomTemplate } from './xpBoosts';
 import { autoCompleteSystemTask, generateReplenishGTDItem } from './resourceEngine';
-import { applyResourceTaskCompletion } from './resourceTaskEngine';
+import { applyResourceTaskCompletion, reverseAccountTransactionSideEffects } from './resourceTaskEngine';
 
 const DEFAULT_TASK_XP = 5;
 const STAT_GROUP_KEYS: StatGroupKey[] = ['health', 'strength', 'agility', 'defense', 'charisma', 'wisdom'];
@@ -777,7 +777,10 @@ export function uncompleteTask(taskId: string, eventId: string): void {
   const task = scheduleStore.tasks[taskId];
   if (!task || task.completionState !== 'complete') return;
 
-  const updatedTask: Task = { ...task, completionState: 'pending', completedAt: null, resultFields: {} };
+  const updatedTask: Task = { ...task, completionState: 'pending', completedAt: null };
+  if (task.resourceRef && typeof (task.resultFields as Record<string, unknown>)?.amount === 'number') {
+    reverseAccountTransactionSideEffects(task);
+  }
   scheduleStore.setTask(updatedTask);
 
   // Re-open the event if it was marked complete
