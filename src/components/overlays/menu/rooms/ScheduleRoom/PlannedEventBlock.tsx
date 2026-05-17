@@ -1,5 +1,9 @@
 import { useEffect, useState } from 'react';
+import { v4 as uuidv4 } from 'uuid';
+import { materialisePlannedEvent } from '../../../../../engine/materialise';
+import { useScheduleStore } from '../../../../../stores/useScheduleStore';
 import type { PlannedEvent } from '../../../../../types';
+import { getAppDate } from '../../../../../utils/dateUtils';
 import { isOneOffEvent } from '../../../../../utils/isOneOffEvent';
 import { IconDisplay } from '../../../../shared/IconDisplay';
 import { TaskPoolEditor } from './TaskPoolEditor';
@@ -93,19 +97,74 @@ export function PlannedEventBlock({ event, onEdit, onDelete, expandedId, setExpa
   const expanded = expandedId === event.id;
   const coAttendees = event.coAttendees ?? [];
   const [activeTab, setActiveTab] = useState<'details' | 'tasks'>('details');
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [pushToOneOffOpen, setPushToOneOffOpen] = useState(false);
+  const [oneOffDate, setOneOffDate] = useState('');
+  const [oneOffStartTime, setOneOffStartTime] = useState('');
+  const [oneOffEndTime, setOneOffEndTime] = useState('');
 
   useEffect(() => {
     if (!expanded) {
       setTimeout(() => {
         setActiveTab('details');
+        setConfirmDelete(false);
+        setPushToOneOffOpen(false);
+        setOneOffDate('');
+        setOneOffStartTime('');
+        setOneOffEndTime('');
       }, 0);
     }
   }, [expanded]);
 
   const scheduleSummary = oneOff ? formatEventSchedule(event) : formatRecurrence(event);
 
+  function handlePushToOneOff() {
+    const newId = uuidv4();
+    const today = getAppDate();
+    const oneOffEvent: PlannedEvent = {
+      id: newId,
+      name: event.name,
+      description: event.description,
+      icon: event.icon,
+      color: event.color,
+      seedDate: oneOffDate,
+      dieDate: oneOffDate,
+      recurrenceInterval: {
+        frequency: 'daily',
+        interval: 1,
+        days: [],
+        monthlyDay: null,
+        endsOn: oneOffDate,
+        customCondition: null,
+      },
+      activeState: 'active',
+      pools: event.pools,
+      taskPoolCursor: event.taskPoolCursor,
+      taskList: [],
+      conflictMode: event.conflictMode,
+      startTime: oneOffStartTime,
+      endTime: oneOffEndTime,
+      location: event.location,
+      coAttendees: event.coAttendees,
+      sharedWith: null,
+      pushReminder: null,
+    };
+
+    useScheduleStore.getState().setPlannedEvent(oneOffEvent);
+
+    if (oneOffDate <= today) {
+      const taskTemplates = useScheduleStore.getState().taskTemplates;
+      materialisePlannedEvent(oneOffEvent, oneOffDate, taskTemplates);
+    }
+
+    setPushToOneOffOpen(false);
+    setOneOffDate('');
+    setOneOffStartTime('');
+    setOneOffEndTime('');
+  }
+
   return (
-    <div className={`flex flex-row items-stretch overflow-hidden rounded-xl border border-gray-100 bg-white dark:border-gray-700 dark:bg-gray-800 ${expanded && soloExpanded ? 'h-full' : ''}`}>
+    <div className={`flex flex-row items-stretch overflow-hidden rounded-xl border border-gray-100 bg-white dark:border-gray-700 dark:bg-gray-800 ${event.activeState === 'sleep' ? 'opacity-50 ' : ''}${expanded && soloExpanded ? 'h-full' : ''}`}>
       <div
         className="w-1 shrink-0 self-stretch"
         style={{ backgroundColor: event.color || '#6366f1' }}
@@ -124,11 +183,6 @@ export function PlannedEventBlock({ event, onEdit, onDelete, expandedId, setExpa
                 <p className="truncate text-sm font-semibold text-gray-900 dark:text-gray-100">
                   {event.name}
                 </p>
-                {event.activeState === 'sleep' && (
-                  <span className="shrink-0 rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-gray-500 dark:bg-gray-700 dark:text-gray-300">
-                    Inactive
-                  </span>
-                )}
               </div>
               <p className="mt-1 truncate text-xs text-gray-500 dark:text-gray-300">
                 {scheduleSummary}
@@ -183,6 +237,65 @@ export function PlannedEventBlock({ event, onEdit, onDelete, expandedId, setExpa
                       <p className="mt-1">{formatDateLabel(event.dieDate ?? event.seedDate)}</p>
                       <p className="text-xs text-gray-500 dark:text-gray-400">{event.endTime}</p>
                     </div>
+                  </div>
+                ) : event.activeState === 'sleep' ? (
+                  <div className="flex flex-col gap-2 px-4 py-3">
+                    <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+                      <span>✓</span>
+                      <span>On Demand</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setPushToOneOffOpen(true)}
+                      aria-pressed={pushToOneOffOpen}
+                      className="self-start text-xs font-medium text-blue-500 transition-colors hover:text-blue-600"
+                    >
+                      Push to One-Off Event
+                    </button>
+                    {pushToOneOffOpen && (
+                      <div className="flex flex-col gap-2">
+                        <input
+                          type="date"
+                          value={oneOffDate}
+                          onChange={(e) => setOneOffDate(e.target.value)}
+                          className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-800 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200"
+                        />
+                        <input
+                          type="time"
+                          value={oneOffStartTime}
+                          onChange={(e) => setOneOffStartTime(e.target.value)}
+                          className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-800 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200"
+                        />
+                        <input
+                          type="time"
+                          value={oneOffEndTime}
+                          onChange={(e) => setOneOffEndTime(e.target.value)}
+                          className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-800 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200"
+                        />
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            disabled={!oneOffDate || !oneOffStartTime || !oneOffEndTime}
+                            onClick={handlePushToOneOff}
+                            className="rounded-md bg-gray-900 px-3 py-2 text-xs font-medium text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-gray-100 dark:text-gray-900"
+                          >
+                            Create Event
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setPushToOneOffOpen(false);
+                              setOneOffDate('');
+                              setOneOffStartTime('');
+                              setOneOffEndTime('');
+                            }}
+                            className="rounded-md border border-gray-300 px-3 py-2 text-xs font-medium text-gray-600 dark:border-gray-600 dark:text-gray-300"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <>
@@ -248,14 +361,7 @@ export function PlannedEventBlock({ event, onEdit, onDelete, expandedId, setExpa
               </div>
             )}
 
-            <div className="mt-auto flex shrink-0 items-center justify-end gap-2 border-t border-gray-200 px-4 py-2 dark:border-gray-700">
-              <button
-                type="button"
-                onClick={() => onDelete(event)}
-                className="text-xs font-medium text-red-500 transition-colors hover:text-red-600"
-              >
-                Delete
-              </button>
+            <div className="mt-auto flex shrink-0 items-center justify-between gap-2 border-t border-gray-200 px-4 py-2 dark:border-gray-700">
               <button
                 type="button"
                 onClick={() => onEdit(event)}
@@ -263,6 +369,32 @@ export function PlannedEventBlock({ event, onEdit, onDelete, expandedId, setExpa
               >
                 Edit
               </button>
+              {confirmDelete ? (
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setConfirmDelete(false)}
+                    className="text-xs font-medium text-gray-500 transition-colors hover:text-gray-600"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onDelete(event)}
+                    className="text-xs font-medium text-red-500 transition-colors hover:text-red-600"
+                  >
+                    Confirm Delete
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setConfirmDelete(true)}
+                  className="text-xs font-medium text-red-500 transition-colors hover:text-red-600"
+                >
+                  Delete
+                </button>
+              )}
             </div>
           </div>
         )}
