@@ -83,17 +83,25 @@ export interface SetsRepsInputFields {
   dropSet: boolean;
 }
 
-export type CircuitStepType = 'CHECK' | 'CHOICE' | 'COUNTER' | 'DURATION' | 'TIMER' | 'RATING' | 'TEXT' | 'SCAN';
+export type CircuitStepType = 'CHECK' | 'CHOICE' | 'COUNTER' | 'SETS_REPS' | 'DURATION' | 'TIMER' | 'RATING' | 'TEXT' | 'SCAN';
 
 export interface CircuitStep {
   id: string;
   label: string;
   stepType: CircuitStepType;
   options?: string[];
+  multiSelect?: boolean;
   scale?: number;
   target?: number;
   unit?: string;
+  step?: number;
   seconds?: number;
+  scanType?: string;
+  reps?: number;
+  weight?: number | null;
+  weightUnit?: string | null;
+  restAfter?: number | null;
+  dropSet?: boolean;
   required?: boolean;
 }
 
@@ -116,7 +124,17 @@ interface LegacyCircuitStep {
   inputType?: LegacyCircuitStepInputType | null;
   stepType?: CircuitStepType;
   options?: string[] | null;
+  multiSelect?: boolean;
   scale?: number | null;
+  target?: number;
+  unit?: string;
+  step?: number;
+  seconds?: number;
+  reps?: number;
+  weight?: number | null;
+  weightUnit?: string | null;
+  restAfter?: number | null;
+  dropSet?: boolean;
   optional?: boolean;
   required?: boolean;
 }
@@ -139,8 +157,9 @@ const LEGACY_CIRCUIT_STEP_TYPE_MAP: Record<LegacyCircuitStepInputType, CircuitSt
 export function normalizeCircuitInputFields(inputFields: LegacyCircuitInputFields | null | undefined): CircuitInputFields {
   const steps = Array.isArray(inputFields?.steps)
     ? inputFields.steps.map((step, index) => ({
+        ...step,
         id: step.id?.trim() || step.key?.trim() || `circuit-step-${index + 1}`,
-        label: step.label?.trim() || `Step ${index + 1}`,
+        label: step.label != null ? step.label : `Step ${index + 1}`,
         stepType: step.stepType ?? LEGACY_CIRCUIT_STEP_TYPE_MAP[step.inputType ?? 'CHECK'] ?? 'CHECK',
         options: Array.isArray(step.options) ? step.options.filter((option): option is string => typeof option === 'string') : undefined,
         scale: typeof step.scale === 'number' ? step.scale : undefined,

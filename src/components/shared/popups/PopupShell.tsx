@@ -7,13 +7,15 @@ interface PopupShellProps {
   children?: ReactNode;
   size?: 'default' | 'large';
   headerRight?: ReactNode;
+  fullHeight?: boolean;
 }
 
 /** Shared wrapper for all ADD/EDIT popups — internal layout is BUILD-time per popup */
-export function PopupShell({ title, onClose, children, size = 'default', headerRight }: PopupShellProps) {
+export function PopupShell({ title, onClose, children, size = 'default', headerRight, fullHeight = false }: PopupShellProps) {
+  const heightClassName = fullHeight ? ' h-[calc(100dvh-2rem)]' : '';
   const panelClassName = size === 'large'
-    ? 'relative flex w-full max-w-5xl flex-col rounded-2xl bg-white shadow-xl dark:bg-gray-800 max-h-[calc(100dvh-2rem)]'
-    : 'relative flex w-full max-w-md flex-col rounded-xl bg-white shadow-xl dark:bg-gray-800 max-h-[calc(100dvh-2rem)]';
+    ? `relative flex w-full max-w-5xl flex-col rounded-2xl bg-white shadow-xl dark:bg-gray-800 max-h-[calc(100dvh-2rem)]${heightClassName}`
+    : `relative flex w-full max-w-md flex-col rounded-xl bg-white shadow-xl dark:bg-gray-800 max-h-[calc(100dvh-2rem)]${heightClassName}`;
 
   if (typeof document === 'undefined') {
     return null;

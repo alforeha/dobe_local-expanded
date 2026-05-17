@@ -113,7 +113,7 @@ export function isPlannedEventDue(pe: PlannedEvent, targetDate: string): boolean
  * Advance a PlannedEvent's seedDate to the next occurrence after the given date.
  * Returns the new seedDate string, or the existing seedDate if no future occurrence found.
  */
-function computeNextSeedDate(pe: PlannedEvent, afterDate: string): string {
+export function computeNextSeedDate(pe: PlannedEvent, afterDate: string): string {
   const DAYS_LOOKAHEAD = 366;
   const start = new Date(afterDate + 'T00:00:00');
   for (let i = 1; i <= DAYS_LOOKAHEAD; i++) {

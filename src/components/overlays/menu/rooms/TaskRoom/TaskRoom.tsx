@@ -27,14 +27,6 @@ export function TaskRoom({ onGoToResource, onExpandedChange }: TaskRoomProps) {
   }, []);
 
   useEffect(() => {
-    if (tab === 'resourceTasks') {
-      setTimeout(() => {
-        setTaskExpanded(false);
-      }, 0);
-    }
-  }, [tab]);
-
-  useEffect(() => {
     onExpandedChange?.(taskExpanded);
   }, [taskExpanded, onExpandedChange]);
 
@@ -46,7 +38,10 @@ export function TaskRoom({ onGoToResource, onExpandedChange }: TaskRoomProps) {
     <div className="flex flex-col h-full">
       <TaskRoomHeader activeTab={tab} onTabChange={setTab} />
       {tab === 'resourceTasks' ? (
-        <ResourceTasksTab onGoToResource={onGoToResource} />
+        <ResourceTasksTab
+          onGoToResource={onGoToResource}
+          onExpandedChange={(expanded) => onExpandedChange?.(expanded)}
+        />
       ) : (
         <TaskRoomBody
           mode={tab}

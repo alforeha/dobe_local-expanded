@@ -11,6 +11,7 @@ import {
   type InputFields,
   type RatingInputFields,
   type ScanInputFields,
+  type SetsRepsInputFields,
   type TaskTemplate,
   type TaskType,
   type TextInputFields,
@@ -57,6 +58,17 @@ function buildCircuitStepTemplate(step: CircuitStep): TaskTemplate {
         unit: step.unit ?? '',
         step: 1,
       } satisfies CounterInputFields;
+      break;
+    case 'SETS_REPS':
+      taskType = 'SETS_REPS';
+      inputFields = {
+        sets: 1,
+        reps: step.reps ?? 10,
+        weight: step.weight ?? null,
+        weightUnit: step.weightUnit ?? 'kg',
+        restAfter: step.restAfter ?? null,
+        dropSet: step.dropSet ?? false,
+      } satisfies SetsRepsInputFields;
       break;
     case 'DURATION':
       taskType = 'DURATION';
@@ -134,6 +146,8 @@ function describeSavedResult(step: CircuitStep, result: unknown): string {
     }
     case 'COUNTER':
       return typeof fields.count === 'number' ? `${fields.count} / ${step.target ?? 1}${step.unit ? ` ${step.unit}` : ''}` : 'Counter saved';
+    case 'SETS_REPS':
+      return `${step.reps ?? 10} reps${step.weight ? ` @ ${step.weight}${step.weightUnit ?? ''}` : ''}`;
     case 'DURATION':
       return typeof fields.actualDuration === 'number' ? `${Math.round(fields.actualDuration / 60)} min logged` : `Target ${formatDurationLabel(step.target ?? 1)}`;
     case 'TIMER':

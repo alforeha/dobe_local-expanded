@@ -246,6 +246,7 @@ export function TaskTemplatePopup({
 
   return (
     <PopupShell
+      fullHeight
       title={title}
       onClose={onClose}
       size="large"
@@ -258,7 +259,7 @@ export function TaskTemplatePopup({
       }
     >
       <div className="flex h-full min-h-0 flex-col">
-        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden pb-4">
+        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto pb-4">
           <div className="grid grid-cols-[auto_minmax(0,1fr)] gap-4">
             <div className="w-24 shrink-0">
               <label className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">Icon</label>

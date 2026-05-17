@@ -4,7 +4,7 @@
 // Groups: Homes (chores), Vehicles (maintenance), Accounts (account tasks), Inventory (item tasks).
 // ─────────────────────────────────────────
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useResourceStore } from '../../../../../stores/useResourceStore';
 import { useUserStore } from '../../../../../stores/useUserStore';
 import { useScheduleStore } from '../../../../../stores/useScheduleStore';
@@ -30,7 +30,7 @@ import { taskTemplateLibrary } from '../../../../../coach';
 import { CUSTOM_ITEM_TEMPLATE_PREFIX, getItemTaskTemplateMeta } from '../../../../../coach/ItemLibrary';
 import { getUserInventoryItemTemplates, mergeInventoryItemTemplates, resolveInventoryItemTemplate } from '../../../../../utils/inventoryItems';
 import { getAppDate, localISODate } from '../../../../../utils/dateUtils';
-import { getLastCompletedForResourceTask } from '../../../../../utils/resourceTaskUtils';
+import { formatLastCompleted, getLastCompletedForResourceTask } from '../../../../../utils/resourceTaskUtils';
 import { applyResourceTaskCompletion } from '../../../../../engine/resourceTaskEngine';
 
 // ── Recurrence label helper ────────────────────────────────────────────────────
@@ -183,13 +183,6 @@ function formatNextDate(nextOccurrence: { date: string; days: number } | null): 
   return `${formatMonthDay(nextOccurrence.date)} (${nextOccurrence.days} ${unit})`;
 }
 
-function formatLastCompleted(lastCompleted: string | null, referenceDate: string): string {
-  if (!lastCompleted) return 'Never';
-  const daysAgo = Math.max(0, Math.round((parseISODate(referenceDate).getTime() - parseISODate(lastCompleted).getTime()) / 86_400_000));
-  const unit = daysAgo === 1 ? 'day' : 'days';
-  return `${formatMonthDay(lastCompleted)} (${daysAgo} ${unit} ago)`;
-}
-
 function formatReminder(reminderLeadDays: number | null): string {
   if (reminderLeadDays == null || reminderLeadDays < 0) return 'Not set';
   if (reminderLeadDays === 0) return 'Day of';
@@ -269,11 +262,12 @@ interface Section {
 
 interface ResourceTasksTabProps {
   onGoToResource?: (resourceId: string, resourceType: ResourceType) => void;
+  onExpandedChange?: (expanded: boolean) => void;
 }
 
 // ── Component ──────────────────────────────────────────────────────────────────
 
-export function ResourceTasksTab({ onGoToResource }: ResourceTasksTabProps) {
+export function ResourceTasksTab({ onGoToResource, onExpandedChange }: ResourceTasksTabProps) {
   const resources = useResourceStore((s) => s.resources);
   const user = useUserStore((s) => s.user);
   const setMenuResourceTarget = useSystemStore((s) => s.setMenuResourceTarget);
@@ -514,6 +508,10 @@ export function ResourceTasksTab({ onGoToResource }: ResourceTasksTabProps) {
     return result;
   }, [referenceDate, resources, user]);
 
+  useEffect(() => {
+    onExpandedChange?.(Boolean(expandedKey));
+  }, [expandedKey, onExpandedChange]);
+
   // ── Handlers ────────────────────────────────────────────────────────────────
 
   function toggleExpand(key: string) {
@@ -606,10 +604,11 @@ export function ResourceTasksTab({ onGoToResource }: ResourceTasksTabProps) {
 
   const presentTypes = useMemo<FilterType[]>(() => {
     const seen = new Set(sections.map((s) => s.filterType));
-    return (['home', 'vehicle', 'account', 'inventory'] as FilterType[]).filter((t) => seen.has(t));
+    return (['contact', 'home', 'vehicle', 'account', 'inventory'] as FilterType[]).filter((t) => seen.has(t));
   }, [sections]);
 
   const FILTER_ICONS: Record<string, string> = {
+    contact: 'resource-contact',
     home: 'resource-home',
     vehicle: 'resource-vehicle',
     account: 'resource-account',

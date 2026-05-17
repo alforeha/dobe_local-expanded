@@ -13,6 +13,11 @@ import { ONBOARDING_GLOW } from '../../../../../constants/onboardingKeys';
 import { useGlows } from '../../../../../hooks/useOnboardingGlow';
 import { autoCompleteSystemTask } from '../../../../../engine/resourceEngine';
 import { getCurrentAppNowMs, getTaskCooldownState } from '../../../../../utils/taskCooldown';
+import {
+  formatLastCompleted,
+  getLastCompletedForTemplate,
+  getNextScheduledForTemplate,
+} from '../../../../../utils/resourceTaskUtils';
 import { completeTask } from '../../../../../engine/eventExecution';
 import { TaskTypeInputRenderer } from '../../../event/TaskTypeInputRenderer';
 import type { TaskRoomBodyMode } from './TaskRoomBody';
@@ -114,6 +119,8 @@ export function TaskBlock({ templateKey, template, isCustom, mode, expanded, onT
     ? SECONDARY_TAG_COLOURS[template.secondaryTag] ?? 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300'
     : null;
   const inputSummary = useMemo(() => summariseInputFields(template.inputFields), [template.inputFields]);
+  const lastExecuted = getLastCompletedForTemplate(template.id ?? templateKey);
+  const nextScheduled = getNextScheduledForTemplate(template.id ?? templateKey);
   const { isCoolingDown, msRemaining, progress: cooldownProgress } = useMemo(
     () => getTaskCooldownState(template, templateKey, tasks, nowMs),
     [template, templateKey, tasks, nowMs],
@@ -288,6 +295,18 @@ export function TaskBlock({ templateKey, template, isCustom, mode, expanded, onT
                     ))}
                   </div>
                 </div>
+
+                {lastExecuted && (
+                  <div className="text-xs text-gray-500 dark:text-gray-400">
+                    Last executed: {formatLastCompleted(lastExecuted)}
+                  </div>
+                )}
+
+                {nextScheduled && (
+                  <div className="text-xs text-gray-500 dark:text-gray-400">
+                    Next scheduled: {nextScheduled}
+                  </div>
+                )}
               </div>
             ) : (
               <TaskTypeInputRenderer

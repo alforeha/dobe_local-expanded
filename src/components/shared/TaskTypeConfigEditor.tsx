@@ -24,7 +24,92 @@ export interface TaskTypeConfigEditorProps {
   readOnly?: boolean;
 }
 
-const CIRCUIT_STEP_TYPES: CircuitStepType[] = ['CHECK', 'CHOICE', 'COUNTER', 'DURATION', 'TIMER', 'RATING', 'TEXT', 'SCAN'];
+interface NumberInputProps {
+  fieldKey: string;
+  value: unknown;
+  placeholder?: string;
+  min?: number;
+  readOnly: boolean;
+  patch: (patch: Partial<InputFields>) => void;
+}
+
+interface TextInputProps {
+  fieldKey: string;
+  value: unknown;
+  placeholder?: string;
+  readOnly: boolean;
+  patch: (patch: Partial<InputFields>) => void;
+}
+
+const CIRCUIT_STEP_TYPES: CircuitStepType[] = ['CHECK', 'CHOICE', 'COUNTER', 'SETS_REPS', 'DURATION', 'TIMER', 'RATING', 'TEXT', 'SCAN'];
+
+function TextInput({
+  fieldKey,
+  value,
+  placeholder,
+  readOnly,
+  patch,
+}: TextInputProps) {
+  const externalValue = typeof value === 'string' || typeof value === 'number' ? String(value) : '';
+  const [draft, setDraft] = useState(externalValue);
+
+  useEffect(() => {
+    setDraft(externalValue);
+  }, [externalValue]);
+
+  return (
+    <input
+      type="text"
+      value={draft}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={() => {
+        if (draft !== externalValue) {
+          patch({ [fieldKey]: draft } as Partial<InputFields>);
+        }
+      }}
+      disabled={readOnly}
+      placeholder={placeholder}
+      className={inputClassName(readOnly)}
+    />
+  );
+}
+
+function NumberInput({
+  fieldKey,
+  value,
+  placeholder,
+  min,
+  readOnly,
+  patch,
+}: NumberInputProps) {
+  const externalValue = value === null || value === undefined ? '' : String(value);
+  const [draft, setDraft] = useState(externalValue);
+
+  useEffect(() => {
+    setDraft(externalValue);
+  }, [externalValue]);
+
+  return (
+    <input
+      type="number"
+      value={draft}
+      min={min}
+      onChange={(e) => {
+        const next = e.target.value;
+        setDraft(next);
+        if (next === '') return;
+
+        const parsed = Number(next);
+        if (Number.isFinite(parsed)) {
+          patch({ [fieldKey]: parsed } as Partial<InputFields>);
+        }
+      }}
+      disabled={readOnly}
+      placeholder={placeholder}
+      className={inputClassName(readOnly)}
+    />
+  );
+}
 
 function makeDefaultCircuitStep(stepType: CircuitStepType = 'CHECK'): CircuitStep {
   switch (stepType) {
@@ -33,7 +118,8 @@ function makeDefaultCircuitStep(stepType: CircuitStepType = 'CHECK'): CircuitSte
         id: uuidv4(),
         label: '',
         stepType,
-        options: ['Pass', 'Fail'],
+        options: ['Option A', 'Option B'],
+        multiSelect: false,
         required: true,
       };
     case 'COUNTER':
@@ -42,7 +128,20 @@ function makeDefaultCircuitStep(stepType: CircuitStepType = 'CHECK'): CircuitSte
         label: '',
         stepType,
         target: 1,
+        step: 1,
         unit: '',
+        required: true,
+      };
+    case 'SETS_REPS':
+      return {
+        id: uuidv4(),
+        label: '',
+        stepType,
+        reps: 10,
+        weight: null,
+        weightUnit: 'kg',
+        restAfter: null,
+        dropSet: false,
         required: true,
       };
     case 'DURATION':
@@ -51,6 +150,7 @@ function makeDefaultCircuitStep(stepType: CircuitStepType = 'CHECK'): CircuitSte
         label: '',
         stepType,
         target: 5,
+        unit: 'minutes',
         required: true,
       };
     case 'TIMER':
@@ -89,11 +189,20 @@ function applyCircuitStepTypeDefaults(step: CircuitStep, stepType: CircuitStepTy
 
   switch (stepType) {
     case 'CHOICE':
-      return { ...base, options: step.options && step.options.length > 0 ? step.options : ['Pass', 'Fail'] };
+      return { ...base, options: step.options && step.options.length > 0 ? step.options : ['Option A', 'Option B'], multiSelect: step.multiSelect ?? false };
     case 'COUNTER':
-      return { ...base, target: step.target ?? 1, unit: step.unit ?? '' };
+      return { ...base, target: step.target ?? 1, step: step.step ?? 1, unit: step.unit ?? '' };
+    case 'SETS_REPS':
+      return {
+        ...base,
+        reps: step.reps ?? 10,
+        weight: step.weight ?? null,
+        weightUnit: step.weightUnit ?? 'kg',
+        restAfter: step.restAfter ?? null,
+        dropSet: step.dropSet ?? false,
+      };
     case 'DURATION':
-      return { ...base, target: step.target ?? 5 };
+      return { ...base, target: step.target ?? 5, unit: step.unit ?? 'minutes' };
     case 'TIMER':
       return { ...base, seconds: step.seconds ?? 60 };
     case 'RATING':
@@ -134,12 +243,13 @@ export function TaskTypeConfigEditor({
     }, 0);
   }, [taskType]);
 
-  function updateField(key: string, value: unknown) {
-    onChange({ ...inputFields, [key]: value });
-  }
+  const f = inputFields as Record<string, unknown>;
+  type ConfigFields = Record<string, unknown>;
+  type ConfigPatchHandler = (patch: Partial<InputFields>) => void;
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const f = inputFields as Record<string, any>;
+  const standalonePatch: ConfigPatchHandler = (patch) => {
+    onChange({ ...inputFields, ...patch });
+  };
 
   function labeledRow(label: string, input: ReactNode) {
     return (
@@ -150,40 +260,46 @@ export function TaskTypeConfigEditor({
     );
   }
 
-  function textInput(fieldKey: string, placeholder?: string) {
+  function controlValue(value: unknown): string | number {
+    return typeof value === 'string' || typeof value === 'number' ? value : '';
+  }
+
+  function stringValue(value: unknown, fallback = ''): string {
+    return typeof value === 'string' ? value : fallback;
+  }
+
+  function textInput(fieldKey: string, placeholder?: string, fields: ConfigFields = f, patch: ConfigPatchHandler = standalonePatch) {
     return (
-      <input
-        type="text"
-        value={f[fieldKey] ?? ''}
-        onChange={(e) => updateField(fieldKey, e.target.value)}
-        disabled={readOnly}
+      <TextInput
+        fieldKey={fieldKey}
+        value={fields[fieldKey]}
+        patch={patch}
+        readOnly={readOnly}
         placeholder={placeholder}
-        className={inputClassName(readOnly)}
       />
     );
   }
 
-  function numInput(fieldKey: string, placeholder?: string, min?: number) {
+  function numInput(fieldKey: string, placeholder?: string, min?: number, fields: ConfigFields = f, patch: ConfigPatchHandler = standalonePatch) {
     return (
-      <input
-        type="number"
-        value={f[fieldKey] ?? ''}
+      <NumberInput
+        fieldKey={fieldKey}
+        value={fields[fieldKey]}
         min={min}
-        onChange={(e) => updateField(fieldKey, e.target.value === '' ? null : Number(e.target.value))}
-        disabled={readOnly}
+        patch={patch}
+        readOnly={readOnly}
         placeholder={placeholder}
-        className={inputClassName(readOnly)}
       />
     );
   }
 
-  function checkBox(fieldKey: string, label: string) {
+  function checkBox(fieldKey: string, label: string, fields: ConfigFields = f, patch: ConfigPatchHandler = standalonePatch) {
     return (
       <label className="flex cursor-pointer items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
         <input
           type="checkbox"
-          checked={!!f[fieldKey]}
-          onChange={(e) => updateField(fieldKey, e.target.checked)}
+          checked={!!fields[fieldKey]}
+          onChange={(e) => patch({ [fieldKey]: e.target.checked } as Partial<InputFields>)}
           disabled={readOnly}
           className="rounded border-gray-300"
         />
@@ -192,7 +308,7 @@ export function TaskTypeConfigEditor({
     );
   }
 
-  function stringArrayEditor(fieldKey: string, items: string[], placeholder: string) {
+  function stringArrayEditor(fieldKey: string, items: string[], placeholder: string, patch: ConfigPatchHandler = standalonePatch) {
     return (
       <div className="space-y-1.5">
         {items.map((item, idx) => (
@@ -205,14 +321,14 @@ export function TaskTypeConfigEditor({
               onChange={(e) => {
                 const next = [...items];
                 next[idx] = e.target.value;
-                updateField(fieldKey, next);
+                patch({ [fieldKey]: next } as Partial<InputFields>);
               }}
               className={`flex-1 ${inputClassName(readOnly)}`}
             />
             {!readOnly && (
               <button
                 type="button"
-                onClick={() => updateField(fieldKey, items.filter((_, i) => i !== idx))}
+                onClick={() => patch({ [fieldKey]: items.filter((_, i) => i !== idx) } as Partial<InputFields>)}
                 className="px-1 text-xs text-gray-400 hover:text-red-400"
               >
                 x
@@ -223,7 +339,7 @@ export function TaskTypeConfigEditor({
         {!readOnly && (
           <button
             type="button"
-            onClick={() => updateField(fieldKey, [...items, ''])}
+            onClick={() => patch({ [fieldKey]: [...items, ''] } as Partial<InputFields>)}
             className="text-xs font-medium text-blue-500 hover:text-blue-600"
           >
             + Add
@@ -233,46 +349,457 @@ export function TaskTypeConfigEditor({
     );
   }
 
+  function renderCheckConfig(fields: ConfigFields = f, patch: ConfigPatchHandler = standalonePatch) {
+    return labeledRow('Label', textInput('label', 'Done', fields, patch));
+  }
+
+  function renderCounterConfig(fields: ConfigFields = f, patch: ConfigPatchHandler = standalonePatch, options?: { hideStep?: boolean }) {
+    return (
+      <div className={`grid gap-3 ${options?.hideStep ? 'grid-cols-2' : 'grid-cols-3'}`}>
+        {labeledRow('Target', numInput('target', '10', 1, fields, patch))}
+        {!options?.hideStep && labeledRow('Step', numInput('step', '1', 0.01, fields, patch))}
+        {labeledRow('Unit', textInput('unit', 'count', fields, patch))}
+      </div>
+    );
+  }
+
+  function renderSetsRepsConfig(fields: ConfigFields = f, patch: ConfigPatchHandler = standalonePatch, options?: { hideSets?: boolean }) {
+    return (
+      <div className="space-y-3">
+        <div className={`grid gap-3 ${options?.hideSets ? 'grid-cols-1' : 'grid-cols-2'}`}>
+          {!options?.hideSets && labeledRow('Sets', numInput('sets', '3', 1, fields, patch))}
+          {labeledRow('Reps', numInput('reps', '10', 1, fields, patch))}
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          {labeledRow('Weight (optional)', numInput('weight', 'None', 0, fields, patch))}
+          {labeledRow('Weight unit', (
+            <select
+              value={stringValue(fields.weightUnit, 'kg')}
+              onChange={(e) => patch({ weightUnit: e.target.value } as Partial<InputFields>)}
+              disabled={readOnly}
+              className={inputClassName(readOnly)}
+            >
+              <option value="kg">kg</option>
+              <option value="lbs">lbs</option>
+            </select>
+          ))}
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          {labeledRow('Rest after set (sec)', numInput('restAfter', 'None', 0, fields, patch))}
+          <div className="flex items-end pb-2">{checkBox('dropSet', 'Drop set', fields, patch)}</div>
+        </div>
+      </div>
+    );
+  }
+
+  function renderDurationConfig(fields: ConfigFields = f, patch: ConfigPatchHandler = standalonePatch, options?: { hideUnit?: boolean }) {
+    return (
+      <div className={`grid gap-3 ${options?.hideUnit ? 'grid-cols-1' : 'grid-cols-2'}`}>
+        {labeledRow(options?.hideUnit ? 'Target minutes' : 'Target duration', numInput('targetDuration', '0', 1, fields, patch))}
+        {!options?.hideUnit && labeledRow('Unit', (
+          <select
+            value={stringValue(fields.unit, 'seconds')}
+            onChange={(e) => patch({ unit: e.target.value } as Partial<InputFields>)}
+            disabled={readOnly}
+            className={inputClassName(readOnly)}
+          >
+            <option value="seconds">Seconds</option>
+            <option value="minutes">Minutes</option>
+            <option value="hours">Hours</option>
+          </select>
+        ))}
+      </div>
+    );
+  }
+
+  function renderTimerConfig(fields: ConfigFields = f, patch: ConfigPatchHandler = standalonePatch) {
+    return labeledRow('Countdown (seconds)', numInput('countdownFrom', '300', 1, fields, patch));
+  }
+
+  function renderRatingConfig(fields: ConfigFields = f, patch: ConfigPatchHandler = standalonePatch, options?: { hideLabel?: boolean }) {
+    return (
+      <div className={`grid gap-3 ${options?.hideLabel ? 'grid-cols-1' : 'grid-cols-2'}`}>
+        {labeledRow('Scale (max)', numInput('scale', '5', 2, fields, patch))}
+        {!options?.hideLabel && labeledRow('Label', textInput('label', 'Rate this', fields, patch))}
+      </div>
+    );
+  }
+
+  function renderTextConfig(fields: ConfigFields = f, patch: ConfigPatchHandler = standalonePatch) {
+    return (
+      <div className="space-y-3">
+        {labeledRow('Prompt', textInput('prompt', 'Enter your response', fields, patch))}
+        {labeledRow('Max length (optional)', numInput('maxLength', 'None', 1, fields, patch))}
+      </div>
+    );
+  }
+
+  function renderFormConfig(fields: ConfigFields = f, patch: ConfigPatchHandler = standalonePatch) {
+    const formFields: FormField[] = Array.isArray(fields.fields) ? fields.fields as FormField[] : [];
+    return (
+      <div className="space-y-1.5">
+        {formFields.map((field, idx) => (
+          <div key={idx} className="grid grid-cols-[1fr_auto_auto] items-center gap-2">
+            <input
+              type="text"
+              value={field.label}
+              disabled={readOnly}
+              placeholder="Field label"
+              onChange={(e) => {
+                const next = [...formFields];
+                next[idx] = { ...field, label: e.target.value };
+                patch({ fields: next } as Partial<InputFields>);
+              }}
+              className={inputClassName(readOnly)}
+            />
+            <select
+              value={field.fieldType}
+              disabled={readOnly}
+              onChange={(e) => {
+                const next = [...formFields];
+                next[idx] = { ...field, fieldType: e.target.value as FormField['fieldType'] };
+                patch({ fields: next } as Partial<InputFields>);
+              }}
+              className={`${inputClassName(readOnly)} w-28`}
+            >
+              <option value="text">Text</option>
+              <option value="number">Number</option>
+              <option value="boolean">Boolean</option>
+              <option value="date">Date</option>
+            </select>
+            {!readOnly && (
+              <button
+                type="button"
+                onClick={() => patch({ fields: formFields.filter((_, i) => i !== idx) } as Partial<InputFields>)}
+                className="px-1 text-xs text-gray-400 hover:text-red-400"
+              >
+                x
+              </button>
+            )}
+          </div>
+        ))}
+        {!readOnly && (
+          <button
+            type="button"
+            onClick={() => patch({ fields: [...formFields, { key: uuidv4(), label: '', fieldType: 'text' as const }] } as Partial<InputFields>)}
+            className="text-xs font-medium text-blue-500 hover:text-blue-600"
+          >
+            + Add field
+          </button>
+        )}
+      </div>
+    );
+  }
+
+  function renderChoiceConfig(fields: ConfigFields = f, patch: ConfigPatchHandler = standalonePatch, options?: { hideMultiSelect?: boolean }) {
+    return (
+      <div className="space-y-3">
+        {!options?.hideMultiSelect && checkBox('multiSelect', 'Allow multiple selections', fields, patch)}
+        {labeledRow('Options', stringArrayEditor('options', Array.isArray(fields.options) ? fields.options.filter((option): option is string => typeof option === 'string') : [], 'Option', patch))}
+      </div>
+    );
+  }
+
+  function renderChecklistConfig(fields: ConfigFields = f, patch: ConfigPatchHandler = standalonePatch) {
+    const clItems: ChecklistItem[] = Array.isArray(fields.items) ? fields.items as ChecklistItem[] : [];
+    return (
+      <div className="space-y-3">
+        {checkBox('requireAll', 'Require all items to complete', fields, patch)}
+        {labeledRow('Items', (
+          <div className="space-y-1.5">
+            {clItems.map((item, idx) => (
+              <div key={idx} className="flex gap-2">
+                <input
+                  type="text"
+                  value={item.label}
+                  disabled={readOnly}
+                  placeholder="Item label"
+                  onChange={(e) => {
+                    const next = [...clItems];
+                    next[idx] = { ...next[idx], label: e.target.value };
+                    patch({ items: next } as Partial<InputFields>);
+                  }}
+                  className={`flex-1 ${inputClassName(readOnly)}`}
+                />
+                {!readOnly && (
+                  <button
+                    type="button"
+                    onClick={() => patch({ items: clItems.filter((_, i) => i !== idx) } as Partial<InputFields>)}
+                    className="px-1 text-xs text-gray-400 hover:text-red-400"
+                  >
+                    x
+                  </button>
+                )}
+              </div>
+            ))}
+            {!readOnly && (
+              <button
+                type="button"
+                onClick={() => patch({ items: [...clItems, { key: uuidv4(), label: '' }] } as Partial<InputFields>)}
+                className="text-xs font-medium text-blue-500 hover:text-blue-600"
+              >
+                + Add item
+              </button>
+            )}
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  function renderScanConfig(fields: ConfigFields = f, patch: ConfigPatchHandler = standalonePatch) {
+    return labeledRow('Scan type', (
+      <select
+        value={stringValue(fields.scanType, 'barcode')}
+        onChange={(e) => patch({ scanType: e.target.value } as Partial<InputFields>)}
+        disabled={readOnly}
+        className={inputClassName(readOnly)}
+      >
+        <option value="barcode">Barcode</option>
+        <option value="qr">QR Code</option>
+        <option value="text">Text</option>
+      </select>
+    ));
+  }
+
+  function renderLogConfig(fields: ConfigFields = f, patch: ConfigPatchHandler = standalonePatch) {
+    return labeledRow('Prompt (optional)', textInput('prompt', 'Open-ended log entry', fields, patch));
+  }
+
+  function renderLocationPointConfig(fields: ConfigFields = f, patch: ConfigPatchHandler = standalonePatch) {
+    return (
+      <div className="space-y-3">
+        {labeledRow('Label', textInput('label', 'Mark location', fields, patch))}
+        {checkBox('captureAccuracy', 'Capture accuracy', fields, patch)}
+      </div>
+    );
+  }
+
+  function renderLocationTrailConfig(fields: ConfigFields = f, patch: ConfigPatchHandler = standalonePatch) {
+    return (
+      <div className="space-y-3">
+        {labeledRow('Label', textInput('label', 'Record trail', fields, patch))}
+        {labeledRow('Capture interval (sec, optional)', numInput('captureInterval', 'Manual', 1, fields, patch))}
+      </div>
+    );
+  }
+
+  function renderRollConfig(fields: ConfigFields = f, patch: ConfigPatchHandler = standalonePatch) {
+    return labeledRow('Sides', (
+      <select
+        value={controlValue(fields.sides) || 6}
+        onChange={(e) => patch({ sides: Number(e.target.value) } as Partial<InputFields>)}
+        disabled={readOnly}
+        className={inputClassName(readOnly)}
+      >
+        {[4, 6, 8, 10, 12, 20, 100].map((n) => <option key={n} value={n}>d{n}</option>)}
+      </select>
+    ));
+  }
+
+  function renderConsumeConfig(fields: Partial<ConsumeInputFields> = inputFields as ConsumeInputFields, patch: (next: ConsumeInputFields) => void = onChange as (next: ConsumeInputFields) => void) {
+    const consumeFields = fields as ConsumeInputFields;
+    const entries = consumeFields.entries ?? [];
+
+    function setConsumeFields(next: ConsumeInputFields) {
+      patch(next);
+    }
+
+    function updateConsumeEntry(index: number, entryPatch: Partial<ConsumeEntry>) {
+      const nextEntries = entries.map((entry, entryIndex) => (
+        entryIndex === index ? { ...entry, ...entryPatch } : entry
+      ));
+      setConsumeFields({ ...consumeFields, entries: nextEntries });
+    }
+
+    function addConsumeEntry() {
+      setConsumeFields({
+        ...consumeFields,
+        entries: [
+          ...entries,
+          {
+            itemTemplateRef: '',
+            quantity: 1,
+          },
+        ],
+      });
+    }
+
+    function removeConsumeEntry(index: number) {
+      setConsumeFields({
+        ...consumeFields,
+        entries: entries.filter((_, entryIndex) => entryIndex !== index),
+      });
+    }
+
+    return (
+      <div className="space-y-3">
+        {labeledRow('Label', (
+          <input
+            type="text"
+            value={consumeFields.label ?? ''}
+            onChange={(e) => setConsumeFields({ ...consumeFields, label: e.target.value })}
+            disabled={readOnly}
+            placeholder="Consume items"
+            className={inputClassName(readOnly)}
+          />
+        ))}
+        <div className="space-y-2">
+          <div className="flex items-center justify-between gap-3">
+            <label className="block text-xs font-medium text-gray-500 dark:text-gray-400">Entries</label>
+            {!readOnly && (
+              <button
+                type="button"
+                onClick={addConsumeEntry}
+                className="text-xs font-medium text-blue-500 hover:text-blue-600"
+              >
+                + Add entry
+              </button>
+            )}
+          </div>
+          {entries.length === 0 ? (
+            <p className="rounded-lg border border-dashed border-gray-300 px-3 py-3 text-sm text-gray-500 dark:border-gray-600 dark:text-gray-400">
+              No consume entries yet.
+            </p>
+          ) : null}
+          {entries.map((entry, index) => (
+            <div key={`consume-entry-${index}`} className="grid grid-cols-[minmax(0,1fr)_7rem_auto] items-end gap-2 rounded-xl border border-gray-200 bg-white px-3 py-3 dark:border-gray-700 dark:bg-gray-900/40">
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">Item</label>
+                <select
+                  value={entry.itemTemplateRef}
+                  onChange={(e) => updateConsumeEntry(index, { itemTemplateRef: e.target.value })}
+                  disabled={readOnly}
+                  className={inputClassName(readOnly)}
+                >
+                  <option value="">Select item</option>
+                  {availableConsumeTemplates.map((template) => (
+                    <option key={template.id} value={template.id}>{template.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">Quantity</label>
+                <input
+                  type="number"
+                  value={entry.quantity}
+                  min={1}
+                  onChange={(e) => updateConsumeEntry(index, { quantity: Math.max(1, Number(e.target.value) || 1) })}
+                  disabled={readOnly}
+                  className={inputClassName(readOnly)}
+                />
+              </div>
+              {!readOnly ? (
+                <button
+                  type="button"
+                  onClick={() => removeConsumeEntry(index)}
+                  className="px-1 pb-2 text-sm text-gray-400 hover:text-red-400"
+                >
+                  x
+                </button>
+              ) : <div />}
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  function renderCircuitStepConfig(step: CircuitStep, patchStep: (stepId: string, patch: Partial<CircuitStep>) => void) {
+    const stepPatch = (patch: Partial<InputFields>) => {
+      const nextFields = patch as ConfigFields;
+      switch (step.stepType) {
+        case 'COUNTER':
+          patchStep(step.id, {
+            target: typeof nextFields.target === 'number' ? nextFields.target : step.target,
+            step: typeof nextFields.step === 'number' ? nextFields.step : step.step,
+            unit: typeof nextFields.unit === 'string' ? nextFields.unit : step.unit,
+          });
+          break;
+        case 'SETS_REPS':
+          patchStep(step.id, {
+            reps: typeof nextFields.reps === 'number' ? nextFields.reps : step.reps,
+            weight: typeof nextFields.weight === 'number' || nextFields.weight === null ? nextFields.weight : step.weight,
+            weightUnit: typeof nextFields.weightUnit === 'string' ? nextFields.weightUnit : step.weightUnit,
+            restAfter: typeof nextFields.restAfter === 'number' || nextFields.restAfter === null ? nextFields.restAfter : step.restAfter,
+            dropSet: typeof nextFields.dropSet === 'boolean' ? nextFields.dropSet : step.dropSet,
+          });
+          break;
+        case 'DURATION':
+          patchStep(step.id, {
+            target: typeof nextFields.targetDuration === 'number' ? nextFields.targetDuration : step.target,
+            unit: typeof nextFields.unit === 'string' ? nextFields.unit : step.unit,
+          });
+          break;
+        case 'TIMER':
+          patchStep(step.id, {
+            seconds: typeof nextFields.countdownFrom === 'number' ? nextFields.countdownFrom : step.seconds,
+          });
+          break;
+        case 'RATING':
+          patchStep(step.id, {
+            scale: typeof nextFields.scale === 'number' ? nextFields.scale : step.scale,
+            label: typeof nextFields.label === 'string' ? nextFields.label : step.label,
+          });
+          break;
+        case 'CHOICE':
+          patchStep(step.id, {
+            options: Array.isArray(nextFields.options) ? nextFields.options.filter((option: unknown): option is string => typeof option === 'string') : step.options,
+            multiSelect: typeof nextFields.multiSelect === 'boolean' ? nextFields.multiSelect : step.multiSelect,
+          });
+          break;
+        default:
+          break;
+      }
+    };
+
+    switch (step.stepType) {
+      case 'COUNTER':
+        return renderCounterConfig({ target: step.target ?? 1, step: step.step ?? 1, unit: step.unit ?? '' }, stepPatch);
+      case 'SETS_REPS':
+        return renderSetsRepsConfig({
+          sets: 1,
+          reps: step.reps ?? 10,
+          weight: step.weight ?? null,
+          weightUnit: step.weightUnit ?? 'kg',
+          restAfter: step.restAfter ?? null,
+          dropSet: step.dropSet ?? false,
+        }, stepPatch, { hideSets: true });
+      case 'DURATION':
+        return renderDurationConfig({ targetDuration: step.target ?? 5, unit: step.unit ?? 'minutes' }, stepPatch);
+      case 'TIMER':
+        return renderTimerConfig({ countdownFrom: step.seconds ?? 60 }, stepPatch);
+      case 'RATING':
+        return renderRatingConfig({ scale: step.scale ?? 5, label: step.label }, stepPatch);
+      case 'CHOICE':
+        return renderChoiceConfig({ options: step.options ?? [], multiSelect: step.multiSelect ?? false }, stepPatch);
+      case 'TEXT':
+        return renderTextConfig(
+          { prompt: step.label ?? '', maxLength: null },
+          (next) => {
+            const nextFields = next as ConfigFields;
+            patchStep(step.id, { label: typeof nextFields.prompt === 'string' ? nextFields.prompt : step.label });
+          },
+        );
+      case 'SCAN':
+        return renderScanConfig(
+          { scanType: step.scanType ?? 'barcode' },
+          (next) => patchStep(step.id, { ...(next as Partial<CircuitStep>) }),
+        );
+      default:
+        return null;
+    }
+  }
+
   switch (taskType) {
     case 'CHECK':
-      return labeledRow('Label', textInput('label', 'Done'));
+      return renderCheckConfig();
 
     case 'COUNTER':
-      return (
-        <div className="grid grid-cols-3 gap-3">
-          {labeledRow('Target', numInput('target', '10', 1))}
-          {labeledRow('Step', numInput('step', '1', 0.01))}
-          {labeledRow('Unit', textInput('unit', 'count'))}
-        </div>
-      );
+      return renderCounterConfig();
 
     case 'SETS_REPS':
-      return (
-        <div className="space-y-3">
-          <div className="grid grid-cols-2 gap-3">
-            {labeledRow('Sets', numInput('sets', '3', 1))}
-            {labeledRow('Reps', numInput('reps', '10', 1))}
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            {labeledRow('Weight (optional)', numInput('weight', 'None', 0))}
-            {labeledRow('Weight unit', (
-              <select
-                value={f.weightUnit ?? 'kg'}
-                onChange={(e) => updateField('weightUnit', e.target.value)}
-                disabled={readOnly}
-                className={inputClassName(readOnly)}
-              >
-                <option value="kg">kg</option>
-                <option value="lbs">lbs</option>
-              </select>
-            ))}
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            {labeledRow('Rest after set (sec)', numInput('restAfter', 'None', 0))}
-            <div className="flex items-end pb-2">{checkBox('dropSet', 'Drop set')}</div>
-          </div>
-        </div>
-      );
+      return renderSetsRepsConfig();
 
     case 'CIRCUIT': {
       const circuitFields = normalizeCircuitInputFields(inputFields as CircuitInputFields);
@@ -406,31 +933,18 @@ export function TaskTypeConfigEditor({
 
                   {isExpanded && (
                   <div className="mt-3 space-y-3 border-t border-gray-200 pt-3 dark:border-gray-700">
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">Label</label>
-                        <input
-                          type="text"
-                          value={step.label}
-                          onChange={(e) => updateCircuitStep(step.id, { label: e.target.value })}
-                          disabled={readOnly}
-                          placeholder="Step label"
-                          className={inputClassName(readOnly)}
-                        />
-                      </div>
-                      <div>
-                        <label className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">Step type</label>
-                        <select
-                          value={step.stepType}
-                          onChange={(e) => updateCircuitStep(step.id, applyCircuitStepTypeDefaults(step, e.target.value as CircuitStepType))}
-                          disabled={readOnly}
-                          className={inputClassName(readOnly)}
-                        >
-                          {CIRCUIT_STEP_TYPES.map((type) => (
-                            <option key={type} value={type}>{type}</option>
-                          ))}
-                        </select>
-                      </div>
+                    <div>
+                      <label className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">Step type</label>
+                      <select
+                        value={step.stepType}
+                        onChange={(e) => updateCircuitStep(step.id, applyCircuitStepTypeDefaults(step, e.target.value as CircuitStepType))}
+                        disabled={readOnly}
+                        className={inputClassName(readOnly)}
+                      >
+                        {CIRCUIT_STEP_TYPES.map((type) => (
+                          <option key={type} value={type}>{type}</option>
+                        ))}
+                      </select>
                     </div>
                     <label className="flex cursor-pointer items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
                       <input
@@ -442,103 +956,19 @@ export function TaskTypeConfigEditor({
                       />
                       Required step
                     </label>
-
-                    {step.stepType === 'CHOICE' && (
-                      <div className="space-y-2">
-                        <label className="block text-xs font-medium text-gray-500 dark:text-gray-400">Options</label>
-                        {(step.options ?? []).map((option, optionIndex) => (
-                          <div key={`${step.id}-option-${optionIndex}`} className="flex gap-2">
-                            <input
-                              type="text"
-                              value={option}
-                              onChange={(e) => {
-                                const nextOptions = [...(step.options ?? [])];
-                                nextOptions[optionIndex] = e.target.value;
-                                updateCircuitStep(step.id, { options: nextOptions });
-                              }}
-                              disabled={readOnly}
-                              className={`flex-1 ${inputClassName(readOnly)}`}
-                            />
-                            {!readOnly && (
-                              <button
-                                type="button"
-                                onClick={() => updateCircuitStep(step.id, { options: (step.options ?? []).filter((_, idx2) => idx2 !== optionIndex) })}
-                                className="px-1 text-xs text-gray-400 hover:text-red-400"
-                              >
-                                x
-                              </button>
-                            )}
-                          </div>
-                        ))}
-                        {!readOnly && (
-                          <button
-                            type="button"
-                            onClick={() => updateCircuitStep(step.id, { options: [...(step.options ?? []), ''] })}
-                            className="text-xs font-medium text-blue-500 hover:text-blue-600"
-                          >
-                            + Add option
-                          </button>
-                        )}
-                      </div>
-                    )}
-
-                    {step.stepType === 'RATING' && labeledRow('Scale', (
+                    <div>
+                      <label className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">Label</label>
                       <input
-                        type="number"
-                        value={step.scale ?? 5}
-                        min={2}
-                        onChange={(e) => updateCircuitStep(step.id, { scale: Math.max(2, Number(e.target.value) || 5) })}
+                        type="text"
+                        value={step.label}
+                        onChange={(e) => updateCircuitStep(step.id, { label: e.target.value })}
                         disabled={readOnly}
+                        placeholder="Step label"
                         className={inputClassName(readOnly)}
                       />
-                    ))}
+                    </div>
 
-                    {step.stepType === 'COUNTER' && (
-                      <div className="grid grid-cols-2 gap-3">
-                        {labeledRow('Target', (
-                          <input
-                            type="number"
-                            value={step.target ?? 1}
-                            min={1}
-                            onChange={(e) => updateCircuitStep(step.id, { target: Math.max(1, Number(e.target.value) || 1) })}
-                            disabled={readOnly}
-                            className={inputClassName(readOnly)}
-                          />
-                        ))}
-                        {labeledRow('Unit', (
-                          <input
-                            type="text"
-                            value={step.unit ?? ''}
-                            onChange={(e) => updateCircuitStep(step.id, { unit: e.target.value })}
-                            disabled={readOnly}
-                            placeholder="Optional"
-                            className={inputClassName(readOnly)}
-                          />
-                        ))}
-                      </div>
-                    )}
-
-                    {step.stepType === 'DURATION' && labeledRow('Target minutes', (
-                      <input
-                        type="number"
-                        value={step.target ?? 5}
-                        min={1}
-                        onChange={(e) => updateCircuitStep(step.id, { target: Math.max(1, Number(e.target.value) || 1) })}
-                        disabled={readOnly}
-                        className={inputClassName(readOnly)}
-                      />
-                    ))}
-
-                    {step.stepType === 'TIMER' && labeledRow('Seconds', (
-                      <input
-                        type="number"
-                        value={step.seconds ?? 60}
-                        min={1}
-                        onChange={(e) => updateCircuitStep(step.id, { seconds: Math.max(1, Number(e.target.value) || 1) })}
-                        disabled={readOnly}
-                        className={inputClassName(readOnly)}
-                      />
-                    ))}
+                    {renderCircuitStepConfig(step, updateCircuitStep)}
                   </div>
                   )}
                 </div>
@@ -550,307 +980,43 @@ export function TaskTypeConfigEditor({
     }
 
     case 'DURATION':
-      return (
-        <div className="grid grid-cols-2 gap-3">
-          {labeledRow('Target duration', numInput('targetDuration', '0', 1))}
-          {labeledRow('Unit', (
-            <select
-              value={f.unit ?? 'seconds'}
-              onChange={(e) => updateField('unit', e.target.value)}
-              disabled={readOnly}
-              className={inputClassName(readOnly)}
-            >
-              <option value="seconds">Seconds</option>
-              <option value="minutes">Minutes</option>
-              <option value="hours">Hours</option>
-            </select>
-          ))}
-        </div>
-      );
+      return renderDurationConfig();
 
     case 'TIMER':
-      return labeledRow('Countdown (seconds)', numInput('countdownFrom', '300', 1));
+      return renderTimerConfig();
 
     case 'RATING':
-      return (
-        <div className="grid grid-cols-2 gap-3">
-          {labeledRow('Scale (max)', numInput('scale', '5', 2))}
-          {labeledRow('Label', textInput('label', 'Rate this'))}
-        </div>
-      );
+      return renderRatingConfig();
 
     case 'TEXT':
-      return (
-        <div className="space-y-3">
-          {labeledRow('Prompt', textInput('prompt', 'Enter your response'))}
-          {labeledRow('Max length (optional)', numInput('maxLength', 'None', 1))}
-        </div>
-      );
+      return renderTextConfig();
 
-    case 'FORM': {
-      const formFields: FormField[] = f.fields ?? [];
-      return (
-        <div className="space-y-1.5">
-          {formFields.map((field, idx) => (
-            <div key={idx} className="grid grid-cols-[1fr_auto_auto] items-center gap-2">
-              <input
-                type="text"
-                value={field.label}
-                disabled={readOnly}
-                placeholder="Field label"
-                onChange={(e) => {
-                  const next = [...formFields];
-                  next[idx] = { ...field, label: e.target.value };
-                  updateField('fields', next);
-                }}
-                className={inputClassName(readOnly)}
-              />
-              <select
-                value={field.fieldType}
-                disabled={readOnly}
-                onChange={(e) => {
-                  const next = [...formFields];
-                  next[idx] = { ...field, fieldType: e.target.value as FormField['fieldType'] };
-                  updateField('fields', next);
-                }}
-                className={`${inputClassName(readOnly)} w-28`}
-              >
-                <option value="text">Text</option>
-                <option value="number">Number</option>
-                <option value="boolean">Boolean</option>
-                <option value="date">Date</option>
-              </select>
-              {!readOnly && (
-                <button
-                  type="button"
-                  onClick={() => updateField('fields', formFields.filter((_, i) => i !== idx))}
-                  className="px-1 text-xs text-gray-400 hover:text-red-400"
-                >
-                  x
-                </button>
-              )}
-            </div>
-          ))}
-          {!readOnly && (
-            <button
-              type="button"
-              onClick={() => updateField('fields', [...formFields, { key: uuidv4(), label: '', fieldType: 'text' as const }])}
-              className="text-xs font-medium text-blue-500 hover:text-blue-600"
-            >
-              + Add field
-            </button>
-          )}
-        </div>
-      );
-    }
+    case 'FORM':
+      return renderFormConfig();
 
     case 'CHOICE':
-      return (
-        <div className="space-y-3">
-          {checkBox('multiSelect', 'Allow multiple selections')}
-          {labeledRow('Options', stringArrayEditor('options', f.options ?? [], 'Option'))}
-        </div>
-      );
+      return renderChoiceConfig();
 
-    case 'CHECKLIST': {
-      const clItems: ChecklistItem[] = f.items ?? [];
-      return (
-        <div className="space-y-3">
-          {checkBox('requireAll', 'Require all items to complete')}
-          {labeledRow('Items', (
-            <div className="space-y-1.5">
-              {clItems.map((item, idx) => (
-                <div key={idx} className="flex gap-2">
-                  <input
-                    type="text"
-                    value={item.label}
-                    disabled={readOnly}
-                    placeholder="Item label"
-                    onChange={(e) => {
-                      const next = [...clItems];
-                      next[idx] = { ...next[idx], label: e.target.value };
-                      updateField('items', next);
-                    }}
-                    className={`flex-1 ${inputClassName(readOnly)}`}
-                  />
-                  {!readOnly && (
-                    <button
-                      type="button"
-                      onClick={() => updateField('items', clItems.filter((_, i) => i !== idx))}
-                      className="px-1 text-xs text-gray-400 hover:text-red-400"
-                    >
-                      x
-                    </button>
-                  )}
-                </div>
-              ))}
-              {!readOnly && (
-                <button
-                  type="button"
-                  onClick={() => updateField('items', [...clItems, { key: uuidv4(), label: '' }])}
-                  className="text-xs font-medium text-blue-500 hover:text-blue-600"
-                >
-                  + Add item
-                </button>
-              )}
-            </div>
-          ))}
-        </div>
-      );
-    }
+    case 'CHECKLIST':
+      return renderChecklistConfig();
 
     case 'SCAN':
-      return labeledRow('Scan type', (
-        <select
-          value={f.scanType ?? 'barcode'}
-          onChange={(e) => updateField('scanType', e.target.value)}
-          disabled={readOnly}
-          className={inputClassName(readOnly)}
-        >
-          <option value="barcode">Barcode</option>
-          <option value="qr">QR Code</option>
-          <option value="text">Text</option>
-        </select>
-      ));
+      return renderScanConfig();
 
     case 'LOG':
-      return labeledRow('Prompt (optional)', textInput('prompt', 'Open-ended log entry'));
+      return renderLogConfig();
 
     case 'LOCATION_POINT':
-      return (
-        <div className="space-y-3">
-          {labeledRow('Label', textInput('label', 'Mark location'))}
-          {checkBox('captureAccuracy', 'Capture accuracy')}
-        </div>
-      );
+      return renderLocationPointConfig();
 
     case 'LOCATION_TRAIL':
-      return (
-        <div className="space-y-3">
-          {labeledRow('Label', textInput('label', 'Record trail'))}
-          {labeledRow('Capture interval (sec, optional)', numInput('captureInterval', 'Manual', 1))}
-        </div>
-      );
+      return renderLocationTrailConfig();
 
     case 'ROLL':
-      return labeledRow('Sides', (
-        <select
-          value={f.sides ?? 6}
-          onChange={(e) => updateField('sides', Number(e.target.value))}
-          disabled={readOnly}
-          className={inputClassName(readOnly)}
-        >
-          {[4, 6, 8, 10, 12, 20, 100].map((n) => <option key={n} value={n}>d{n}</option>)}
-        </select>
-      ));
+      return renderRollConfig();
 
-    case 'CONSUME': {
-      const consumeFields = inputFields as ConsumeInputFields;
-      const entries = consumeFields.entries ?? [];
-
-      function setConsumeFields(next: ConsumeInputFields) {
-        onChange(next);
-      }
-
-      function updateConsumeEntry(index: number, patch: Partial<ConsumeEntry>) {
-        const nextEntries = entries.map((entry, entryIndex) => (
-          entryIndex === index ? { ...entry, ...patch } : entry
-        ));
-        setConsumeFields({ ...consumeFields, entries: nextEntries });
-      }
-
-      function addConsumeEntry() {
-        setConsumeFields({
-          ...consumeFields,
-          entries: [
-            ...entries,
-            {
-              itemTemplateRef: '',
-              quantity: 1,
-            },
-          ],
-        });
-      }
-
-      function removeConsumeEntry(index: number) {
-        setConsumeFields({
-          ...consumeFields,
-          entries: entries.filter((_, entryIndex) => entryIndex !== index),
-        });
-      }
-
-      return (
-        <div className="space-y-3">
-          {labeledRow('Label', (
-            <input
-              type="text"
-              value={consumeFields.label ?? ''}
-              onChange={(e) => setConsumeFields({ ...consumeFields, label: e.target.value })}
-              disabled={readOnly}
-              placeholder="Consume items"
-              className={inputClassName(readOnly)}
-            />
-          ))}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between gap-3">
-              <label className="block text-xs font-medium text-gray-500 dark:text-gray-400">Entries</label>
-              {!readOnly && (
-                <button
-                  type="button"
-                  onClick={addConsumeEntry}
-                  className="text-xs font-medium text-blue-500 hover:text-blue-600"
-                >
-                  + Add entry
-                </button>
-              )}
-            </div>
-            {entries.length === 0 ? (
-              <p className="rounded-lg border border-dashed border-gray-300 px-3 py-3 text-sm text-gray-500 dark:border-gray-600 dark:text-gray-400">
-                No consume entries yet.
-              </p>
-            ) : null}
-            {entries.map((entry, index) => (
-              <div key={`consume-entry-${index}`} className="grid grid-cols-[minmax(0,1fr)_7rem_auto] items-end gap-2 rounded-xl border border-gray-200 bg-white px-3 py-3 dark:border-gray-700 dark:bg-gray-900/40">
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">Item</label>
-                  <select
-                    value={entry.itemTemplateRef}
-                    onChange={(e) => updateConsumeEntry(index, { itemTemplateRef: e.target.value })}
-                    disabled={readOnly}
-                    className={inputClassName(readOnly)}
-                  >
-                    <option value="">Select item</option>
-                    {availableConsumeTemplates.map((template) => (
-                      <option key={template.id} value={template.id}>{template.name}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">Quantity</label>
-                  <input
-                    type="number"
-                    value={entry.quantity}
-                    min={1}
-                    onChange={(e) => updateConsumeEntry(index, { quantity: Math.max(1, Number(e.target.value) || 1) })}
-                    disabled={readOnly}
-                    className={inputClassName(readOnly)}
-                  />
-                </div>
-                {!readOnly ? (
-                  <button
-                    type="button"
-                    onClick={() => removeConsumeEntry(index)}
-                    className="px-1 pb-2 text-sm text-gray-400 hover:text-red-400"
-                  >
-                    x
-                  </button>
-                ) : <div />}
-              </div>
-            ))}
-          </div>
-        </div>
-      );
-    }
+    case 'CONSUME':
+      return renderConsumeConfig();
 
     default:
       return (
