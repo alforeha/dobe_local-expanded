@@ -12,7 +12,7 @@ import { IconDisplay } from '../../../../shared/IconDisplay';
 import { materialisePlannedEvent } from '../../../../../engine/materialise';
 import { autoCompleteSystemTask } from '../../../../../engine/resourceEngine';
 import { storageDelete, storageKey } from '../../../../../storage';
-import { localISODate } from '../../../../../utils/dateUtils';
+import { getAppDate, localISODate } from '../../../../../utils/dateUtils';
 import { forwardGeocode } from '../../../../../utils/geocode';
 import { getLibraryTemplatePool } from '../../../../../utils/resolveTaskTemplate';
 import { clampTaskPoolCursor, ensureTaskPools } from '../../../../../utils/taskPools';
@@ -453,6 +453,10 @@ export function RoutinePopup({ editRoutine, prefill, onClose, isPrebuilt = false
   const [error, setError] = useState('');
   const [seedDate, setSeedDate] = useState(isEditMode ? editRoutine.seedDate : todayISO());
   const [activeTab, setActiveTab] = useState<'details' | 'tasks' | 'additional'>('details');
+  const [pushToOneOffOpen, setPushToOneOffOpen] = useState(false);
+  const [oneOffDate, setOneOffDate] = useState('');
+  const [oneOffStartTime, setOneOffStartTime] = useState('');
+  const [oneOffEndTime, setOneOffEndTime] = useState('');
 
   const isOvernight = prefill?.isOvernight === true || (startTime !== '' && endTime !== '' && endTime < startTime);
   const inputCls =
@@ -492,6 +496,53 @@ export function RoutinePopup({ editRoutine, prefill, onClose, isPrebuilt = false
     setActiveState('active');
     setStartTime(savedScheduleTimes.startTime || defaultStartTime || '09:00');
     setEndTime(savedScheduleTimes.endTime || defaultEndTime || '10:00');
+  }
+
+  function resetPushToOneOffPrompt() {
+    setPushToOneOffOpen(false);
+    setOneOffDate('');
+    setOneOffStartTime('');
+    setOneOffEndTime('');
+  }
+
+  function handlePushToOneOff() {
+    const newId = uuidv4();
+    const oneOff: PlannedEvent = {
+      id: newId,
+      name,
+      description,
+      icon: iconKey,
+      color,
+      seedDate: oneOffDate,
+      dieDate: oneOffDate,
+      recurrenceInterval: {
+        frequency: 'daily',
+        interval: 1,
+        days: [],
+        monthlyDay: null,
+        endsOn: oneOffDate,
+        customCondition: null,
+      },
+      activeState: 'active',
+      pools,
+      taskPoolCursor,
+      taskList: [],
+      conflictMode,
+      startTime: oneOffStartTime,
+      endTime: oneOffEndTime,
+      location,
+      coAttendees,
+      sharedWith: null,
+      pushReminder: null,
+    };
+
+    useScheduleStore.getState().setPlannedEvent(oneOff);
+    const today = getAppDate();
+    if (oneOffDate <= today) {
+      const taskTemplates = useScheduleStore.getState().taskTemplates;
+      materialisePlannedEvent(oneOff, oneOffDate, taskTemplates);
+    }
+    resetPushToOneOffPrompt();
   }
 
   function handleSave() {
@@ -653,39 +704,6 @@ export function RoutinePopup({ editRoutine, prefill, onClose, isPrebuilt = false
           <div className="space-y-4">
             {activeTab === 'details' && (
               <>
-                <div className="grid grid-cols-2 gap-3 sm:gap-4">
-                  <div className="min-w-0 space-y-3">
-                    <label className="text-xs font-medium uppercase tracking-[0.12em] text-gray-500 dark:text-gray-400">Start</label>
-                    <div className="flex flex-col gap-1">
-                      <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Date</label>
-                      <input type="date" value={seedDate} onChange={(event) => setSeedDate(event.target.value)} className={inputCls} />
-                      <p className="text-xs text-gray-400 italic">When this routine begins.</p>
-                    </div>
-                    {activeState === 'active' && (
-                      <div className="flex flex-col gap-1">
-                        <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Time</label>
-                        <input type="time" value={startTime} onChange={(event) => handleStartTimeChange(event.target.value)} className={inputCls} />
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="min-w-0 space-y-3">
-                    <label className="text-xs font-medium uppercase tracking-[0.12em] text-gray-500 dark:text-gray-400">End</label>
-                    <div className="flex flex-col gap-1">
-                      <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Date</label>
-                      <input type="date" value={dieDate} onChange={(event) => setDieDate(event.target.value)} className={inputCls} />
-                      <p className="text-xs text-gray-400 italic">Leave empty to keep this routine forever.</p>
-                    </div>
-                    {activeState === 'active' && (
-                      <div className="flex flex-col gap-1">
-                        <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Time</label>
-                        <input type="time" value={endTime} onChange={(event) => handleEndTimeChange(event.target.value)} className={inputCls} />
-                        {isOvernight && <p className="text-xs text-gray-400 italic">Overnight routine: ends the following day.</p>}
-                      </div>
-                    )}
-                  </div>
-                </div>
-
                 <label className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
                   <input
                     type="checkbox"
@@ -695,94 +713,193 @@ export function RoutinePopup({ editRoutine, prefill, onClose, isPrebuilt = false
                   On demand (no scheduled time)
                 </label>
 
-                <div className="rounded-xl border border-gray-200 bg-gray-50/60 p-4 dark:border-gray-700 dark:bg-gray-900/20">
-                  <div className="mb-2 text-sm font-medium text-gray-500 dark:text-gray-300">Repeats</div>
-                  <div className="mb-3 flex flex-wrap items-end gap-3 pb-1">
-                    <div className="flex shrink-0 flex-col gap-1">
-                      <label className="text-sm font-medium text-gray-500 dark:text-gray-300">Frequency</label>
-                      <select
-                        value={frequency}
-                        onChange={(event) => setFrequency(event.target.value as RecurrenceFrequency)}
-                        className={`${inputCls} w-[8.5rem] shrink-0`}
-                      >
-                        <option value="daily">Daily</option>
-                        <option value="weekly">Weekly</option>
-                        <option value="monthly">Monthly</option>
-                        <option value="custom">Custom</option>
-                      </select>
-                    </div>
-                    <div className="flex shrink-0 flex-col gap-1">
-                      <label className="text-sm font-medium text-gray-500 dark:text-gray-300">Every</label>
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="number"
-                          min={1}
-                          step={1}
-                          value={interval}
-                          onChange={(event) => setInterval(event.target.value === '' ? '' : Number(event.target.value))}
-                          className={`${inputNoWidthCls} w-14 shrink-0`}
-                          title={getIntervalHint(frequency)}
-                        />
-                        <span className="shrink-0 text-sm text-gray-500 dark:text-gray-300">{getIntervalUnitLabel(frequency)}</span>
-                      </div>
-                    </div>
-                  </div>
+                {activeState === 'sleep' && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setPushToOneOffOpen(true)}
+                      aria-pressed={pushToOneOffOpen}
+                      className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+                    >
+                      Push to One-Off Event
+                    </button>
 
-                  <div className="grid grid-cols-1 gap-4">
-                    {frequency === 'monthly' && (
-                      <div className="grid grid-cols-1 gap-3 sm:gap-4 md:grid-cols-[110px_minmax(0,1fr)]">
-                        <Field label="Day" hint="31 uses the last day in shorter months.">
-                          <input
-                            type="number"
-                            min={1}
-                            max={31}
-                            step={1}
-                            value={monthlyDay}
-                            onChange={(event) => setMonthlyDay(event.target.value === '' ? '' : Number(event.target.value))}
-                            className={inputCls}
-                          />
-                        </Field>
+                    {pushToOneOffOpen && (
+                      <div className="space-y-4 rounded-xl border border-gray-200 bg-gray-50/60 p-4 dark:border-gray-700 dark:bg-gray-900/20">
+                        <div className="text-sm font-medium text-gray-700 dark:text-gray-200">Create One-Off Event</div>
+
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                          <Field label="Date">
+                            <input
+                              type="date"
+                              value={oneOffDate}
+                              onChange={(event) => setOneOffDate(event.target.value)}
+                              className={inputCls}
+                            />
+                          </Field>
+
+                          <Field label="Start time">
+                            <input
+                              type="time"
+                              value={oneOffStartTime}
+                              onChange={(event) => setOneOffStartTime(event.target.value)}
+                              className={inputCls}
+                            />
+                          </Field>
+
+                          <Field label="End time">
+                            <input
+                              type="time"
+                              value={oneOffEndTime}
+                              onChange={(event) => setOneOffEndTime(event.target.value)}
+                              className={inputCls}
+                            />
+                          </Field>
+                        </div>
+
+                        <div className="flex flex-wrap gap-3">
+                          <button
+                            type="button"
+                            onClick={handlePushToOneOff}
+                            disabled={!oneOffDate || !oneOffStartTime || !oneOffEndTime}
+                            className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-gray-100 dark:text-gray-900 dark:hover:bg-gray-200"
+                          >
+                            Create Event
+                          </button>
+                          <button
+                            type="button"
+                            onClick={resetPushToOneOffPrompt}
+                            className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+                          >
+                            Cancel
+                          </button>
+                        </div>
                       </div>
                     )}
+                  </>
+                )}
 
-                    {frequency === 'weekly' && (
-                      <div className="grid grid-cols-1 gap-3">
-                        <Field label="Days">
-                          <div className="flex flex-wrap gap-2">
-                            {WEEKDAYS.map(({ key, label }) => (
-                              <button
-                                key={key}
-                                type="button"
-                                onClick={() => toggleDay(key)}
-                                className={`h-9 w-9 rounded-full border text-xs font-semibold transition-colors ${
-                                  days.includes(key)
-                                    ? 'border-purple-500 bg-purple-500 text-white'
-                                    : 'border-gray-300 bg-white text-gray-600 hover:border-purple-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300'
-                                }`}
-                              >
-                                {label}
-                              </button>
-                            ))}
+                {activeState === 'active' && (
+                  <>
+                    <div className="grid grid-cols-2 gap-3 sm:gap-4">
+                      <div className="min-w-0 space-y-3">
+                        <label className="text-xs font-medium uppercase tracking-[0.12em] text-gray-500 dark:text-gray-400">Start</label>
+                        <div className="flex flex-col gap-1">
+                          <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Date</label>
+                          <input type="date" value={seedDate} onChange={(event) => setSeedDate(event.target.value)} className={inputCls} />
+                          <p className="text-xs text-gray-400 italic">When this routine begins.</p>
+                        </div>
+                        <div className="flex flex-col gap-1">
+                          <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Time</label>
+                          <input type="time" value={startTime} onChange={(event) => handleStartTimeChange(event.target.value)} className={inputCls} />
+                        </div>
+                      </div>
+
+                      <div className="min-w-0 space-y-3">
+                        <label className="text-xs font-medium uppercase tracking-[0.12em] text-gray-500 dark:text-gray-400">End</label>
+                        <div className="flex flex-col gap-1">
+                          <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Date</label>
+                          <input type="date" value={dieDate} onChange={(event) => setDieDate(event.target.value)} className={inputCls} />
+                          <p className="text-xs text-gray-400 italic">Leave empty to keep this routine forever.</p>
+                        </div>
+                        <div className="flex flex-col gap-1">
+                          <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Time</label>
+                          <input type="time" value={endTime} onChange={(event) => handleEndTimeChange(event.target.value)} className={inputCls} />
+                          {isOvernight && <p className="text-xs text-gray-400 italic">Overnight routine: ends the following day.</p>}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="rounded-xl border border-gray-200 bg-gray-50/60 p-4 dark:border-gray-700 dark:bg-gray-900/20">
+                      <div className="mb-2 text-sm font-medium text-gray-500 dark:text-gray-300">Repeats</div>
+                      <div className="mb-3 flex flex-wrap items-end gap-3 pb-1">
+                        <div className="flex shrink-0 flex-col gap-1">
+                          <label className="text-sm font-medium text-gray-500 dark:text-gray-300">Frequency</label>
+                          <select
+                            value={frequency}
+                            onChange={(event) => setFrequency(event.target.value as RecurrenceFrequency)}
+                            className={`${inputCls} w-[8.5rem] shrink-0`}
+                          >
+                            <option value="daily">Daily</option>
+                            <option value="weekly">Weekly</option>
+                            <option value="monthly">Monthly</option>
+                            <option value="custom">Custom</option>
+                          </select>
+                        </div>
+                        <div className="flex shrink-0 flex-col gap-1">
+                          <label className="text-sm font-medium text-gray-500 dark:text-gray-300">Every</label>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="number"
+                              min={1}
+                              step={1}
+                              value={interval}
+                              onChange={(event) => setInterval(event.target.value === '' ? '' : Number(event.target.value))}
+                              className={`${inputNoWidthCls} w-14 shrink-0`}
+                              title={getIntervalHint(frequency)}
+                            />
+                            <span className="shrink-0 text-sm text-gray-500 dark:text-gray-300">{getIntervalUnitLabel(frequency)}</span>
                           </div>
-                        </Field>
+                        </div>
                       </div>
-                    )}
 
-                    {frequency === 'custom' && (
-                      <div className="grid grid-cols-1 gap-3">
-                        <Field label="Expression">
-                          <input
-                            type="text"
-                            value={customCondition}
-                            onChange={(event) => setCustomCondition(event.target.value)}
-                            placeholder="last-monday-of-month"
-                            className={inputCls}
-                          />
-                        </Field>
+                      <div className="grid grid-cols-1 gap-4">
+                        {frequency === 'monthly' && (
+                          <div className="grid grid-cols-1 gap-3 sm:gap-4 md:grid-cols-[110px_minmax(0,1fr)]">
+                            <Field label="Day" hint="31 uses the last day in shorter months.">
+                              <input
+                                type="number"
+                                min={1}
+                                max={31}
+                                step={1}
+                                value={monthlyDay}
+                                onChange={(event) => setMonthlyDay(event.target.value === '' ? '' : Number(event.target.value))}
+                                className={inputCls}
+                              />
+                            </Field>
+                          </div>
+                        )}
+
+                        {frequency === 'weekly' && (
+                          <div className="grid grid-cols-1 gap-3">
+                            <Field label="Days">
+                              <div className="flex flex-wrap gap-2">
+                                {WEEKDAYS.map(({ key, label }) => (
+                                  <button
+                                    key={key}
+                                    type="button"
+                                    onClick={() => toggleDay(key)}
+                                    className={`h-9 w-9 rounded-full border text-xs font-semibold transition-colors ${
+                                      days.includes(key)
+                                        ? 'border-purple-500 bg-purple-500 text-white'
+                                        : 'border-gray-300 bg-white text-gray-600 hover:border-purple-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300'
+                                    }`}
+                                  >
+                                    {label}
+                                  </button>
+                                ))}
+                              </div>
+                            </Field>
+                          </div>
+                        )}
+
+                        {frequency === 'custom' && (
+                          <div className="grid grid-cols-1 gap-3">
+                            <Field label="Expression">
+                              <input
+                                type="text"
+                                value={customCondition}
+                                onChange={(event) => setCustomCondition(event.target.value)}
+                                placeholder="last-monday-of-month"
+                                className={inputCls}
+                              />
+                            </Field>
+                          </div>
+                        )}
                       </div>
-                    )}
-                  </div>
-                </div>
+                    </div>
+                  </>
+                )}
               </>
             )}
 
