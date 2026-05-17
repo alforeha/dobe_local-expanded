@@ -1201,19 +1201,30 @@ export function HomeFloorPlan({
 		setExecutePlacedTaskPrompt(null);
 	}
 
-	function pushPlacedRecurringTaskReminder(placementId: string, recurringTaskId: string, taskName: string, taskType: string | null | undefined) {
+	function pushPlacedRecurringTaskReminder(
+		placementId: string,
+		recurringTaskId: string,
+		taskName: string,
+		taskType: string | null | undefined,
+		icon?: string,
+	) {
 		if (!user) return;
 		if (isPlacedTaskInQuickActions(placementId, recurringTaskId)) return;
 		const quickActionsKey = buildPlacedTaskQuickActionsKey(placementId, recurringTaskId, homeId ?? null);
+		const resourceTaskId = quickActionsKey;
 		const nextTask: Task = {
 			id: uuidv4(),
-			templateRef: null,
+			icon: icon?.trim() || undefined,
+			templateRef: resourceTaskId,
 			isUnique: true,
 			title: taskName,
 			taskType: taskType ?? 'CHECK',
 			completionState: 'pending',
 			completedAt: null,
-			resultFields: { label: taskName },
+			resultFields: {
+				label: taskName,
+				resourceTaskId,
+			} as Task['resultFields'],
 			attachmentRef: quickActionsKey,
 			resourceRef: homeId ?? null,
 			location: null,

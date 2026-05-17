@@ -11,6 +11,7 @@ import { useScheduleStore } from '../../../../../stores/useScheduleStore';
 import { useSystemStore } from '../../../../../stores/useSystemStore';
 import type {
   AccountResource,
+  ContactResource,
   HomeResource,
   InventoryResource,
   InventoryItemTemplate,
@@ -20,14 +21,17 @@ import type {
   ResourceType,
 } from '../../../../../types/resource';
 import { isInventory, normalizeRecurrenceMode } from '../../../../../types/resource';
-import type { QuickActionsEvent, QuickActionsCompletion } from '../../../../../types';
+import type { QuickActionsEvent } from '../../../../../types';
+import type { Task } from '../../../../../types/task';
 import type { TaskType } from '../../../../../types/taskTemplate';
 import { IconDisplay } from '../../../../shared/IconDisplay';
 import { getTaskTypeIconKey } from '../../../../../constants/iconMap';
 import { taskTemplateLibrary } from '../../../../../coach';
 import { CUSTOM_ITEM_TEMPLATE_PREFIX, getItemTaskTemplateMeta } from '../../../../../coach/ItemLibrary';
 import { getUserInventoryItemTemplates, mergeInventoryItemTemplates, resolveInventoryItemTemplate } from '../../../../../utils/inventoryItems';
-import { getAppDate, getAppNowISO, localISODate } from '../../../../../utils/dateUtils';
+import { getAppDate, localISODate } from '../../../../../utils/dateUtils';
+import { getLastCompletedForResourceTask } from '../../../../../utils/resourceTaskUtils';
+import { applyResourceTaskCompletion } from '../../../../../engine/resourceTaskEngine';
 
 // ── Recurrence label helper ────────────────────────────────────────────────────
 
@@ -226,6 +230,8 @@ function resolveItemTaskDisplay(
 
 interface RowData {
   rowKey: string;
+  taskId: string;
+  placementId?: string;
   iconKey: string;
   name: string;
   scheduleSummary: string;
@@ -249,7 +255,7 @@ interface RowData {
       };
 }
 
-type FilterType = 'all' | 'home' | 'vehicle' | 'account' | 'inventory';
+type FilterType = 'all' | 'contact' | 'home' | 'vehicle' | 'account' | 'inventory';
 
 interface Section {
   resourceId: string;
@@ -270,8 +276,6 @@ interface ResourceTasksTabProps {
 export function ResourceTasksTab({ onGoToResource }: ResourceTasksTabProps) {
   const resources = useResourceStore((s) => s.resources);
   const user = useUserStore((s) => s.user);
-  const activeEvents = useScheduleStore((s) => s.activeEvents);
-  const setActiveEvent = useScheduleStore((s) => s.setActiveEvent);
   const setMenuResourceTarget = useSystemStore((s) => s.setMenuResourceTarget);
 
   const [activeFilter, setActiveFilter] = useState<FilterType>('all');
@@ -290,6 +294,26 @@ export function ResourceTasksTab({ onGoToResource }: ResourceTasksTabProps) {
       const rId = resource.id;
       const rType = resource.type as ResourceType;
 
+      if (resource.type === 'contact') {
+        const contact = resource as ContactResource;
+        for (const task of contact.tasks ?? []) {
+          const isIntermittent = normalizeRecurrenceMode(task.recurrenceMode) === 'never';
+          rows.push({
+            rowKey: `${rId}-contact-${task.id}`,
+            taskId: task.id,
+            iconKey: resolveTaskIcon(task.icon, task.taskType, 'person'),
+            name: task.name,
+            scheduleSummary: formatScheduleSummary(isIntermittent, task.recurrence),
+            scheduleDetail: isIntermittent ? 'On demand' : formatDetailedRecurrence(task.recurrence),
+            reminderLeadDays: task.reminderLeadDays ?? null,
+            lastCompleted: null,
+            nextOccurrence: isIntermittent ? null : computeNextOccurrence(task.recurrence, referenceDate),
+            resourceId: rId,
+            resourceType: 'contact',
+          });
+        }
+      }
+
       if (resource.type === 'home') {
         const home = resource as HomeResource;
         for (const [i, chore] of (home.chores ?? []).entries()) {
@@ -300,6 +324,7 @@ export function ResourceTasksTab({ onGoToResource }: ResourceTasksTabProps) {
             chore.assignedTo === 'all' ? 'all members' : undefined;
           rows.push({
             rowKey: `${rId}-chore-${i}`,
+            taskId: chore.id,
             iconKey: resolveTaskIcon(chore.icon, chore.taskType, rIcon),
             name: chore.name,
             scheduleSummary: formatScheduleSummary(isIntermittent, chore.recurrence),
@@ -328,6 +353,8 @@ export function ResourceTasksTab({ onGoToResource }: ResourceTasksTabProps) {
                 const isIntermittent = normalizeRecurrenceMode(task.recurrenceMode) === 'never';
                 rows.push({
                   rowKey: `${rId}-placed-${room.id}-${placement.id}-${task.id}`,
+                  taskId: task.id,
+                  placementId: placement.id,
                   iconKey: resolveTaskIcon(display.icon, task.taskType, itemTemplate?.icon || rIcon),
                   name: display.name,
                   scheduleSummary: formatScheduleSummary(isIntermittent, task.recurrence),
@@ -365,6 +392,7 @@ export function ResourceTasksTab({ onGoToResource }: ResourceTasksTabProps) {
             `${task.reminderLeadDays}d reminder`;
           rows.push({
             rowKey: `${rId}-vehicle-${i}`,
+            taskId: task.id,
             iconKey: resolveTaskIcon(task.icon, task.taskType, rIcon),
             name: task.name,
             scheduleSummary: formatScheduleSummary(isIntermittent, task.recurrence),
@@ -393,6 +421,7 @@ export function ResourceTasksTab({ onGoToResource }: ResourceTasksTabProps) {
           ].filter(Boolean) as string[];
           rows.push({
             rowKey: `${rId}-account-${i}`,
+            taskId: task.id,
             iconKey: resolveTaskIcon(task.icon, task.taskType, rIcon),
             name: task.name,
             scheduleSummary: formatScheduleSummary(isIntermittent, task.recurrence),
@@ -430,6 +459,7 @@ export function ResourceTasksTab({ onGoToResource }: ResourceTasksTabProps) {
               const detail = reminderPart ? `${itemName} · ${reminderPart}` : itemName;
               containerRows.push({
                 rowKey: `${container.id}-item-${i++}`,
+                taskId: task.id,
                 iconKey: resolveTaskIcon(display.icon, task.taskType, itemTemplate?.icon || container.icon || rIcon),
                 name: display.name,
                 scheduleSummary: formatScheduleSummary(isIntermittent, task.recurrence),
@@ -449,6 +479,7 @@ export function ResourceTasksTab({ onGoToResource }: ResourceTasksTabProps) {
             const isIntermittent = normalizeRecurrenceMode(carryTask.recurrenceMode) === 'never';
             containerRows.push({
               rowKey: `${container.id}-carry-${carryTask.id}`,
+              taskId: carryTask.id,
               iconKey: resolveTaskIcon(null, carryTask.taskType, container.icon || rIcon),
               name: `${inventory.name}: ${container.name} — ${carryTask.name}`,
               scheduleSummary: formatScheduleSummary(isIntermittent, carryTask.recurrence),
@@ -513,19 +544,64 @@ export function ResourceTasksTab({ onGoToResource }: ResourceTasksTabProps) {
   }
 
   function saveAndLog(row: RowData) {
+    const now = new Date().toISOString();
     const today = getAppDate();
     const qaId = `qa-${today}`;
-    const now = getAppNowISO();
-    const taskRef = executeNote.trim() ? `${row.name}: ${executeNote.trim()}` : row.name;
-    const completion: QuickActionsCompletion = { taskRef, completedAt: now };
-    const existing = activeEvents[qaId] as QuickActionsEvent | undefined;
-    const updated: QuickActionsEvent = existing
-      ? { ...existing, completions: [...existing.completions, completion] }
-      : { id: qaId, eventType: 'quickActions', date: today, completions: [completion], xpAwarded: 0, sharedCompletions: null };
-    setActiveEvent(updated);
+    const scheduleStore = useScheduleStore.getState();
+
+    const resourceTaskId = row.placementId
+      ? `resource-task:${row.resourceId}:home-placement:${row.placementId}:${row.taskId}`
+      : `resource-task:${row.resourceId}:${row.resourceType}-task:${row.taskId}`;
+
+    const completionTaskId = crypto.randomUUID();
+    const completionTask: Task = {
+      id: completionTaskId,
+      templateRef: null,
+      isUnique: true,
+      title: row.name,
+      icon: row.iconKey,
+      taskType: 'CHECK',
+      completionState: 'complete',
+      completedAt: now,
+      resultFields: {
+        label: row.name,
+        ...(executeNote.trim() ? { note: executeNote.trim(), value: executeNote.trim() } : {}),
+        resourceTaskId,
+      } as Task['resultFields'],
+      attachmentRef: null,
+      resourceRef: row.resourceId,
+      location: null,
+      sharedWith: null,
+      questRef: null,
+      actRef: null,
+      secondaryTag: null,
+    };
+
+    scheduleStore.setTask(completionTask);
+
+    const existing = scheduleStore.activeEvents[qaId] as QuickActionsEvent | undefined;
+    const completion = { taskRef: completionTaskId, completedAt: now };
+    if (existing) {
+      scheduleStore.setActiveEvent({
+        ...existing,
+        completions: [...existing.completions, completion],
+        xpAwarded: (existing.xpAwarded ?? 0) + 5,
+      });
+    } else {
+      scheduleStore.setActiveEvent({
+        id: qaId,
+        eventType: 'quickActions',
+        date: today,
+        completions: [completion],
+        xpAwarded: 5,
+        sharedCompletions: null,
+      });
+    }
+
+    applyResourceTaskCompletion(completionTask);
+
     setExecutingKey(null);
     setExecuteNote('');
-    setExpandedKey(null);
   }
 
   const presentTypes = useMemo<FilterType[]>(() => {
@@ -656,6 +732,15 @@ export function ResourceTasksTab({ onGoToResource }: ResourceTasksTabProps) {
   const expandedRow = expandedKey && expandedSection
     ? expandedSection.rows.find((row) => row.rowKey === expandedKey) ?? null
     : null;
+  const lastExecuted = expandedRow
+    ? getLastCompletedForResourceTask(
+      expandedRow.resourceId,
+      expandedRow.taskId,
+      expandedRow.resourceType,
+      expandedRow.placementId,
+      expandedRow.name,
+    )
+    : null;
 
   // ── Empty state ──────────────────────────────────────────────────────────────
 
@@ -749,7 +834,7 @@ export function ResourceTasksTab({ onGoToResource }: ResourceTasksTabProps) {
                     <span>{formatNextDate(expandedRow.nextOccurrence)}</span>
 
                     <span className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Last executed</span>
-                    <span>{formatLastCompleted(expandedRow.lastCompleted, referenceDate)}</span>
+                    <span>{formatLastCompleted(lastExecuted, referenceDate)}</span>
 
                     <span className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Reminder</span>
                     <span>{formatReminder(expandedRow.reminderLeadDays)}</span>
