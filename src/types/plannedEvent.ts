@@ -37,6 +37,7 @@ export interface TemplateTaskEntry {
   kind: 'template';
   id: string;
   templateRef: string;
+  icon?: string;
 }
 
 export interface ResourceTaskEntry {
@@ -46,6 +47,7 @@ export interface ResourceTaskEntry {
   taskId: string;
   resourceType: string;
   taskName: string;
+  icon?: string;
 }
 
 export interface InlineTaskEntry {
@@ -54,12 +56,14 @@ export interface InlineTaskEntry {
   name: string;
   taskType: TaskType;
   inputFields: Partial<InputFields>;
+  icon?: string;
 }
 
 export type TaskEntry = TemplateTaskEntry | ResourceTaskEntry | InlineTaskEntry;
 
 export interface TaskSet {
   id: string;
+  name?: string;
   entries: TaskEntry[];
 }
 

@@ -229,6 +229,7 @@ function instantiateInlineTask(entry: InlineTaskEntry): Task {
     templateRef: null,
     isUnique: true,
     title: entry.name,
+    icon: entry.icon?.trim() || undefined,
     taskType: entry.taskType,
     completionState: 'pending',
     completedAt: null,

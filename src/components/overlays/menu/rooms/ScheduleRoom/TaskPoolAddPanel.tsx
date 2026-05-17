@@ -97,11 +97,12 @@ function buildXpAward(statGroup: StatGroupKey, xpValue: number) {
   };
 }
 
-function createTemplateEntry(templateRef: string): TemplateTaskEntry {
+function createTemplateEntry(templateRef: string, templateIcon?: string): TemplateTaskEntry {
   return {
     kind: 'template',
     id: uuidv4(),
     templateRef,
+    icon: templateIcon,
   };
 }
 
@@ -113,6 +114,7 @@ function createResourceEntry(row: ResourceTaskRow): ResourceTaskEntry {
     taskId: row.taskId,
     resourceType: row.resourceType,
     taskName: row.taskName,
+    icon: row.resourceIcon,
   };
 }
 
@@ -404,7 +406,9 @@ export function TaskPoolAddPanel({ onAdd, onClose, embedded = false, initialTab 
   }, [intermittentResourceTasks]);
 
   function handleTemplateAdd(templateRef: string) {
-    onAdd(createTemplateEntry(templateRef));
+    const templateIcon = taskTemplates[templateRef]?.icon
+      ?? libraryTemplates.find((template) => template.id === templateRef)?.icon;
+    onAdd(createTemplateEntry(templateRef, templateIcon));
     onClose();
   }
 
