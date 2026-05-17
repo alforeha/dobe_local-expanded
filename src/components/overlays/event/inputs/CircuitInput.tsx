@@ -72,10 +72,16 @@ function buildCircuitStepTemplate(step: CircuitStep): TaskTemplate {
       break;
     case 'DURATION':
       taskType = 'DURATION';
-      inputFields = {
-        targetDuration: Math.max(1, Math.round((step.target ?? 1) * 60)),
-        unit: 'minutes',
-      } satisfies DurationInputFields;
+      {
+        const durationUnit: DurationInputFields['unit'] = step.unit === 'seconds' || step.unit === 'minutes' || step.unit === 'hours'
+          ? step.unit
+          : 'minutes';
+        const multiplier = durationUnit === 'seconds' ? 1 : durationUnit === 'hours' ? 3600 : 60;
+        inputFields = {
+        targetDuration: Math.max(1, Math.round((step.target ?? 1) * multiplier)),
+          unit: durationUnit,
+        } satisfies DurationInputFields;
+      }
       break;
     case 'TIMER':
       taskType = 'TIMER';
