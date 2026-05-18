@@ -16,10 +16,10 @@ export function MenuOverlay({ onClose, onGoToDay, initialRoom = 'quickaction' }:
   const [taskExpanded, setTaskExpanded] = useState(false);
   const [scheduleExpanded, setScheduleExpanded] = useState(false);
   const [resourceOverlayActive, setResourceOverlayActive] = useState(false);
+  const [worldNavHidden, setWorldNavHidden] = useState(false);
 
   const handleNavigate = (room: MenuRoom) => {
     setActiveRoom(room);
-    setNavCollapsed(true);
     if (room !== 'schedule') {
       setScheduleExpanded(false);
     }
@@ -31,7 +31,7 @@ export function MenuOverlay({ onClose, onGoToDay, initialRoom = 'quickaction' }:
     }
   };
 
-  const showNav = !scheduleExpanded && !taskExpanded && !(activeRoom === 'resource' && resourceOverlayActive);
+  const showNav = !scheduleExpanded && !taskExpanded && !(activeRoom === 'resource' && resourceOverlayActive) && !worldNavHidden;
 
   return (
     <div className="flex h-full">
@@ -42,6 +42,7 @@ export function MenuOverlay({ onClose, onGoToDay, initialRoom = 'quickaction' }:
         onTaskExpandedChange={setTaskExpanded}
         onScheduleExpandedChange={setScheduleExpanded}
         onResourceOverlayActiveChange={setResourceOverlayActive}
+        onWorldNavHiddenChange={setWorldNavHidden}
       />
       {showNav && (
         <MenuOverlayNav
