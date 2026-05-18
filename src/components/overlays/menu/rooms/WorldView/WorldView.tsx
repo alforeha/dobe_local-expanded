@@ -16,6 +16,7 @@ interface WorldViewProps {
 
 const DEFAULT_FILTERS: WorldViewFilters = {
   showEventPins: true,
+  showAlbumPins: true,
   showLocationPoints: true,
   showLocationTrails: true,
   startDate: '',
@@ -42,6 +43,7 @@ function matchesContactFilter(event: Event, filters: WorldViewFilters): boolean 
 export function WorldView({ onGoToDay, onWorldNavHiddenChange }: WorldViewProps) {
   const [navHidden, setNavHidden] = useState(true);
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [mode, setMode] = useState<'revisit' | 'explore'>('revisit');
   const [filters, setFilters] = useState<WorldViewFilters>(DEFAULT_FILTERS);
   const activeEvents = useScheduleStore((state) => state.activeEvents);
   const historyEvents = useScheduleStore((state) => state.historyEvents);
@@ -64,6 +66,17 @@ export function WorldView({ onGoToDay, onWorldNavHiddenChange }: WorldViewProps)
     [filteredEvents],
   );
 
+  const mapLayerFilters = useMemo(
+    () => ({
+      ...filters,
+      showEventPins: mode === 'revisit' && filters.showEventPins,
+      showAlbumPins: mode === 'revisit' && filters.showAlbumPins,
+      showLocationPoints: mode === 'revisit' && filters.showLocationPoints,
+      showLocationTrails: mode === 'revisit' && filters.showLocationTrails,
+    }),
+    [filters, mode],
+  );
+
   return (
     <div className="cdb-world-view">
       <WorldMapContainer>
@@ -72,12 +85,20 @@ export function WorldView({ onGoToDay, onWorldNavHiddenChange }: WorldViewProps)
             <EventPinMarker
               map={map}
               events={locatedEvents}
-              show={filters.showEventPins}
+              show={mapLayerFilters.showEventPins}
               onGoToDay={onGoToDay}
             />
-            <AlbumPinLayer map={map} show />
-            <LocationPointMarker map={map} events={filteredEvents} filters={filters} />
-            <LocationTrailLayer map={map} events={filteredEvents} filters={filters} />
+            <AlbumPinLayer map={map} show={mapLayerFilters.showAlbumPins} />
+            <LocationPointMarker map={map} events={filteredEvents} filters={mapLayerFilters} />
+            <LocationTrailLayer map={map} events={filteredEvents} filters={mapLayerFilters} />
+            {mode === 'explore' && (
+              <div className="pointer-events-none absolute inset-0 z-[400] flex items-center justify-center">
+                <div className="rounded-2xl border border-gray-200 bg-white/90 px-6 py-4 text-center shadow-lg backdrop-blur-sm dark:border-gray-700 dark:bg-gray-800/90">
+                  <p className="text-sm font-semibold text-gray-700 dark:text-gray-200">Explore Mode</p>
+                  <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">Event centers coming soon</p>
+                </div>
+              </div>
+            )}
           </>
         )}
       </WorldMapContainer>
@@ -96,19 +117,42 @@ export function WorldView({ onGoToDay, onWorldNavHiddenChange }: WorldViewProps)
           >
             {navHidden ? '\u276F' : '\u276E'}
           </button>
-          <button
-            type="button"
-            className="cdb-world-header"
-            aria-expanded={filtersOpen}
-            aria-controls="world-view-filters"
-            onClick={() => setFiltersOpen((current) => !current)}
-          >
-            <span>World View</span>
-            <span className="cdb-world-header-chevron" aria-hidden="true">
-              {filtersOpen ? '^' : 'v'}
-            </span>
-            <span className="sr-only">Toggle filters</span>
-          </button>
+          <div className="flex items-center gap-1 rounded-full border border-gray-200 bg-white/90 p-1 shadow-sm backdrop-blur-sm dark:border-gray-700 dark:bg-gray-800/90">
+            <button
+              type="button"
+              onClick={() => { setMode('revisit'); }}
+              className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
+                mode === 'revisit'
+                  ? 'bg-purple-600 text-white'
+                  : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
+              }`}
+            >
+              Revisit
+            </button>
+            <button
+              type="button"
+              onClick={() => { setMode('explore'); setFiltersOpen(false); }}
+              className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
+                mode === 'explore'
+                  ? 'bg-purple-600 text-white'
+                  : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
+              }`}
+            >
+              Explore
+            </button>
+          </div>
+
+          {mode === 'revisit' && (
+            <button
+              type="button"
+              onClick={() => setFiltersOpen((v) => !v)}
+              aria-expanded={filtersOpen}
+              aria-controls="world-view-filters"
+              className="flex h-9 items-center gap-1 rounded-full border border-gray-200 bg-white/90 px-3 text-xs font-medium text-gray-500 shadow-sm backdrop-blur-sm hover:bg-white dark:border-gray-700 dark:bg-gray-800/90 dark:text-gray-300 dark:hover:bg-gray-800"
+            >
+              Filters {filtersOpen ? '\u2227' : '\u2228'}
+            </button>
+          )}
         </div>
 
         <aside className="cdb-world-filter-panel">

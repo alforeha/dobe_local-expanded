@@ -4,6 +4,7 @@ import { isContact } from '../../../../../types';
 
 export interface WorldViewFilters {
   showEventPins: boolean;
+  showAlbumPins: boolean;
   showLocationPoints: boolean;
   showLocationTrails: boolean;
   startDate: string;
@@ -44,6 +45,15 @@ export function FilterPanel({ filters, onChange }: FilterPanelProps) {
           onChange={(event) => onChange({ ...filters, showEventPins: event.target.checked })}
         />
         <span>Event pins</span>
+      </label>
+
+      <label className="cdb-world-filter-row">
+        <input
+          type="checkbox"
+          checked={filters.showAlbumPins}
+          onChange={(event) => onChange({ ...filters, showAlbumPins: event.target.checked })}
+        />
+        <span>Album pins</span>
       </label>
 
       <label className="cdb-world-filter-row">
