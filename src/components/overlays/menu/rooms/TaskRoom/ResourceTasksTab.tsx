@@ -4,7 +4,8 @@
 // Groups: Homes (chores), Vehicles (maintenance), Accounts (account tasks), Inventory (item tasks).
 // ─────────────────────────────────────────
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { v4 as uuidv4 } from 'uuid';
 import { useResourceStore } from '../../../../../stores/useResourceStore';
 import { useUserStore } from '../../../../../stores/useUserStore';
 import { useScheduleStore } from '../../../../../stores/useScheduleStore';
@@ -30,7 +31,8 @@ import { taskTemplateLibrary } from '../../../../../coach';
 import { CUSTOM_ITEM_TEMPLATE_PREFIX, getItemTaskTemplateMeta } from '../../../../../coach/ItemLibrary';
 import { getUserInventoryItemTemplates, mergeInventoryItemTemplates, resolveInventoryItemTemplate } from '../../../../../utils/inventoryItems';
 import { getAppDate, localISODate } from '../../../../../utils/dateUtils';
-import { formatLastCompleted, getLastCompletedForResourceTask } from '../../../../../utils/resourceTaskUtils';
+import { buildTaskInputFields } from '../../../../../utils/taskUtils';
+import { formatLastCompleted, getLastCompletedForResourceTask, normaliseResourceTaskTypeForSave } from '../../../../../utils/resourceTaskUtils';
 import { applyResourceTaskCompletion } from '../../../../../engine/resourceTaskEngine';
 
 // ── Recurrence label helper ────────────────────────────────────────────────────
@@ -246,6 +248,7 @@ interface RowData {
         itemName: string;
         itemIcon: string;
       };
+  anticipatedValue?: number;
 }
 
 type FilterType = 'all' | 'contact' | 'home' | 'vehicle' | 'account' | 'inventory';
@@ -426,6 +429,7 @@ export function ResourceTasksTab({ onGoToResource, onExpandedChange }: ResourceT
             nextOccurrence,
             resourceId: rId,
             resourceType: rType,
+            anticipatedValue: task.anticipatedValue ?? undefined,
           });
         }
       }
@@ -601,6 +605,59 @@ export function ResourceTasksTab({ onGoToResource, onExpandedChange }: ResourceT
     setExecutingKey(null);
     setExecuteNote('');
   }
+
+  const pushRowToGtd = useCallback((row: RowData) => {
+    const latestUser = useUserStore.getState().user;
+    if (!latestUser) return;
+
+    const dueDate = getAppDate();
+    const resourceTaskId = row.placementId
+      ? `resource-task:${row.resourceId}:placed:${row.placementId}`
+      : `resource-task:${row.resourceId}:${row.resourceType}-task:${row.taskId}`;
+    const existingPending = latestUser.lists.gtdList.find((tid) => {
+      const t = useScheduleStore.getState().tasks[tid];
+      if (!t || t.completionState !== 'pending') return false;
+      const fields = t.resultFields as Record<string, unknown>;
+      return fields.resourceTaskId === resourceTaskId && fields.dueDate === dueDate;
+    });
+    if (existingPending) return;
+
+    const taskType = normaliseResourceTaskTypeForSave('check');
+    const nextTask: Task = {
+      id: uuidv4(),
+      templateRef: resourceTaskId,
+      isUnique: true,
+      title: row.name,
+      icon: row.iconKey ?? undefined,
+      taskType,
+      completionState: 'pending',
+      completedAt: null,
+      resultFields: ({
+        ...buildTaskInputFields(taskType, row.name, {}),
+        resourceTaskId,
+        dueDate,
+        label: row.name,
+        anticipatedValue: row.anticipatedValue ?? undefined,
+      } as unknown) as Task['resultFields'],
+      attachmentRef: null,
+      resourceRef: row.resourceId,
+      location: null,
+      sharedWith: null,
+      questRef: null,
+      actRef: null,
+      secondaryTag: null,
+    };
+    const { setTask: setScheduleTask } = useScheduleStore.getState();
+    const { setUser } = useUserStore.getState();
+    setScheduleTask(nextTask);
+    setUser({
+      ...latestUser,
+      lists: {
+        ...latestUser.lists,
+        gtdList: [...new Set([...latestUser.lists.gtdList, nextTask.id])],
+      },
+    });
+  }, []);
 
   const presentTypes = useMemo<FilterType[]>(() => {
     const seen = new Set(sections.map((s) => s.filterType));
@@ -791,36 +848,35 @@ export function ResourceTasksTab({ onGoToResource, onExpandedChange }: ResourceT
       <div className={`min-h-0 flex-1 ${expandedRow ? 'px-4 py-3' : 'overflow-y-auto px-4 py-2 space-y-4'}`}>
         {expandedRow && expandedSection ? (
           <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-purple-200 bg-white dark:border-purple-700 dark:bg-gray-800">
-            <div className="border-b border-gray-100 px-4 py-4 dark:border-gray-700">
+            <button
+              type="button"
+              onClick={() => toggleExpand(expandedRow.rowKey)}
+              aria-label="Collapse resource task details"
+              className="w-full border-b border-gray-100 px-4 py-4 text-left dark:border-gray-700"
+            >
               <div className="flex items-start gap-3">
                 <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gray-100 dark:bg-gray-700">
                   <IconDisplay iconKey={expandedRow.iconKey} size={20} className="h-5 w-5 object-contain" alt="" />
                 </span>
                 <div className="min-w-0 flex-1">
-                  <div className="flex items-start gap-3">
-                    <div className="min-w-0 flex-1">
-                      <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">{expandedRow.name}</h3>
-                      <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
-                        {expandedRow.detail ?? expandedSection.resourceName}
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => toggleExpand(expandedRow.rowKey)}
-                      aria-label="Collapse resource task details"
-                      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-gray-300 text-gray-500 transition-colors hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
-                    >
-                      ×
-                    </button>
+                  <div className="min-w-0 flex-1">
+                    <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">{expandedRow.name}</h3>
+                    <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
+                      {expandedRow.detail ?? expandedSection.resourceName}
+                    </p>
                   </div>
-
                   <div className="mt-3 flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
                     <IconDisplay iconKey={expandedSection.resourceIcon} size={12} className="h-3 w-3 object-contain" alt="" />
                     <span>{expandedSection.resourceName}</span>
                   </div>
                 </div>
               </div>
-            </div>
+              <div className="mt-3 flex items-center justify-center gap-1 text-gray-300 dark:text-gray-600">
+                <div className="h-px flex-1 bg-gray-200 dark:bg-gray-700" />
+                <span className="text-xs">v</span>
+                <div className="h-px flex-1 bg-gray-200 dark:bg-gray-700" />
+              </div>
+            </button>
 
             <div className="flex-1 overflow-y-auto px-4 py-4">
               {!executingKey || executingKey !== expandedRow.rowKey ? (
@@ -838,7 +894,6 @@ export function ResourceTasksTab({ onGoToResource, onExpandedChange }: ResourceT
                     <span className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Reminder</span>
                     <span>{formatReminder(expandedRow.reminderLeadDays)}</span>
                   </div>
-
                   <div className="flex items-center gap-2 pt-2">
                     <button
                       type="button"
@@ -846,6 +901,13 @@ export function ResourceTasksTab({ onGoToResource, onExpandedChange }: ResourceT
                       className="flex-1 rounded-md border border-gray-200 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
                     >
                       Go to Resource
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => pushRowToGtd(expandedRow)}
+                      className="flex-1 rounded-md border border-purple-300 py-2 text-sm font-medium text-purple-600 hover:bg-purple-50 dark:border-purple-600 dark:text-purple-300 dark:hover:bg-purple-900/20"
+                    >
+                      + GTD
                     </button>
                     <button
                       type="button"

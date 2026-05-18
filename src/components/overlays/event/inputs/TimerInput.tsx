@@ -39,13 +39,9 @@ export function TimerInput({ inputFields, task, onComplete }: TimerInputProps) {
   // Auto-complete when countdown reaches zero
   useEffect(() => {
     if (running && secondsLeft === 0) {
-      setPhase('done');
-      if (!firedRef.current) {
-        firedRef.current = true;
-        onComplete({ countdownFrom });
-      }
+      const id = window.setTimeout(() => setPhase('done'), 0);
+      return () => window.clearTimeout(id);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [secondsLeft, running]);
 
   const handleMarkDone = () => {
@@ -54,6 +50,12 @@ export function TimerInput({ inputFields, task, onComplete }: TimerInputProps) {
       firedRef.current = true;
       onComplete({ countdownFrom });
     }
+  };
+
+  const handleReset = () => {
+    firedRef.current = false;
+    setSecondsLeft(countdownFrom);
+    setPhase('idle');
   };
 
   if (isComplete) {
@@ -119,6 +121,30 @@ export function TimerInput({ inputFields, task, onComplete }: TimerInputProps) {
             className="flex-1 rounded-lg bg-purple-600 py-2 text-sm font-medium text-white transition-colors hover:bg-purple-700 active:bg-purple-800"
           >
             Done early
+          </button>
+        </div>
+      )}
+
+      {phase === 'done' && task.completionState !== 'complete' && (
+        <div className="mt-2 flex gap-2">
+          <button
+            type="button"
+            onClick={handleReset}
+            className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-600 dark:border-gray-600 dark:text-gray-300"
+          >
+            Reset
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              if (!firedRef.current) {
+                firedRef.current = true;
+                onComplete({ countdownFrom });
+              }
+            }}
+            className="flex-1 rounded-lg bg-purple-600 px-3 py-2 text-sm font-medium text-white"
+          >
+            Complete
           </button>
         </div>
       )}

@@ -183,6 +183,7 @@ export function CircuitInput({ inputFields, task, onComplete }: CircuitInputProp
 
   const [currentRound, setCurrentRound] = useState(1);
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
+  const [listExpanded, setListExpanded] = useState(false);
   const [stepResults, setStepResults] = useState<CircuitStepResults>(() => {
     const saved = savedCircuitFields.stepResults;
     return saved && typeof saved === 'object' ? { ...(saved as CircuitStepResults) } : {};
@@ -349,21 +350,27 @@ export function CircuitInput({ inputFields, task, onComplete }: CircuitInputProp
         </div>
       ) : (
         <>
-          <div className="rounded-lg border border-purple-200 bg-purple-50 px-3 py-2.5 dark:border-purple-700 dark:bg-purple-900/20">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-purple-500 dark:text-purple-300">
-                  {label}
-                </p>
-                <p className="text-sm font-semibold text-purple-800 dark:text-purple-200">{currentStep.label}</p>
+          <div className="rounded-lg border border-purple-200 bg-purple-50 dark:border-purple-700 dark:bg-purple-900/20">
+            <button
+              type="button"
+              onClick={() => setListExpanded(v => !v)}
+              className="flex w-full items-center justify-between gap-2 px-3 py-2"
+            >
+              <div className="flex min-w-0 items-center gap-2">
+                <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full border text-[10px] font-bold border-purple-500 text-purple-600 dark:text-purple-300">
+                  {currentStepIndex + 1}
+                </span>
+                <span className="truncate text-sm font-semibold text-purple-800 dark:text-purple-200">
+                  {currentStep.label}
+                </span>
+                <span className="rounded-full bg-white/80 px-2 py-0.5 text-[11px] font-semibold text-purple-600 dark:bg-purple-950/40 dark:text-purple-200 shrink-0">
+                  {currentStep.stepType}
+                </span>
               </div>
-              <span className="rounded-full bg-white/80 px-2 py-0.5 text-[11px] font-semibold text-purple-600 dark:bg-purple-950/40 dark:text-purple-200">
-                {currentStep.stepType}
-              </span>
-            </div>
-          </div>
-
-          <ol className="space-y-0.5">
+              <span className="text-purple-400 text-xs shrink-0">{listExpanded ? '▲' : '▼'}</span>
+            </button>
+            {listExpanded && (
+              <ol className="space-y-0.5 px-3 pb-2">
             {steps.map((step, index) => {
               const stepKey = buildStepKey(step.id, currentRound);
               const completed = stepResults[stepKey] !== undefined;
@@ -394,7 +401,9 @@ export function CircuitInput({ inputFields, task, onComplete }: CircuitInputProp
               </li>
               );
             })}
-          </ol>
+              </ol>
+            )}
+          </div>
 
           {currentStepResult !== undefined ? (
             <div className="rounded-lg border border-green-200 bg-green-50 px-3 py-3 dark:border-green-800 dark:bg-green-900/20">

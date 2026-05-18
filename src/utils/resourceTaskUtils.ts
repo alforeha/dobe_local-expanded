@@ -1,6 +1,7 @@
 import { useScheduleStore } from '../stores/useScheduleStore';
 import { computeNextSeedDate } from '../engine/rollover';
 import { getAppDate } from './dateUtils';
+import type { TaskType } from '../types/taskTemplate';
 
 function parseISODate(isoDate: string): Date {
   return new Date(`${isoDate.slice(0, 10)}T00:00:00`);
@@ -8,6 +9,26 @@ function parseISODate(isoDate: string): Date {
 
 function formatMonthDay(isoDate: string): string {
   return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(parseISODate(isoDate));
+}
+
+export function normaliseResourceTaskTypeForSave(taskType?: string | null): TaskType {
+  switch (taskType) {
+    case 'CHECK':
+    case 'COUNTER':
+    case 'CIRCUIT':
+    case 'DURATION':
+    case 'SCAN':
+    case 'SETS_REPS':
+    case 'TIMER':
+    case 'RATING':
+    case 'TEXT':
+    case 'CONSUME':
+      return taskType;
+    case 'USE':
+      return 'TEXT';
+    default:
+      return 'CHECK';
+  }
 }
 
 export function formatLastCompleted(lastCompleted: string | null, referenceDate = getAppDate()): string {

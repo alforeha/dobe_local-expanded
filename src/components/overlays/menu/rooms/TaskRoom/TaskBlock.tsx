@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import type { Task, TaskTemplate } from '../../../../../types';
 import type { InputFields, TaskSecondaryTag, XpAward } from '../../../../../types/taskTemplate';
@@ -12,7 +12,9 @@ import { TaskTemplateIcon } from '../../../../shared/TaskTemplateIcon';
 import { ONBOARDING_GLOW } from '../../../../../constants/onboardingKeys';
 import { useGlows } from '../../../../../hooks/useOnboardingGlow';
 import { autoCompleteSystemTask } from '../../../../../engine/resourceEngine';
+import { getAppDate } from '../../../../../utils/dateUtils';
 import { getCurrentAppNowMs, getTaskCooldownState } from '../../../../../utils/taskCooldown';
+import { buildTaskInputFields } from '../../../../../utils/taskUtils';
 import {
   formatLastCompleted,
   getLastCompletedForTemplate,
@@ -190,6 +192,56 @@ export function TaskBlock({ templateKey, template, isCustom, mode, expanded, onT
     onToggleExpand();
   }
 
+  const pushToGtd = useCallback(() => {
+    const latestUser = useUserStore.getState().user;
+    if (!latestUser || !template) return;
+
+    const dueDate = getAppDate();
+    const templateRef = `user-task:${template.id ?? templateKey}`;
+    const existingPending = latestUser.lists.gtdList.find((tid) => {
+      const t = useScheduleStore.getState().tasks[tid];
+      if (!t || t.completionState !== 'pending') return false;
+      const fields = t.resultFields as Record<string, unknown>;
+      return fields.templateRef === templateRef && fields.dueDate === dueDate;
+    });
+    if (existingPending) return;
+
+    const taskType = template.taskType ?? 'CHECK';
+    const nextTask: Task = {
+      id: uuidv4(),
+      templateRef,
+      isUnique: true,
+      title: template.name ?? 'Untitled Task',
+      icon: template.icon ?? undefined,
+      taskType,
+      completionState: 'pending',
+      completedAt: null,
+      resultFields: ({
+        ...buildTaskInputFields(taskType, template.name ?? '', (template.inputFields ?? {}) as unknown as Record<string, unknown>),
+        templateRef,
+        dueDate,
+        label: template.name ?? 'Untitled Task',
+      } as unknown) as Task['resultFields'],
+      attachmentRef: null,
+      resourceRef: template.id ?? null,
+      location: null,
+      sharedWith: null,
+      questRef: null,
+      actRef: null,
+      secondaryTag: null,
+    };
+    const { setTask: setScheduleTask } = useScheduleStore.getState();
+    const { setUser } = useUserStore.getState();
+    setScheduleTask(nextTask);
+    setUser({
+      ...latestUser,
+      lists: {
+        ...latestUser.lists,
+        gtdList: [...new Set([...latestUser.lists.gtdList, nextTask.id])],
+      },
+    });
+  }, [template, templateKey]);
+
   return (
     <div className={`relative overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800 ${className ?? ''}`}>
       {!expanded ? (
@@ -221,28 +273,23 @@ export function TaskBlock({ templateKey, template, isCustom, mode, expanded, onT
             />
           )}
 
-          <div className="flex items-start gap-3 border-b border-gray-200 px-4 py-4 dark:border-gray-700">
+          <button
+            type="button"
+            onClick={onToggleExpand}
+            aria-label="Collapse task details"
+            className="w-full border-b border-gray-200 px-4 py-4 text-left dark:border-gray-700"
+          >
+            <div className="flex items-start gap-3">
             <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gray-100 dark:bg-gray-700">
               <TaskTemplateIcon iconKey={template.icon} size={30} className="h-8 w-8 object-contain" alt="" />
             </span>
 
             <div className="min-w-0 flex-1">
-              <div className="flex items-start gap-3">
-                <div className="min-w-0 flex-1">
-                  <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">{template.name}</h3>
-                  <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
-                    {template.description || 'No description yet.'}
-                  </p>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={onToggleExpand}
-                  aria-label="Collapse task details"
-                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-gray-300 text-gray-500 transition-colors hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
-                >
-                  {resolveIcon('close')}
-                </button>
+              <div className="min-w-0 flex-1">
+                <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">{template.name}</h3>
+                <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
+                  {template.description || 'No description yet.'}
+                </p>
               </div>
 
               <div className="mt-3 flex flex-wrap gap-2">
@@ -271,7 +318,13 @@ export function TaskBlock({ templateKey, template, isCustom, mode, expanded, onT
                 )}
               </div>
             </div>
-          </div>
+            </div>
+            <div className="mt-3 flex items-center justify-center gap-1 text-gray-300 dark:text-gray-600">
+              <span className="text-xs">v</span>
+              <span className="text-xs">▼</span>
+              <div className="h-px flex-1 bg-gray-200 dark:bg-gray-700" />
+            </div>
+          </button>
 
           <div className="flex-1 overflow-y-auto px-4 py-4">
             {!showCompleteInput ? (
@@ -345,6 +398,14 @@ export function TaskBlock({ templateKey, template, isCustom, mode, expanded, onT
               )}
 
               {!showCompleteInput ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={pushToGtd}
+                    className="rounded-xl border border-purple-300 px-3 py-2 text-sm font-medium text-purple-600 hover:bg-purple-50 dark:border-purple-600 dark:text-purple-300 dark:hover:bg-purple-900/20"
+                  >
+                    + GTD
+                  </button>
                 <button
                   type="button"
                   disabled={isCoolingDown}
@@ -360,6 +421,7 @@ export function TaskBlock({ templateKey, template, isCustom, mode, expanded, onT
                 >
                   {isCoolingDown ? 'Cooling down' : '✓ Complete Task'}
                 </button>
+                </>
               ) : (
                 <button
                   type="button"

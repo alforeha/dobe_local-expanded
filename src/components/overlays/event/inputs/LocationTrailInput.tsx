@@ -332,6 +332,7 @@ export function LocationTrailInput({ eventId, inputFields, task, onComplete, onR
     }).addTo(layer);
 
     visibleWaypoints.forEach((waypoint, index) => {
+      if (mapPlacementMode !== null && index !== selectedWaypointIndex) return;
       const isSelectedWaypoint = selectedWaypointIndex === index && mapPlacementMode === 'move';
       const isFinishWaypoint = index === visibleWaypoints.length - 1;
       const marker: L.Marker | L.CircleMarker = isFinishWaypoint

@@ -137,7 +137,7 @@ export function DayWeatherPopup({
 
   return (
     <PopupShell title="Forecast" onClose={onClose} size="large">
-      <div className="mx-auto flex h-full min-h-0 w-full max-w-5xl flex-col gap-4">
+      <div className="mx-auto flex min-h-0 w-full max-w-5xl flex-col gap-4">
         <div className="min-h-0 flex-1">
           {sortedWeather.length > 0 ? (
             <div

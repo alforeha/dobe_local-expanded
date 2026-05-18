@@ -39,11 +39,8 @@ export function DurationInput({ inputFields, task, onComplete }: DurationInputPr
   // Auto-complete when elapsed reaches target
   useEffect(() => {
     if (running && elapsed >= targetDuration) {
-      setPhase('done');
-      if (!firedRef.current) {
-        firedRef.current = true;
-        onComplete({ ...inputFields, actualDuration: elapsed });
-      }
+      const id = window.setTimeout(() => setPhase('done'), 0);
+      return () => window.clearTimeout(id);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [elapsed, running]);
@@ -54,6 +51,12 @@ export function DurationInput({ inputFields, task, onComplete }: DurationInputPr
       firedRef.current = true;
       onComplete({ ...inputFields, actualDuration: elapsed });
     }
+  };
+
+  const handleReset = () => {
+    firedRef.current = false;
+    setElapsed(0);
+    setPhase('idle');
   };
 
   if (isComplete) {
@@ -118,6 +121,30 @@ export function DurationInput({ inputFields, task, onComplete }: DurationInputPr
             className="flex-1 rounded-lg bg-purple-600 py-2 text-sm font-medium text-white transition-colors hover:bg-purple-700 active:bg-purple-800"
           >
             Done
+          </button>
+        </div>
+      )}
+
+      {phase === 'done' && task.completionState !== 'complete' && (
+        <div className="mt-2 flex gap-2">
+          <button
+            type="button"
+            onClick={handleReset}
+            className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-600 dark:border-gray-600 dark:text-gray-300"
+          >
+            Reset
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              if (!firedRef.current) {
+                firedRef.current = true;
+                onComplete({ ...inputFields, actualDuration: elapsed });
+              }
+            }}
+            className="flex-1 rounded-lg bg-purple-600 px-3 py-2 text-sm font-medium text-white"
+          >
+            Complete
           </button>
         </div>
       )}

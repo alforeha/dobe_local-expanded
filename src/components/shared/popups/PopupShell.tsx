@@ -14,8 +14,8 @@ interface PopupShellProps {
 export function PopupShell({ title, onClose, children, size = 'default', headerRight, fullHeight = false }: PopupShellProps) {
   const heightClassName = fullHeight ? ' h-[calc(100dvh-2rem)]' : '';
   const panelClassName = size === 'large'
-    ? `relative flex w-full max-w-5xl flex-col rounded-2xl bg-white shadow-xl dark:bg-gray-800 max-h-[calc(100dvh-2rem)]${heightClassName}`
-    : `relative flex w-full max-w-md flex-col rounded-xl bg-white shadow-xl dark:bg-gray-800 max-h-[calc(100dvh-2rem)]${heightClassName}`;
+    ? `relative flex w-full max-w-5xl flex-col rounded-2xl bg-white shadow-xl dark:bg-gray-800 h-[calc(100dvh-2rem)]${heightClassName}`
+    : `relative flex w-full max-w-md flex-col rounded-xl bg-white shadow-xl dark:bg-gray-800 h-[calc(100dvh-2rem)]${heightClassName}`;
 
   if (typeof document === 'undefined') {
     return null;
