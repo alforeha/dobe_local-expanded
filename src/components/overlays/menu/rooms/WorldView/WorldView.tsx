@@ -13,6 +13,8 @@ import { FilterPanel, type WorldViewFilters } from './FilterPanel';
 import { LegendPanel } from './LegendPanel';
 import { GalleryPinLayer, type GalleryPhoto } from './GalleryPinLayer';
 import { EventizePopup } from './EventizePopup';
+import { EventCenterLayer, type EventCenter } from './EventCenterLayer';
+import { EventCenterPopup } from './EventCenterPopup';
 import { AlbumPinLayer } from '../../../../shared/map/AlbumPinLayer';
 import './WorldView.css';
 
@@ -95,6 +97,7 @@ export function WorldView({ onGoToDay, onWorldNavHiddenChange }: WorldViewProps)
   const [map, setMap] = useState<LeafletMap | null>(null);
   const [galleryPhotos, setGalleryPhotos] = useState<GalleryPhoto[]>([]);
   const [eventizePhoto, setEventizePhoto] = useState<GalleryPhoto | null>(null);
+  const [eventCenterTarget, setEventCenterTarget] = useState<EventCenter | null>(null);
   const [galleryLoading, setGalleryLoading] = useState(false);
   const [galleryFileQueue, setGalleryFileQueue] = useState<File[]>([]);
   const [galleryChunkOffset, setGalleryChunkOffset] = useState(0);
@@ -289,14 +292,11 @@ export function WorldView({ onGoToDay, onWorldNavHiddenChange }: WorldViewProps)
               show={mode === 'gallery'}
               onEventize={setEventizePhoto}
             />
-            {mode === 'explore' && (
-              <div className="pointer-events-none absolute inset-0 z-[400] flex items-center justify-center">
-                <div className="rounded-2xl border border-gray-200 bg-white/90 px-6 py-4 text-center shadow-lg backdrop-blur-sm dark:border-gray-700 dark:bg-gray-800/90">
-                  <p className="text-sm font-semibold text-gray-700 dark:text-gray-200">Explore Mode</p>
-                  <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">Event centers coming soon</p>
-                </div>
-              </div>
-            )}
+            <EventCenterLayer
+              map={leafletMap}
+              show={mode === 'explore'}
+              onPlanEvent={setEventCenterTarget}
+            />
             {mode === 'gallery' && galleryPhotos.length === 0 && !galleryLoading && (
               <div className="pointer-events-none absolute inset-0 z-[400] flex items-center justify-center">
                 <div className="rounded-2xl border border-gray-200 bg-white/90 px-6 py-4 text-center shadow-lg backdrop-blur-sm dark:border-gray-700 dark:bg-gray-800/90">
@@ -437,6 +437,12 @@ export function WorldView({ onGoToDay, onWorldNavHiddenChange }: WorldViewProps)
         <EventizePopup
           photo={eventizePhoto}
           onClose={() => setEventizePhoto(null)}
+        />
+      )}
+      {eventCenterTarget && (
+        <EventCenterPopup
+          center={eventCenterTarget}
+          onClose={() => setEventCenterTarget(null)}
         />
       )}
     </div>
