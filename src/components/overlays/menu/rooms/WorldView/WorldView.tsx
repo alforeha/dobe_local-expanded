@@ -7,6 +7,7 @@ import { EventPinMarker } from './EventPinMarker';
 import { LocationPointMarker } from './LocationPointMarker';
 import { LocationTrailLayer } from './LocationTrailLayer';
 import { FilterPanel, type WorldViewFilters } from './FilterPanel';
+import { LegendPanel } from './LegendPanel';
 import { AlbumPinLayer } from '../../../../shared/map/AlbumPinLayer';
 import './WorldView.css';
 
@@ -59,6 +60,7 @@ function WorldMapCapture({
 export function WorldView({ onGoToDay, onWorldNavHiddenChange }: WorldViewProps) {
   const [navHidden, setNavHidden] = useState(true);
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [legendOpen, setLegendOpen] = useState(false);
   const [mode, setMode] = useState<'revisit' | 'explore'>('revisit');
   const [filters, setFilters] = useState<WorldViewFilters>(DEFAULT_FILTERS);
   const [map, setMap] = useState<LeafletMap | null>(null);
@@ -107,7 +109,7 @@ export function WorldView({ onGoToDay, onWorldNavHiddenChange }: WorldViewProps)
 
   return (
     <div className="cdb-world-view">
-      <WorldMapContainer>
+      <WorldMapContainer onAttributionClick={() => setLegendOpen((value) => !value)}>
         {(leafletMap) => (
           <>
             <WorldMapCapture map={leafletMap} onMapChange={setMap} />
@@ -205,6 +207,7 @@ export function WorldView({ onGoToDay, onWorldNavHiddenChange }: WorldViewProps)
         <aside className="cdb-world-filter-panel">
           <FilterPanel filters={filters} onChange={setFilters} />
         </aside>
+        {legendOpen && <LegendPanel onClose={() => setLegendOpen(false)} />}
       </div>
     </div>
   );

@@ -5,20 +5,26 @@ import { useAutoLocationPreferences } from '../../../../../hooks/useAutoLocation
 
 interface WorldMapContainerProps {
   children?: (map: L.Map) => ReactNode;
+  onAttributionClick?: () => void;
 }
 
 const WORLD_CENTER: L.LatLngExpression = [20, 0];
 const WORLD_ZOOM = 2;
 const LOCAL_ZOOM = 13;
 
-export function WorldMapContainer({ children }: WorldMapContainerProps) {
+export function WorldMapContainer({ children, onAttributionClick }: WorldMapContainerProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<L.Map | null>(null);
+  const onAttributionClickRef = useRef(onAttributionClick);
   const [map, setMap] = useState<L.Map | null>(null);
   const activeLocation = useAutoLocationPreferences();
   const activeLocationId = activeLocation?.id;
   const activeLat = activeLocation?.lat;
   const activeLng = activeLocation?.lng;
+
+  useEffect(() => {
+    onAttributionClickRef.current = onAttributionClick;
+  }, [onAttributionClick]);
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
@@ -39,6 +45,17 @@ export function WorldMapContainer({ children }: WorldMapContainerProps) {
     L.control.zoom({ position: 'bottomright' }).addTo(leafletMap);
     L.control.attribution({ prefix: false, position: 'bottomleft' }).addTo(leafletMap);
 
+    const attrEl = leafletMap.getContainer().querySelector('.leaflet-control-attribution');
+    const handleAttributionClick = (event: Event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      onAttributionClickRef.current?.();
+    };
+
+    if (attrEl) {
+      attrEl.addEventListener('click', handleAttributionClick);
+    }
+
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '&copy; OpenStreetMap contributors',
       className: 'cdb-map-tiles',
@@ -52,6 +69,7 @@ export function WorldMapContainer({ children }: WorldMapContainerProps) {
 
     return () => {
       window.clearTimeout(resizeId);
+      attrEl?.removeEventListener('click', handleAttributionClick);
       leafletMap.remove();
       mapRef.current = null;
       setMap(null);
