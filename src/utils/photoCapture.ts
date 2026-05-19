@@ -41,29 +41,53 @@ export function isNativePhotoCaptureAvailable(): boolean {
   return true;
 }
 
+function dmsToDecimal(
+  dms: unknown,
+  ref: unknown
+): number | undefined {
+  if (!Array.isArray(dms) || dms.length < 3) return undefined;
+  const [deg, min, sec] = dms.map((v: unknown) => {
+    if (typeof v === 'number') return v;
+    if (typeof v === 'string' && v.includes('/')) {
+      const [n, d] = v.split('/').map(Number);
+      return d !== 0 ? n / d : 0;
+    }
+    return typeof v === 'number' ? v : 0;
+  });
+  let decimal = deg + min / 60 + sec / 3600;
+  if (ref === 'S' || ref === 'W') decimal = -decimal;
+  return decimal;
+}
+
 function extractCapacitorPhotoLocation(photo: Record<string, unknown>): CapturedLocation | undefined {
   const exif = photo.exif;
   if (!exif || typeof exif !== 'object') return undefined;
-  const exifRecord = exif as Record<string, unknown>;
+  const e = exif as Record<string, unknown>;
 
-  const latitude = typeof exifRecord.latitude === 'number'
-    ? exifRecord.latitude
-    : typeof exifRecord.Latitude === 'number'
-      ? exifRecord.Latitude
-      : undefined;
-  const longitude = typeof exifRecord.longitude === 'number'
-    ? exifRecord.longitude
-    : typeof exifRecord.Longitude === 'number'
-      ? exifRecord.Longitude
-      : undefined;
-  const placeName = typeof exifRecord.placeName === 'string'
-    ? exifRecord.placeName
-    : typeof exifRecord.PlaceName === 'string'
-      ? exifRecord.PlaceName
-      : undefined;
+  // Try flat decimal keys first
+  const flatLat =
+    typeof e.latitude === 'number' ? e.latitude :
+    typeof e.Latitude === 'number' ? e.Latitude :
+    typeof e.GPSLatitude === 'number' ? e.GPSLatitude :
+    undefined;
+  const flatLng =
+    typeof e.longitude === 'number' ? e.longitude :
+    typeof e.Longitude === 'number' ? e.Longitude :
+    typeof e.GPSLongitude === 'number' ? e.GPSLongitude :
+    undefined;
 
-  if (typeof latitude !== 'number' || typeof longitude !== 'number') return undefined;
-  return { latitude, longitude, placeName };
+  if (typeof flatLat === 'number' && typeof flatLng === 'number') {
+    return { latitude: flatLat, longitude: flatLng };
+  }
+
+  // Try DMS format
+  const lat = dmsToDecimal(e.GPSLatitude, e.GPSLatitudeRef);
+  const lng = dmsToDecimal(e.GPSLongitude, e.GPSLongitudeRef);
+  if (typeof lat === 'number' && typeof lng === 'number') {
+    return { latitude: lat, longitude: lng };
+  }
+
+  return undefined;
 }
 
 function normalizeExifDateString(value: string | undefined): string | undefined {
