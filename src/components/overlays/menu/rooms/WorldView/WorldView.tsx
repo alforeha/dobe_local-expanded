@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { ChangeEvent, InputHTMLAttributes } from 'react';
+import type * as React from 'react';
+import type { ChangeEvent } from 'react';
 import type { Map as LeafletMap } from 'leaflet';
 import { useResourceStore } from '../../../../../stores/useResourceStore';
 import { useScheduleStore } from '../../../../../stores/useScheduleStore';
@@ -308,130 +309,138 @@ export function WorldView({ onGoToDay, onWorldNavHiddenChange }: WorldViewProps)
           </>
         )}
       </WorldMapContainer>
+      {/* Nav toggle - top right */}
+      <div className="cdb-world-nav-toggle">
+        <button
+          type="button"
+          onClick={() => {
+            const next = !navHidden;
+            setNavHidden(next);
+            onWorldNavHiddenChange(next);
+          }}
+          aria-label={navHidden ? 'Show navigation' : 'Hide navigation'}
+          className="flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 bg-white/90 text-gray-500 shadow-sm backdrop-blur-sm hover:bg-white dark:border-gray-700 dark:bg-gray-800/90 dark:text-gray-300 dark:hover:bg-gray-800"
+        >
+          {navHidden ? '\u276F' : '\u276E'}
+        </button>
+      </div>
 
-      <div className={`cdb-world-controls ${filtersOpen ? 'is-open' : ''}`}>
-        <div className="flex items-center gap-2">
+      {/* Top-left controls */}
+      <div className="cdb-world-controls">
+        {/* Row 1 - mode tabs */}
+        <div className="flex items-center gap-1 rounded-full border border-gray-200 bg-white/90 p-1 shadow-sm backdrop-blur-sm dark:border-gray-700 dark:bg-gray-800/90">
           <button
             type="button"
-            onClick={() => {
-              const next = !navHidden;
-              setNavHidden(next);
-              onWorldNavHiddenChange(next);
-            }}
-            aria-label={navHidden ? 'Show navigation' : 'Hide navigation'}
-            className="flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 bg-white/90 text-gray-500 shadow-sm backdrop-blur-sm hover:bg-white dark:border-gray-700 dark:bg-gray-800/90 dark:text-gray-300 dark:hover:bg-gray-800"
+            onClick={() => setMode('revisit')}
+            className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
+              mode === 'revisit'
+                ? 'bg-purple-600 text-white'
+                : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
+            }`}
           >
-            {navHidden ? '\u276F' : '\u276E'}
+            Revisit
           </button>
           <button
             type="button"
-            onClick={handleGoToMyLocation}
-            aria-label="Go to my location"
-            className="flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 bg-white/90 text-gray-500 shadow-sm backdrop-blur-sm hover:bg-white dark:border-gray-700 dark:bg-gray-800/90 dark:text-gray-300 dark:hover:bg-gray-800"
+            onClick={() => { setMode('explore'); setFiltersOpen(false); }}
+            className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
+              mode === 'explore'
+                ? 'bg-purple-600 text-white'
+                : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
+            }`}
           >
-            &#x25CE;
+            Explore
           </button>
-          <div className="flex items-center gap-1 rounded-full border border-gray-200 bg-white/90 p-1 shadow-sm backdrop-blur-sm dark:border-gray-700 dark:bg-gray-800/90">
-            <button
-              type="button"
-              onClick={() => { setMode('revisit'); }}
-              className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
-                mode === 'revisit'
-                  ? 'bg-purple-600 text-white'
-                  : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
-              }`}
-            >
-              Revisit
-            </button>
-            <button
-              type="button"
-              onClick={() => { setMode('explore'); setFiltersOpen(false); }}
-              className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
-                mode === 'explore'
-                  ? 'bg-purple-600 text-white'
-                  : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
-              }`}
-            >
-              Explore
-            </button>
-            <button
-              type="button"
-              onClick={() => { setMode('gallery'); setFiltersOpen(false); }}
-              className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
-                mode === 'gallery'
-                  ? 'bg-amber-500 text-white'
-                  : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
-              }`}
-            >
-              Gallery
-            </button>
-          </div>
-
-          {mode === 'gallery' && (
-            <div className="flex items-center gap-2">
-              <div className="flex flex-col gap-1">
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={galleryLoading}
-                  className="flex h-9 items-center gap-1.5 rounded-full border border-amber-300 bg-white/90 px-3 text-xs font-medium text-amber-600 shadow-sm backdrop-blur-sm hover:bg-white dark:border-amber-600 dark:bg-gray-800/90 dark:text-amber-400"
-                >
-                  {galleryLoading ? 'Loading...' : '🖼️ Select Folder'}
-                </button>
-                <p className="px-1 text-[10px] text-gray-400 dark:text-gray-500">
-                  Photos are read locally — nothing is uploaded.
-                </p>
-              </div>
-              {galleryTotal > 0 && (
-                <div className="flex flex-col gap-1">
-                  <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
-                    {galleryPhotos.length} with GPS / {galleryProcessed} scanned / {galleryTotal} total
-                  </span>
-                  {!galleryLoading && galleryChunkOffset < galleryTotal && (
-                    <button
-                      type="button"
-                      onClick={() => void processChunk(galleryFileQueue, galleryChunkOffset)}
-                      className="rounded-full border border-amber-300 px-2 py-0.5 text-[10px] font-medium text-amber-600 hover:bg-amber-50 dark:border-amber-600 dark:text-amber-400"
-                    >
-                      Load next {Math.min(GALLERY_CHUNK_SIZE, galleryTotal - galleryChunkOffset)} photos
-                    </button>
-                  )}
-                  {galleryLoading && (
-                    <span className="px-1 text-[10px] text-amber-500 dark:text-amber-400">
-                      Scanning...
-                    </span>
-                  )}
-                </div>
-              )}
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                multiple
-                {...({ webkitdirectory: '' } as InputHTMLAttributes<HTMLInputElement>)}
-                onChange={handleGalleryFiles}
-                className="hidden"
-              />
-            </div>
-          )}
-
-          {mode === 'revisit' && (
-            <button
-              type="button"
-              onClick={() => setFiltersOpen((v) => !v)}
-              aria-expanded={filtersOpen}
-              aria-controls="world-view-filters"
-              className="flex h-9 items-center gap-1 rounded-full border border-gray-200 bg-white/90 px-3 text-xs font-medium text-gray-500 shadow-sm backdrop-blur-sm hover:bg-white dark:border-gray-700 dark:bg-gray-800/90 dark:text-gray-300 dark:hover:bg-gray-800"
-            >
-              Filters {filtersOpen ? '\u2227' : '\u2228'}
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={() => { setMode('gallery'); setFiltersOpen(false); }}
+            className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
+              mode === 'gallery'
+                ? 'bg-amber-500 text-white'
+                : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
+            }`}
+          >
+            Gallery
+          </button>
         </div>
 
-        <aside className="cdb-world-filter-panel">
+        {/* Row 2 - mode-specific controls */}
+        {mode === 'revisit' && (
+          <button
+            type="button"
+            onClick={() => setFiltersOpen((v) => !v)}
+            aria-expanded={filtersOpen}
+            className="flex h-9 items-center gap-1 rounded-full border border-gray-200 bg-white/90 px-3 text-xs font-medium text-gray-500 shadow-sm backdrop-blur-sm hover:bg-white dark:border-gray-700 dark:bg-gray-800/90 dark:text-gray-300 dark:hover:bg-gray-800"
+          >
+            Filters {filtersOpen ? '\u2227' : '\u2228'}
+          </button>
+        )}
+
+        {mode === 'gallery' && (
+          <div className="flex flex-col gap-1">
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={galleryLoading}
+                className="flex h-9 items-center gap-1.5 rounded-full border border-amber-300 bg-white/90 px-3 text-xs font-medium text-amber-600 shadow-sm backdrop-blur-sm hover:bg-white dark:border-amber-600 dark:bg-gray-800/90 dark:text-amber-400"
+              >
+                {galleryLoading ? 'Loading...' : '\uD83D\uDDBC\uFE0F Select Folder'}
+              </button>
+              {galleryTotal > 0 && (
+                <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
+                  {galleryPhotos.length} GPS / {galleryProcessed}/{galleryTotal}
+                </span>
+              )}
+            </div>
+            <p className="px-1 text-[10px] text-gray-400 dark:text-gray-500">
+              Photos are read locally {'\u2014'} nothing is uploaded.
+            </p>
+            {galleryTotal > 0 && !galleryLoading && galleryChunkOffset < galleryTotal && (
+              <button
+                type="button"
+                onClick={() => void processChunk(galleryFileQueue, galleryChunkOffset)}
+                className="rounded-full border border-amber-300 px-2 py-0.5 text-[10px] font-medium text-amber-600 hover:bg-amber-50 dark:border-amber-600 dark:text-amber-400"
+              >
+                Load next {Math.min(GALLERY_CHUNK_SIZE, galleryTotal - galleryChunkOffset)} photos
+              </button>
+            )}
+            {galleryLoading && (
+              <span className="px-1 text-[10px] text-amber-500">Scanning...</span>
+            )}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              multiple
+              {...({ webkitdirectory: '' } as React.InputHTMLAttributes<HTMLInputElement>)}
+              onChange={handleGalleryFiles}
+              className="hidden"
+            />
+          </div>
+        )}
+
+        {legendOpen && <LegendPanel onClose={() => setLegendOpen(false)} />}
+      </div>
+
+      {/* Filter panel - independent, anchored to left */}
+      {filtersOpen && mode === 'revisit' && (
+        <aside className="cdb-world-filter-panel" id="world-view-filters">
           <FilterPanel filters={filters} onChange={setFilters} />
         </aside>
-        {legendOpen && <LegendPanel onClose={() => setLegendOpen(false)} />}
+      )}
+
+      {/* Bottom-right custom buttons */}
+      <div className="cdb-world-bottom-right">
+        <button
+          type="button"
+          onClick={handleGoToMyLocation}
+          aria-label="Go to my location"
+          className="cdb-world-map-btn"
+          title="My location"
+        >
+          &#x25CE;
+        </button>
       </div>
       {eventizePhoto && (
         <EventizePopup

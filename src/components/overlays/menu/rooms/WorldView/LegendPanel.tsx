@@ -31,16 +31,7 @@ export function LegendPanel({ onClose }: LegendPanelProps) {
   const [tab, setTab] = useState<'key' | 'credits'>('key');
 
   return (
-    <aside
-      className="cdb-world-filter-panel"
-      style={{
-        bottom: '2.5rem',
-        maxHeight: 'min(70vh, 520px)',
-        opacity: 1,
-        top: 'auto',
-        transform: 'translateY(0)',
-      }}
-    >
+    <aside className="cdb-world-legend-panel">
       <div className="cdb-world-filter-body">
         <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3 dark:border-gray-700">
           <div className="flex gap-2">

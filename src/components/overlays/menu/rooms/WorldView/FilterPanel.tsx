@@ -35,7 +35,7 @@ export function FilterPanel({ filters, onChange }: FilterPanelProps) {
   );
 
   return (
-    <div id="world-view-filters" className="cdb-world-filter-body">
+    <div className="cdb-world-filter-body">
       <p className="cdb-world-filter-title">Layers</p>
 
       <label className="cdb-world-filter-row">
