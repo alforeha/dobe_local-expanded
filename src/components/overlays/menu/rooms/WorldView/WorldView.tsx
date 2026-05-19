@@ -88,9 +88,19 @@ export function WorldView({ onGoToDay, onWorldNavHiddenChange }: WorldViewProps)
               show={mapLayerFilters.showEventPins}
               onGoToDay={onGoToDay}
             />
-            <AlbumPinLayer map={map} show={mapLayerFilters.showAlbumPins} />
-            <LocationPointMarker map={map} events={filteredEvents} filters={mapLayerFilters} />
-            <LocationTrailLayer map={map} events={filteredEvents} filters={mapLayerFilters} />
+            <AlbumPinLayer map={map} show={mapLayerFilters.showAlbumPins} onGoToDay={onGoToDay} />
+            <LocationPointMarker
+              map={map}
+              events={filteredEvents}
+              filters={mapLayerFilters}
+              onGoToDay={onGoToDay}
+            />
+            <LocationTrailLayer
+              map={map}
+              events={filteredEvents}
+              filters={mapLayerFilters}
+              onGoToDay={onGoToDay}
+            />
             {mode === 'explore' && (
               <div className="pointer-events-none absolute inset-0 z-[400] flex items-center justify-center">
                 <div className="rounded-2xl border border-gray-200 bg-white/90 px-6 py-4 text-center shadow-lg backdrop-blur-sm dark:border-gray-700 dark:bg-gray-800/90">
