@@ -15,7 +15,7 @@ import { FilterPanel, type WorldViewFilters } from './FilterPanel';
 import { LegendPanel } from './LegendPanel';
 import { GalleryPinLayer, type GalleryPhoto } from './GalleryPinLayer';
 import { EventizePopup } from './EventizePopup';
-import { EventCenterLayer, type EventCenter } from './EventCenterLayer';
+import { EventCenterLayer, type EventCenter, type EventCenterCategory } from './EventCenterLayer';
 import { EventCenterPopup } from './EventCenterPopup';
 import { AlbumPinLayer } from '../../../../shared/map/AlbumPinLayer';
 import './WorldView.css';
@@ -37,6 +37,27 @@ const DEFAULT_FILTERS: WorldViewFilters = {
 
 const GALLERY_CHUNK_SIZE = 500;
 const GALLERY_BATCH_SIZE = 20;
+const ALL_CATEGORIES: EventCenterCategory[] = [
+  'outdoors',
+  'food',
+  'faith',
+  'arts',
+  'sports',
+  'health',
+  'education',
+  'travel',
+];
+
+const EXPLORE_CATEGORY_CONFIG: Record<EventCenterCategory, { label: string; emoji: string }> = {
+  outdoors: { label: 'Outdoors', emoji: '\uD83C\uDF32' },
+  food: { label: 'Food & Drink', emoji: '\uD83C\uDF7D\uFE0F' },
+  faith: { label: 'Faith', emoji: '\u26EA' },
+  arts: { label: 'Arts & Culture', emoji: '\uD83C\uDFA8' },
+  sports: { label: 'Sports', emoji: '\uD83C\uDFC6' },
+  health: { label: 'Health', emoji: '\u2665\uFE0F' },
+  education: { label: 'Education', emoji: '\uD83D\uDCDA' },
+  travel: { label: 'Travel', emoji: '\u2708\uFE0F' },
+};
 
 function isEvent(event: Event | QuickActionsEvent): event is Event {
   return event.eventType !== 'quickActions';
@@ -100,6 +121,10 @@ export function WorldView({ onGoToDay, onWorldNavHiddenChange }: WorldViewProps)
   const [galleryPhotos, setGalleryPhotos] = useState<GalleryPhoto[]>([]);
   const [eventizePhoto, setEventizePhoto] = useState<GalleryPhoto | null>(null);
   const [eventCenterTarget, setEventCenterTarget] = useState<EventCenter | null>(null);
+  const [enabledCategories, setEnabledCategories] = useState<EventCenterCategory[]>([...ALL_CATEGORIES]);
+  const [exploreCenters, setExploreCenters] = useState<EventCenter[]>([]);
+  const [exploreLoading, setExploreLoading] = useState(false);
+  const [exploreReloadKey, setExploreReloadKey] = useState(0);
   const [galleryLoading, setGalleryLoading] = useState(false);
   const [galleryFileQueue, setGalleryFileQueue] = useState<File[]>([]);
   const [galleryChunkOffset, setGalleryChunkOffset] = useState(0);
@@ -145,6 +170,24 @@ export function WorldView({ onGoToDay, onWorldNavHiddenChange }: WorldViewProps)
     }),
     [filters, mode],
   );
+
+  const categoryCounts = useMemo(() => {
+    const counts: Partial<Record<EventCenterCategory, number>> = {};
+    for (const center of exploreCenters) {
+      counts[center.category] = (counts[center.category] ?? 0) + 1;
+    }
+    return counts;
+  }, [exploreCenters]);
+
+  const visibleCount = useMemo(
+    () => exploreCenters.filter((center) => enabledCategories.includes(center.category)).length,
+    [enabledCategories, exploreCenters],
+  );
+
+  const handleCentersLoaded = useCallback((centers: EventCenter[]) => {
+    setExploreCenters(centers);
+    setExploreLoading(false);
+  }, []);
 
   const allAlbumEntries = useMemo(() => {
     const entries: { latitude: number; longitude: number; date: string }[] = [];
@@ -329,9 +372,12 @@ export function WorldView({ onGoToDay, onWorldNavHiddenChange }: WorldViewProps)
               onEventize={setEventizePhoto}
             />
             <EventCenterLayer
+              key={exploreReloadKey}
               map={leafletMap}
               show={mode === 'explore'}
               onPlanEvent={setEventCenterTarget}
+              enabledCategories={enabledCategories}
+              onCentersLoaded={handleCentersLoaded}
             />
             {mode === 'gallery' && galleryPhotos.length === 0 && !galleryLoading && (
               <div className="pointer-events-none absolute inset-0 z-[400] flex items-center justify-center">
@@ -377,7 +423,12 @@ export function WorldView({ onGoToDay, onWorldNavHiddenChange }: WorldViewProps)
           </button>
           <button
             type="button"
-            onClick={() => { setMode('explore'); setFiltersOpen(false); }}
+            onClick={() => {
+              setMode('explore');
+              setFiltersOpen(false);
+              setExploreLoading(true);
+              setExploreCenters([]);
+            }}
             className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
               mode === 'explore'
                 ? 'bg-purple-600 text-white'
@@ -409,6 +460,56 @@ export function WorldView({ onGoToDay, onWorldNavHiddenChange }: WorldViewProps)
           >
             Filters {filtersOpen ? '\u2227' : '\u2228'}
           </button>
+        )}
+
+        {mode === 'explore' && (
+          <div className="rounded-xl border border-gray-200 bg-white/90 shadow-sm backdrop-blur-sm dark:border-gray-700 dark:bg-gray-800/90">
+            <button
+              type="button"
+              onClick={() => setFiltersOpen((v) => !v)}
+              className="flex w-full items-center justify-between px-3 py-2"
+            >
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                Event Centers
+              </span>
+              {exploreLoading ? (
+                <span className="text-[10px] text-gray-400">Loading...</span>
+              ) : (
+                <span className="text-[10px] font-semibold text-purple-600 dark:text-purple-300">
+                  {visibleCount} showing
+                </span>
+              )}
+            </button>
+            {filtersOpen && (
+              <div className="border-t border-gray-100 px-3 pb-2 dark:border-gray-700">
+                {ALL_CATEGORIES.map((cat) => {
+                  const checked = enabledCategories.includes(cat);
+                  const count = categoryCounts[cat] ?? 0;
+                  const { emoji, label } = EXPLORE_CATEGORY_CONFIG[cat];
+                return (
+                  <label
+                    key={cat}
+                    className="flex cursor-pointer items-center gap-2 py-1.5"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() =>
+                        setEnabledCategories((prev) =>
+                          checked ? prev.filter((c) => c !== cat) : [...prev, cat]
+                        )
+                      }
+                      className="rounded border-gray-300"
+                    />
+                    <span className="text-sm">{emoji}</span>
+                    <span className="flex-1 text-xs text-gray-700 dark:text-gray-300">{label}</span>
+                    <span className="text-[10px] text-gray-400">[{count}]</span>
+                  </label>
+                );
+              })}
+              </div>
+            )}
+          </div>
         )}
 
         {mode === 'gallery' && (
@@ -467,6 +568,21 @@ export function WorldView({ onGoToDay, onWorldNavHiddenChange }: WorldViewProps)
 
       {/* Bottom-right custom buttons */}
       <div className="cdb-world-bottom-right">
+        {mode === 'explore' && (
+          <button
+            type="button"
+            onClick={() => {
+              setExploreLoading(true);
+              setExploreCenters([]);
+              setExploreReloadKey((k) => k + 1);
+            }}
+            aria-label="Reload event centers"
+            className="cdb-world-map-btn"
+            title="Reload"
+          >
+            &#x27F3;
+          </button>
+        )}
         {(mode === 'revisit' || mode === 'gallery') && (
           <button
             type="button"

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import L from 'leaflet';
 
 export interface EventCenter {
@@ -117,6 +117,8 @@ interface EventCenterLayerProps {
   map: L.Map;
   show: boolean;
   onPlanEvent: (center: EventCenter) => void;
+  enabledCategories: EventCenterCategory[];
+  onCentersLoaded: (centers: EventCenter[]) => void;
 }
 
 const MIN_ZOOM = 12;
@@ -131,10 +133,66 @@ function escapeHtml(value: string): string {
     .replaceAll("'", '&#39;');
 }
 
-export function EventCenterLayer({ map, show, onPlanEvent }: EventCenterLayerProps) {
+export function EventCenterLayer({
+  map,
+  show,
+  onPlanEvent,
+  enabledCategories,
+  onCentersLoaded,
+}: EventCenterLayerProps) {
   const layerRef = useRef<L.LayerGroup | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const [loadedCenters, setLoadedCenters] = useState<EventCenter[]>([]);
+
+  const renderMarkers = useCallback((centers: EventCenter[], enabled: EventCenterCategory[]) => {
+    layerRef.current?.clearLayers();
+    const cleanupFns: Array<() => void> = [];
+
+    for (const center of centers) {
+      if (!enabled.includes(center.category)) continue;
+
+      const { color } = CATEGORY_CONFIG[center.category];
+      const icon = createEventCenterIcon(center.category);
+      const marker = L.marker([center.latitude, center.longitude], { icon });
+      layerRef.current?.addLayer(marker);
+
+      const denomination = center.tags.religion ?? center.tags.denomination ?? null;
+      const cuisine = center.tags.cuisine ?? null;
+      const detailLine = denomination
+        ? escapeHtml(denomination.charAt(0).toUpperCase() + denomination.slice(1))
+        : cuisine
+          ? escapeHtml(cuisine.charAt(0).toUpperCase() + cuisine.slice(1))
+          : escapeHtml(CATEGORY_CONFIG[center.category].label);
+
+      const popupEl = document.createElement('div');
+      popupEl.className = 'cdb-map-popup';
+      popupEl.innerHTML = `
+        <div class="cdb-map-popup-header">
+          <p class="cdb-map-popup-title">${escapeHtml(center.name)}</p>
+        </div>
+        <div class="cdb-map-popup-detail">${detailLine}</div>
+      `;
+
+      const actions = document.createElement('div');
+      actions.className = 'cdb-map-popup-actions';
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'cdb-map-popup-button';
+      btn.style.background = color;
+      btn.textContent = 'Plan Event Here';
+      const handleClick = () => onPlanEvent(center);
+      btn.addEventListener('click', handleClick);
+      cleanupFns.push(() => btn.removeEventListener('click', handleClick));
+      actions.appendChild(btn);
+      popupEl.appendChild(actions);
+      marker.bindPopup(popupEl);
+    }
+
+    return () => {
+      for (const fn of cleanupFns) fn();
+    };
+  }, [onPlanEvent]);
 
   const fetchAndRender = useCallback(async () => {
     if (!show) return;
@@ -142,6 +200,8 @@ export function EventCenterLayer({ map, show, onPlanEvent }: EventCenterLayerPro
     const zoom = map.getZoom();
     if (zoom < MIN_ZOOM) {
       layerRef.current?.clearLayers();
+      setLoadedCenters([]);
+      onCentersLoaded([]);
       return;
     }
 
@@ -161,80 +221,48 @@ export function EventCenterLayer({ map, show, onPlanEvent }: EventCenterLayerPro
         body: OVERPASS_QUERY(south, west, north, east),
         signal: abort.signal,
       });
-      if (!response.ok) return;
+      if (!response.ok) {
+        setLoadedCenters([]);
+        onCentersLoaded([]);
+        return;
+      }
 
       const data = await response.json() as {
         elements: { id: number; lat: number; lon: number; tags?: Record<string, string> }[];
       };
 
-      layerRef.current?.clearLayers();
-
-      const cleanupFns: Array<() => void> = [];
+      const centers: EventCenter[] = [];
 
       for (const el of data.elements) {
         if (!el.tags?.name) continue;
 
         const tags = el.tags ?? {};
         const category = getCategory(tags);
-        const center: EventCenter = {
+        centers.push({
           id: String(el.id),
           name: el.tags.name,
           latitude: el.lat,
           longitude: el.lon,
           category,
           tags,
-        };
-
-        const icon = createEventCenterIcon(category);
-        const marker = L.marker([el.lat, el.lon], { icon });
-        layerRef.current?.addLayer(marker);
-
-        const { label, color } = CATEGORY_CONFIG[category];
-        const denomination = tags.religion ?? tags.denomination ?? null;
-        const cuisine = tags.cuisine ?? null;
-        const detailLine = denomination
-          ? escapeHtml(denomination.charAt(0).toUpperCase() + denomination.slice(1))
-          : cuisine
-            ? escapeHtml(cuisine.charAt(0).toUpperCase() + cuisine.slice(1))
-            : escapeHtml(label);
-
-        const popupEl = document.createElement('div');
-        popupEl.className = 'cdb-map-popup';
-        popupEl.innerHTML = `
-          <div class="cdb-map-popup-header">
-            <p class="cdb-map-popup-title">${escapeHtml(center.name)}</p>
-          </div>
-          <div class="cdb-map-popup-detail">${detailLine}</div>
-        `;
-
-        const actions = document.createElement('div');
-        actions.className = 'cdb-map-popup-actions';
-        const btn = document.createElement('button');
-        btn.type = 'button';
-        btn.className = 'cdb-map-popup-button';
-        btn.style.background = color;
-        btn.textContent = 'Plan Event Here';
-        const handleClick = () => onPlanEvent(center);
-        btn.addEventListener('click', handleClick);
-        cleanupFns.push(() => btn.removeEventListener('click', handleClick));
-        actions.appendChild(btn);
-        popupEl.appendChild(actions);
-        marker.bindPopup(popupEl);
+        });
       }
 
-      const originalClear = layerRef.current?.clearLayers.bind(layerRef.current);
-      if (layerRef.current && originalClear) {
-        layerRef.current.clearLayers = () => {
-          for (const fn of cleanupFns) fn();
-          const clearedLayer = originalClear();
-          layerRef.current!.clearLayers = originalClear;
-          return clearedLayer;
-        };
-      }
+      setLoadedCenters(centers);
+      onCentersLoaded(centers);
     } catch {
-      // Aborted or failed fetches leave the current layer as-is.
+      if (!abort.signal.aborted) {
+        setLoadedCenters([]);
+        onCentersLoaded([]);
+      }
     }
-  }, [map, onPlanEvent, show]);
+  }, [map, onCentersLoaded, show]);
+
+  useEffect(() => {
+    if (!layerRef.current) return;
+    const cleanup = renderMarkers(loadedCenters, enabledCategories);
+    return cleanup;
+  }, [enabledCategories, loadedCenters, renderMarkers]);
 
   const scheduleFetch = useCallback(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -249,7 +277,7 @@ export function EventCenterLayer({ map, show, onPlanEvent }: EventCenterLayerPro
     }
 
     layerRef.current = L.layerGroup().addTo(map);
-    void fetchAndRender();
+    const initialFetchId = window.setTimeout(() => void fetchAndRender(), 0);
 
     map.on('moveend', scheduleFetch);
     map.on('zoomend', scheduleFetch);
@@ -257,6 +285,7 @@ export function EventCenterLayer({ map, show, onPlanEvent }: EventCenterLayerPro
     return () => {
       map.off('moveend', scheduleFetch);
       map.off('zoomend', scheduleFetch);
+      window.clearTimeout(initialFetchId);
       if (debounceRef.current) clearTimeout(debounceRef.current);
       abortRef.current?.abort();
       layerRef.current?.remove();
