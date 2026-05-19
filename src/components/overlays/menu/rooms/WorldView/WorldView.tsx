@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { Map as LeafletMap } from 'leaflet';
+import { useResourceStore } from '../../../../../stores/useResourceStore';
 import { useScheduleStore } from '../../../../../stores/useScheduleStore';
 import type { Event, QuickActionsEvent } from '../../../../../types';
 import { WorldMapContainer } from './WorldMapContainer';
@@ -38,8 +39,22 @@ function isWithinDateRange(event: Event, filters: WorldViewFilters): boolean {
 
 function matchesContactFilter(event: Event, filters: WorldViewFilters): boolean {
   if (filters.selectedContactIds.length === 0) return true;
-  const sharedWith = Array.isArray(event.sharedWith) ? event.sharedWith : [];
-  return filters.selectedContactIds.some((contactId) => sharedWith.includes(contactId));
+  const coAttendees = Array.isArray(event.coAttendees) ? event.coAttendees : [];
+  return filters.selectedContactIds.some((contactId) =>
+    coAttendees.some((a) => a.contactId === contactId)
+  );
+}
+
+function isMapEventWithinDateRange(event: Event | QuickActionsEvent, filters: WorldViewFilters): boolean {
+  const date = isEvent(event) ? event.startDate : event.date;
+  if (filters.startDate && date < filters.startDate) return false;
+  if (filters.endDate && date > filters.endDate) return false;
+  return true;
+}
+
+function matchesMapContactFilter(event: Event | QuickActionsEvent, filters: WorldViewFilters): boolean {
+  if (!isEvent(event)) return filters.selectedContactIds.length === 0;
+  return matchesContactFilter(event, filters);
 }
 
 function WorldMapCapture({
@@ -64,6 +79,7 @@ export function WorldView({ onGoToDay, onWorldNavHiddenChange }: WorldViewProps)
   const [mode, setMode] = useState<'revisit' | 'explore'>('revisit');
   const [filters, setFilters] = useState<WorldViewFilters>(DEFAULT_FILTERS);
   const [map, setMap] = useState<LeafletMap | null>(null);
+  const resources = useResourceStore((state) => state.resources);
   const activeEvents = useScheduleStore((state) => state.activeEvents);
   const historyEvents = useScheduleStore((state) => state.historyEvents);
 
@@ -83,6 +99,13 @@ export function WorldView({ onGoToDay, onWorldNavHiddenChange }: WorldViewProps)
   const locatedEvents = useMemo(
     () => filteredEvents.filter((event) => event.location !== null),
     [filteredEvents],
+  );
+
+  const filteredMapEvents = useMemo(
+    () => [...Object.values(activeEvents), ...Object.values(historyEvents)]
+      .filter((event) => isMapEventWithinDateRange(event, filters))
+      .filter((event) => matchesMapContactFilter(event, filters)),
+    [activeEvents, filters, historyEvents],
   );
 
   const mapLayerFilters = useMemo(
@@ -119,7 +142,13 @@ export function WorldView({ onGoToDay, onWorldNavHiddenChange }: WorldViewProps)
               show={mapLayerFilters.showEventPins}
               onGoToDay={onGoToDay}
             />
-            <AlbumPinLayer map={leafletMap} show={mapLayerFilters.showAlbumPins} onGoToDay={onGoToDay} />
+            <AlbumPinLayer
+              map={leafletMap}
+              show={mapLayerFilters.showAlbumPins}
+              onGoToDay={onGoToDay}
+              events={filteredMapEvents}
+              resources={resources}
+            />
             <LocationPointMarker
               map={leafletMap}
               events={filteredEvents}

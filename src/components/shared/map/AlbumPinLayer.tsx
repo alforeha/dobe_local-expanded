@@ -1,8 +1,7 @@
 import { useEffect } from 'react';
 import L from 'leaflet';
-import { useResourceStore } from '../../../stores/useResourceStore';
-import { useScheduleStore } from '../../../stores/useScheduleStore';
-import type { AlbumEntry, Event, EventAlbumEntry, QAAlbumEntry, QuickActionsEvent, Resource } from '../../../types';
+import type { Event, QuickActionsEvent } from '../../../types';
+import type { AlbumEntry, Resource } from '../../../types/resource';
 import { createPhotoPinIcon } from '../../../utils/mapPinUtils';
 
 interface AlbumPin {
@@ -18,6 +17,8 @@ interface AlbumPinLayerProps {
   map: L.Map;
   show: boolean;
   onGoToDay: (dateIso: string) => void;
+  events: (Event | QuickActionsEvent)[];
+  resources: Record<string, Resource>;
 }
 
 function escapeHtml(value: string): string {
@@ -33,22 +34,7 @@ function getResourceAlbum(resource: Resource): AlbumEntry[] {
   return 'album' in resource && Array.isArray(resource.album) ? resource.album : [];
 }
 
-function isQuickActionsEvent(event: Event | QuickActionsEvent): event is QuickActionsEvent {
-  return 'date' in event && !('name' in event);
-}
-
-function getEventAlbum(event: Event | QuickActionsEvent): Array<EventAlbumEntry | QAAlbumEntry> {
-  if (isQuickActionsEvent(event)) {
-    return Array.isArray(event.album) ? event.album : [];
-  }
-  return Array.isArray(event.eventAlbum) ? event.eventAlbum : [];
-}
-
-export function AlbumPinLayer({ map, show, onGoToDay }: AlbumPinLayerProps) {
-  const resources = useResourceStore((state) => state.resources);
-  const activeEvents = useScheduleStore((state) => state.activeEvents);
-  const historyEvents = useScheduleStore((state) => state.historyEvents);
-
+export function AlbumPinLayer({ map, show, onGoToDay, events, resources }: AlbumPinLayerProps) {
   useEffect(() => {
     if (!show) return;
 
@@ -69,16 +55,20 @@ export function AlbumPinLayer({ map, show, onGoToDay }: AlbumPinLayerProps) {
       }
     }
 
-    for (const event of [...Object.values(activeEvents), ...Object.values(historyEvents)]) {
-      for (const entry of getEventAlbum(event)) {
+    for (const event of events) {
+      const album = (event as Event).eventAlbum
+        ?? (event as QuickActionsEvent).album
+        ?? [];
+      for (const entry of album) {
         if (!entry.location) continue;
+        const titledEntry = entry as typeof entry & { title?: string };
 
         pins.push({
           latitude: entry.location.latitude,
           longitude: entry.location.longitude,
           photoUri: entry.photoUri,
           placeName: entry.location.placeName,
-          label: isQuickActionsEvent(event) ? 'Album entry' : event.name || 'Album entry',
+          label: titledEntry.title ?? (event as Event).name ?? 'Album entry',
           date: entry.date,
         });
       }
@@ -119,7 +109,7 @@ export function AlbumPinLayer({ map, show, onGoToDay }: AlbumPinLayerProps) {
       for (const cleanup of cleanupFns) cleanup();
       layer.remove();
     };
-  }, [activeEvents, historyEvents, map, onGoToDay, resources, show]);
+  }, [events, map, resources, show, onGoToDay]);
 
   return null;
 }
