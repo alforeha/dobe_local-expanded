@@ -14,6 +14,7 @@ interface AlbumPin {
   placeName?: string;
   label: string;
   date?: string;
+  kind: 'photo' | 'stale' | 'note';
 }
 
 interface AlbumPinLayerProps {
@@ -54,6 +55,7 @@ export function AlbumPinLayer({ map, show, onGoToDay, events, resources }: Album
           placeName: entry.location.placeName,
           label: resource.name || 'Album entry',
           date: entry.date,
+          kind: entry.photoUri ? 'photo' : 'note',
         });
       }
     }
@@ -73,6 +75,7 @@ export function AlbumPinLayer({ map, show, onGoToDay, events, resources }: Album
           placeName: entry.location.placeName,
           label: titledEntry.title ?? (event as Event).name ?? 'Album entry',
           date: entry.date,
+          kind: entry.photoUri ? 'photo' : 'note',
         });
       }
     }
@@ -85,17 +88,61 @@ export function AlbumPinLayer({ map, show, onGoToDay, events, resources }: Album
     const cleanupFns: Array<() => void> = [];
 
     for (const pin of pins) {
-      const icon = createPhotoPinIcon(pin.photoUri);
+      const icon = createPhotoPinIcon(pin.photoUri, pin.kind);
       const marker = L.marker([pin.latitude, pin.longitude], { icon }).addTo(cluster);
       const popupContent = document.createElement('div');
       popupContent.className = 'cdb-map-popup';
-      popupContent.innerHTML = `
-        <div class="cdb-map-popup-header">
-          <p class="cdb-map-popup-title">${escapeHtml(pin.label)}</p>
-        </div>
-        ${pin.date ? `<div class="cdb-map-popup-detail">${escapeHtml(pin.date)}</div>` : ''}
-        ${pin.placeName ? `<div class="cdb-map-popup-detail">${escapeHtml(pin.placeName)}</div>` : ''}
-      `;
+
+      if (pin.kind === 'photo' || pin.kind === 'stale') {
+        const imgWrapper = document.createElement('div');
+        imgWrapper.style.width = '100%';
+        imgWrapper.style.height = '120px';
+        imgWrapper.style.borderRadius = '8px';
+        imgWrapper.style.overflow = 'hidden';
+        imgWrapper.style.marginBottom = '6px';
+        imgWrapper.style.background = '#e2e8f0';
+        imgWrapper.style.display = 'flex';
+        imgWrapper.style.alignItems = 'center';
+        imgWrapper.style.justifyContent = 'center';
+        imgWrapper.style.position = 'relative';
+
+        const img = document.createElement('img');
+        img.src = pin.photoUri ?? '';
+        img.alt = '';
+        img.style.width = '100%';
+        img.style.height = '100%';
+        img.style.objectFit = 'cover';
+        img.onerror = () => {
+          img.style.display = 'none';
+          const ghost = document.createElement('span');
+          ghost.textContent = '\uD83D\uDDBC\uFE0F';
+          ghost.style.fontSize = '32px';
+          ghost.style.opacity = '0.4';
+          imgWrapper.appendChild(ghost);
+        };
+        imgWrapper.appendChild(img);
+        popupContent.appendChild(imgWrapper);
+      }
+
+      const header = document.createElement('div');
+      header.className = 'cdb-map-popup-header';
+      header.innerHTML = `<p class="cdb-map-popup-title">${escapeHtml(pin.label)}</p>`;
+      popupContent.appendChild(header);
+
+      if (pin.date) {
+        const dateDetail = document.createElement('div');
+        dateDetail.className = 'cdb-map-popup-detail';
+        dateDetail.textContent = pin.date;
+        popupContent.appendChild(dateDetail);
+      }
+
+      if (pin.placeName) {
+        const placeDetail = document.createElement('div');
+        placeDetail.className = 'cdb-map-popup-detail';
+        placeDetail.textContent = pin.placeName;
+        popupContent.appendChild(placeDetail);
+      }
+
       if (pin.date) {
         const actions = document.createElement('div');
         actions.className = 'cdb-map-popup-actions';
@@ -109,7 +156,10 @@ export function AlbumPinLayer({ map, show, onGoToDay, events, resources }: Album
         actions.appendChild(btn);
         popupContent.appendChild(actions);
       }
-      marker.bindPopup(popupContent);
+      marker.bindPopup(popupContent, {
+        maxWidth: 200,
+        offset: [0, 10],
+      });
     }
 
     return () => {

@@ -69,7 +69,7 @@ function createGalleryPinIcon(uri: string, isMatched: boolean): L.DivIcon {
     html: wrapper,
     iconSize: [54, 64],
     iconAnchor: [27, 60],
-    popupAnchor: [0, -62],
+    popupAnchor: [0, 0],
   });
 }
 
@@ -91,13 +91,41 @@ export function GalleryPinLayer({ map, photos, show, onEventize }: GalleryPinLay
 
       const popupEl = document.createElement('div');
       popupEl.className = 'cdb-map-popup';
-      popupEl.innerHTML = `
-        <div class="cdb-map-popup-header">
-          <p class="cdb-map-popup-title">${escapeHtml(photo.date)}</p>
-        </div>
-        <div class="cdb-map-popup-detail">${escapeHtml(photo.timeRounded)}</div>
-        ${photo.isAlbumMatched ? '<div class="cdb-map-popup-detail">✓ In album</div>' : ''}
-      `;
+
+      if (photo.uri) {
+        const imgWrapper = document.createElement('div');
+        imgWrapper.style.width = '100%';
+        imgWrapper.style.height = '120px';
+        imgWrapper.style.borderRadius = '8px';
+        imgWrapper.style.overflow = 'hidden';
+        imgWrapper.style.marginBottom = '6px';
+
+        const img = document.createElement('img');
+        img.src = photo.uri;
+        img.alt = '';
+        img.style.width = '100%';
+        img.style.height = '100%';
+        img.style.objectFit = 'cover';
+        imgWrapper.appendChild(img);
+        popupEl.appendChild(imgWrapper);
+      }
+
+      const header = document.createElement('div');
+      header.className = 'cdb-map-popup-header';
+      header.innerHTML = `<p class="cdb-map-popup-title">${escapeHtml(photo.date)}</p>`;
+      popupEl.appendChild(header);
+
+      const timeDetail = document.createElement('div');
+      timeDetail.className = 'cdb-map-popup-detail';
+      timeDetail.textContent = photo.timeRounded;
+      popupEl.appendChild(timeDetail);
+
+      if (photo.isAlbumMatched) {
+        const matchDetail = document.createElement('div');
+        matchDetail.className = 'cdb-map-popup-detail';
+        matchDetail.textContent = '\u2713 In album';
+        popupEl.appendChild(matchDetail);
+      }
 
       if (!photo.isAlbumMatched) {
         const actions = document.createElement('div');
@@ -114,7 +142,9 @@ export function GalleryPinLayer({ map, photos, show, onEventize }: GalleryPinLay
         popupEl.appendChild(actions);
       }
 
-      marker.bindPopup(popupEl);
+      marker.bindPopup(popupEl, {
+        maxWidth: 200,
+      });
     }
 
     return () => {
