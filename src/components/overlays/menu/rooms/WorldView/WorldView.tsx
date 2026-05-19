@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import type { Map as LeafletMap } from 'leaflet';
 import { useScheduleStore } from '../../../../../stores/useScheduleStore';
 import type { Event, QuickActionsEvent } from '../../../../../types';
 import { WorldMapContainer } from './WorldMapContainer';
@@ -40,11 +41,27 @@ function matchesContactFilter(event: Event, filters: WorldViewFilters): boolean 
   return filters.selectedContactIds.some((contactId) => sharedWith.includes(contactId));
 }
 
+function WorldMapCapture({
+  map,
+  onMapChange,
+}: {
+  map: LeafletMap;
+  onMapChange: (map: LeafletMap | null) => void;
+}) {
+  useEffect(() => {
+    onMapChange(map);
+    return () => onMapChange(null);
+  }, [map, onMapChange]);
+
+  return null;
+}
+
 export function WorldView({ onGoToDay, onWorldNavHiddenChange }: WorldViewProps) {
   const [navHidden, setNavHidden] = useState(true);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [mode, setMode] = useState<'revisit' | 'explore'>('revisit');
   const [filters, setFilters] = useState<WorldViewFilters>(DEFAULT_FILTERS);
+  const [map, setMap] = useState<LeafletMap | null>(null);
   const activeEvents = useScheduleStore((state) => state.activeEvents);
   const historyEvents = useScheduleStore((state) => state.historyEvents);
 
@@ -77,26 +94,38 @@ export function WorldView({ onGoToDay, onWorldNavHiddenChange }: WorldViewProps)
     [filters, mode],
   );
 
+  const handleGoToMyLocation = () => {
+    if (!navigator.geolocation || !map) return;
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        map.setView([position.coords.latitude, position.coords.longitude], 13);
+      },
+      () => undefined,
+      { enableHighAccuracy: true, timeout: 8000 },
+    );
+  };
+
   return (
     <div className="cdb-world-view">
       <WorldMapContainer>
-        {(map) => (
+        {(leafletMap) => (
           <>
+            <WorldMapCapture map={leafletMap} onMapChange={setMap} />
             <EventPinMarker
-              map={map}
+              map={leafletMap}
               events={locatedEvents}
               show={mapLayerFilters.showEventPins}
               onGoToDay={onGoToDay}
             />
-            <AlbumPinLayer map={map} show={mapLayerFilters.showAlbumPins} onGoToDay={onGoToDay} />
+            <AlbumPinLayer map={leafletMap} show={mapLayerFilters.showAlbumPins} onGoToDay={onGoToDay} />
             <LocationPointMarker
-              map={map}
+              map={leafletMap}
               events={filteredEvents}
               filters={mapLayerFilters}
               onGoToDay={onGoToDay}
             />
             <LocationTrailLayer
-              map={map}
+              map={leafletMap}
               events={filteredEvents}
               filters={mapLayerFilters}
               onGoToDay={onGoToDay}
@@ -126,6 +155,14 @@ export function WorldView({ onGoToDay, onWorldNavHiddenChange }: WorldViewProps)
             className="flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 bg-white/90 text-gray-500 shadow-sm backdrop-blur-sm hover:bg-white dark:border-gray-700 dark:bg-gray-800/90 dark:text-gray-300 dark:hover:bg-gray-800"
           >
             {navHidden ? '\u276F' : '\u276E'}
+          </button>
+          <button
+            type="button"
+            onClick={handleGoToMyLocation}
+            aria-label="Go to my location"
+            className="flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 bg-white/90 text-gray-500 shadow-sm backdrop-blur-sm hover:bg-white dark:border-gray-700 dark:bg-gray-800/90 dark:text-gray-300 dark:hover:bg-gray-800"
+          >
+            &#x25CE;
           </button>
           <div className="flex items-center gap-1 rounded-full border border-gray-200 bg-white/90 p-1 shadow-sm backdrop-blur-sm dark:border-gray-700 dark:bg-gray-800/90">
             <button
