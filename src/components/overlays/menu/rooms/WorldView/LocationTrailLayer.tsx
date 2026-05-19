@@ -1,5 +1,6 @@
 import { useEffect, useMemo } from 'react';
 import L from 'leaflet';
+import 'leaflet.markercluster';
 import { starterTaskTemplates } from '../../../../../coach/StarterQuestLibrary';
 import { taskTemplateLibrary } from '../../../../../coach';
 import { resolveIcon } from '../../../../../constants/iconMap';
@@ -143,7 +144,17 @@ export function LocationTrailLayer({ map, events, filters, onGoToDay }: Location
   useEffect(() => {
     if (!filters.showLocationTrails) return;
 
-    const layer = L.layerGroup().addTo(map);
+    const polylineLayer = L.layerGroup().addTo(map);
+    const flagLayer = L.markerClusterGroup({
+      maxClusterRadius: 60,
+      showCoverageOnHover: false,
+      iconCreateFunction: (c) => L.divIcon({
+        html: `<div style="background:rgba(234,88,12,0.9);width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;border:3px solid rgba(234,88,12,0.3);box-shadow:0 2px 8px rgba(234,88,12,0.4)"><span style="color:#fff;font-weight:700;font-size:13px">${c.getChildCount()}</span></div>`,
+        className: '',
+        iconSize: [36, 36],
+        iconAnchor: [18, 18],
+      }),
+    }).addTo(map);
     const trailColor = getTrailColor();
     const cleanupFns: Array<() => void> = [];
     const allPolylines: L.Polyline[] = [];
@@ -184,7 +195,7 @@ export function LocationTrailLayer({ map, events, filters, onGoToDay }: Location
           color: trailColor,
           opacity: 0.9,
           weight: 4,
-        }).addTo(layer);
+        }).addTo(polylineLayer);
         const trailIndex = allPolylines.length;
         allPolylines.push(polyline);
 
@@ -195,7 +206,7 @@ export function LocationTrailLayer({ map, events, filters, onGoToDay }: Location
         const iconValue = resolveIcon(iconKey);
         const flagIcon = createTrailFlagIcon(iconValue);
 
-        const flagMarker = L.marker([first.lat, first.lng], { icon: flagIcon }).addTo(layer);
+        const flagMarker = L.marker([first.lat, first.lng], { icon: flagIcon }).addTo(flagLayer);
         allFlagMarkers.push(flagMarker);
 
         const taskName = resolveTaskDisplayName(task, templates, starterTaskTemplates);
@@ -256,7 +267,8 @@ export function LocationTrailLayer({ map, events, filters, onGoToDay }: Location
 
     return () => {
       for (const cleanup of cleanupFns) cleanup();
-      layer.remove();
+      polylineLayer.remove();
+      flagLayer.remove();
     };
   }, [events, filters.showLocationTrails, map, onGoToDay, tasks, templates]);
 

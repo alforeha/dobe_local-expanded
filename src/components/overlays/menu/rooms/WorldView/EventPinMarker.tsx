@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import L from 'leaflet';
+import 'leaflet.markercluster';
 import { resolveIcon } from '../../../../../constants/iconMap';
 import type { Event } from '../../../../../types';
 
@@ -93,7 +94,16 @@ export function EventPinMarker({ map, events, show, onGoToDay }: EventPinMarkerP
   useEffect(() => {
     if (!show) return;
 
-    const layer = L.layerGroup().addTo(map);
+    const layer = L.markerClusterGroup({
+      maxClusterRadius: 60,
+      showCoverageOnHover: false,
+      iconCreateFunction: (c) => L.divIcon({
+        html: `<div style="background:rgba(124,58,237,0.9);width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;border:3px solid rgba(124,58,237,0.3);box-shadow:0 2px 8px rgba(124,58,237,0.4)"><span style="color:#fff;font-weight:700;font-size:13px">${c.getChildCount()}</span></div>`,
+        className: '',
+        iconSize: [36, 36],
+        iconAnchor: [18, 18],
+      }),
+    }).addTo(map);
     const cleanupFns: Array<() => void> = [];
 
     for (const event of events) {
