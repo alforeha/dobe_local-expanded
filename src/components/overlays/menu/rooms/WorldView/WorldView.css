@@ -21,6 +21,24 @@
   filter: var(--map-tile-filter, none);
 }
 
+.marker-cluster-small div,
+.marker-cluster-medium div,
+.marker-cluster-large div {
+  background-color: rgba(219, 39, 119, 0.9) !important;
+}
+
+.marker-cluster-small,
+.marker-cluster-medium,
+.marker-cluster-large {
+  background-color: rgba(219, 39, 119, 0.3) !important;
+}
+
+.marker-cluster span {
+  color: #ffffff !important;
+  font-weight: 700 !important;
+  font-size: 13px !important;
+}
+
 .cdb-world-controls {
   position: absolute;
   top: 12px;

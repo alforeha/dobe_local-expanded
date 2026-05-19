@@ -1,5 +1,8 @@
 import { useEffect } from 'react';
 import L from 'leaflet';
+import 'leaflet.markercluster/dist/MarkerCluster.css';
+import 'leaflet.markercluster/dist/MarkerCluster.Default.css';
+import 'leaflet.markercluster';
 import type { Event, QuickActionsEvent } from '../../../types';
 import type { AlbumEntry, Resource } from '../../../types/resource';
 import { createPhotoPinIcon } from '../../../utils/mapPinUtils';
@@ -74,12 +77,16 @@ export function AlbumPinLayer({ map, show, onGoToDay, events, resources }: Album
       }
     }
 
-    const layer = L.layerGroup().addTo(map);
+    const cluster = L.markerClusterGroup({
+      maxClusterRadius: 60,
+      showCoverageOnHover: false,
+    });
+    cluster.addTo(map);
     const cleanupFns: Array<() => void> = [];
 
     for (const pin of pins) {
       const icon = createPhotoPinIcon(pin.photoUri);
-      const marker = L.marker([pin.latitude, pin.longitude], { icon }).addTo(layer);
+      const marker = L.marker([pin.latitude, pin.longitude], { icon }).addTo(cluster);
       const popupContent = document.createElement('div');
       popupContent.className = 'cdb-map-popup';
       popupContent.innerHTML = `
@@ -107,7 +114,7 @@ export function AlbumPinLayer({ map, show, onGoToDay, events, resources }: Album
 
     return () => {
       for (const cleanup of cleanupFns) cleanup();
-      layer.remove();
+      cluster.remove();
     };
   }, [events, map, resources, show, onGoToDay]);
 
