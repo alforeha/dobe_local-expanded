@@ -1,7 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { ChangeEvent, InputHTMLAttributes } from 'react';
 import type { Map as LeafletMap } from 'leaflet';
 import { useResourceStore } from '../../../../../stores/useResourceStore';
 import { useScheduleStore } from '../../../../../stores/useScheduleStore';
+import { readPhotoFile } from '../../../../../utils/photoCapture';
 import type { Event, QuickActionsEvent } from '../../../../../types';
 import { WorldMapContainer } from './WorldMapContainer';
 import { EventPinMarker } from './EventPinMarker';
@@ -9,6 +11,8 @@ import { LocationPointMarker } from './LocationPointMarker';
 import { LocationTrailLayer } from './LocationTrailLayer';
 import { FilterPanel, type WorldViewFilters } from './FilterPanel';
 import { LegendPanel } from './LegendPanel';
+import { GalleryPinLayer, type GalleryPhoto } from './GalleryPinLayer';
+import { EventizePopup } from './EventizePopup';
 import { AlbumPinLayer } from '../../../../shared/map/AlbumPinLayer';
 import './WorldView.css';
 
@@ -26,6 +30,9 @@ const DEFAULT_FILTERS: WorldViewFilters = {
   endDate: '',
   selectedContactIds: [],
 };
+
+const GALLERY_CHUNK_SIZE = 500;
+const GALLERY_BATCH_SIZE = 20;
 
 function isEvent(event: Event | QuickActionsEvent): event is Event {
   return event.eventType !== 'quickActions';
@@ -57,6 +64,13 @@ function matchesMapContactFilter(event: Event | QuickActionsEvent, filters: Worl
   return matchesContactFilter(event, filters);
 }
 
+const roundToNearestHour = (isoString: string): string => {
+  const d = new Date(isoString);
+  if (d.getMinutes() >= 30) d.setHours(d.getHours() + 1);
+  d.setMinutes(0, 0, 0);
+  return d.toTimeString().slice(0, 5);
+};
+
 function WorldMapCapture({
   map,
   onMapChange,
@@ -76,9 +90,17 @@ export function WorldView({ onGoToDay, onWorldNavHiddenChange }: WorldViewProps)
   const [navHidden, setNavHidden] = useState(true);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [legendOpen, setLegendOpen] = useState(false);
-  const [mode, setMode] = useState<'revisit' | 'explore'>('revisit');
+  const [mode, setMode] = useState<'revisit' | 'explore' | 'gallery'>('revisit');
   const [filters, setFilters] = useState<WorldViewFilters>(DEFAULT_FILTERS);
   const [map, setMap] = useState<LeafletMap | null>(null);
+  const [galleryPhotos, setGalleryPhotos] = useState<GalleryPhoto[]>([]);
+  const [eventizePhoto, setEventizePhoto] = useState<GalleryPhoto | null>(null);
+  const [galleryLoading, setGalleryLoading] = useState(false);
+  const [galleryFileQueue, setGalleryFileQueue] = useState<File[]>([]);
+  const [galleryChunkOffset, setGalleryChunkOffset] = useState(0);
+  const [galleryTotal, setGalleryTotal] = useState(0);
+  const [galleryProcessed, setGalleryProcessed] = useState(0);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const resources = useResourceStore((state) => state.resources);
   const activeEvents = useScheduleStore((state) => state.activeEvents);
   const historyEvents = useScheduleStore((state) => state.historyEvents);
@@ -118,6 +140,106 @@ export function WorldView({ onGoToDay, onWorldNavHiddenChange }: WorldViewProps)
     }),
     [filters, mode],
   );
+
+  const allAlbumEntries = useMemo(() => {
+    const entries: { latitude: number; longitude: number; date: string }[] = [];
+    for (const event of [...Object.values(activeEvents), ...Object.values(historyEvents)]) {
+      const album = (event as Event).eventAlbum ?? [];
+      for (const entry of album) {
+        if (entry.location && entry.date) {
+          entries.push({ latitude: entry.location.latitude, longitude: entry.location.longitude, date: entry.date });
+        }
+      }
+    }
+    for (const resource of Object.values(resources)) {
+      const album = (resource as { album?: { location?: { latitude: number; longitude: number }; date?: string }[] }).album ?? [];
+      for (const entry of album) {
+        if (entry.location && entry.date) {
+          entries.push({ latitude: entry.location.latitude, longitude: entry.location.longitude, date: entry.date });
+        }
+      }
+    }
+    return entries;
+  }, [activeEvents, historyEvents, resources]);
+
+  const isAlbumMatched = useCallback((lat: number, lng: number, date: string): boolean => {
+    const R = 6371000;
+    return allAlbumEntries.some((entry) => {
+      if (entry.date !== date) return false;
+      const dLat = ((entry.latitude - lat) * Math.PI) / 180;
+      const dLng = ((entry.longitude - lng) * Math.PI) / 180;
+      const a =
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos((lat * Math.PI) / 180) *
+          Math.cos((entry.latitude * Math.PI) / 180) *
+          Math.sin(dLng / 2) *
+          Math.sin(dLng / 2);
+      return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)) < 50;
+    });
+  }, [allAlbumEntries]);
+
+  const handleGalleryFiles = useCallback((event: ChangeEvent<HTMLInputElement>) => {
+    const allFiles = Array.from(event.target.files ?? []).filter((file) =>
+      file.type.startsWith('image/'),
+    );
+    if (allFiles.length === 0) return;
+    setGalleryPhotos([]);
+    setGalleryFileQueue(allFiles);
+    setGalleryChunkOffset(0);
+    setGalleryTotal(allFiles.length);
+    setGalleryProcessed(0);
+    event.target.value = '';
+  }, []);
+
+  const processChunk = useCallback(async (files: File[], offset: number) => {
+    const chunk = files.slice(offset, offset + GALLERY_CHUNK_SIZE);
+    if (chunk.length === 0) return;
+    setGalleryLoading(true);
+    const results: GalleryPhoto[] = [];
+    for (let i = 0; i < chunk.length; i += GALLERY_BATCH_SIZE) {
+      const batch = chunk.slice(i, i + GALLERY_BATCH_SIZE);
+      await Promise.all(
+        batch.map(async (file) => {
+          try {
+            const result = await readPhotoFile(file);
+            if (!result.location) return;
+            const capturedAt = result.capturedAt ?? new Date(file.lastModified).toISOString();
+            const date = capturedAt.slice(0, 10);
+            const timeRounded = roundToNearestHour(capturedAt);
+            results.push({
+              uri: result.uri,
+              latitude: result.location.latitude,
+              longitude: result.location.longitude,
+              capturedAt,
+              date,
+              timeRounded,
+              isAlbumMatched: isAlbumMatched(
+                result.location.latitude,
+                result.location.longitude,
+                date,
+              ),
+            });
+          } catch {
+            // Skip files that fail metadata parsing.
+          }
+        }),
+      );
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    setGalleryPhotos((prev) => [...prev, ...results]);
+    setGalleryProcessed((prev) => prev + chunk.length);
+    setGalleryChunkOffset(offset + GALLERY_CHUNK_SIZE);
+    setGalleryLoading(false);
+  }, [isAlbumMatched]);
+
+  useEffect(() => {
+    if (galleryFileQueue.length > 0 && galleryChunkOffset === 0 && !galleryLoading) {
+      const timeoutId = window.setTimeout(() => {
+        void processChunk(galleryFileQueue, 0);
+      }, 0);
+      return () => window.clearTimeout(timeoutId);
+    }
+  }, [galleryFileQueue, galleryChunkOffset, galleryLoading, processChunk]);
 
   const handleGoToMyLocation = () => {
     if (!navigator.geolocation || !map) return;
@@ -161,11 +283,25 @@ export function WorldView({ onGoToDay, onWorldNavHiddenChange }: WorldViewProps)
               filters={mapLayerFilters}
               onGoToDay={onGoToDay}
             />
+            <GalleryPinLayer
+              map={leafletMap}
+              photos={galleryPhotos}
+              show={mode === 'gallery'}
+              onEventize={setEventizePhoto}
+            />
             {mode === 'explore' && (
               <div className="pointer-events-none absolute inset-0 z-[400] flex items-center justify-center">
                 <div className="rounded-2xl border border-gray-200 bg-white/90 px-6 py-4 text-center shadow-lg backdrop-blur-sm dark:border-gray-700 dark:bg-gray-800/90">
                   <p className="text-sm font-semibold text-gray-700 dark:text-gray-200">Explore Mode</p>
                   <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">Event centers coming soon</p>
+                </div>
+              </div>
+            )}
+            {mode === 'gallery' && galleryPhotos.length === 0 && !galleryLoading && (
+              <div className="pointer-events-none absolute inset-0 z-[400] flex items-center justify-center">
+                <div className="rounded-2xl border border-gray-200 bg-white/90 px-6 py-4 text-center shadow-lg backdrop-blur-sm dark:border-gray-700 dark:bg-gray-800/90">
+                  <p className="text-sm font-semibold text-gray-700 dark:text-gray-200">Gallery Mode</p>
+                  <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">Select a folder to see photos on the map</p>
                 </div>
               </div>
             )}
@@ -218,7 +354,66 @@ export function WorldView({ onGoToDay, onWorldNavHiddenChange }: WorldViewProps)
             >
               Explore
             </button>
+            <button
+              type="button"
+              onClick={() => { setMode('gallery'); setFiltersOpen(false); }}
+              className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
+                mode === 'gallery'
+                  ? 'bg-amber-500 text-white'
+                  : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
+              }`}
+            >
+              Gallery
+            </button>
           </div>
+
+          {mode === 'gallery' && (
+            <div className="flex items-center gap-2">
+              <div className="flex flex-col gap-1">
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={galleryLoading}
+                  className="flex h-9 items-center gap-1.5 rounded-full border border-amber-300 bg-white/90 px-3 text-xs font-medium text-amber-600 shadow-sm backdrop-blur-sm hover:bg-white dark:border-amber-600 dark:bg-gray-800/90 dark:text-amber-400"
+                >
+                  {galleryLoading ? 'Loading...' : '🖼️ Select Folder'}
+                </button>
+                <p className="px-1 text-[10px] text-gray-400 dark:text-gray-500">
+                  Photos are read locally — nothing is uploaded.
+                </p>
+              </div>
+              {galleryTotal > 0 && (
+                <div className="flex flex-col gap-1">
+                  <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
+                    {galleryPhotos.length} with GPS / {galleryProcessed} scanned / {galleryTotal} total
+                  </span>
+                  {!galleryLoading && galleryChunkOffset < galleryTotal && (
+                    <button
+                      type="button"
+                      onClick={() => void processChunk(galleryFileQueue, galleryChunkOffset)}
+                      className="rounded-full border border-amber-300 px-2 py-0.5 text-[10px] font-medium text-amber-600 hover:bg-amber-50 dark:border-amber-600 dark:text-amber-400"
+                    >
+                      Load next {Math.min(GALLERY_CHUNK_SIZE, galleryTotal - galleryChunkOffset)} photos
+                    </button>
+                  )}
+                  {galleryLoading && (
+                    <span className="px-1 text-[10px] text-amber-500 dark:text-amber-400">
+                      Scanning...
+                    </span>
+                  )}
+                </div>
+              )}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                multiple
+                {...({ webkitdirectory: '' } as InputHTMLAttributes<HTMLInputElement>)}
+                onChange={handleGalleryFiles}
+                className="hidden"
+              />
+            </div>
+          )}
 
           {mode === 'revisit' && (
             <button
@@ -238,6 +433,12 @@ export function WorldView({ onGoToDay, onWorldNavHiddenChange }: WorldViewProps)
         </aside>
         {legendOpen && <LegendPanel onClose={() => setLegendOpen(false)} />}
       </div>
+      {eventizePhoto && (
+        <EventizePopup
+          photo={eventizePhoto}
+          onClose={() => setEventizePhoto(null)}
+        />
+      )}
     </div>
   );
 }
