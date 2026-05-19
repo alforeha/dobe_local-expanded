@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type * as React from 'react';
 import type { ChangeEvent } from 'react';
+import L from 'leaflet';
 import type { Map as LeafletMap } from 'leaflet';
 import { useResourceStore } from '../../../../../stores/useResourceStore';
 import { useScheduleStore } from '../../../../../stores/useScheduleStore';
@@ -245,6 +246,40 @@ export function WorldView({ onGoToDay, onWorldNavHiddenChange }: WorldViewProps)
     }
   }, [galleryFileQueue, galleryChunkOffset, galleryLoading, processChunk]);
 
+  const handleZoomToContents = useCallback(() => {
+    if (!map) return;
+
+    const points: [number, number][] = [];
+
+    if (mode === 'revisit') {
+      for (const event of locatedEvents) {
+        if (event.location) {
+          points.push([event.location.latitude, event.location.longitude]);
+        }
+      }
+
+      for (const entry of allAlbumEntries) {
+        points.push([entry.latitude, entry.longitude]);
+      }
+    }
+
+    if (mode === 'gallery') {
+      for (const photo of galleryPhotos) {
+        points.push([photo.latitude, photo.longitude]);
+      }
+    }
+
+    if (points.length === 0) return;
+
+    if (points.length === 1) {
+      map.setView(points[0], 14);
+      return;
+    }
+
+    const bounds = L.latLngBounds(points.map(([lat, lng]) => L.latLng(lat, lng)));
+    map.fitBounds(bounds, { padding: [40, 40] });
+  }, [allAlbumEntries, galleryPhotos, locatedEvents, map, mode]);
+
   const handleGoToMyLocation = () => {
     if (!navigator.geolocation || !map) return;
     navigator.geolocation.getCurrentPosition(
@@ -432,6 +467,17 @@ export function WorldView({ onGoToDay, onWorldNavHiddenChange }: WorldViewProps)
 
       {/* Bottom-right custom buttons */}
       <div className="cdb-world-bottom-right">
+        {(mode === 'revisit' || mode === 'gallery') && (
+          <button
+            type="button"
+            onClick={handleZoomToContents}
+            aria-label="Zoom to contents"
+            className="cdb-world-map-btn"
+            title="Zoom to contents"
+          >
+            &#x26F6;
+          </button>
+        )}
         <button
           type="button"
           onClick={handleGoToMyLocation}
