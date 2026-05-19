@@ -14,6 +14,7 @@ import { LocationTrailLayer } from './LocationTrailLayer';
 import { FilterPanel, type WorldViewFilters } from './FilterPanel';
 import { LegendPanel } from './LegendPanel';
 import { GalleryPinLayer, type GalleryPhoto } from './GalleryPinLayer';
+import { GalleryDateSlider } from './GalleryDateSlider';
 import { EventizePopup } from './EventizePopup';
 import { EventCenterLayer, type EventCenter, type EventCenterCategory } from './EventCenterLayer';
 import { EventCenterPopup } from './EventCenterPopup';
@@ -130,6 +131,8 @@ export function WorldView({ onGoToDay, onWorldNavHiddenChange }: WorldViewProps)
   const [galleryChunkOffset, setGalleryChunkOffset] = useState(0);
   const [galleryTotal, setGalleryTotal] = useState(0);
   const [galleryProcessed, setGalleryProcessed] = useState(0);
+  const [galleryStartDate, setGalleryStartDate] = useState<string>('');
+  const [galleryEndDate, setGalleryEndDate] = useState<string>('');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const resources = useResourceStore((state) => state.resources);
   const activeEvents = useScheduleStore((state) => state.activeEvents);
@@ -147,6 +150,23 @@ export function WorldView({ onGoToDay, onWorldNavHiddenChange }: WorldViewProps)
       .filter((event) => matchesContactFilter(event, filters)),
     [activeEvents, filters, historyEvents],
   );
+
+  const galleryDateRange = useMemo(() => {
+    if (galleryPhotos.length === 0) return null;
+    const dates = galleryPhotos.map((p) => p.date).filter(Boolean).sort();
+    if (dates.length === 0) return null;
+    return { min: dates[0], max: dates[dates.length - 1] };
+  }, [galleryPhotos]);
+
+  const effectiveGalleryStartDate = galleryStartDate || galleryDateRange?.min || '';
+  const effectiveGalleryEndDate = galleryEndDate || galleryDateRange?.max || '';
+
+  const filteredGalleryPhotos = useMemo(() => {
+    if (!effectiveGalleryStartDate || !effectiveGalleryEndDate) return galleryPhotos;
+    return galleryPhotos.filter(
+      (photo) => photo.date >= effectiveGalleryStartDate && photo.date <= effectiveGalleryEndDate,
+    );
+  }, [effectiveGalleryEndDate, effectiveGalleryStartDate, galleryPhotos]);
 
   const locatedEvents = useMemo(
     () => filteredEvents.filter((event) => event.location !== null),
@@ -232,6 +252,8 @@ export function WorldView({ onGoToDay, onWorldNavHiddenChange }: WorldViewProps)
     );
     if (allFiles.length === 0) return;
     setGalleryPhotos([]);
+    setGalleryStartDate('');
+    setGalleryEndDate('');
     setGalleryFileQueue(allFiles);
     setGalleryChunkOffset(0);
     setGalleryTotal(allFiles.length);
@@ -307,7 +329,7 @@ export function WorldView({ onGoToDay, onWorldNavHiddenChange }: WorldViewProps)
     }
 
     if (mode === 'gallery') {
-      for (const photo of galleryPhotos) {
+      for (const photo of filteredGalleryPhotos) {
         points.push([photo.latitude, photo.longitude]);
       }
     }
@@ -321,7 +343,7 @@ export function WorldView({ onGoToDay, onWorldNavHiddenChange }: WorldViewProps)
 
     const bounds = L.latLngBounds(points.map(([lat, lng]) => L.latLng(lat, lng)));
     map.fitBounds(bounds, { padding: [40, 40] });
-  }, [allAlbumEntries, galleryPhotos, locatedEvents, map, mode]);
+  }, [allAlbumEntries, filteredGalleryPhotos, locatedEvents, map, mode]);
 
   const handleGoToMyLocation = () => {
     if (!navigator.geolocation || !map) return;
@@ -367,7 +389,7 @@ export function WorldView({ onGoToDay, onWorldNavHiddenChange }: WorldViewProps)
             />
             <GalleryPinLayer
               map={leafletMap}
-              photos={galleryPhotos}
+              photos={filteredGalleryPhotos}
               show={mode === 'gallery'}
               onEventize={setEventizePhoto}
             />
@@ -390,6 +412,19 @@ export function WorldView({ onGoToDay, onWorldNavHiddenChange }: WorldViewProps)
           </>
         )}
       </WorldMapContainer>
+      {mode === 'gallery' && galleryDateRange && galleryPhotos.length > 0 && (
+        <GalleryDateSlider
+          minDate={galleryDateRange.min}
+          maxDate={galleryDateRange.max}
+          startDate={effectiveGalleryStartDate}
+          endDate={effectiveGalleryEndDate}
+          count={filteredGalleryPhotos.length}
+          onRangeChange={(start, end) => {
+            setGalleryStartDate(start);
+            setGalleryEndDate(end);
+          }}
+        />
+      )}
       {/* Nav toggle - top right */}
       <div className="cdb-world-nav-toggle">
         <button
