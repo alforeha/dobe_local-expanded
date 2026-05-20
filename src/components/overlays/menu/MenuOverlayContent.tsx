@@ -16,6 +16,7 @@ interface MenuOverlayContentProps {
   onScheduleExpandedChange?: (isExpanded: boolean) => void;
   onResourceOverlayActiveChange?: (active: boolean) => void;
   onWorldNavHiddenChange: (hidden: boolean) => void;
+  onGoalNavHiddenChange: (hidden: boolean) => void;
 }
 
 export function MenuOverlayContent({
@@ -26,6 +27,7 @@ export function MenuOverlayContent({
   onScheduleExpandedChange,
   onResourceOverlayActiveChange,
   onWorldNavHiddenChange,
+  onGoalNavHiddenChange,
 }: MenuOverlayContentProps) {
   const handleGoToResource = (_resourceId: string, _resourceType: ResourceType) => {
     onNavigate('resource');
@@ -39,7 +41,7 @@ export function MenuOverlayContent({
           onWorldNavHiddenChange={onWorldNavHiddenChange}
         />
       )}
-      {activeRoom === 'goal' && <GoalRoom />}
+      {activeRoom === 'goal' && <GoalRoom onNavHiddenChange={onGoalNavHiddenChange} />}
       {activeRoom === 'task' && (
         <TaskRoom onGoToResource={handleGoToResource} onExpandedChange={onTaskExpandedChange} />
       )}

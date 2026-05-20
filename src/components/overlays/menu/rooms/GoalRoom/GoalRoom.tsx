@@ -3,7 +3,7 @@ import { useProgressionStore } from '../../../../../stores/useProgressionStore';
 import { useScheduleStore } from '../../../../../stores/useScheduleStore';
 import { useUserStore } from '../../../../../stores/useUserStore';
 import { autoCompleteSystemTask } from '../../../../../engine/resourceEngine';
-import { GoalRoomHeader } from './GoalRoomHeader';
+import { GoalCanvas } from './GoalCanvas';
 import { ChooseYourPath } from './ChooseYourPath';
 import { GoalActPage } from './GoalActPage';
 import { GoalChainPage } from './GoalChainPage';
@@ -24,6 +24,10 @@ import type { Aspiration } from '../../../../../types';
 import { IconDisplay } from '../../../../shared/IconDisplay';
 
 type HabitatFilter = 'habitats' | 'adventures';
+
+interface GoalRoomProps {
+  onNavHiddenChange: (hidden: boolean) => void;
+}
 
 function GoalListActRow({
   act,
@@ -211,7 +215,7 @@ function GoalListActRow({
   );
 }
 
-export function GoalRoom() {
+export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
   const [habitatFilter, setHabitatFilter] = useState<Set<HabitatFilter>>(
     new Set(['habitats', 'adventures']),
   );
@@ -226,6 +230,12 @@ export function GoalRoom() {
 
   useEffect(() => {
     autoCompleteSystemTask('task-sys-open-adventures');
+  }, []);
+
+  useEffect(() => {
+    onNavHiddenChange(true);
+    return () => onNavHiddenChange(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const habitatActs = useMemo(
@@ -333,65 +343,60 @@ export function GoalRoom() {
   const showChooseYourPath = showList && habitatFilter.has('adventures') && !!aspirations[STARTER_ASPIRATION_IDS.daily];
 
   const currentAct = resolvePageAct(currentPage);
+  const shouldRenderPageStack = false;
+  void beginNewAct;
+  void toggleFilter;
 
-  return (
-    <div className="flex h-full flex-col">
+  const pageStackContent = (
+    <>
       {showList ? (
-        <>
-          <GoalRoomHeader
-            habitatFilter={habitatFilter}
-            onToggleFilter={toggleFilter}
-            onAdd={beginNewAct}
-          />
-
-          <div className="flex-1 overflow-y-auto px-4 py-4">
-            <div className="mx-auto flex max-w-5xl flex-col gap-4">
-              {habitatFilter.has('habitats') ? (
-                <GoalSection title="Goal Hubs">
-                  {habitatActs.length === 0 ? (
-                    <p className="text-sm text-gray-500 dark:text-gray-400">No habitat aspirations yet.</p>
-                  ) : (
-                    <div className="space-y-3">
-                      {habitatActs.map((act) => (
-                        <GoalListActRow
-                          key={act.id}
-                          act={act}
-                          canEdit
-                          isLocked={false}
-                          onOpen={beginEditAct}
-                          onOpenChain={beginOpenChain}
-                          onOpenQuest={beginOpenQuest}
-                        />
-                      ))}
-                    </div>
-                  )}
-                </GoalSection>
-              ) : null}
-
-              {habitatFilter.has('adventures') ? (
-                <GoalSection title="Adventures">
+        <div className="flex-1 overflow-y-auto px-4 py-4">
+          <div className="mx-auto flex max-w-5xl flex-col gap-4">
+            {habitatFilter.has('habitats') ? (
+              <GoalSection title="Goal Hubs">
+                {habitatActs.length === 0 ? (
+                  <p className="text-sm text-gray-500 dark:text-gray-400">No habitat aspirations yet.</p>
+                ) : (
                   <div className="space-y-3">
-                    {adventureActs.map((act) => {
-                      return (
-                        <GoalListActRow
-                          key={act.id}
-                          act={act}
-                          canEdit={false}
-                          isLocked={act.completionState !== 'active'}
-                          onOpen={beginEditAct}
-                          onOpenChain={beginOpenChain}
-                          onOpenQuest={beginOpenQuest}
-                        />
-                      );
-                    })}
+                    {habitatActs.map((act) => (
+                      <GoalListActRow
+                        key={act.id}
+                        act={act}
+                        canEdit
+                        isLocked={false}
+                        onOpen={beginEditAct}
+                        onOpenChain={beginOpenChain}
+                        onOpenQuest={beginOpenQuest}
+                      />
+                    ))}
                   </div>
-                </GoalSection>
-              ) : null}
+                )}
+              </GoalSection>
+            ) : null}
 
-              {showChooseYourPath ? <ChooseYourPath /> : null}
-            </div>
+            {habitatFilter.has('adventures') ? (
+              <GoalSection title="Adventures">
+                <div className="space-y-3">
+                  {adventureActs.map((act) => {
+                    return (
+                      <GoalListActRow
+                        key={act.id}
+                        act={act}
+                        canEdit={false}
+                        isLocked={act.completionState !== 'active'}
+                        onOpen={beginEditAct}
+                        onOpenChain={beginOpenChain}
+                        onOpenQuest={beginOpenQuest}
+                      />
+                    );
+                  })}
+                </div>
+              </GoalSection>
+            ) : null}
+
+            {showChooseYourPath ? <ChooseYourPath /> : null}
           </div>
-        </>
+        </div>
       ) : null}
 
       {currentPage.type === 'aspiration' && currentAct ? (
@@ -456,6 +461,14 @@ export function GoalRoom() {
           }}
         />
       ) : null}
+    </>
+  );
+
+  return (
+    <div className="relative w-full h-full bg-gray-950 overflow-hidden">
+      <GoalCanvas />
+      {/* page stack — reconnects when drawer is wired */}
+      {shouldRenderPageStack ? pageStackContent : null}
     </div>
   );
 }
