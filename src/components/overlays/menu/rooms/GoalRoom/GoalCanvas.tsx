@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Aspiration } from '../../../../../types';
 import { IconDisplay } from '../../../../shared/IconDisplay';
 
@@ -7,6 +7,9 @@ const ORB_PERIOD_MS = 3000;
 const PLANET_RADIUS = 22;
 const PLANET_ORBIT_RADIUS = 130;
 const PLANET_ORBIT_PERIOD_MS = 20000;
+const MOON_RADIUS = 14;
+const MOON_ORBIT_RADIUS = 80;
+const MOON_ORBIT_PERIOD_MS = 15000;
 
 interface GoalCanvasProps {
   userAspirations: Aspiration[];
@@ -91,8 +94,18 @@ export function GoalCanvas({ userAspirations, adventureAspirations }: GoalCanvas
   const startedAtRef = useRef<number | null>(null);
   const planetPositionsRef = useRef<PlanetPosition[]>([]);
   const adventurePlanetPositionsRef = useRef<PlanetPosition[]>([]);
+  const moonPositionsRef = useRef<PlanetPosition[]>([]);
   const [planetPositions, setPlanetPositions] = useState<PlanetPosition[]>([]);
   const [adventurePlanetPositions, setAdventurePlanetPositions] = useState<Array<{ id: string; x: number; y: number; radius: number }>>([]);
+  const [selectedAspirationId, setSelectedAspirationId] = useState<string | null>(null);
+  const [moonPositions, setMoonPositions] = useState<Array<{ id: string; x: number; y: number; radius: number }>>([]);
+
+  const selectedAspiration = useMemo(() => {
+    if (!selectedAspirationId) return null;
+    return [...userAspirations, ...adventureAspirations].find((aspiration) => aspiration.id === selectedAspirationId) ?? null;
+  }, [selectedAspirationId, userAspirations, adventureAspirations]);
+
+  const selectedWoops = useMemo(() => selectedAspiration?.woops ?? [], [selectedAspiration]);
 
   useEffect(() => {
     const canvas = canvasRef.current!;
@@ -210,6 +223,50 @@ export function GoalCanvas({ userAspirations, adventureAspirations }: GoalCanvas
         setAdventurePlanetPositions([]);
       }
 
+      const lockedPlanet = selectedAspirationId
+        ? [...planetPositionsRef.current, ...adventurePlanetPositionsRef.current].find((position) => position.id === selectedAspirationId)
+        : null;
+
+      if (lockedPlanet) {
+        ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.arc(lockedPlanet.x, lockedPlanet.y, lockedPlanet.radius + 6, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+
+      if (lockedPlanet && selectedWoops.length > 0) {
+        ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.arc(lockedPlanet.x, lockedPlanet.y, MOON_ORBIT_RADIUS, 0, Math.PI * 2);
+        ctx.stroke();
+
+        const nextMoonPositions = selectedWoops.map((_, index) => {
+          const baseAngle = ((2 * Math.PI) / selectedWoops.length) * index;
+          const angle = baseAngle + (elapsed / MOON_ORBIT_PERIOD_MS) * Math.PI * 2;
+          const x = lockedPlanet.x + Math.cos(angle) * MOON_ORBIT_RADIUS;
+          const y = lockedPlanet.y + Math.sin(angle) * MOON_ORBIT_RADIUS;
+
+          drawPlanet(ctx, x, y, MOON_RADIUS, 'rgba(167, 139, 250, 0.70)');
+
+          return {
+            id: `woop-${index}`,
+            x,
+            y,
+            radius: MOON_RADIUS,
+          };
+        });
+
+        if (planetPositionsChanged(moonPositionsRef.current, nextMoonPositions)) {
+          moonPositionsRef.current = nextMoonPositions;
+          setMoonPositions(nextMoonPositions);
+        }
+      } else if (moonPositionsRef.current.length > 0) {
+        moonPositionsRef.current = [];
+        setMoonPositions([]);
+      }
+
       frameRef.current = requestAnimationFrame(drawFrame);
     }
 
@@ -224,10 +281,30 @@ export function GoalCanvas({ userAspirations, adventureAspirations }: GoalCanvas
         cancelAnimationFrame(frameRef.current);
       }
     };
-  }, [userAspirations, adventureAspirations]);
+  }, [userAspirations, adventureAspirations, selectedAspirationId, selectedWoops]);
 
   return (
-    <div className="absolute inset-0">
+    <div
+      className="absolute inset-0"
+      onClick={(event) => {
+        const rect = event.currentTarget.getBoundingClientRect();
+        const clickX = event.clientX - rect.left;
+        const clickY = event.clientY - rect.top;
+
+        const allPlanets = [...planetPositionsRef.current, ...adventurePlanetPositionsRef.current];
+        const hit = allPlanets.find((planet) => {
+          const dx = clickX - planet.x;
+          const dy = clickY - planet.y;
+          return Math.sqrt(dx * dx + dy * dy) <= planet.radius + 8;
+        });
+
+        if (hit) {
+          setSelectedAspirationId((prev) => prev === hit.id ? null : hit.id);
+        } else {
+          setSelectedAspirationId(null);
+        }
+      }}
+    >
       <canvas
         ref={canvasRef}
         className="absolute inset-0 w-full h-full"
@@ -301,6 +378,39 @@ export function GoalCanvas({ userAspirations, adventureAspirations }: GoalCanvas
           })}
         </div>
       ) : null}
+      <div className="absolute inset-0 pointer-events-none">
+        {moonPositions.map((moon, index) => {
+          const woop = selectedWoops[index];
+          if (!woop) return null;
+
+          return (
+            <div
+              key={moon.id}
+              className="absolute flex flex-col items-center gap-1"
+              style={{
+                left: moon.x,
+                top: moon.y,
+                transform: 'translate(-50%, -50%)',
+                pointerEvents: 'none',
+              }}
+            >
+              <IconDisplay iconKey={woop.icon} size={12} className="opacity-70" />
+              <span
+                className="text-white/50 text-center leading-tight"
+                style={{
+                  fontSize: 10,
+                  maxWidth: 64,
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                }}
+              >
+                {woop.name || woop.wish || 'WOOP'}
+              </span>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
