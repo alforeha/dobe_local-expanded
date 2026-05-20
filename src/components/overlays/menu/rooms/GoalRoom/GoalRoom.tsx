@@ -243,6 +243,11 @@ export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
     [aspirations],
   );
 
+  const userAspirations = useMemo(
+    () => Object.values(aspirations).filter((act) => act.owner !== 'coach'),
+    [aspirations],
+  );
+
   const adventureActs = useMemo(() => {
     return Object.values(aspirations).filter((act) => act.owner === 'coach');
   }, [aspirations]);
@@ -466,7 +471,7 @@ export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
 
   return (
     <div className="relative w-full h-full bg-gray-950 overflow-hidden">
-      <GoalCanvas />
+      <GoalCanvas userAspirations={userAspirations} />
       {/* page stack — reconnects when drawer is wired */}
       {shouldRenderPageStack ? pageStackContent : null}
     </div>
