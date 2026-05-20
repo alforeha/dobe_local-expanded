@@ -206,7 +206,7 @@ export function AlbumEntryEditor({
 
     try {
       const result = await readPhotoFile(file);
-      alert(`EXIF debug:\nURI: ${result.uri ? 'yes' : 'no'}\nLocation: ${result.location ? `${result.location.latitude}, ${result.location.longitude}` : 'none'}\nDate: ${result.capturedAt ?? 'none'}`);
+      // alert(`EXIF debug:\n${JSON.stringify(result, null, 2)}`);
       applyCaptureResult(result);
     } catch {
       setPhotoStatus('Unable to load photo.');
