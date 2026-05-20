@@ -471,7 +471,7 @@ export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
 
   return (
     <div className="relative w-full h-full bg-gray-950 overflow-hidden">
-      <GoalCanvas userAspirations={userAspirations} />
+      <GoalCanvas userAspirations={userAspirations} adventureAspirations={adventureActs} />
       {/* page stack — reconnects when drawer is wired */}
       {shouldRenderPageStack ? pageStackContent : null}
     </div>

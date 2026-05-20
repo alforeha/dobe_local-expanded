@@ -10,6 +10,7 @@ const PLANET_ORBIT_PERIOD_MS = 20000;
 
 interface GoalCanvasProps {
   userAspirations: Aspiration[];
+  adventureAspirations: Aspiration[];
 }
 
 interface PlanetPosition {
@@ -50,19 +51,22 @@ function drawPlanet(
   x: number,
   y: number,
   radius: number,
+  color = 'rgba(139, 92, 246, 0.75)',
 ) {
   const glowRadius = radius * 2;
+  const glowColor = color.replace(/,\s*[\d.]+\)$/, ', 0.34)');
+  const transparentColor = color.replace(/,\s*[\d.]+\)$/, ', 0)');
   const gradient = ctx.createRadialGradient(x, y, 0, x, y, glowRadius);
-  gradient.addColorStop(0, 'rgba(139, 92, 246, 0.75)');
-  gradient.addColorStop(0.45, 'rgba(139, 92, 246, 0.34)');
-  gradient.addColorStop(1, 'rgba(139, 92, 246, 0)');
+  gradient.addColorStop(0, color);
+  gradient.addColorStop(0.45, glowColor);
+  gradient.addColorStop(1, transparentColor);
 
   ctx.fillStyle = gradient;
   ctx.beginPath();
   ctx.arc(x, y, glowRadius, 0, Math.PI * 2);
   ctx.fill();
 
-  ctx.fillStyle = 'rgba(139, 92, 246, 0.75)';
+  ctx.fillStyle = color;
   ctx.beginPath();
   ctx.arc(x, y, radius, 0, Math.PI * 2);
   ctx.fill();
@@ -81,12 +85,14 @@ function planetPositionsChanged(previous: PlanetPosition[], next: PlanetPosition
   });
 }
 
-export function GoalCanvas({ userAspirations }: GoalCanvasProps) {
+export function GoalCanvas({ userAspirations, adventureAspirations }: GoalCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const frameRef = useRef<number | null>(null);
   const startedAtRef = useRef<number | null>(null);
   const planetPositionsRef = useRef<PlanetPosition[]>([]);
+  const adventurePlanetPositionsRef = useRef<PlanetPosition[]>([]);
   const [planetPositions, setPlanetPositions] = useState<PlanetPosition[]>([]);
+  const [adventurePlanetPositions, setAdventurePlanetPositions] = useState<Array<{ id: string; x: number; y: number; radius: number }>>([]);
 
   useEffect(() => {
     const canvas = canvasRef.current!;
@@ -120,6 +126,8 @@ export function GoalCanvas({ userAspirations }: GoalCanvasProps) {
       ctx.clearRect(0, 0, width, height);
       const ux = width * 0.35;
       const uy = height * 0.45;
+      const sx = width * 0.65;
+      const sy = height * 0.55;
 
       drawOrb(
         ctx,
@@ -131,8 +139,8 @@ export function GoalCanvas({ userAspirations }: GoalCanvasProps) {
       );
       drawOrb(
         ctx,
-        width * 0.65,
-        height * 0.55,
+        sx,
+        sy,
         ORB_RADIUS * systemScale,
         'rgba(245, 158, 11, 0.85)',
         'Adventures',
@@ -170,6 +178,38 @@ export function GoalCanvas({ userAspirations }: GoalCanvasProps) {
         setPlanetPositions([]);
       }
 
+      if (adventureAspirations.length > 0) {
+        ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.arc(sx, sy, PLANET_ORBIT_RADIUS, 0, Math.PI * 2);
+        ctx.stroke();
+
+        const nextAdventurePlanetPositions = adventureAspirations.map((aspiration, index) => {
+          const baseAngle = ((2 * Math.PI) / adventureAspirations.length) * index;
+          const angle = baseAngle - (elapsed / PLANET_ORBIT_PERIOD_MS) * Math.PI * 2;
+          const x = sx + Math.cos(angle) * PLANET_ORBIT_RADIUS;
+          const y = sy + Math.sin(angle) * PLANET_ORBIT_RADIUS;
+
+          drawPlanet(ctx, x, y, PLANET_RADIUS, 'rgba(245, 158, 11, 0.72)');
+
+          return {
+            id: aspiration.id,
+            x,
+            y,
+            radius: PLANET_RADIUS,
+          };
+        });
+
+        if (planetPositionsChanged(adventurePlanetPositionsRef.current, nextAdventurePlanetPositions)) {
+          adventurePlanetPositionsRef.current = nextAdventurePlanetPositions;
+          setAdventurePlanetPositions(nextAdventurePlanetPositions);
+        }
+      } else if (adventurePlanetPositionsRef.current.length > 0) {
+        adventurePlanetPositionsRef.current = [];
+        setAdventurePlanetPositions([]);
+      }
+
       frameRef.current = requestAnimationFrame(drawFrame);
     }
 
@@ -184,7 +224,7 @@ export function GoalCanvas({ userAspirations }: GoalCanvasProps) {
         cancelAnimationFrame(frameRef.current);
       }
     };
-  }, [userAspirations]);
+  }, [userAspirations, adventureAspirations]);
 
   return (
     <div className="absolute inset-0">
@@ -197,6 +237,40 @@ export function GoalCanvas({ userAspirations }: GoalCanvasProps) {
         <div className="absolute inset-0 pointer-events-none">
           {planetPositions.map((position) => {
             const aspiration = userAspirations.find((item) => item.id === position.id);
+            if (!aspiration) return null;
+
+            return (
+              <div
+                key={position.id}
+                className="absolute flex flex-col items-center gap-1"
+                style={{
+                  left: position.x,
+                  top: position.y,
+                  transform: 'translate(-50%, -50%)',
+                }}
+              >
+                <IconDisplay iconKey={aspiration.icon} size={16} className="opacity-80" />
+                <span
+                  className="text-white/60 text-center leading-tight"
+                  style={{
+                    fontSize: 11,
+                    maxWidth: 72,
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                  }}
+                >
+                  {aspiration.name || 'Unnamed'}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      ) : null}
+      {adventureAspirations.length > 0 ? (
+        <div className="absolute inset-0 pointer-events-none">
+          {adventurePlanetPositions.map((position) => {
+            const aspiration = adventureAspirations.find((item) => item.id === position.id);
             if (!aspiration) return null;
 
             return (
