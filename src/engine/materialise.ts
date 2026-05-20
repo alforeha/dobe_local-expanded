@@ -257,12 +257,12 @@ function instantiateInlineTask(entry: InlineTaskEntry): Task {
 function findQuestRefForTemplate(
   templateRef: string,
 ): { questRef: string; actId: string } | null {
-  const { acts } = useProgressionStore.getState();
-  for (const act of Object.values(acts)) {
-    for (let ci = 0; ci < act.chains.length; ci++) {
-      const chain = act.chains[ci]!;
-      for (let qi = 0; qi < chain.quests.length; qi++) {
-        const quest = chain.quests[qi]!;
+  const { aspirations } = useProgressionStore.getState();
+  for (const act of Object.values(aspirations)) {
+    for (let ci = 0; ci < act.woops.length; ci++) {
+      const chain = act.woops[ci]!;
+      for (let qi = 0; qi < chain.smarters.length; qi++) {
+        const quest = chain.smarters[qi]!;
         if (quest.completionState !== 'active') continue;
         for (const marker of quest.timely.markers) {
           if (marker.activeState && marker.taskTemplateRef === templateRef) {
@@ -394,3 +394,4 @@ export function materialisePlannedEvent(
 
   return { event, tasks, updatedPlannedEvent };
 }
+

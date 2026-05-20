@@ -13,7 +13,7 @@
 
 import { v4 as uuidv4 } from 'uuid';
 import type { User } from '../types/user';
-import type { Quest } from '../types/act';
+import type { Smarter } from '../types/act';
 import type { Badge } from '../types/itemTemplate';
 import type { AchievementDefinition } from '../types/coach';
 import { useUserStore } from '../stores/useUserStore';
@@ -159,7 +159,7 @@ export function awardGear(gearDefId: string, source: string, user: User): User {
  *
  * @returns Updated User (unchanged if no reward set or gear not found).
  */
-export function checkQuestReward(quest: Quest, user: User): User {
+export function checkQuestReward(quest: Smarter, user: User): User {
   if (!quest.questReward) return user;
   console.info('[reward.quest]', {
     source: 'quest.reward',

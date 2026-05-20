@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'react';
 import type {
-  Act,
-  ExigencyOption,
-  Quest,
+  Aspiration,
+  ExitStrategyOption,
+  Smarter,
   RecurrenceFrequency,
   RecurrenceRule,
   StatGroupKey,
@@ -32,14 +32,14 @@ import {
 } from './GoalEditorShared';
 import {
   STAT_GROUP_OPTIONS,
-  createBlankQuest,
-  getExigencyLabel,
-  normalizeActForSave,
+  createBlankSmarter,
+  getExitStrategyLabel,
+  normalizeAspirationForSave,
   normalizeQuestForSave,
 } from './goalEditorUtils';
 
 type TimelyMode = 'none' | 'interval' | 'xpThreshold' | 'taskCount';
-type SmarterTab = 'specific' | 'measurable' | 'attainable' | 'relevant' | 'timely' | 'exigency' | 'result';
+type SmarterTab = 'specific' | 'measurable' | 'attainable' | 'relevant' | 'timely' | 'exitStrategy' | 'result';
 
 const SMARTER_TABS: { tab: SmarterTab; letter: string; title: string }[] = [
   { tab: 'specific', letter: 'S', title: 'Specific' },
@@ -47,17 +47,17 @@ const SMARTER_TABS: { tab: SmarterTab; letter: string; title: string }[] = [
   { tab: 'attainable', letter: 'A', title: 'Attainable' },
   { tab: 'relevant', letter: 'R', title: 'Relevant' },
   { tab: 'timely', letter: 'T', title: 'Timely' },
-  { tab: 'exigency', letter: 'E', title: 'Exigency' },
+  { tab: 'exitStrategy', letter: 'E', title: 'Exigency' },
   { tab: 'result', letter: 'R', title: 'Result' },
 ];
 
 interface GoalQuestPageProps {
-  act: Act;
+  act: Aspiration;
   chainIdx: number;
   questIdx: number | null;
   readOnly: boolean;
   onBack: () => void;
-  onSave: (act: Act) => void;
+  onSave: (act: Aspiration) => void;
 }
 
 const WEEKDAYS: Weekday[] = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
@@ -68,7 +68,7 @@ function getDefaultProjectedFinish(): string {
   return date.toISOString().slice(0, 10);
 }
 
-function getRelevantText(quest: Quest): string {
+function getRelevantText(quest: Smarter): string {
   return typeof quest.relevant.reason === 'string'
     ? quest.relevant.reason as string
     : typeof quest.relevant.text === 'string'
@@ -76,7 +76,7 @@ function getRelevantText(quest: Quest): string {
       : '';
 }
 
-function getAttainableText(quest: Quest): string {
+function getAttainableText(quest: Smarter): string {
   return typeof quest.attainable.note === 'string'
     ? quest.attainable.note as string
     : typeof quest.attainable.text === 'string'
@@ -84,7 +84,7 @@ function getAttainableText(quest: Quest): string {
       : '';
 }
 
-function getResultText(quest: Quest): string {
+function getResultText(quest: Smarter): string {
   return typeof quest.result.description === 'string'
     ? quest.result.description as string
     : typeof quest.result.text === 'string'
@@ -107,7 +107,7 @@ function buildRecurrenceRule(
   };
 }
 
-function getTaskCountThreshold(quest: Quest): number {
+function getTaskCountThreshold(quest: Smarter): number {
   return quest.timely.markers[0]?.threshold ?? 1;
 }
 
@@ -129,9 +129,9 @@ export function GoalQuestPage({
 }: GoalQuestPageProps) {
   const scheduleTemplates = useScheduleStore((state) => state.taskTemplates);
   const resources = useResourceStore((state) => state.resources);
-  const existingQuest = questIdx !== null ? act.chains[chainIdx]?.quests[questIdx] : null;
-  const baseQuest = existingQuest ?? createBlankQuest();
-  const parentChain = act.chains[chainIdx];
+  const existingQuest = questIdx !== null ? act.woops[chainIdx]?.smarters[questIdx] : null;
+  const baseQuest = existingQuest ?? createBlankSmarter();
+  const parentChain = act.woops[chainIdx];
 
   const [icon, setIcon] = useState(baseQuest.icon);
   const [name, setName] = useState(baseQuest.name);
@@ -156,8 +156,8 @@ export function GoalQuestPage({
   const [timelyEndsOn, setTimelyEndsOn] = useState(baseQuest.timely.interval?.endsOn ?? '');
   const [xpThreshold, setXpThreshold] = useState(String(baseQuest.timely.xpThreshold ?? ''));
   const [taskCountThreshold, setTaskCountThreshold] = useState(String(getTaskCountThreshold(baseQuest)));
-  const [exigency, setExigency] = useState<ExigencyOption>(baseQuest.exigency.onMissedFinish);
-  const exigencyMeta = baseQuest.exigency as unknown as Record<string, unknown>;
+  const [exitStrategy, setExigency] = useState<ExitStrategyOption>(baseQuest.exitStrategy.onMissedFinish);
+  const exigencyMeta = baseQuest.exitStrategy as unknown as Record<string, unknown>;
   const [exigencyDate, setExigencyDate] = useState(
     typeof exigencyMeta.rescheduleDate === 'string'
       ? exigencyMeta.rescheduleDate as string
@@ -209,7 +209,7 @@ export function GoalQuestPage({
     );
   }
 
-  function buildQuest(): Quest {
+  function buildQuest(): Smarter {
     const recurrence = timelyMode === 'interval'
       ? buildRecurrenceRule(
           frequency,
@@ -219,7 +219,7 @@ export function GoalQuestPage({
         )
       : null;
 
-    const draftQuest: Quest = {
+    const draftQuest: Smarter = {
       ...baseQuest,
       icon,
       name: name.trim(),
@@ -252,11 +252,11 @@ export function GoalQuestPage({
         xpThreshold: timelyMode === 'xpThreshold' ? (parseInt(xpThreshold, 10) || null) : null,
         projectedFinish: anticipatedEndDate || null,
       },
-      exigency: {
-        ...baseQuest.exigency,
-        onMissedFinish: exigency,
-        ...(exigency === 'reschedule' ? { rescheduleDate: exigencyDate || null } : {}),
-        ...(exigency === 'extend' ? { extendIntervalDays: parseInt(exigencyInterval, 10) || null } : {}),
+      exitStrategy: {
+        ...baseQuest.exitStrategy,
+        onMissedFinish: exitStrategy,
+        ...(exitStrategy === 'reschedule' ? { rescheduleDate: exigencyDate || null } : {}),
+        ...(exitStrategy === 'extend' ? { extendIntervalDays: parseInt(exigencyInterval, 10) || null } : {}),
       },
       result: {
         ...baseQuest.result,
@@ -266,7 +266,7 @@ export function GoalQuestPage({
       questReward: baseQuest.questReward,
     };
 
-    const normalizedQuestIdx = questIdx ?? act.chains[chainIdx]?.quests.length ?? 0;
+    const normalizedQuestIdx = questIdx ?? act.woops[chainIdx]?.smarters.length ?? 0;
     return normalizeQuestForSave(
       draftQuest,
       act.id,
@@ -278,17 +278,17 @@ export function GoalQuestPage({
 
   function handleSave() {
     const updatedQuest = buildQuest();
-    const updatedChains = [...act.chains];
+    const updatedChains = [...act.woops];
     const targetChain = updatedChains[chainIdx];
     if (!targetChain) return;
-    const updatedQuests = [...targetChain.quests];
+    const updatedQuests = [...targetChain.smarters];
     if (questIdx === null) {
       updatedQuests.push(updatedQuest);
     } else {
       updatedQuests[questIdx] = updatedQuest;
     }
-    updatedChains[chainIdx] = { ...targetChain, quests: updatedQuests };
-    onSave(normalizeActForSave({ ...act, chains: updatedChains }));
+    updatedChains[chainIdx] = { ...targetChain, smarters: updatedQuests };
+    onSave(normalizeAspirationForSave({ ...act, woops: updatedChains }));
   }
 
   const footer = readOnly ? (
@@ -320,12 +320,12 @@ export function GoalQuestPage({
 
   return (
     <GoalPageShell
-      title={name || 'Quest'}
+      title={name || 'Smarter'}
       subtitle={readOnly ? 'Read-only quest' : 'SMARTER quest editor'}
       onBack={onBack}
       footer={footer}
     >
-      <GoalSection title="Quest">
+      <GoalSection title="Smarter">
         <div className="flex items-end gap-4">
           <div className={`shrink-0 pb-0.5 ${readOnly ? 'pointer-events-none opacity-60' : ''}`}>
             <IconPicker value={icon} onChange={setIcon} align="left" />
@@ -712,23 +712,23 @@ export function GoalQuestPage({
           </>
         ) : null}
 
-        {activeSmarterTab === 'exigency' ? (
+        {activeSmarterTab === 'exitStrategy' ? (
           <>
         <GoalField label="What happens if goal not met in time?">
           <select
-            value={exigency}
+            value={exitStrategy}
             disabled={readOnly}
-            onChange={(e) => setExigency(e.target.value as ExigencyOption)}
+            onChange={(e) => setExigency(e.target.value as ExitStrategyOption)}
             className="rounded-xl border border-gray-300 px-3 py-2 text-sm disabled:cursor-not-allowed disabled:bg-gray-100 dark:border-gray-600 dark:bg-gray-900 dark:disabled:bg-gray-800"
           >
-            <option value="reschedule">{getExigencyLabel('reschedule')}</option>
-            <option value="extend">{getExigencyLabel('extend')}</option>
-            <option value="sleep">{getExigencyLabel('sleep')}</option>
-            <option value="restart">{getExigencyLabel('restart')}</option>
+            <option value="reschedule">{getExitStrategyLabel('reschedule')}</option>
+            <option value="extend">{getExitStrategyLabel('extend')}</option>
+            <option value="sleep">{getExitStrategyLabel('sleep')}</option>
+            <option value="restart">{getExitStrategyLabel('restart')}</option>
           </select>
         </GoalField>
 
-        {exigency === 'reschedule' ? (
+        {exitStrategy === 'reschedule' ? (
           <GoalField label="New end date">
             <input
               type="date"
@@ -740,7 +740,7 @@ export function GoalQuestPage({
           </GoalField>
         ) : null}
 
-        {exigency === 'extend' ? (
+        {exitStrategy === 'extend' ? (
           <GoalField label="Extend interval (days)">
             <input
               type="number"
@@ -806,3 +806,4 @@ export function GoalQuestPage({
     </GoalPageShell>
   );
 }
+

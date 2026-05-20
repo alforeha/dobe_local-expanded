@@ -23,7 +23,7 @@ import { localISODate, getAppDate } from '../utils/dateUtils';
 import {
   unlockAct,
   makeDailyChain,
-  STARTER_ACT_IDS,
+  STARTER_ASPIRATION_IDS,
   STARTER_TEMPLATE_IDS,
   starterTaskTemplates,
 } from '../coach/StarterQuestLibrary';
@@ -36,7 +36,7 @@ import { checkQuestReward } from '../coach/rewardPipeline';
 const QUEST_REF_SEP = '|';
 
 function isDailyActId(actId: string): boolean {
-  return actId.startsWith(STARTER_ACT_IDS.daily);
+  return actId.startsWith(STARTER_ASPIRATION_IDS.daily);
 }
 
 function getTemplateForTaskRef(templateRef: string) {
@@ -104,11 +104,11 @@ function findTodayCompletedTaskForMeasurable(taskTemplateRefs: string[]): Task |
 }
 
 /**
- * Encode a Quest's position in the hierarchy as a composite string ref.
+ * Encode a Smarter's position in the hierarchy as a composite string ref.
  * Format: "${actId}|${chainIndex}|${questIndex}"
  *
  * actId is a UUID (hex/hyphen only) — no collision risk with QUEST_REF_SEP.
- * Indices are 0-based integers matching the array positions in Act.chains[].quests[].
+ * Indices are 0-based integers matching the array positions in Aspiration.woops[].smarters[].
  *
  * NOTE: questRef remains stable as long as chain/quest order is not mutated
  * while Tasks carrying this ref are still pending (D27).
@@ -212,11 +212,11 @@ export interface FireMarkerParams {
 export function fireInitialIntervalMarkers(actId: string, chainIndex: number): void {
   if (isDailyActId(actId)) return;
 
-  const act = useProgressionStore.getState().acts[actId];
-  const chain = act?.chains[chainIndex];
+  const act = useProgressionStore.getState().aspirations[actId];
+  const chain = act?.woops[chainIndex];
   if (!chain) return;
 
-  chain.quests.forEach((quest, questIndex) => {
+  chain.smarters.forEach((quest, questIndex) => {
     if (quest.completionState !== 'active') return;
     const markerIndex = quest.timely.markers.findIndex(
       (m) => m.activeState && m.conditionType === 'interval' && m.nextFire === null,
@@ -267,13 +267,13 @@ function enqueueOneOffSystemTask(templateRef: string): void {
  * Fire a Marker: create a check-in Task and enqueue it in User.lists.gtdList.
  *
  * Steps performed:
- *   1. Look up Quest to resolve resource context for the Task
+ *   1. Look up Smarter to resolve resource context for the Task
  *   2. Create a Task with questRef + actRef set for Milestone routing
  *   3. Persist Task to scheduleStore + storage
  *   4. Push Task ref to User.lists.gtdList
  *   5. Snapshot xpAtLastFire + taskCountAtLastFire + update marker state (lastFired, nextFire)
  *   6. Execute sideEffects[] — gtdWrite pushes a GTDItem to manualGtdList (D81)
- *   7. Persist Act to progressionStore + storage
+ *   7. Persist Aspiration to progressionStore + storage
  *
  * @param params  FireMarkerParams — marker + index triple + actId
  */
@@ -286,9 +286,9 @@ export function fireMarker(params: FireMarkerParams): void {
   const now = getAppDate();
   const isDailyQuest = isDailyActId(actId);
 
-  // Resolve the Quest to determine resource context
-  const act = progressionStore.acts[actId];
-  const quest = act?.chains[chainIndex]?.quests[questIndex];
+  // Resolve the Smarter to determine resource context
+  const act = progressionStore.aspirations[actId];
+  const quest = act?.woops[chainIndex]?.smarters[questIndex];
   const resourceRef =
     quest?.specific.sourceType === 'resourceRef' ? (quest.specific.resourceRef ?? null) : null;
 
@@ -321,11 +321,11 @@ export function fireMarker(params: FireMarkerParams): void {
     const updatedAct = act
       ? {
           ...act,
-          chains: act.chains.map((chain, ci) => {
+          woops: act.woops.map((chain, ci) => {
             if (ci !== chainIndex) return chain;
             return {
               ...chain,
-              quests: chain.quests.map((q, qi) => {
+              smarters: chain.smarters.map((q, qi) => {
                 if (qi !== questIndex) return q;
                 const updatedMarkers = q.timely.markers.map((m, mi) => {
                   if (mi !== markerIndex) return m;
@@ -346,7 +346,7 @@ export function fireMarker(params: FireMarkerParams): void {
         }
       : null;
     if (updatedAct) {
-      progressionStore.setAct(updatedAct);
+      progressionStore.setAspiration(updatedAct);
     }
     const completedTask: Task = {
       ...task,
@@ -366,11 +366,11 @@ export function fireMarker(params: FireMarkerParams): void {
     const updatedAct = act
       ? {
           ...act,
-          chains: act.chains.map((chain, ci) => {
+          woops: act.woops.map((chain, ci) => {
             if (ci !== chainIndex) return chain;
             return {
               ...chain,
-              quests: chain.quests.map((q, qi) => {
+              smarters: chain.smarters.map((q, qi) => {
                 if (qi !== questIndex) return q;
                 const updatedMarkers = q.timely.markers.map((m, mi) => {
                   if (mi !== markerIndex) return m;
@@ -391,7 +391,7 @@ export function fireMarker(params: FireMarkerParams): void {
         }
       : null;
     if (updatedAct) {
-      progressionStore.setAct(updatedAct);
+      progressionStore.setAspiration(updatedAct);
     }
     return;
   }
@@ -415,7 +415,7 @@ export function fireMarker(params: FireMarkerParams): void {
   const markerFeedUser = useUserStore.getState().user;
   if (markerFeedUser) {
     appendFeedEntry({
-      commentBlock: `Quest check-in ready`,
+      commentBlock: `Smarter check-in ready`,
       sourceType: FEED_SOURCE.MARKER_FIRE,
       timestamp: new Date().toISOString(),
       triggerRef: task.id,
@@ -430,7 +430,7 @@ export function fireMarker(params: FireMarkerParams): void {
       if (effect.type === 'gtdWrite') {
         const gtdItem: GTDItem = {
           id: uuidv4(),
-          title: effect.note ?? 'Quest task',
+          title: effect.note ?? 'Smarter task',
           note: effect.note ?? null,
           resourceRef: null,
           dueDate: null,
@@ -462,11 +462,11 @@ export function fireMarker(params: FireMarkerParams): void {
 
   const updatedAct = {
     ...act,
-    chains: act.chains.map((chain, ci) => {
+    woops: act.woops.map((chain, ci) => {
       if (ci !== chainIndex) return chain;
       return {
         ...chain,
-        quests: chain.quests.map((q, qi) => {
+        smarters: chain.smarters.map((q, qi) => {
           if (qi !== questIndex) return q;
           const updatedMarkers = q.timely.markers.map((m, mi) => {
             if (mi !== markerIndex) return m;
@@ -487,7 +487,7 @@ export function fireMarker(params: FireMarkerParams): void {
     }),
   };
 
-  progressionStore.setAct(updatedAct);
+  progressionStore.setAspiration(updatedAct);
 
 }
 
@@ -503,13 +503,13 @@ export function fireMarker(params: FireMarkerParams): void {
  *   - the system event count (number of PlannedEvents created) meets threshold
  */
 export function evaluatePlannedEventCreatedMarkers(): void {
-  const { acts } = useProgressionStore.getState();
+  const { aspirations } = useProgressionStore.getState();
   const { plannedEvents } = useScheduleStore.getState();
   const plannedEventCount = Object.keys(plannedEvents).length;
 
-  for (const act of Object.values(acts)) {
-    act.chains.forEach((chain, chainIndex) => {
-      chain.quests.forEach((quest, questIndex) => {
+  for (const act of Object.values(aspirations)) {
+    act.woops.forEach((chain, chainIndex) => {
+      chain.smarters.forEach((quest, questIndex) => {
         if (quest.completionState !== 'active') return;
         quest.timely.markers.forEach((marker, markerIndex) => {
           if (!marker.activeState) return;
@@ -530,19 +530,19 @@ export function evaluatePlannedEventCreatedMarkers(): void {
 // ── COMPLETE MILESTONE ────────────────────────────────────────────────────────
 
 /**
- * Record a completed quest check-in Task as a Milestone and evaluate Quest finish.
+ * Record a completed quest check-in Task as a Milestone and evaluate Smarter finish.
  *
  * Called by eventExecution.completeTask() when updatedTask.questRef is set.
  * The questRef on the task was stamped by fireMarker at creation time (D04).
  *
  * Steps performed:
  *   1. Decode questRef → actId / chainIndex / questIndex
- *   2. Look up the Quest (bail with warning if not found)
+ *   2. Look up the Smarter (bail with warning if not found)
  *   3. Capture milestone from task.resultFields + full TaskTemplate shape
- *   4. Evaluate Quest finish condition via evaluateQuestSpecific()
- *   5a. If complete → set Quest.completionState = 'complete', deactivate all markers
+ *   4. Evaluate Smarter finish condition via evaluateQuestSpecific()
+ *   5a. If complete → set Smarter.completionState = 'complete', deactivate all markers
  *   5b. If not complete → call updateQuestProgress() (derives progress + projectedFinish)
- *   6. Persist updated Act to store + storage
+ *   6. Persist updated Aspiration to store + storage
  *
  * @param completedTask  The Task that was just completed (completionState must be 'complete')
  */
@@ -562,17 +562,17 @@ export function completeMilestone(completedTask: Task): void {
   const progressionStore = useProgressionStore.getState();
   const scheduleStore = useScheduleStore.getState();
 
-  const act = progressionStore.acts[actId];
+  const act = progressionStore.aspirations[actId];
   if (!act) {
-    console.warn(`[markerEngine] completeMilestone: Act "${actId}" not found`);
+    console.warn(`[markerEngine] completeMilestone: Aspiration "${actId}" not found`);
     return;
   }
-  const chain = act.chains[chainIndex];
+  const chain = act.woops[chainIndex];
   if (!chain) {
     console.warn(`[markerEngine] completeMilestone: chain[${chainIndex}] not found`);
     return;
   }
-  const quest = chain.quests[questIndex];
+  const quest = chain.smarters[questIndex];
   if (!quest) {
     console.warn(`[markerEngine] completeMilestone: quest[${questIndex}] not found`);
     return;
@@ -610,11 +610,11 @@ export function completeMilestone(completedTask: Task): void {
 
   const updatedAct = {
     ...act,
-    chains: act.chains.map((c, ci) => {
+    woops: act.woops.map((c, ci) => {
       if (ci !== chainIndex) return c;
       return {
         ...c,
-        quests: c.quests.map((q, qi) => {
+        smarters: c.smarters.map((q, qi) => {
           if (qi !== questIndex) return q;
           const withMilestone = {
             ...q,
@@ -640,7 +640,7 @@ export function completeMilestone(completedTask: Task): void {
     }),
   };
 
-  progressionStore.setAct(updatedAct);
+  progressionStore.setAspiration(updatedAct);
 
   // Derive and persist progressPercent + projectedFinish unless just completed
   if (!isFinished) {
@@ -693,13 +693,13 @@ export function completeMilestone(completedTask: Task): void {
     });
   }
 
-  // Quest just completed — fire the next quest's interval marker immediately so
-  // the user can act on Quest N+1 without waiting for the next rollover (FIX-13).
+  // Smarter just completed — fire the next quest's interval marker immediately so
+  // the user can act on Smarter N+1 without waiting for the next rollover (FIX-13).
   // Only fires if the next quest exists, is active, and its first interval marker
   // has not yet been initialised (nextFire === null).
   const nextQuestIndex = questIndex + 1;
-  const freshActForNext = useProgressionStore.getState().acts[actId];
-  const nextQuest = freshActForNext?.chains[chainIndex]?.quests[nextQuestIndex];
+  const freshActForNext = useProgressionStore.getState().aspirations[actId];
+  const nextQuest = freshActForNext?.woops[chainIndex]?.smarters[nextQuestIndex];
   if (nextQuest && nextQuest.completionState === 'active') {
     const nextMarkerIdx = nextQuest.timely.markers.findIndex(
       (m) => m.activeState && m.conditionType === 'interval' && m.nextFire === null,
@@ -707,7 +707,7 @@ export function completeMilestone(completedTask: Task): void {
     if (nextMarkerIdx !== -1) {
       const nextMarker = nextQuest.timely.markers[nextMarkerIdx]!;
       console.log(
-        `[completeMilestone] Quest "${quest.name}" complete → firing next quest marker ` +
+        `[completeMilestone] Smarter "${quest.name}" complete → firing next quest marker ` +
         `(questIdx=${nextQuestIndex} markerIdx=${nextMarkerIdx} template=${nextMarker.taskTemplateRef})`,
       );
       fireMarker({
@@ -720,38 +720,38 @@ export function completeMilestone(completedTask: Task): void {
     }
   }
 
-  // Quest just completed — propagate completion up to chain and act (D87)
-  if (actId === STARTER_ACT_IDS.onboarding) {
+  // Smarter just completed — propagate completion up to chain and act (D87)
+  if (actId === STARTER_ASPIRATION_IDS.onboarding) {
     void import('./resourceEngine').then(({ syncOnboardingBackfill }) => {
       syncOnboardingBackfill();
     });
   }
 
-  const completedChain = updatedAct.chains[chainIndex];
+  const completedChain = updatedAct.woops[chainIndex];
   if (!completedChain) return;
 
-  const chainNowComplete = completedChain.quests.every(
+  const chainNowComplete = completedChain.smarters.every(
     (q) => q.completionState === 'complete',
   );
   if (!chainNowComplete) return;
 
-  // All quests in chain done — mark chain complete
+  // All smarters in chain done — mark chain complete
   let propagatedAct = {
     ...updatedAct,
-    chains: updatedAct.chains.map((c, ci) =>
+    woops: updatedAct.woops.map((c, ci) =>
       ci === chainIndex ? { ...c, completionState: 'complete' as const } : c,
     ),
   };
 
   // If every chain is complete, mark act complete
-  const actNowComplete = propagatedAct.chains.every(
+  const actNowComplete = propagatedAct.woops.every(
     (c) => c.completionState === 'complete',
   );
   if (actNowComplete) {
     propagatedAct = { ...propagatedAct, completionState: 'complete' as const };
   }
 
-  progressionStore.setAct(propagatedAct);
+  progressionStore.setAspiration(propagatedAct);
 
   const completedChainName = completedChain.name;
   const chainRewardUser = useUserStore.getState().user;
@@ -770,7 +770,7 @@ export function completeMilestone(completedTask: Task): void {
         sourceType: FEED_SOURCE.MARKER_FIRE,
         timestamp: new Date().toISOString(),
       }, feedUser);
-    } else if (actId === STARTER_ACT_IDS.onboarding) {
+    } else if (actId === STARTER_ASPIRATION_IDS.onboarding) {
       const chainXpResult = awardXP(chainRewardUser.system.id, 50, {
         source: `chain.complete:${completedChainName}`,
         suppressLog: true,
@@ -816,8 +816,8 @@ export function completeMilestone(completedTask: Task): void {
     }
   }
 
-  // D98 — +10 gold bonus for completing the Onboarding Act
-  if (actNowComplete && actId === STARTER_ACT_IDS.onboarding) {
+  // D98 — +10 gold bonus for completing the Onboarding Aspiration
+  if (actNowComplete && actId === STARTER_ASPIRATION_IDS.onboarding) {
     const userForGold = useUserStore.getState().user;
     if (userForGold) {
       console.log('[reward.act-complete]', {
@@ -834,17 +834,17 @@ export function completeMilestone(completedTask: Task): void {
     enqueueOneOffSystemTask(STARTER_TEMPLATE_IDS.completeOnboardingAdventure);
   }
 
-  // D79 — Unlock Daily Adventure when Onboarding Act completes
-  if (actNowComplete && actId === STARTER_ACT_IDS.onboarding) {
-    unlockAct(STARTER_ACT_IDS.daily);
+  // D79 — Unlock Daily Adventure when Onboarding Aspiration completes
+  if (actNowComplete && actId === STARTER_ASPIRATION_IDS.onboarding) {
+    unlockAct(STARTER_ASPIRATION_IDS.daily);
     const freshStore = useProgressionStore.getState();
-    const unlockedDaily = freshStore.acts[STARTER_ACT_IDS.daily];
+    const unlockedDaily = freshStore.aspirations[STARTER_ASPIRATION_IDS.daily];
     if (unlockedDaily) {
       const today = getAppDate();
-      const chain1 = makeDailyChain(STARTER_ACT_IDS.daily, 1, today);
-      const dailyWithChain = { ...unlockedDaily, chains: [chain1] };
-      freshStore.setAct(dailyWithChain);
-      fireInitialIntervalMarkers(STARTER_ACT_IDS.daily, 0);
+      const chain1 = makeDailyChain(STARTER_ASPIRATION_IDS.daily, 1, today);
+      const dailyWithChain = { ...unlockedDaily, woops: [chain1] };
+      freshStore.setAspiration(dailyWithChain);
+      fireInitialIntervalMarkers(STARTER_ASPIRATION_IDS.daily, 0);
       syncDailyQuestProgressForToday();
     }
   }
@@ -854,25 +854,25 @@ export function syncDailyQuestProgressForTask(completedTask: Task): void {
   if (completedTask.completionState !== 'complete') return;
 
   const progressionStore = useProgressionStore.getState();
-  const dailyAct = progressionStore.acts[STARTER_ACT_IDS.daily];
-  if (!dailyAct || dailyAct.chains.length === 0) return;
+  const dailyAct = progressionStore.aspirations[STARTER_ASPIRATION_IDS.daily];
+  if (!dailyAct || dailyAct.woops.length === 0) return;
 
-  const chainIndex = dailyAct.chains.length - 1;
-  const chain = dailyAct.chains[chainIndex];
+  const chainIndex = dailyAct.woops.length - 1;
+  const chain = dailyAct.woops[chainIndex];
   if (!chain || chain.completionState !== 'active') return;
 
-  chain.quests.forEach((quest, questIndex) => {
+  chain.smarters.forEach((quest, questIndex) => {
     if (quest.completionState !== 'active') return;
     const measurableRefs = quest.measurable.taskTemplateRefs ?? [];
     if (quest.timely.conditionType === 'none' && measurableRefs.length === 0 && quest.specific.unit === 'tasks') {
       if (countCompletedNonSystemTasksToday() >= quest.specific.targetValue) {
         completeMilestone(
-          buildSyntheticDailyQuestTask(completedTask, STARTER_ACT_IDS.daily, chainIndex, questIndex),
+          buildSyntheticDailyQuestTask(completedTask, STARTER_ASPIRATION_IDS.daily, chainIndex, questIndex),
         );
         return;
       }
 
-      updateQuestProgress(STARTER_ACT_IDS.daily, chainIndex, questIndex);
+      updateQuestProgress(STARTER_ASPIRATION_IDS.daily, chainIndex, questIndex);
       return;
     }
 
@@ -883,12 +883,12 @@ export function syncDailyQuestProgressForTask(completedTask: Task): void {
     ) {
       if (evaluateQuestSpecific(quest, completedTask)) {
         completeMilestone(
-          buildSyntheticDailyQuestTask(completedTask, STARTER_ACT_IDS.daily, chainIndex, questIndex),
+          buildSyntheticDailyQuestTask(completedTask, STARTER_ASPIRATION_IDS.daily, chainIndex, questIndex),
         );
         return;
       }
 
-      updateQuestProgress(STARTER_ACT_IDS.daily, chainIndex, questIndex);
+      updateQuestProgress(STARTER_ASPIRATION_IDS.daily, chainIndex, questIndex);
       return;
     }
 
@@ -897,26 +897,26 @@ export function syncDailyQuestProgressForTask(completedTask: Task): void {
     if (!taskMatchesDailyMarker(completedTask, marker)) return;
 
     if (evaluateQuestSpecific(quest, completedTask)) {
-      completeMilestone(buildSyntheticDailyQuestTask(completedTask, STARTER_ACT_IDS.daily, chainIndex, questIndex));
+      completeMilestone(buildSyntheticDailyQuestTask(completedTask, STARTER_ASPIRATION_IDS.daily, chainIndex, questIndex));
       return;
     }
 
     if (marker.conditionType === 'taskCount') {
-      updateQuestProgress(STARTER_ACT_IDS.daily, chainIndex, questIndex);
+      updateQuestProgress(STARTER_ASPIRATION_IDS.daily, chainIndex, questIndex);
     }
   });
 }
 
 export function syncDailyQuestProgressForToday(): void {
   const progressionStore = useProgressionStore.getState();
-  const dailyAct = progressionStore.acts[STARTER_ACT_IDS.daily];
-  if (!dailyAct || dailyAct.chains.length === 0) return;
+  const dailyAct = progressionStore.aspirations[STARTER_ASPIRATION_IDS.daily];
+  if (!dailyAct || dailyAct.woops.length === 0) return;
 
-  const chainIndex = dailyAct.chains.length - 1;
-  const chain = dailyAct.chains[chainIndex];
+  const chainIndex = dailyAct.woops.length - 1;
+  const chain = dailyAct.woops[chainIndex];
   if (!chain || chain.completionState !== 'active') return;
 
-  chain.quests.forEach((quest, questIndex) => {
+  chain.smarters.forEach((quest, questIndex) => {
     if (quest.completionState !== 'active') return;
     const measurableRefs = quest.measurable.taskTemplateRefs ?? [];
     if (quest.timely.conditionType === 'none' && measurableRefs.length === 0 && quest.specific.unit === 'tasks') {
@@ -926,25 +926,25 @@ export function syncDailyQuestProgressForToday(): void {
           localISODate(new Date(task.completedAt)) === getAppDate(),
       );
       if (!matchedTask) {
-        updateQuestProgress(STARTER_ACT_IDS.daily, chainIndex, questIndex);
+        updateQuestProgress(STARTER_ASPIRATION_IDS.daily, chainIndex, questIndex);
         return;
       }
 
       if (countCompletedNonSystemTasksToday() >= quest.specific.targetValue) {
         completeMilestone(
-          buildSyntheticDailyQuestTask(matchedTask, STARTER_ACT_IDS.daily, chainIndex, questIndex),
+          buildSyntheticDailyQuestTask(matchedTask, STARTER_ASPIRATION_IDS.daily, chainIndex, questIndex),
         );
         return;
       }
 
-      updateQuestProgress(STARTER_ACT_IDS.daily, chainIndex, questIndex);
+      updateQuestProgress(STARTER_ASPIRATION_IDS.daily, chainIndex, questIndex);
       return;
     }
 
     if (quest.timely.conditionType === 'none' && measurableRefs.length > 0) {
       const matchedMeasurableTask = findTodayCompletedTaskForMeasurable(measurableRefs);
       if (!matchedMeasurableTask) {
-        updateQuestProgress(STARTER_ACT_IDS.daily, chainIndex, questIndex);
+        updateQuestProgress(STARTER_ASPIRATION_IDS.daily, chainIndex, questIndex);
         return;
       }
 
@@ -952,7 +952,7 @@ export function syncDailyQuestProgressForToday(): void {
         completeMilestone(
           buildSyntheticDailyQuestTask(
             matchedMeasurableTask,
-            STARTER_ACT_IDS.daily,
+            STARTER_ASPIRATION_IDS.daily,
             chainIndex,
             questIndex,
           ),
@@ -960,7 +960,7 @@ export function syncDailyQuestProgressForToday(): void {
         return;
       }
 
-      updateQuestProgress(STARTER_ACT_IDS.daily, chainIndex, questIndex);
+      updateQuestProgress(STARTER_ASPIRATION_IDS.daily, chainIndex, questIndex);
       return;
     }
 
@@ -970,18 +970,19 @@ export function syncDailyQuestProgressForToday(): void {
     const matchedTask = findTodayCompletedTaskForMarker(marker);
     if (!matchedTask) {
       if (marker.conditionType === 'taskCount') {
-        updateQuestProgress(STARTER_ACT_IDS.daily, chainIndex, questIndex);
+        updateQuestProgress(STARTER_ASPIRATION_IDS.daily, chainIndex, questIndex);
       }
       return;
     }
 
     if (evaluateQuestSpecific(quest, matchedTask)) {
-      completeMilestone(buildSyntheticDailyQuestTask(matchedTask, STARTER_ACT_IDS.daily, chainIndex, questIndex));
+      completeMilestone(buildSyntheticDailyQuestTask(matchedTask, STARTER_ASPIRATION_IDS.daily, chainIndex, questIndex));
       return;
     }
 
     if (marker.conditionType === 'taskCount') {
-      updateQuestProgress(STARTER_ACT_IDS.daily, chainIndex, questIndex);
+      updateQuestProgress(STARTER_ASPIRATION_IDS.daily, chainIndex, questIndex);
     }
   });
 }
+

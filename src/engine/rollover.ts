@@ -21,7 +21,7 @@ import { useSystemStore } from '../stores/useSystemStore';
 import { useUserStore } from '../stores/useUserStore';
 import { useScheduleStore } from '../stores/useScheduleStore';
 import { useProgressionStore } from '../stores/useProgressionStore';
-import { STARTER_ACT_IDS, STARTER_TEMPLATE_IDS, makeDailyChain } from '../coach/StarterQuestLibrary';
+import { STARTER_ASPIRATION_IDS, STARTER_TEMPLATE_IDS, makeDailyChain } from '../coach/StarterQuestLibrary';
 import { materialisePlannedEvent } from './materialise';
 import { completeMilestone, fireInitialIntervalMarkers, fireMarker } from './markerEngine';
 import { evaluateMarkerCondition, evaluateTaskCountMarker } from './questEngine';
@@ -210,16 +210,16 @@ interface DueMarker {
 }
 
 function step5_evaluateMarkers(rolloverDate: string): DueMarker[] {
-  const { acts } = useProgressionStore.getState();
+  const { aspirations } = useProgressionStore.getState();
   // Snapshot current XP once for xpThreshold checks (Q03 since-last-fired)
   const currentXp = useUserStore.getState().user?.progression.stats.xp ?? 0;
   const due: DueMarker[] = [];
 
-  for (const act of Object.values(acts)) {
-    if (act.id.startsWith(STARTER_ACT_IDS.daily)) continue;
+  for (const act of Object.values(aspirations)) {
+    if (act.id.startsWith(STARTER_ASPIRATION_IDS.daily)) continue;
 
-    act.chains.forEach((chain, chainIndex) => {
-      chain.quests.forEach((quest, questIndex) => {
+    act.woops.forEach((chain, chainIndex) => {
+      chain.smarters.forEach((quest, questIndex) => {
         if (quest.completionState !== 'active') return;
         quest.timely.markers.forEach((marker, markerIndex) => {
           if (!marker.activeState) return;
@@ -256,7 +256,7 @@ function step5_evaluateMarkers(rolloverDate: string): DueMarker[] {
 /**
  * Delegate each due Marker to markerEngine.fireMarker().
  * fireMarker handles: Task creation with questRef/actRef, gtdList push,
- * xpAtLastFire snapshot, marker state update, and Act persistence.
+ * xpAtLastFire snapshot, marker state update, and Aspiration persistence.
  */
 function step6_fireMarkers(dueMarkers: DueMarker[]): void {
   for (const dueMarker of dueMarkers) {
@@ -297,22 +297,22 @@ function step7_archiveEvents(rolloverDate: string): void {
 
 function step8_rolloverDailyAdventureChain(rolloverDate: string): void {
   const progressionStore = useProgressionStore.getState();
-  const dailyAct = progressionStore.acts[STARTER_ACT_IDS.daily];
+  const dailyAct = progressionStore.aspirations[STARTER_ASPIRATION_IDS.daily];
   if (!dailyAct) return;
 
-  const updatedChains = [...dailyAct.chains];
+  const updatedChains = [...dailyAct.woops];
 
   if (updatedChains.length > 0) {
     const lastChainIndex = updatedChains.length - 1;
     const lastChain = updatedChains[lastChainIndex];
     if (lastChain && lastChain.completionState !== 'complete') {
-      const allQuestsComplete = lastChain.quests.every(
+      const allQuestsComplete = lastChain.smarters.every(
         (quest) => quest.completionState === 'complete',
       );
       updatedChains[lastChainIndex] = {
         ...lastChain,
         completionState: allQuestsComplete ? 'complete' : 'failed',
-        quests: lastChain.quests.map((quest) =>
+        smarters: lastChain.smarters.map((quest) =>
           quest.completionState === 'complete'
             ? quest
             : {
@@ -332,19 +332,19 @@ function step8_rolloverDailyAdventureChain(rolloverDate: string): void {
   }
 
   const nextChain = makeDailyChain(
-    STARTER_ACT_IDS.daily,
+    STARTER_ASPIRATION_IDS.daily,
     updatedChains.length + 1,
     rolloverDate,
   );
   updatedChains.push(nextChain);
 
-  progressionStore.setAct({
+  progressionStore.setAspiration({
     ...dailyAct,
-    chains: updatedChains,
+    woops: updatedChains,
     completionState: 'active',
   });
 
-  fireInitialIntervalMarkers(STARTER_ACT_IDS.daily, updatedChains.length - 1);
+  fireInitialIntervalMarkers(STARTER_ASPIRATION_IDS.daily, updatedChains.length - 1);
 }
 
 function step8_updateRecurrence(resolved: PlannedEvent[], rolloverDate: string): void {
@@ -559,13 +559,13 @@ function step10_generateResourceGTDItems(rolloverDate: string): void {
 function step7_completeDailyClearDeckQuest(rolloverDate: string): void {
   const progressionStore = useProgressionStore.getState();
   const scheduleStore = useScheduleStore.getState();
-  const dailyAct = progressionStore.acts[STARTER_ACT_IDS.daily];
-  if (!dailyAct || dailyAct.chains.length === 0) return;
+  const dailyAct = progressionStore.aspirations[STARTER_ASPIRATION_IDS.daily];
+  if (!dailyAct || dailyAct.woops.length === 0) return;
 
-  const chainIndex = dailyAct.chains.length - 1;
-  const chain = dailyAct.chains[chainIndex];
+  const chainIndex = dailyAct.woops.length - 1;
+  const chain = dailyAct.woops[chainIndex];
   const questIndex = 3;
-  const quest = chain?.quests[questIndex];
+  const quest = chain?.smarters[questIndex];
   if (!chain || !quest || quest.completionState !== 'active') return;
 
   const previousDate = localISODate(addDays(new Date(`${rolloverDate}T00:00:00`), -1));
@@ -584,8 +584,8 @@ function step7_completeDailyClearDeckQuest(rolloverDate: string): void {
       resourceRef: null,
       location: null,
       sharedWith: null,
-      questRef: `${STARTER_ACT_IDS.daily}|${chainIndex}|${questIndex}`,
-      actRef: STARTER_ACT_IDS.daily,
+      questRef: `${STARTER_ASPIRATION_IDS.daily}|${chainIndex}|${questIndex}`,
+      actRef: STARTER_ASPIRATION_IDS.daily,
       secondaryTag: null,
     };
     scheduleStore.setTask(completedTask);
@@ -593,13 +593,13 @@ function step7_completeDailyClearDeckQuest(rolloverDate: string): void {
     return;
   }
 
-  progressionStore.setAct({
+  progressionStore.setAspiration({
     ...dailyAct,
-    chains: dailyAct.chains.map((entry, index) => {
+    woops: dailyAct.woops.map((entry, index) => {
       if (index !== chainIndex) return entry;
       return {
         ...entry,
-        quests: entry.quests.map((chainQuest, idx) => {
+        smarters: entry.smarters.map((chainQuest, idx) => {
           if (idx !== questIndex) return chainQuest;
           return {
             ...chainQuest,
@@ -751,3 +751,4 @@ export async function checkAndRunRolloverOnBoot(): Promise<void> {
     }
   }
 }
+

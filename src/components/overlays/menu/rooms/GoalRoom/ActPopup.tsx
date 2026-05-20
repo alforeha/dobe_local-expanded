@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────
-// ActPopup — ADD / EDIT Act
+// ActPopup — ADD / EDIT Aspiration
 // W17 — GOAL room.
 // Renders inside the Menu overlay via PopupShell.
 // Fields: name, description, habitat, commitment (trackedTaskRefs + routineRefs),
@@ -15,13 +15,21 @@ import { useUserStore } from '../../../../../stores/useUserStore';
 import { useScheduleStore } from '../../../../../stores/useScheduleStore';
 import { taskTemplateLibrary } from '../../../../../coach';
 import { storageDelete, storageKey } from '../../../../../storage';
-import { makeDefaultActToggle, type Act, type ActHabitat } from '../../../../../types';
+import type { Aspiration, ActHabitat } from '../../../../../types';
+
+function makeDefaultActToggle() {
+  return {
+    activeChainIndex: 0,
+    autoAdvanceChains: true,
+    sleepWithChain: true,
+  };
+}
 
 // ── TYPES ─────────────────────────────────────────────────────────────────────
 
 interface ActPopupProps {
-  /** null = add mode; Act object = edit mode. */
-  editAct: Act | null;
+  /** null = add mode; Aspiration object = edit mode. */
+  editAct: Aspiration | null;
   /** Pre-selects habitat based on current GOAL room tab. */
   defaultHabitat: ActHabitat;
   onClose: () => void;
@@ -48,8 +56,8 @@ function Field({ label, hint, children }: FieldProps) {
 // ── COMPONENT ─────────────────────────────────────────────────────────────────
 
 export function ActPopup({ editAct, defaultHabitat, onClose }: ActPopupProps) {
-  const setAct = useProgressionStore((s) => s.setAct);
-  const removeAct = useProgressionStore((s) => s.removeAct);
+  const setAspiration = useProgressionStore((s) => s.setAspiration);
+  const removeAspiration = useProgressionStore((s) => s.removeAspiration);
   const user = useUserStore((s) => s.user);
   const taskTemplates = useScheduleStore((s) => s.taskTemplates);
   const plannedEvents = useScheduleStore((s) => s.plannedEvents);
@@ -84,11 +92,12 @@ export function ActPopup({ editAct, defaultHabitat, onClose }: ActPopupProps) {
   const [habitat, setHabitat] = useState<ActHabitat>(
     isEditMode ? (editAct.habitat ?? defaultHabitat) : defaultHabitat,
   );
+  const editCommitment = (editAct as unknown as { commitment?: { trackedTaskRefs: string[]; routineRefs: string[] } } | null)?.commitment;
   const [trackedTaskRefs, setTrackedTaskRefs] = useState<string[]>(
-    isEditMode ? editAct.commitment.trackedTaskRefs : [],
+    isEditMode ? (editCommitment?.trackedTaskRefs ?? []) : [],
   );
   const [routineRefs, setRoutineRefs] = useState<string[]>(
-    isEditMode ? editAct.commitment.routineRefs : [],
+    isEditMode ? (editCommitment?.routineRefs ?? []) : [],
   );
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [error, setError] = useState('');
@@ -114,31 +123,31 @@ export function ActPopup({ editAct, defaultHabitat, onClose }: ActPopupProps) {
     }
 
     if (isEditMode && editAct) {
-      const updated: Act = {
+      const updated = {
         ...editAct,
         name: name.trim(),
         description: description.trim(),
         habitat,
         commitment: { trackedTaskRefs, routineRefs },
-      };
-      setAct(updated);
+      } as Aspiration;
+      setAspiration(updated);
     } else {
       const id = uuidv4();
-      const newAct: Act = {
+      const newAct = {
         id,
         name: name.trim(),
         description: description.trim(),
         icon: '🎯',
         owner: user?.system.id ?? 'user',
         habitat,
-        chains: [],
+        woops: [],
         accountability: null,
         commitment: { trackedTaskRefs, routineRefs },
         toggle: makeDefaultActToggle(),
         completionState: 'active',
         sharedContacts: null,
-      };
-      setAct(newAct);
+      } as Aspiration;
+      setAspiration(newAct);
     }
 
     onClose();
@@ -151,7 +160,7 @@ export function ActPopup({ editAct, defaultHabitat, onClose }: ActPopupProps) {
       return;
     }
     if (editAct) {
-      removeAct(editAct.id);
+      removeAspiration(editAct.id);
       storageDelete(storageKey.act(editAct.id));
     }
     onClose();
@@ -161,7 +170,7 @@ export function ActPopup({ editAct, defaultHabitat, onClose }: ActPopupProps) {
   const inputCls =
     'w-full rounded-md border border-gray-300 dark:border-gray-600 px-3 py-2 text-sm text-gray-800 dark:text-gray-200 dark:bg-gray-700 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500';
 
-  const title = isEditMode ? 'Edit Act' : 'Add Act';
+  const title = isEditMode ? 'Edit Aspiration' : 'Add Aspiration';
 
   return (
     <PopupShell title={title} onClose={onClose}>
@@ -183,14 +192,14 @@ export function ActPopup({ editAct, defaultHabitat, onClose }: ActPopupProps) {
           <textarea
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            placeholder="What does this Act mean to you?"
+            placeholder="What does this Aspiration mean to you?"
             rows={3}
             className={`${inputCls} resize-none`}
           />
         </Field>
 
         {/* Habitat */}
-        <Field label="Habitat" hint="Determines which tab this Act appears under in Goals.">
+        <Field label="Habitat" hint="Determines which tab this Aspiration appears under in Goals.">
           <select
             value={habitat}
             onChange={(e) => setHabitat(e.target.value as ActHabitat)}
@@ -204,7 +213,7 @@ export function ActPopup({ editAct, defaultHabitat, onClose }: ActPopupProps) {
         {/* Tracked Task Refs */}
         <Field
           label="Tracked tasks"
-          hint="Task templates from the library this Act is committed to."
+          hint="Task templates from the library this Aspiration is committed to."
         >
           <div className="max-h-36 overflow-y-auto border border-gray-200 dark:border-gray-600 rounded-md divide-y divide-gray-100 dark:divide-gray-700">
             {allTemplates.length === 0 && (
@@ -230,7 +239,7 @@ export function ActPopup({ editAct, defaultHabitat, onClose }: ActPopupProps) {
         {/* Routine Refs */}
         <Field
           label="Routines"
-          hint="Schedule routines that support this Act."
+          hint="Schedule routines that support this Aspiration."
         >
           <div className="max-h-28 overflow-y-auto border border-gray-200 dark:border-gray-600 rounded-md divide-y divide-gray-100 dark:divide-gray-700">
             {routineOptions.length === 0 && (
@@ -297,3 +306,4 @@ export function ActPopup({ editAct, defaultHabitat, onClose }: ActPopupProps) {
     </PopupShell>
   );
 }
+

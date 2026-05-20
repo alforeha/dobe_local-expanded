@@ -129,7 +129,7 @@ export function RecommendedTasksTab() {
   const favouritesList = useUserStore((state) => state.user?.lists.favouritesList ?? []);
   const addFavourite = useUserStore((state) => state.addFavourite);
   const removeFavourite = useUserStore((state) => state.removeFavourite);
-  const acts = useProgressionStore((state) => state.acts);
+  const aspirations = useProgressionStore((state) => state.aspirations);
 
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState<TaskType | 'ALL'>('ALL');
@@ -155,9 +155,9 @@ export function RecommendedTasksTab() {
 
   const questUsageByTemplateId = useMemo(() => {
     const usage: Record<string, string> = {};
-    for (const act of Object.values(acts)) {
-      for (const chain of act.chains) {
-        for (const quest of chain.quests) {
+    for (const act of Object.values(aspirations)) {
+      for (const chain of act.woops) {
+        for (const quest of chain.smarters) {
           for (const marker of quest.timely.markers) {
             if (marker.activeState && marker.taskTemplateRef && !usage[marker.taskTemplateRef]) {
               usage[marker.taskTemplateRef] = quest.name;
@@ -167,7 +167,7 @@ export function RecommendedTasksTab() {
       }
     }
     return usage;
-  }, [acts]);
+  }, [aspirations]);
 
   const visible = useMemo(() => {
     return allTemplates.filter((template) => {
@@ -441,7 +441,7 @@ function getStateBadge(state: TemplateState): { label: string; className: string
     case 'used':
       return { label: 'Used', className: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300' };
     case 'quest':
-      return { label: `${resolveIcon('lock')} Quest`, className: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300' };
+      return { label: `${resolveIcon('lock')} Smarter`, className: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300' };
     default:
       return { label: 'Inactive', className: 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300' };
   }
@@ -474,3 +474,4 @@ function DetailChip({ label, value, icon, iconKey }: DetailChipProps) {
     </div>
   );
 }
+

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { Act, Chain, Quest } from '../../../../../types';
+import type { Aspiration, Woop, Smarter } from '../../../../../types';
 import { useScheduleStore } from '../../../../../stores/useScheduleStore';
 import { IconPicker } from '../../../../shared/IconPicker';
 import { IconDisplay } from '../../../../shared/IconDisplay';
@@ -11,24 +11,24 @@ import {
   GoalStateBadge,
 } from './GoalEditorShared';
 import {
-  createBlankChain,
+  createBlankWoop,
   getQuestDisplayState,
   getQuestTaskTemplates,
   getQuestTimelySummary,
   getQuestUnlockMode,
-  normalizeActForSave,
+  normalizeAspirationForSave,
   setQuestUnlockMode,
 } from './goalEditorUtils';
 
 type WoopTab = 'wish' | 'outcome' | 'obstacle' | 'plan';
 
 interface GoalChainPageProps {
-  act: Act;
+  act: Aspiration;
   chainIdx: number | null;
   readOnly: boolean;
   onBack: () => void;
-  onSave: (act: Act) => void;
-  onOpenQuest: (act: Act, chainIdx: number, questIdx: number | null) => void;
+  onSave: (act: Aspiration) => void;
+  onOpenQuest: (act: Aspiration, chainIdx: number, questIdx: number | null) => void;
 }
 
 export function GoalChainPage({
@@ -39,9 +39,9 @@ export function GoalChainPage({
   onSave,
   onOpenQuest,
 }: GoalChainPageProps) {
-  const existingChain = chainIdx !== null ? act.chains[chainIdx] : null;
-  const [draft, setDraft] = useState<Chain>(
-    existingChain ? { ...existingChain } : createBlankChain(act.chains.length),
+  const existingChain = chainIdx !== null ? act.woops[chainIdx] : null;
+  const [draft, setDraft] = useState<Woop>(
+    existingChain ? { ...existingChain } : createBlankWoop(act.woops.length),
   );
   const [activeTab, setActiveTab] = useState<WoopTab>('wish');
   const [expandedQuestIdx, setExpandedQuestIdx] = useState<number | null>(null);
@@ -55,11 +55,11 @@ export function GoalChainPage({
       .map((task) => task.templateRef),
   );
 
-  function persist(updatedChain: Chain): { act: Act; index: number } {
-    const updatedChains = [...act.chains];
+  function persist(updatedChain: Woop): { act: Aspiration; index: number } {
+    const updatedChains = [...act.woops];
     const nextIndex = chainIdx ?? updatedChains.length;
     updatedChains[nextIndex] = updatedChain;
-    const updatedAct = normalizeActForSave({ ...act, chains: updatedChains });
+    const updatedAct = normalizeAspirationForSave({ ...act, woops: updatedChains });
     return { act: updatedAct, index: nextIndex };
   }
 
@@ -72,20 +72,20 @@ export function GoalChainPage({
     onOpenQuest(next.act, next.index, questIdx);
   }
 
-  function updateQuestAt(index: number, updater: (quest: Quest) => Quest) {
+  function updateQuestAt(index: number, updater: (quest: Smarter) => Smarter) {
     setDraft((current) => ({
       ...current,
-      quests: current.quests.map((quest, questIdx) => questIdx === index ? updater(quest) : quest),
+      smarters: current.smarters.map((quest, questIdx) => questIdx === index ? updater(quest) : quest),
     }));
   }
 
   function moveQuest(fromIdx: number, toIdx: number) {
     if (fromIdx === toIdx) return;
     setDraft((current) => {
-      const quests = [...current.quests];
-      const [moved] = quests.splice(fromIdx, 1);
-      quests.splice(toIdx, 0, moved);
-      return { ...current, quests };
+      const smarters = [...current.smarters];
+      const [moved] = smarters.splice(fromIdx, 1);
+      smarters.splice(toIdx, 0, moved);
+      return { ...current, smarters };
     });
     setExpandedQuestIdx(toIdx);
   }
@@ -117,12 +117,12 @@ export function GoalChainPage({
 
   return (
     <GoalPageShell
-      title={draft.name || 'Chain'}
+      title={draft.name || 'Woop'}
       subtitle={readOnly ? 'Read-only chain' : 'WOOP chain editor'}
       onBack={onBack}
       footer={footer}
     >
-      <GoalSection title="Chain">
+      <GoalSection title="Woop">
         <div className="flex items-end gap-4">
           <div className="shrink-0 pb-0.5">
             <IconPicker value={draft.icon} onChange={(icon) => setDraft((current) => ({ ...current, icon }))} align="left" />
@@ -176,15 +176,15 @@ export function GoalChainPage({
         {activeTab !== 'plan' ? (
           <div className="rounded-3xl bg-gradient-to-br from-emerald-50 via-sky-50 to-amber-50 p-6 dark:from-emerald-950/40 dark:via-sky-950/30 dark:to-amber-950/20">
             <textarea
-              value={activeTab === 'wish' ? draft.wish : activeTab === 'outcome' ? draft.outcome : draft.obstacle}
+              value={activeTab === 'wish' ? draft.wish : activeTab === 'outcome' ? draft.outcome.join('\n') : draft.obstacle.join('\n')}
               disabled={readOnly}
               onChange={(e) => {
                 const value = e.target.value;
                 setDraft((current) => ({
                   ...current,
                   wish: activeTab === 'wish' ? value : current.wish,
-                  outcome: activeTab === 'outcome' ? value : current.outcome,
-                  obstacle: activeTab === 'obstacle' ? value : current.obstacle,
+                  outcome: activeTab === 'outcome' ? [value] : current.outcome,
+                  obstacle: activeTab === 'obstacle' ? [value] : current.obstacle,
                 }));
               }}
               placeholder={
@@ -221,12 +221,12 @@ export function GoalChainPage({
                     onClick={() => openQuest(null)}
                     className="text-xs font-medium text-emerald-600"
                   >
-                    + Add Quest
+                    + Add Smarter
                   </button>
                 ) : null}
               </div>
               <div className="space-y-2">
-                {draft.quests.map((quest, questIdx) => {
+                {draft.smarters.map((quest, questIdx) => {
                   const expanded = expandedQuestIdx === questIdx;
                   const displayState = getQuestDisplayState(draft, questIdx);
                   const isUnlocked = displayState !== 'pending';
@@ -267,7 +267,7 @@ export function GoalChainPage({
                             ::
                           </button>
                           <p className="min-w-0 flex-1 truncate text-sm font-medium text-gray-800 dark:text-gray-100">
-                            {quest.name || `Quest ${questIdx + 1}`}
+                            {quest.name || `Smarter ${questIdx + 1}`}
                           </p>
                           <div className="w-36 shrink-0" onClick={(e) => e.stopPropagation()}>
                             <select
@@ -334,7 +334,7 @@ export function GoalChainPage({
                             onClick={() => openQuest(questIdx)}
                             className="rounded-xl border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-800"
                           >
-                            Open Quest
+                            Open Smarter
                           </button>
                         </div>
                       ) : null}
@@ -349,3 +349,4 @@ export function GoalChainPage({
     </GoalPageShell>
   );
 }
+

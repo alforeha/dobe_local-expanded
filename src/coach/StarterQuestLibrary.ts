@@ -4,25 +4,23 @@
 // Source of truth: docs/W28_Starter_Quest_Spec.md
 //
 // Exports:
-//   starterQuestLibrary — { acts: Act[], taskTemplates: TaskTemplate[] }
+//   starterQuestLibrary — { aspirations: Aspiration[], taskTemplates: TaskTemplate[] }
 //   seedStarterContent() — writes Acts to progressionStore
 //
 // Seeding triggered by W30 first-run flow. Export is the handoff point.
 // ─────────────────────────────────────────
 
 import {
-  type Act,
-  type Chain,
-  type Quest,
-  type ActCommitment,
-  makeDefaultActToggle,
+  type Aspiration,
+  type Woop,
+  type Smarter,
   makeDefaultChainUnlockCondition,
 } from '../types/act';
 import type { Marker, MarkerConditionType, MarkerTriggerSource } from '../types/quest/Marker';
 import type { QuestTimely } from '../types/quest/timely';
 import type { QuestSpecific } from '../types/quest/specific';
 import type { QuestMeasurable } from '../types/quest/measurable';
-import type { QuestExigency } from '../types/quest/exigency';
+import type { QuestExitStrategy } from '../types/quest/exitStrategy';
 import type { TaskTemplate, XpAward, TaskSecondaryTag, RecurrenceRule } from '../types/taskTemplate';
 import { normalizeTaskTemplateIconKey } from '../constants/iconMap';
 import { useProgressionStore } from '../stores/useProgressionStore';
@@ -30,7 +28,7 @@ import { useProgressionStore } from '../stores/useProgressionStore';
 // ── STABLE ACT IDs ────────────────────────────────────────────────────────────
 // Fixed UUIDs so seeding is idempotent — re-seeding won't duplicate Acts.
 
-export const STARTER_ACT_IDS = {
+export const STARTER_ASPIRATION_IDS = {
   onboarding:  'act-onboarding-00000000-0000-0000-0000',
   daily:       'act-daily-00000000-0000-0000-0000-0001',
   health:      'act-health-00000000-0000-0000-0000-0002',
@@ -134,7 +132,7 @@ function makeTimely(marker: Marker, conditionType: MarkerConditionType = 'interv
   };
 }
 
-function withImmediateUnlock(quest: Quest): Quest {
+function withImmediateUnlock(quest: Smarter): Smarter {
   return {
     ...quest,
     completionState: 'active',
@@ -144,11 +142,6 @@ function withImmediateUnlock(quest: Quest): Quest {
     },
   };
 }
-
-const EMPTY_COMMITMENT: ActCommitment = {
-  trackedTaskRefs: [],
-  routineRefs: [],
-};
 
 const EMPTY_MEASURABLE: QuestMeasurable = {};
 
@@ -528,7 +521,7 @@ export const starterTaskTemplates: TaskTemplate[] = rawStarterTaskTemplates.map(
 
 // ── QUEST FACTORY HELPERS ─────────────────────────────────────────────────────
 
-const DEFAULT_EXIGENCY: QuestExigency = { onMissedFinish: 'sleep' };
+const DEFAULT_EXIT_STRATEGY: QuestExitStrategy = { onMissedFinish: 'sleep' };
 
 function makeQuest(
   name: string,
@@ -537,7 +530,7 @@ function makeQuest(
   measurable: QuestMeasurable,
   specific: QuestSpecific,
   questReward: string,
-): Quest {
+): Smarter {
   return {
     name,
     description,
@@ -548,8 +541,13 @@ function makeQuest(
     attainable: {},
     relevant: {},
     timely,
-    exigency: DEFAULT_EXIGENCY,
+    exitStrategy: DEFAULT_EXIT_STRATEGY,
     result: {},
+    nestedAct: {
+      accountability: null,
+      commitment: { trackedTaskRefs: [], routineRefs: [] },
+      tether: null,
+    },
     milestones: [],
     questReward,
     progressPercent: 0,
@@ -568,10 +566,10 @@ function taskInputSpecific(targetValue: number, unit: string | null = null): Que
 
 // ── ACT 1 — ONBOARDING ADVENTURE ─────────────────────────────────────────────
 
-const OB_ACT_ID = STARTER_ACT_IDS.onboarding;
+const OB_ACT_ID = STARTER_ASPIRATION_IDS.onboarding;
 
-// Quest 1 — Ripple
-const q1: Quest = makeQuest(
+// Smarter 1 — Ripple
+const q1: Smarter = makeQuest(
   'Ripple',
   'Open the Welcome Event and complete the task inside it to make your first ripple.',
   {
@@ -587,7 +585,7 @@ const q1: Quest = makeQuest(
 );
 q1.relevant = { statGroup: 'health' };
 
-const q2: Quest = makeQuest(
+const q2: Smarter = makeQuest(
   'Splash',
   'Set up your schedule, explore prebuilt routines, and switch between time views.',
   {
@@ -609,7 +607,7 @@ const q2: Quest = makeQuest(
 );
 q2.relevant = { statGroup: 'defense' };
 
-const q3: Quest = makeQuest(
+const q3: Smarter = makeQuest(
   'High Ground',
   'Roll the lucky dice, explore core rooms, and add a favourite task.',
   {
@@ -633,7 +631,7 @@ const q3: Quest = makeQuest(
 );
 q3.relevant = { statGroup: 'wisdom' };
 
-const q4: Quest = makeQuest(
+const q4: Smarter = makeQuest(
   'Stake Your Claim',
   'Set your display name, open Badge Room, open Equipment Room, and open the Goal Room.',
   {
@@ -656,43 +654,39 @@ const q4: Quest = makeQuest(
 );
 q4.relevant = { statGroup: 'charisma' };
 
-const onboardingChain: Chain = {
+const onboardingWoop: Woop = {
   name: 'Welcome to CAN-DO-BE',
-  description: 'Four quests that walk you through the core system.',
+  description: 'Four smarters that walk you through the core system.',
   icon: 'chain',
   wish: 'Build a life worth levelling up',
-  outcome: 'A fully configured system that works with your real life',
-  obstacle: 'Skipping setup means missing the loop',
+  outcome: ['A fully configured system that works with your real life'],
+  obstacle: ['Skipping setup means missing the loop'],
   plan: {},
   chainReward: 'xp-chain-onboarding',
   unlockCondition: makeDefaultChainUnlockCondition(0),
-  quests: [q1, q2, q3, q4],
+  smarters: [q1, q2, q3, q4],
   completionState: 'active',
 };
 
-export const onboardingAct: Act = {
+export const onboardingAspiration: Aspiration = {
   id: OB_ACT_ID,
   name: 'Onboarding Adventure',
-  description: 'Your first chapter. Complete four quests to set up your system and step into the pond.',
+  description: 'Your first chapter. Complete four smarters to set up your system and step into the pond.',
   icon: 'act-onboarding',
   owner: 'coach',
   habitat: 'adventures',
-  chains: [onboardingChain],
-  accountability: null,
-  commitment: EMPTY_COMMITMENT,
-  toggle: makeDefaultActToggle(),
+  woops: [onboardingWoop],
   completionState: 'active',
-  sharedContacts: null,
 };
 
 // ── ACT 2 — DAILY ADVENTURE ───────────────────────────────────────────────────
-// D79: Transforms from Onboarding Act on completion — same Act object, relabelled.
-// Chain 0 (Onboarding) stays in history. Rollover appends a new Chain each day.
-// This is the template for the daily Chain structure only.
+// D79: Transforms from Onboarding Aspiration on completion — same Aspiration object, relabelled.
+// Woop 0 (Onboarding) stays in history. Rollover appends a new Woop each day.
+// This is the template for the daily Woop structure only.
 
-const DA_ACT_ID = STARTER_ACT_IDS.daily;
+const DA_ACT_ID = STARTER_ASPIRATION_IDS.daily;
 
-function makeDailyRollQuest(_actId: string, _chainIdx: number): Quest {
+function makeDailyRollQuest(_actId: string, _chainIdx: number): Smarter {
   const quest = withImmediateUnlock(
     makeQuest(
       'Daily Roll',
@@ -713,7 +707,7 @@ function makeDailyRollQuest(_actId: string, _chainIdx: number): Quest {
   return quest;
 }
 
-function makeDailyWaterQuest(_actId: string, _chainIdx: number): Quest {
+function makeDailyWaterQuest(_actId: string, _chainIdx: number): Smarter {
   const quest = withImmediateUnlock(
     makeQuest(
       'Daily Water',
@@ -734,7 +728,7 @@ function makeDailyWaterQuest(_actId: string, _chainIdx: number): Quest {
   return quest;
 }
 
-function makeDailyLogQuest(_actId: string, _chainIdx: number): Quest {
+function makeDailyLogQuest(_actId: string, _chainIdx: number): Smarter {
   const quest = withImmediateUnlock(
     makeQuest(
       'Complete Tasks',
@@ -755,7 +749,7 @@ function makeDailyLogQuest(_actId: string, _chainIdx: number): Quest {
   return quest;
 }
 
-function makeDailyClearDeckQuest(actId: string, chainIdx: number): Quest {
+function makeDailyClearDeckQuest(actId: string, chainIdx: number): Smarter {
   const marker: Marker = {
     questRef: `${actId}|${chainIdx}|3`,
     conditionType: 'none',
@@ -786,64 +780,60 @@ function makeDailyClearDeckQuest(actId: string, chainIdx: number): Quest {
   return quest;
 }
 
-/** Build a single daily Chain (Chain 1 = first post-onboarding day, etc.) */
-export function makeDailyChain(actId: string, chainIdx: number, date: string): Chain {
+/** Build a single daily Woop (Woop 1 = first post-onboarding day, etc.) */
+export function makeDailyChain(actId: string, chainIdx: number, date: string): Woop {
   return {
     name: `Day ${chainIdx} — ${date}`,
-    description: 'Four daily quests. Complete them before midnight.',
+    description: 'Four daily smarters. Complete them before midnight.',
     icon: 'chain-daily',
     wish: 'Show up every day',
-    outcome: 'A streak of consistent daily action',
-    obstacle: 'Getting distracted or forgetting to check in',
+    outcome: ['A streak of consistent daily action'],
+    obstacle: ['Getting distracted or forgetting to check in'],
     plan: {},
     chainReward: 'xp-daily-chain',
     unlockCondition: makeDefaultChainUnlockCondition(chainIdx),
-    quests: [
+    smarters: [
       makeDailyRollQuest(actId, chainIdx),
       makeDailyWaterQuest(actId, chainIdx),
       makeDailyLogQuest(actId, chainIdx),
       makeDailyClearDeckQuest(actId, chainIdx),
     ],
-    adaptiveQuests: [],
+    adaptiveSmarters: [],
     completionState: 'active',
   };
 }
 
-export const dailyAct: Act = {
+export const dailyAspiration: Aspiration = {
   id: DA_ACT_ID,
   name: 'Daily Adventure',
   description: 'A new chain each day. Roll, hydrate, log, and clear the deck.',
   icon: 'act-daily',
   owner: 'coach',
   habitat: 'adventures',
-  chains: [], // populated at onboarding completion and daily rollover
-  accountability: null,
-  commitment: EMPTY_COMMITMENT,
-  toggle: makeDefaultActToggle(),
+  woops: [], // populated at onboarding completion and daily rollover
   completionState: 'active',
-  sharedContacts: null,
 };
 
 // ── STAT PATH ACTS ────────────────────────────────────────────────────────────
-// One Chain per Act, four Quests, taskCount Markers with thresholds 3/6/12/24.
+// One Woop per Aspiration, four Quests, taskCount Markers with thresholds 3/6/12/24.
 
 function makeStatPathAct(
   id: string,
   name: string,
   description: string,
-  quests: Quest[],
-): Act {
-  const chain: Chain = {
-    name: `${name} — Chain 1`,
-    description: `Four progressive quests building your ${name.toLowerCase().replace(' path', '')} stat.`,
+  smarters: Smarter[],
+): Aspiration {
+  const woop: Woop = {
+    name: `${name} — Woop 1`,
+    description: `Four progressive smarters building your ${name.toLowerCase().replace(' path', '')} stat.`,
     icon: 'chain-stat',
     wish: `Build consistent ${name.toLowerCase().replace(' path', '')} habits`,
-    outcome: `Measurable improvement in ${name.toLowerCase().replace(' path', '')} over 24 sessions`,
-    obstacle: 'Inconsistency and skipping sessions',
+    outcome: [`Measurable improvement in ${name.toLowerCase().replace(' path', '')} over 24 sessions`],
+    obstacle: ['Inconsistency and skipping sessions'],
     plan: {},
     chainReward: `xp-chain-${id.slice(4, 14)}`,
     unlockCondition: makeDefaultChainUnlockCondition(0),
-    quests,
+    smarters,
     completionState: 'active',
   };
 
@@ -854,18 +844,14 @@ function makeStatPathAct(
     icon: `act-${id.split('-')[1]}`,
     owner: 'coach',
     habitat: 'adventures',
-    chains: [chain],
-    accountability: null,
-    commitment: EMPTY_COMMITMENT,
-    toggle: makeDefaultActToggle(),
+    woops: [woop],
     completionState: 'active',
-    sharedContacts: null,
   };
 }
 
 // Health Path
-const HP_ID = STARTER_ACT_IDS.health;
-const healthAct = makeStatPathAct(
+const HP_ID = STARTER_ASPIRATION_IDS.health;
+const healthAspiration = makeStatPathAct(
   HP_ID,
   'Health Path',
   'Track your body, hydration, meals, and daily presence.',
@@ -890,8 +876,8 @@ const healthAct = makeStatPathAct(
 );
 
 // Strength Path
-const SP_ID = STARTER_ACT_IDS.strength;
-const strengthAct = makeStatPathAct(
+const SP_ID = STARTER_ASPIRATION_IDS.strength;
+const strengthAspiration = makeStatPathAct(
   SP_ID,
   'Strength Path',
   'Sleep, move, train, and log your physical output.',
@@ -916,8 +902,8 @@ const strengthAct = makeStatPathAct(
 );
 
 // Agility Path
-const AG_ID = STARTER_ACT_IDS.agility;
-const agilityAct = makeStatPathAct(
+const AG_ID = STARTER_ASPIRATION_IDS.agility;
+const agilityAspiration = makeStatPathAct(
   AG_ID,
   'Agility Path',
   'Maintain your home, clear your inbox, and master your events.',
@@ -942,8 +928,8 @@ const agilityAct = makeStatPathAct(
 );
 
 // Defense Path
-const DF_ID = STARTER_ACT_IDS.defense;
-const defenseAct = makeStatPathAct(
+const DF_ID = STARTER_ASPIRATION_IDS.defense;
+const defenseAspiration = makeStatPathAct(
   DF_ID,
   'Defense Path',
   'Schedule intentionally, clear your day, log finances, and track inventory.',
@@ -968,8 +954,8 @@ const defenseAct = makeStatPathAct(
 );
 
 // Charisma Path
-const CH_ID = STARTER_ACT_IDS.charisma;
-const charismaAct = makeStatPathAct(
+const CH_ID = STARTER_ASPIRATION_IDS.charisma;
+const charismaAspiration = makeStatPathAct(
   CH_ID,
   'Charisma Path',
   'Build self-awareness, gratitude, kindness, and social connection.',
@@ -983,7 +969,7 @@ const charismaAct = makeStatPathAct(
       makeTimely(makeTaskCountMarker(`${CH_ID}|0|1`, STARTER_TEMPLATE_IDS.gratitude, 6, 'taskTemplateRef', STARTER_TEMPLATE_IDS.gratitude), 'taskCount'),
       { taskTemplateRefs: [STARTER_TEMPLATE_IDS.gratitude] }, taskInputSpecific(1), 'xp-c2'),
     makeQuest('C3 — Acts of Kindness',
-      'Log 12 acts of kindness.',
+      'Log 12 aspirations of kindness.',
       makeTimely(makeTaskCountMarker(`${CH_ID}|0|2`, STARTER_TEMPLATE_IDS.kindness, 12, 'taskTemplateRef', STARTER_TEMPLATE_IDS.kindness), 'taskCount'),
       { taskTemplateRefs: [STARTER_TEMPLATE_IDS.kindness] }, taskInputSpecific(1), 'xp-c3'),
     makeQuest('C4 — Reach Out',
@@ -994,8 +980,8 @@ const charismaAct = makeStatPathAct(
 );
 
 // Wisdom Path
-const WS_ID = STARTER_ACT_IDS.wisdom;
-const wisdomAct = makeStatPathAct(
+const WS_ID = STARTER_ASPIRATION_IDS.wisdom;
+const wisdomAspiration = makeStatPathAct(
   WS_ID,
   'Wisdom Path',
   'Meditate, track mood, complete form tasks, and build wisdom habits.',
@@ -1022,24 +1008,24 @@ const wisdomAct = makeStatPathAct(
 // ── SPLIT ACT EXPORTS (D87) ───────────────────────────────────────────────────
 
 /** Acts seeded on first run — Onboarding only (D87). */
-export const starterActs: Act[] = [onboardingAct];
+export const starterAspirations: Aspiration[] = [onboardingAspiration];
 
 /** Acts held in the coach bundle until triggered by game events (D87). */
-export const coachActs: Act[] = [
-  dailyAct,
-  healthAct,
-  strengthAct,
-  agilityAct,
-  defenseAct,
-  charismaAct,
-  wisdomAct,
+export const coachAspirations: Aspiration[] = [
+  dailyAspiration,
+  healthAspiration,
+  strengthAspiration,
+  agilityAspiration,
+  defenseAspiration,
+  charismaAspiration,
+  wisdomAspiration,
 ];
 
 // ── LIBRARY EXPORT ────────────────────────────────────────────────────────────
 
 export const starterQuestLibrary = {
-  /** All starter acts — used by test utilities that need the full set. */
-  acts: [...starterActs, ...coachActs] as Act[],
+  /** All starter aspirations — used by test utilities that need the full set. */
+  aspirations: [...starterAspirations, ...coachAspirations] as Aspiration[],
   taskTemplates: starterTaskTemplates,
 };
 
@@ -1078,32 +1064,33 @@ export const starterTaskTemplateIds: string[] = [
 // ── SEED FUNCTION ─────────────────────────────────────────────────────────────
 
 /**
- * Write the Onboarding Act and all starter TaskTemplates to their stores.
+ * Write the Onboarding Aspiration and all starter TaskTemplates to their stores.
  * Idempotent — skips items already present when skipExisting is true (default).
  *
- * Per D87: only starterActs (Onboarding) is seeded here.
+ * Per D87: only starterAspirations (Onboarding) is seeded here.
  * Other Acts (Daily, stat paths) unlock via unlockAct() when triggered.
  */
 export function seedStarterContent(skipExisting = true): void {
   const progressionStore = useProgressionStore.getState();
 
   // Seed Acts — Onboarding only (D87)
-  for (const act of starterActs) {
-    if (skipExisting && progressionStore.acts[act.id]) continue;
-    progressionStore.setAct(act);
+  for (const act of starterAspirations) {
+    if (skipExisting && progressionStore.aspirations[act.id]) continue;
+    progressionStore.setAspiration(act);
   }
 }
 
 // ── UNLOCK ACT (D87) ──────────────────────────────────────────────────────────
 
 /**
- * Unlock a coach bundle Act and add it to progressionStore.
- * Called when game events trigger an Act to become available (D87).
+ * Unlock a coach bundle Aspiration and add it to progressionStore.
+ * Called when game events trigger an Aspiration to become available (D87).
  *
- * @param actId  One of STARTER_ACT_IDS values for a coach bundle act
+ * @param actId  One of STARTER_ASPIRATION_IDS values for a coach bundle act
  */
 export function unlockAct(actId: string): void {
-  const act = coachActs.find((a) => a.id === actId);
+  const act = coachAspirations.find((a) => a.id === actId);
   if (!act) return;
-  useProgressionStore.getState().setAct(act);
+  useProgressionStore.getState().setAspiration(act);
 }
+

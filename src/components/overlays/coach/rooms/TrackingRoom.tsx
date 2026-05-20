@@ -1,9 +1,9 @@
 // ─────────────────────────────────────────
 // TrackingRoom — COACH-D
-// Summary card: active events, upcoming (7d), active quests, routines.
+// Summary card: active events, upcoming (7d), active smarters, routines.
 // Tab 1 ACTIVE: activeEvents excl. quickActions + Welcome Event, color swatch from event/PE.
 // Tab 2 UPCOMING: PlannedEvents due in next 7 days via isPlannedEventDue().
-// Tab 3 QUESTS: active quests from progressionStore with progress bars.
+// Tab 3 QUESTS: active smarters from progressionStore with progress bars.
 // ─────────────────────────────────────────
 
 import { useState, useMemo } from 'react';
@@ -14,7 +14,7 @@ import { isPlannedEventDue } from '../../../../engine/rollover';
 import { isOneOffEvent } from '../../../../utils/isOneOffEvent';
 import type { Event } from '../../../../types/event';
 import type { PlannedEvent } from '../../../../types/plannedEvent';
-import type { Quest } from '../../../../types/act';
+import type { Smarter } from '../../../../types/act';
 
 // ── HELPERS ───────────────────────────────────────────────────────────────────
 
@@ -94,7 +94,7 @@ function TStatCell({ label, value }: { label: string; value: string }) {
 
 // ── TAB PILL ──────────────────────────────────────────────────────────────────
 
-type TrackingTab = 'active' | 'upcoming' | 'quests';
+type TrackingTab = 'active' | 'upcoming' | 'smarters';
 
 interface TabPillProps {
   label: string;
@@ -219,7 +219,7 @@ function UpcomingTab({ entries }: { entries: UpcomingEntry[] }) {
 interface QuestRowProps {
   actName: string;
   chainName: string;
-  quest: Quest;
+  quest: Smarter;
 }
 
 function QuestRow({ actName, chainName, quest }: QuestRowProps) {
@@ -248,12 +248,12 @@ function QuestRow({ actName, chainName, quest }: QuestRowProps) {
 function QuestsTab({
   entries,
 }: {
-  entries: Array<{ actName: string; chainName: string; quest: Quest; key: string }>;
+  entries: Array<{ actName: string; chainName: string; quest: Smarter; key: string }>;
 }) {
   if (entries.length === 0) {
     return (
       <p className="px-4 py-8 text-center text-sm text-gray-400 dark:text-gray-500">
-        No active quests.
+        No active smarters.
       </p>
     );
   }
@@ -275,7 +275,7 @@ interface TrackingRoomProps {
 export function TrackingRoom({ onOpenEvent }: TrackingRoomProps) {
   const activeEvents = useScheduleStore((s) => s.activeEvents);
   const plannedEvents = useScheduleStore((s) => s.plannedEvents);
-  const acts = useProgressionStore((s) => s.acts);
+  const aspirations = useProgressionStore((s) => s.aspirations);
 
   const [tab, setTab] = useState<TrackingTab>('active');
 
@@ -314,12 +314,12 @@ export function TrackingRoom({ onOpenEvent }: TrackingRoomProps) {
 
   // ── QUESTS tab data ────────────────────────────────────────────────────────
   const questEntries = useMemo(() => {
-    const result: Array<{ actName: string; chainName: string; quest: Quest; key: string }> = [];
-    for (const act of Object.values(acts)) {
-      for (let ci = 0; ci < act.chains.length; ci++) {
-        const chain = act.chains[ci]!;
-        for (let qi = 0; qi < chain.quests.length; qi++) {
-          const quest = chain.quests[qi]!;
+    const result: Array<{ actName: string; chainName: string; quest: Smarter; key: string }> = [];
+    for (const act of Object.values(aspirations)) {
+      for (let ci = 0; ci < act.woops.length; ci++) {
+        const chain = act.woops[ci]!;
+        for (let qi = 0; qi < chain.smarters.length; qi++) {
+          const quest = chain.smarters[qi]!;
           if (quest.completionState === 'active') {
             result.push({
               actName: act.name,
@@ -332,7 +332,7 @@ export function TrackingRoom({ onOpenEvent }: TrackingRoomProps) {
       }
     }
     return result;
-  }, [acts]);
+  }, [aspirations]);
 
   // ── Summary card counts ────────────────────────────────────────────────────
   const routineCount = useMemo(
@@ -354,7 +354,7 @@ export function TrackingRoom({ onOpenEvent }: TrackingRoomProps) {
       <div className="shrink-0 flex gap-2 px-4 pt-2 pb-2 border-b border-gray-100 dark:border-gray-800">
         <TabPill label="Active" active={tab === 'active'} onClick={() => setTab('active')} />
         <TabPill label="Upcoming" active={tab === 'upcoming'} onClick={() => setTab('upcoming')} />
-        <TabPill label="Quests" active={tab === 'quests'} onClick={() => setTab('quests')} />
+        <TabPill label="Quests" active={tab === 'smarters'} onClick={() => setTab('smarters')} />
       </div>
 
       {/* Tab content */}
@@ -363,8 +363,9 @@ export function TrackingRoom({ onOpenEvent }: TrackingRoomProps) {
           <ActiveTab events={activeList} plannedEvents={plannedEvents} onOpen={onOpenEvent} />
         )}
         {tab === 'upcoming' && <UpcomingTab entries={upcomingEntries} />}
-        {tab === 'quests' && <QuestsTab entries={questEntries} />}
+        {tab === 'smarters' && <QuestsTab entries={questEntries} />}
       </div>
     </div>
   );
 }
+

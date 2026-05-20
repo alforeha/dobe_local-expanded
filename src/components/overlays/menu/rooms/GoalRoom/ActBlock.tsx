@@ -1,11 +1,11 @@
 import { useState } from 'react';
-import type { Act } from '../../../../../types';
+import type { Aspiration } from '../../../../../types';
 import { IconDisplay } from '../../../../shared/IconDisplay';
 import { ActBlockExpanded } from './ActBlockExpanded';
 
 interface ActBlockProps {
-  act: Act;
-  onEdit: (act: Act) => void;
+  act: Aspiration;
+  onEdit: (act: Aspiration) => void;
 }
 
 export function ActBlock({ act, onEdit }: ActBlockProps) {

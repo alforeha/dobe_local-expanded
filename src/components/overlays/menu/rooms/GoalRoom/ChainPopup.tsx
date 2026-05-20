@@ -1,16 +1,16 @@
 // ─────────────────────────────────────────
 // ChainPopup — W21 MVP11
-// Renders Chain WOOP fields + Quest management (add / edit / delete / expand).
-// Milestones within each Quest are read-only.
+// Renders Woop WOOP fields + Smarter management (add / edit / delete / expand).
+// Milestones within each Smarter are read-only.
 // ─────────────────────────────────────────
 
 import { useState } from 'react';
 import type {
-  Act,
-  Chain,
-  Quest,
-  ExigencyOption,
-  QuestCompletionState,
+  Aspiration,
+  Woop,
+  Smarter,
+  ExitStrategyOption,
+  SmarterCompletionState,
   Task,
   TaskTemplate,
   ChecklistItem,
@@ -33,7 +33,7 @@ import { getAppDate } from '../../../../../utils/dateUtils';
 
 const WEEKDAYS: Weekday[] = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
 
-const EXIGENCY_OPTIONS: ExigencyOption[] = ['restart', 'extend', 'reschedule', 'sleep'];
+const EXIGENCY_OPTIONS: ExitStrategyOption[] = ['restart', 'extend', 'reschedule', 'sleep'];
 
 // ── SHARED INPUT CLASS ────────────────────────────────────────────────────────
 
@@ -57,7 +57,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 // ── BLANK QUEST FACTORY ───────────────────────────────────────────────────────
 
-function blankQuest(): Quest {
+function blankQuest(): Smarter {
   return {
     name: '',
     description: '',
@@ -86,8 +86,13 @@ function blankQuest(): Quest {
       markers: [],
       projectedFinish: null,
     },
-    exigency: { onMissedFinish: 'extend' },
+    exitStrategy: { onMissedFinish: 'extend' },
     result: {},
+    nestedAct: {
+      accountability: null,
+      commitment: { trackedTaskRefs: [], routineRefs: [] },
+      tether: null,
+    },
     milestones: [],
     questReward: '',
     progressPercent: 0,
@@ -99,7 +104,7 @@ function blankQuest(): Quest {
 interface QuestFormState {
   name: string;
   description: string;
-  completionState: QuestCompletionState;
+  completionState: SmarterCompletionState;
   targetValue: string;
   unit: string;
   sourceType: 'taskInput' | 'resourceRef';
@@ -110,14 +115,14 @@ interface QuestFormState {
   intervalN: string;
   endsOn: string;
   xpThresholdValue: string;
-  onMissedFinish: ExigencyOption;
+  onMissedFinish: ExitStrategyOption;
   attainableText: string;
   relevantText: string;
   resultText: string;
   questReward: string;
 }
 
-function questToFormState(q: Quest): QuestFormState {
+function questToFormState(q: Smarter): QuestFormState {
   return {
     name: q.name,
     description: q.description,
@@ -132,7 +137,7 @@ function questToFormState(q: Quest): QuestFormState {
     intervalN: String(q.timely.interval?.interval ?? 1),
     endsOn: q.timely.interval?.endsOn ?? '',
     xpThresholdValue: String(q.timely.xpThreshold ?? ''),
-    onMissedFinish: q.exigency.onMissedFinish,
+    onMissedFinish: q.exitStrategy.onMissedFinish,
     attainableText: typeof q.attainable['text'] === 'string' ? (q.attainable['text'] as string) : '',
     relevantText: typeof q.relevant['text'] === 'string' ? (q.relevant['text'] as string) : '',
     resultText: typeof q.result['text'] === 'string' ? (q.result['text'] as string) : '',
@@ -140,7 +145,7 @@ function questToFormState(q: Quest): QuestFormState {
   };
 }
 
-function formStateToQuest(f: QuestFormState, existing: Quest): Quest {
+function formStateToQuest(f: QuestFormState, existing: Smarter): Smarter {
   const isInterval = f.conditionType === 'interval';
   return {
     ...existing,
@@ -173,7 +178,7 @@ function formStateToQuest(f: QuestFormState, existing: Quest): Quest {
       markers: existing.timely.markers,
       projectedFinish: existing.timely.projectedFinish,
     },
-    exigency: { onMissedFinish: f.onMissedFinish },
+    exitStrategy: { onMissedFinish: f.onMissedFinish },
     questReward: f.questReward.trim(),
   };
 }
@@ -199,7 +204,7 @@ function milestoneResultSummary(resultFields: Record<string, unknown>): string {
 
 // ── STATUS BADGE ──────────────────────────────────────────────────────────────
 
-function StatusBadge({ state }: { state: QuestCompletionState }) {
+function StatusBadge({ state }: { state: SmarterCompletionState }) {
   const label = state === 'failed' ? 'skipped' : state;
   const cls =
     state === 'complete'
@@ -231,7 +236,7 @@ interface QuestProgressRow {
   checked: boolean;
 }
 
-function getQuestTaskTemplateRef(quest: Quest): string | null {
+function getQuestTaskTemplateRef(quest: Smarter): string | null {
   return quest.timely.markers.find((marker) => marker.activeState)?.taskTemplateRef ??
     quest.timely.markers[0]?.taskTemplateRef ??
     null;
@@ -286,7 +291,7 @@ function hasCompletedQuickActionRollToday(
 }
 
 function getQuestProgressRows(
-  quest: Quest,
+  quest: Smarter,
   questRef: string,
   tasks: Record<string, Task>,
   taskTemplates: Record<string, TaskTemplate>,
@@ -390,7 +395,7 @@ function QuestFormPopup({ initialState, isEdit, onSave, onCancel }: QuestFormPop
         {/* Header */}
         <div className="flex items-center justify-between border-b border-gray-200 dark:border-gray-700 px-4 py-3 shrink-0">
           <h3 className="text-base font-semibold text-gray-800 dark:text-gray-100">
-            {isEdit ? 'Edit Quest' : 'Add Quest'}
+            {isEdit ? 'Edit Smarter' : 'Add Smarter'}
           </h3>
           <button
             type="button"
@@ -434,7 +439,7 @@ function QuestFormPopup({ initialState, isEdit, onSave, onCancel }: QuestFormPop
           <Field label="Status">
             <select
               value={f.completionState}
-              onChange={(e) => set('completionState', e.target.value as QuestCompletionState)}
+              onChange={(e) => set('completionState', e.target.value as SmarterCompletionState)}
               className={selectCls}
             >
               <option value="active">active</option>
@@ -620,11 +625,11 @@ function QuestFormPopup({ initialState, isEdit, onSave, onCancel }: QuestFormPop
             </Field>
           )}
 
-          {/* SMARTER E — exigency */}
+          {/* SMARTER E — exitStrategy */}
           <Field label="On missed finish (SMARTER E)">
             <select
               value={f.onMissedFinish}
-              onChange={(e) => set('onMissedFinish', e.target.value as ExigencyOption)}
+              onChange={(e) => set('onMissedFinish', e.target.value as ExitStrategyOption)}
               className={selectCls}
             >
               {EXIGENCY_OPTIONS.map((opt) => (
@@ -659,7 +664,7 @@ function QuestFormPopup({ initialState, isEdit, onSave, onCancel }: QuestFormPop
             onClick={handleSave}
             className="flex-1 rounded-lg bg-blue-500 py-2 text-sm font-medium text-white hover:bg-blue-600"
           >
-            {isEdit ? 'Save' : 'Add Quest'}
+            {isEdit ? 'Save' : 'Add Smarter'}
           </button>
         </div>
       </div>
@@ -670,7 +675,7 @@ function QuestFormPopup({ initialState, isEdit, onSave, onCancel }: QuestFormPop
 // ── QUEST ROW ─────────────────────────────────────────────────────────────────
 
 interface QuestRowProps {
-  quest: Quest;
+  quest: Smarter;
   actId: string;
   chainIndex: number;
   index: number;
@@ -720,7 +725,7 @@ function QuestRow({
 
   return (
     <div className="rounded-lg border border-gray-100 dark:border-gray-700 overflow-hidden">
-      {/* Quest header row */}
+      {/* Smarter header row */}
       <div className="flex items-center gap-2 px-3 py-2 bg-gray-50 dark:bg-gray-700">
         <button
           type="button"
@@ -842,7 +847,7 @@ function QuestRow({
           )}
           <p className="text-xs text-gray-600 dark:text-gray-300">
             <span className="font-medium">On missed finish:</span>{' '}
-            {quest.exigency.onMissedFinish}
+            {quest.exitStrategy.onMissedFinish}
           </p>
 
           {/* Milestones */}
@@ -880,40 +885,40 @@ function QuestRow({
 // ── CHAIN POPUP ───────────────────────────────────────────────────────────────
 
 interface ChainPopupProps {
-  chain: Chain;
+  chain: Woop;
   chainIndex: number;
-  act: Act;
+  act: Aspiration;
   onClose: () => void;
 }
 
 export function ChainPopup({ chain, chainIndex, act, onClose }: ChainPopupProps) {
-  const setAct = useProgressionStore((s) => s.setAct);
+  const setAspiration = useProgressionStore((s) => s.setAspiration);
 
   // ── WOOP edit mode ────────────────────────────────────────────────────────
   const [woopEditMode, setWoopEditMode] = useState(false);
   const [woopWish, setWoopWish] = useState(chain.wish);
-  const [woopOutcome, setWoopOutcome] = useState(chain.outcome);
-  const [woopObstacle, setWoopObstacle] = useState(chain.obstacle);
+  const [woopOutcome, setWoopOutcome] = useState(chain.outcome.join('\n'));
+  const [woopObstacle, setWoopObstacle] = useState(chain.obstacle.join('\n'));
   const [woopPlanText, setWoopPlanText] = useState(
     typeof chain.plan['text'] === 'string' ? (chain.plan['text'] as string) : '',
   );
 
   function saveWoop() {
-    const updatedChain: Chain = {
+    const updatedChain: Woop = {
       ...chain,
       wish: woopWish,
-      outcome: woopOutcome,
-      obstacle: woopObstacle,
+      outcome: woopOutcome ? [woopOutcome] : [],
+      obstacle: woopObstacle ? [woopObstacle] : [],
       plan: woopPlanText.trim() ? { text: woopPlanText.trim() } : {},
     };
     persistChain(updatedChain);
     setWoopEditMode(false);
   }
 
-  // ── Quest expand state ────────────────────────────────────────────────────
+  // ── Smarter expand state ────────────────────────────────────────────────────
   const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
 
-  // ── Quest form state ──────────────────────────────────────────────────────
+  // ── Smarter form state ──────────────────────────────────────────────────────
   const [questFormOpen, setQuestFormOpen] = useState(false);
   const [editQuestIdx, setEditQuestIdx] = useState<number | null>(null);
   const [questFormInitial, setQuestFormInitial] = useState<QuestFormState | null>(null);
@@ -922,14 +927,14 @@ export function ChainPopup({ chain, chainIndex, act, onClose }: ChainPopupProps)
   const [confirmDeleteIdx, setConfirmDeleteIdx] = useState<number | null>(null);
 
   // ── Local chain copy (mutable for optimistic UI) ──────────────────────────
-  const [localChain, setLocalChain] = useState<Chain>(chain);
+  const [localChain, setLocalChain] = useState<Woop>(chain);
 
-  function persistChain(updated: Chain) {
+  function persistChain(updated: Woop) {
     setLocalChain(updated);
-    const updatedChains = [...act.chains];
+    const updatedChains = [...act.woops];
     updatedChains[chainIndex] = updated;
-    const updatedAct: Act = { ...act, chains: updatedChains };
-    setAct(updatedAct);
+    const updatedAct: Aspiration = { ...act, woops: updatedChains };
+    setAspiration(updatedAct);
   }
 
   // ── Add quest ─────────────────────────────────────────────────────────────
@@ -941,7 +946,7 @@ export function ChainPopup({ chain, chainIndex, act, onClose }: ChainPopupProps)
 
   // ── Edit quest ────────────────────────────────────────────────────────────
   function openEditQuest(idx: number) {
-    const q = localChain.quests[idx];
+    const q = localChain.smarters[idx];
     if (!q) return;
     setEditQuestIdx(idx);
     setQuestFormInitial(questToFormState(q));
@@ -952,16 +957,16 @@ export function ChainPopup({ chain, chainIndex, act, onClose }: ChainPopupProps)
   function handleQuestFormSave(f: QuestFormState) {
     if (editQuestIdx !== null) {
       // Edit in place
-      const existing = localChain.quests[editQuestIdx];
+      const existing = localChain.smarters[editQuestIdx];
       if (!existing) return;
-      const updated: Quest = formStateToQuest(f, existing);
-      const updatedQuests = [...localChain.quests];
+      const updated: Smarter = formStateToQuest(f, existing);
+      const updatedQuests = [...localChain.smarters];
       updatedQuests[editQuestIdx] = updated;
-      persistChain({ ...localChain, quests: updatedQuests });
+      persistChain({ ...localChain, smarters: updatedQuests });
     } else {
       // New quest
-      const updated: Quest = formStateToQuest(f, blankQuest());
-      persistChain({ ...localChain, quests: [...localChain.quests, updated] });
+      const updated: Smarter = formStateToQuest(f, blankQuest());
+      persistChain({ ...localChain, smarters: [...localChain.smarters, updated] });
     }
     setQuestFormOpen(false);
     setEditQuestIdx(null);
@@ -972,8 +977,8 @@ export function ChainPopup({ chain, chainIndex, act, onClose }: ChainPopupProps)
   function requestDelete(idx: number) {
     if (confirmDeleteIdx === idx) {
       // Second tap — confirm
-      const updatedQuests = localChain.quests.filter((_, i) => i !== idx);
-      persistChain({ ...localChain, quests: updatedQuests });
+      const updatedQuests = localChain.smarters.filter((_, i) => i !== idx);
+      persistChain({ ...localChain, smarters: updatedQuests });
       setConfirmDeleteIdx(null);
       if (expandedIdx === idx) setExpandedIdx(null);
       else if (expandedIdx !== null && expandedIdx > idx) setExpandedIdx(expandedIdx - 1);
@@ -1010,8 +1015,8 @@ export function ChainPopup({ chain, chainIndex, act, onClose }: ChainPopupProps)
                 if (woopEditMode) {
                   // Reset to saved values
                   setWoopWish(localChain.wish);
-                  setWoopOutcome(localChain.outcome);
-                  setWoopObstacle(localChain.obstacle);
+                  setWoopOutcome(localChain.outcome.join('\n'));
+                  setWoopObstacle(localChain.obstacle.join('\n'));
                   setWoopPlanText(
                     typeof localChain.plan['text'] === 'string'
                       ? (localChain.plan['text'] as string)
@@ -1121,26 +1126,26 @@ export function ChainPopup({ chain, chainIndex, act, onClose }: ChainPopupProps)
               )}
             </div>
 
-            {/* Quest list */}
+            {/* Smarter list */}
             <div>
               <div className="flex items-center justify-between mb-2">
                 <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
-                  Quests ({localChain.quests.length})
+                  Quests ({localChain.smarters.length})
                 </p>
                 <button
                   type="button"
                   onClick={openAddQuest}
                   className="text-xs text-blue-500 hover:text-blue-600 font-medium"
                 >
-                  + Add Quest
+                  + Add Smarter
                 </button>
               </div>
 
-              {localChain.quests.length === 0 ? (
-                <p className="text-xs text-gray-400 italic">No quests — tap + Add Quest.</p>
+              {localChain.smarters.length === 0 ? (
+                <p className="text-xs text-gray-400 italic">No smarters — tap + Add Smarter.</p>
               ) : (
                 <div className="space-y-2">
-                  {localChain.quests.map((q, i) => (
+                  {localChain.smarters.map((q, i) => (
                     <QuestRow
                       key={i}
                       quest={q}
@@ -1168,7 +1173,7 @@ export function ChainPopup({ chain, chainIndex, act, onClose }: ChainPopupProps)
               onClick={openAddQuest}
               className="flex-1 rounded-lg border border-blue-500 py-2 text-sm font-medium text-blue-500 hover:bg-blue-50 dark:hover:bg-gray-700"
             >
-              + Add Quest
+              + Add Smarter
             </button>
             <button
               type="button"
@@ -1181,7 +1186,7 @@ export function ChainPopup({ chain, chainIndex, act, onClose }: ChainPopupProps)
         </div>
       </div>
 
-      {/* Quest form sub-popup */}
+      {/* Smarter form sub-popup */}
       {questFormOpen && questFormInitial !== null && (
         <QuestFormPopup
           initialState={questFormInitial}
@@ -1197,3 +1202,4 @@ export function ChainPopup({ chain, chainIndex, act, onClose }: ChainPopupProps)
     </>
   );
 }
+

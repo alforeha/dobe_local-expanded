@@ -8,8 +8,8 @@
 import type { QuestSpecific } from './quest/specific';
 import type { QuestMeasurable } from './quest/measurable';
 import type { QuestTimely } from './quest/timely';
-import type { QuestExigency } from './quest/exigency';
-import type { ActCommitment } from './quest/Act';
+import type { QuestExitStrategy } from './quest/exitStrategy';
+import type { NestedAct } from './quest/Act';
 import type { Milestone } from './quest/Milestone';
 
 // Re-export quest subtypes so existing consumers (e.g. rollover.ts importing
@@ -19,19 +19,19 @@ export type { MarkerConditionType, Marker } from './quest/Marker';
 export type { QuestTimely } from './quest/timely';
 export type { Milestone } from './quest/Milestone';
 export type { QuestMeasurable } from './quest/measurable';
-export type { ExigencyOption, QuestExigency } from './quest/exigency';
-export type { ActCommitment } from './quest/Act';
+export type { ExitStrategyOption, QuestExitStrategy } from './quest/exitStrategy';
+export type { ActCommitment, NestedAct } from './quest/Act';
 
 // ── QUEST (SMARTER framework — array-indexed within Chain) ───────────────────
 
-export type QuestCompletionState = 'active' | 'complete' | 'failed';
+export type SmarterCompletionState = 'active' | 'complete' | 'failed';
 
-export interface Quest {
+export interface Smarter {
   name: string;
   description: string;
   /** Ref to icon asset */
   icon: string;
-  completionState: QuestCompletionState;
+  completionState: SmarterCompletionState;
   /** SMARTER S — end-state target value and sourceType evaluation routing (D01) */
   specific: QuestSpecific;
   /** SMARTER M — task types whose completions count toward progress (D02, Q02: flat list) */
@@ -43,9 +43,11 @@ export interface Quest {
   /** SMARTER T — Marker configuration and container object (D05) */
   timely: QuestTimely;
   /** SMARTER E — stub shape for missed finish line handling (D06) */
-  exigency: QuestExigency;
+  exitStrategy: QuestExitStrategy;
   /** SMARTER R — reward grant and completion state handler — shape BUILD-time */
   result: Record<string, unknown>;
+  /** Per-Smarter execution container */
+  nestedAct: NestedAct;
   /** Logged Milestone results — array-indexed (D04) */
   milestones: Milestone[];
   /** XP or item ref — granted on quest completion */
@@ -61,14 +63,14 @@ export interface Quest {
 
 // ── CHAIN (WOOP framework — array-indexed within Act) ────────────────────────
 
-export type ChainCompletionState = 'active' | 'complete' | 'failed';
+export type WoopCompletionState = 'active' | 'complete' | 'failed';
 
 export interface ChainUnlockCondition {
   type: 'immediate' | 'previousComplete' | 'manual' | 'date';
   date?: string;
 }
 
-export interface Chain {
+export interface Woop {
   name: string;
   description: string;
   /** Ref to icon asset */
@@ -76,9 +78,9 @@ export interface Chain {
   /** WOOP — exaggerated intention */
   wish: string;
   /** WOOP — mental imagery */
-  outcome: string;
+  outcome: string[];
   /** WOOP — blocker identification */
-  obstacle: string;
+  obstacle: string[];
   /** WOOP — stages Quests, feeds SMARTER fields */
   plan: Record<string, unknown>;
   /** XP or item ref — granted on completion */
@@ -86,16 +88,16 @@ export interface Chain {
   /** Controls when this chain becomes available */
   unlockCondition?: ChainUnlockCondition;
   /** Array of Quest objects — array-indexed (D27) */
-  quests: Quest[];
+  smarters: Smarter[];
   /** DQ5 stub — adaptive quests injected by Coach (future) */
-  adaptiveQuests?: Quest[];
+  adaptiveSmarters?: Smarter[];
   /** Cached derived state */
-  completionState: ChainCompletionState;
+  completionState: WoopCompletionState;
 }
 
 // ── ACT ROOT ──────────────────────────────────────────────────────────────────
 
-export type ActCompletionState = 'active' | 'complete';
+export type AspirationCompletionState = 'active' | 'complete';
 
 /** STUB: MULTI-USER — reserved for accountability partner/group settings once the MULTI-USER chapter ships. */
 export type AccountabilityStub = null;
@@ -105,30 +107,13 @@ export type SharedContactsStub = null;
 
 export type ActHabitat = 'habitats' | 'adventures';
 
-export interface ActToggle {
-  activeChainIndex: number;
-  autoAdvanceChains: boolean;
-  sleepWithChain: boolean;
-  /** STUB: MULTI-USER — additional toggle fields */
-}
-
-export const DEFAULT_ACT_TOGGLE: ActToggle = {
-  activeChainIndex: 0,
-  autoAdvanceChains: true,
-  sleepWithChain: true,
-};
-
-export function makeDefaultActToggle(): ActToggle {
-  return { ...DEFAULT_ACT_TOGGLE };
-}
-
 export function makeDefaultChainUnlockCondition(chainIndex: number): ChainUnlockCondition {
   return chainIndex === 0
     ? { type: 'immediate' }
     : { type: 'previousComplete' };
 }
 
-export interface Act {
+export interface Aspiration {
   /** uuid — only Act gets a uuid in the quest hierarchy (D27) */
   id: string;
   name: string;
@@ -140,14 +125,6 @@ export interface Act {
   /** Which GOAL room tab this Act appears under (W17) */
   habitat?: ActHabitat;
   /** Array of Chain objects — array-indexed (D27) */
-  chains: Chain[];
-  /** STUB: MULTI-USER — tracks accountability partners and shared progress rules when the MULTI-USER chapter is enabled. */
-  accountability: AccountabilityStub;
-  /** ACTS C — trackedTaskRefs and routineRefs (D07, D08) */
-  commitment: ActCommitment;
-  /** ACTS T — gating logic stub — BUILD-time (D08) */
-  toggle: ActToggle | null;
-  completionState: ActCompletionState;
-  /** STUB: MULTI-USER — stores contact refs shared into this Act when the MULTI-USER chapter is enabled. */
-  sharedContacts: SharedContactsStub;
+  woops: Woop[];
+  completionState: AspirationCompletionState;
 }

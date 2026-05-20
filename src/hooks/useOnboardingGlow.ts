@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { STARTER_ACT_IDS } from '../coach/StarterQuestLibrary';
+import { STARTER_ASPIRATION_IDS } from '../coach/StarterQuestLibrary';
 import { ONBOARDING_GLOW, type OnboardingGlowKey } from '../constants/onboardingKeys';
 import { useProgressionStore } from '../stores/useProgressionStore';
 
@@ -31,20 +31,20 @@ const QUEST_GLOWS: Record<number, OnboardingGlowKey[]> = {
 };
 
 export function useOnboardingGlow(): Set<OnboardingGlowKey> {
-  const acts = useProgressionStore((state) => state.acts);
+  const aspirations = useProgressionStore((state) => state.aspirations);
 
   return useMemo(() => {
-    const onboardingAct = acts[STARTER_ACT_IDS.onboarding];
+    const onboardingAct = aspirations[STARTER_ASPIRATION_IDS.onboarding];
     if (!onboardingAct || onboardingAct.completionState === 'complete') {
       return new Set<OnboardingGlowKey>();
     }
 
-    const onboardingChain = onboardingAct.chains[0];
+    const onboardingChain = onboardingAct.woops[0];
     if (!onboardingChain) {
       return new Set<OnboardingGlowKey>();
     }
 
-    const activeQuestIndex = onboardingChain.quests.findIndex(
+    const activeQuestIndex = onboardingChain.smarters.findIndex(
       (quest) => quest.completionState === 'active',
     );
 
@@ -53,10 +53,11 @@ export function useOnboardingGlow(): Set<OnboardingGlowKey> {
     }
 
     return new Set(QUEST_GLOWS[activeQuestIndex] ?? []);
-  }, [acts]);
+  }, [aspirations]);
 }
 
 export function useGlows(key: string): boolean {
   const glowing = useOnboardingGlow();
   return glowing.has(key as OnboardingGlowKey);
 }
+

@@ -3,12 +3,12 @@ import { useProgressionStore } from '../../../stores/useProgressionStore';
 import { useScheduleStore } from '../../../stores/useScheduleStore';
 import { taskTemplateLibrary } from '../../../coach';
 import { starterTaskTemplates } from '../../../coach/StarterQuestLibrary';
-import type { Chain, Quest } from '../../../types';
+import type { Woop, Smarter } from '../../../types';
 
 interface ActiveQuestRow {
   id: string;
-  chain: Chain;
-  quest: Quest;
+  chain: Woop;
+  quest: Smarter;
   current: number | null;
   target: number | null;
   templateNames: string[];
@@ -23,7 +23,7 @@ function resolveTemplateName(templateRef: string, scheduleTemplates: ReturnType<
   );
 }
 
-function measurableProgress(quest: Quest): { current: number | null; target: number | null } {
+function measurableProgress(quest: Smarter): { current: number | null; target: number | null } {
   const target = quest.specific.targetValue > 0 ? quest.specific.targetValue : null;
   if (target === null) return { current: null, target: null };
   if ((quest.measurable.taskTemplateRefs?.length ?? 0) > 0 || quest.specific.unit === 'tasks') {
@@ -33,18 +33,16 @@ function measurableProgress(quest: Quest): { current: number | null; target: num
 }
 
 export function TodayQuestRow() {
-  const acts = useProgressionStore((s) => s.acts);
+  const aspirations = useProgressionStore((s) => s.aspirations);
   const taskTemplates = useScheduleStore((s) => s.taskTemplates);
 
   const rows = useMemo<ActiveQuestRow[]>(() => {
-    return Object.values(acts).flatMap((act) => {
-      const activeChainIndex =
-        act.toggle?.activeChainIndex ??
-        act.chains.findIndex((chain) => chain.completionState === 'active');
-      const chain = act.chains[activeChainIndex];
+    return Object.values(aspirations).flatMap((act) => {
+      const activeChainIndex = act.woops.findIndex((chain) => chain.completionState === 'active');
+      const chain = act.woops[activeChainIndex];
       if (!chain || chain.completionState !== 'active') return [];
 
-      return chain.quests
+      return chain.smarters
         .map((quest, questIndex) => ({ quest, questIndex }))
         .filter(({ quest }) => quest.completionState === 'active')
         .map(({ quest, questIndex }) => {
@@ -63,14 +61,14 @@ export function TodayQuestRow() {
           };
         });
     });
-  }, [acts, taskTemplates]);
+  }, [aspirations, taskTemplates]);
 
   return (
-    <section className="welcome-today" aria-label="Today's quests">
-      <h2>Active quests</h2>
+    <section className="welcome-today" aria-label="Today's smarters">
+      <h2>Active smarters</h2>
       <div className="welcome-row-list">
         {rows.length === 0 ? (
-          <div className="welcome-empty-row">No active quests</div>
+          <div className="welcome-empty-row">No active smarters</div>
         ) : (
           rows.map((row) => {
             return (
@@ -107,3 +105,4 @@ export function TodayQuestRow() {
     </section>
   );
 }
+

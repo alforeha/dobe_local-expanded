@@ -40,7 +40,7 @@ interface AchievementSnapshot {
 
 function buildSnapshot(user: User): AchievementSnapshot {
   const milestones = user.progression.stats.milestones;
-  const acts = useProgressionStore.getState().acts;
+  const aspirations = useProgressionStore.getState().aspirations;
   const resources = useResourceStore.getState().resources;
 
   const statPointsByGroup: Record<string, number> = {};
@@ -54,7 +54,7 @@ function buildSnapshot(user: User): AchievementSnapshot {
     eventsCompleted: milestones.eventsCompleted,
     badgesPlaced: user.progression.badgeBoard.pinned.length,
     gearOwned: user.progression.equipment.equipment.length,
-    actsCreated: Object.keys(acts).length,
+    actsCreated: Object.keys(aspirations).length,
     resourcesCreated: Object.keys(resources).length,
     streakCurrent: milestones.streakCurrent,
     streakBest: milestones.streakBest,
@@ -137,3 +137,4 @@ export function checkAchievements(user: User): AchievementDefinition[] {
     (def) => !isAlreadyAwarded(def.id, user) && evaluateThreshold(def, snap),
   );
 }
+

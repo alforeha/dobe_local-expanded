@@ -9,5 +9,5 @@ export type { MarkerConditionType, Marker } from './Marker';
 export type { QuestTimely } from './timely';
 export type { Milestone } from './Milestone';
 export type { QuestMeasurable } from './measurable';
-export type { ExigencyOption, QuestExigency } from './exigency';
-export type { ActCommitment } from './Act';
+export type { ExitStrategyOption, QuestExitStrategy } from './exitStrategy';
+export type { ActCommitment, NestedAct } from './Act';

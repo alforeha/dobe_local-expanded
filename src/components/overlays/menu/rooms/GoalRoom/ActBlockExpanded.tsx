@@ -1,22 +1,22 @@
 import { useState } from 'react';
-import type { Act } from '../../../../../types';
+import type { Aspiration } from '../../../../../types';
 import { IconDisplay } from '../../../../shared/IconDisplay';
 import { ChainPopup } from './ChainPopup';
 
 interface ActBlockExpandedProps {
-  act: Act;
+  act: Aspiration;
 }
 
 export function ActBlockExpanded({ act }: ActBlockExpandedProps) {
   const [openChainIdx, setOpenChainIdx] = useState<number | null>(null);
 
-  if (act.chains.length === 0) {
-    return <p className="text-xs text-gray-400 px-3 pb-3">No chains yet.</p>;
+  if (act.woops.length === 0) {
+    return <p className="text-xs text-gray-400 px-3 pb-3">No woops yet.</p>;
   }
 
   return (
     <div className="px-3 pb-3 space-y-1">
-      {act.chains.map((chain, i) => (
+      {act.woops.map((chain, i) => (
         <button
           key={i}
           type="button"
@@ -40,9 +40,9 @@ export function ActBlockExpanded({ act }: ActBlockExpandedProps) {
           </span>
         </button>
       ))}
-      {openChainIdx !== null && act.chains[openChainIdx] !== undefined && (
+      {openChainIdx !== null && act.woops[openChainIdx] !== undefined && (
         <ChainPopup
-          chain={act.chains[openChainIdx]}
+          chain={act.woops[openChainIdx]}
           chainIndex={openChainIdx}
           act={act}
           onClose={() => setOpenChainIdx(null)}
@@ -51,3 +51,4 @@ export function ActBlockExpanded({ act }: ActBlockExpandedProps) {
     </div>
   );
 }
+

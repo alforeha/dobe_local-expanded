@@ -6,27 +6,27 @@
 
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { Act } from '../types';
+import type { Aspiration } from '../types';
 
 // ── STATE ─────────────────────────────────────────────────────────────────────
 
 interface ProgressionState {
   /** Keyed by Act.id for O(1) access */
-  acts: Record<string, Act>;
+  aspirations: Record<string, Aspiration>;
 }
 
 // ── ACTIONS ───────────────────────────────────────────────────────────────────
 
 interface ProgressionActions {
-  setAct: (act: Act) => void;
-  removeAct: (actId: string) => void;
+  setAspiration: (aspiration: Aspiration) => void;
+  removeAspiration: (aspirationId: string) => void;
   reset: () => void;
 }
 
 // ── INITIAL STATE ─────────────────────────────────────────────────────────────
 
 const initialState: ProgressionState = {
-  acts: {},
+  aspirations: {},
 };
 
 // ── STORE ─────────────────────────────────────────────────────────────────────
@@ -36,16 +36,16 @@ export const useProgressionStore = create<ProgressionState & ProgressionActions>
     (set) => ({
       ...initialState,
 
-      setAct: (act) => {
-        set((state) => ({ acts: { ...state.acts, [act.id]: act } }));
+      setAspiration: (aspiration) => {
+        set((state) => ({ aspirations: { ...state.aspirations, [aspiration.id]: aspiration } }));
         // TODO: MVP06 — storageSet(storageKey.act(act.id), act)
       },
 
-      removeAct: (actId) => {
+      removeAspiration: (aspirationId) => {
         set((state) => {
-          const acts = { ...state.acts };
-          delete acts[actId];
-          return { acts };
+          const aspirations = { ...state.aspirations };
+          delete aspirations[aspirationId];
+          return { aspirations };
         });
         // TODO: MVP06 — storageDelete(storageKey.act(actId))
       },

@@ -1,19 +1,18 @@
 import { v4 as uuidv4 } from 'uuid';
 import type {
-  Act,
-  ActToggle,
-  Chain,
+  Aspiration,
+  Woop,
   ChainUnlockCondition,
   Marker,
-  Quest,
-  QuestCompletionState,
-  QuestExigency,
+  Smarter,
+  SmarterCompletionState,
+  QuestExitStrategy,
   QuestTimely,
   StatGroupKey,
   TaskTemplate,
   RecurrenceRule,
 } from '../../../../../types';
-import { makeDefaultActToggle, makeDefaultChainUnlockCondition } from '../../../../../types';
+import { makeDefaultChainUnlockCondition } from '../../../../../types';
 import { taskTemplateLibrary } from '../../../../../coach';
 import { starterTaskTemplates } from '../../../../../coach/StarterQuestLibrary';
 import { resolveTaskDisplayName } from '../../../../../utils/resolveTaskDisplayName';
@@ -21,12 +20,12 @@ import type { Task } from '../../../../../types/task';
 
 export type GoalPage =
   | { type: 'list' }
-  | { type: 'act'; actId: string | null }
-  | { type: 'chain'; actId: string; chainIdx: number | null }
-  | { type: 'quest'; actId: string; chainIdx: number; questIdx: number | null };
+  | { type: 'aspiration'; aspirationId: string | null }
+  | { type: 'woop'; aspirationId: string; woopIdx: number | null }
+  | { type: 'smarter'; aspirationId: string; woopIdx: number; smarterIdx: number | null };
 
 export type QuestUnlockMode = 'immediate' | 'previousComplete' | 'manual';
-export type QuestDisplayState = 'pending' | QuestCompletionState;
+export type QuestDisplayState = 'pending' | SmarterCompletionState;
 
 export const STAT_GROUP_OPTIONS: StatGroupKey[] = [
   'health',
@@ -37,7 +36,7 @@ export const STAT_GROUP_OPTIONS: StatGroupKey[] = [
   'wisdom',
 ];
 
-export function createBlankAct(owner: string): Act {
+export function createBlankAspiration(owner: string): Aspiration {
   return {
     id: uuidv4(),
     name: '',
@@ -45,33 +44,29 @@ export function createBlankAct(owner: string): Act {
     icon: 'quest',
     owner,
     habitat: 'habitats',
-    chains: [],
-    accountability: null,
-    commitment: { trackedTaskRefs: [], routineRefs: [] },
-    toggle: makeDefaultActToggle(),
+    woops: [],
     completionState: 'active',
-    sharedContacts: null,
   };
 }
 
-export function createBlankChain(chainIndex: number): Chain {
+export function createBlankWoop(woopIndex: number): Woop {
   return {
     name: '',
     description: '',
     icon: 'chain',
     wish: '',
-    outcome: '',
-    obstacle: '',
+    outcome: [],
+    obstacle: [],
     plan: {},
     chainReward: '',
-    unlockCondition: makeDefaultChainUnlockCondition(chainIndex),
-    quests: [],
-    adaptiveQuests: [],
+    unlockCondition: makeDefaultChainUnlockCondition(woopIndex),
+    smarters: [],
+    adaptiveSmarters: [],
     completionState: 'active',
   };
 }
 
-export function createBlankQuest(): Quest {
+export function createBlankSmarter(): Smarter {
   return {
     name: '',
     description: '',
@@ -94,28 +89,45 @@ export function createBlankQuest(): Quest {
       markers: [],
       projectedFinish: null,
     },
-    exigency: { onMissedFinish: 'sleep' },
+    exitStrategy: { onMissedFinish: 'sleep' },
     result: {},
+    nestedAct: {
+      accountability: null,
+      commitment: { trackedTaskRefs: [], routineRefs: [] },
+      tether: null,
+    },
     milestones: [],
     questReward: '',
     progressPercent: 0,
   };
 }
 
-export function getActToggle(act: Act): ActToggle {
-  return act.toggle ?? makeDefaultActToggle();
+interface ActToggle {
+  activeChainIndex: number;
+  autoAdvanceChains: boolean;
+  sleepWithChain: boolean;
 }
 
-export function getChainProgressPercent(chain: Chain): number {
-  if (chain.quests.length === 0) return chain.completionState === 'complete' ? 100 : 0;
-  const total = chain.quests.reduce((sum, quest) => sum + quest.progressPercent, 0);
-  return Math.round(total / chain.quests.length);
+function makeDefaultActToggle(): ActToggle {
+  return {
+    activeChainIndex: 0,
+    autoAdvanceChains: true,
+    sleepWithChain: true,
+  };
 }
 
-export function getActActiveChain(act: Act): { chain: Chain | null; index: number } {
-  const toggle = getActToggle(act);
-  const index = Math.min(Math.max(toggle.activeChainIndex, 0), Math.max(act.chains.length - 1, 0));
-  return { chain: act.chains[index] ?? null, index };
+export function getActToggle(aspiration: Aspiration): ActToggle {
+  return (aspiration as unknown as { toggle?: ActToggle | null }).toggle ?? makeDefaultActToggle();
+}
+
+export function getWoopProgressPercent(woop: Woop): number {
+  if (woop.smarters.length === 0) return woop.completionState === 'complete' ? 100 : 0;
+  const total = woop.smarters.reduce((sum, smarter) => sum + smarter.progressPercent, 0);
+  return Math.round(total / woop.smarters.length);
+}
+
+export function getAspirationActiveWoop(aspiration: Aspiration): { woop: Woop | null; index: number } {
+  return { woop: aspiration.woops[0] ?? null, index: 0 };
 }
 
 export function getUnlockConditionLabel(condition?: ChainUnlockCondition): string {
@@ -132,33 +144,33 @@ export function getUnlockConditionLabel(condition?: ChainUnlockCondition): strin
   }
 }
 
-export function getQuestUnlockMode(quest: Quest): QuestUnlockMode {
-  const value = quest.attainable['unlockCondition'];
+export function getQuestUnlockMode(smarter: Smarter): QuestUnlockMode {
+  const value = smarter.attainable['unlockCondition'];
   return value === 'manual' || value === 'previousComplete' || value === 'immediate'
     ? value
     : 'previousComplete';
 }
 
-export function setQuestUnlockMode(quest: Quest, mode: QuestUnlockMode): Quest {
+export function setQuestUnlockMode(smarter: Smarter, mode: QuestUnlockMode): Smarter {
   return {
-    ...quest,
-    attainable: { ...quest.attainable, unlockCondition: mode },
+    ...smarter,
+    attainable: { ...smarter.attainable, unlockCondition: mode },
   };
 }
 
-export function getQuestDisplayState(chain: Chain, questIdx: number): QuestDisplayState {
-  const quest = chain.quests[questIdx];
-  if (!quest) return 'pending';
-  if (quest.completionState === 'complete' || quest.completionState === 'failed') {
-    return quest.completionState;
+export function getQuestDisplayState(woop: Woop, smarterIdx: number): QuestDisplayState {
+  const smarter = woop.smarters[smarterIdx];
+  if (!smarter) return 'pending';
+  if (smarter.completionState === 'complete' || smarter.completionState === 'failed') {
+    return smarter.completionState;
   }
 
-  const unlockMode = getQuestUnlockMode(quest);
-  if (questIdx === 0 || unlockMode === 'immediate') return 'active';
+  const unlockMode = getQuestUnlockMode(smarter);
+  if (smarterIdx === 0 || unlockMode === 'immediate') return 'active';
   if (unlockMode === 'manual') return 'pending';
 
-  const previousQuest = chain.quests[questIdx - 1];
-  return previousQuest?.completionState === 'complete' ? 'active' : 'pending';
+  const previousSmarter = woop.smarters[smarterIdx - 1];
+  return previousSmarter?.completionState === 'complete' ? 'active' : 'pending';
 }
 
 export function createPlaceholderMarker(
@@ -191,17 +203,17 @@ export function createPlaceholderMarker(
 }
 
 export function normalizeQuestForSave(
-  quest: Quest,
-  actId: string,
-  chainIdx: number,
-  questIdx: number,
+  smarter: Smarter,
+  aspirationId: string,
+  woopIdx: number,
+  smarterIdx: number,
   taskCountThreshold: number | null = null,
-): Quest {
-  const taskTemplateRef = quest.measurable.taskTemplateRefs?.[0] ?? quest.timely.markers[0]?.taskTemplateRef ?? '';
-  const questRef = `${actId}|${chainIdx}|${questIdx}`;
-  const existingMarker = quest.timely.markers[0];
+): Smarter {
+  const taskTemplateRef = smarter.measurable.taskTemplateRefs?.[0] ?? smarter.timely.markers[0]?.taskTemplateRef ?? '';
+  const questRef = `${aspirationId}|${woopIdx}|${smarterIdx}`;
+  const existingMarker = smarter.timely.markers[0];
 
-  let timely: QuestTimely = { ...quest.timely };
+  let timely: QuestTimely = { ...smarter.timely };
   if (timely.conditionType === 'none') {
     timely = {
       ...timely,
@@ -225,36 +237,28 @@ export function normalizeQuestForSave(
   }
 
   return {
-    ...quest,
+    ...smarter,
     timely,
   };
 }
 
-export function normalizeActForSave(act: Act): Act {
-  const toggle = getActToggle(act);
-  const chainCount = act.chains.length;
+export function normalizeAspirationForSave(aspiration: Aspiration): Aspiration {
   return {
-    ...act,
-    toggle: {
-      ...toggle,
-      activeChainIndex: chainCount === 0
-        ? 0
-        : Math.min(Math.max(toggle.activeChainIndex, 0), chainCount - 1),
-    },
-    chains: act.chains.map((chain, chainIdx) => ({
-      ...chain,
-      unlockCondition: chain.unlockCondition ?? makeDefaultChainUnlockCondition(chainIdx),
+    ...aspiration,
+    woops: aspiration.woops.map((woop, woopIdx) => ({
+      ...woop,
+      unlockCondition: woop.unlockCondition ?? makeDefaultChainUnlockCondition(woopIdx),
     })),
   };
 }
 
-export function getQuestStateBadgeClass(state: QuestCompletionState): string {
+export function getQuestStateBadgeClass(state: SmarterCompletionState): string {
   if (state === 'complete') return 'bg-green-100 text-green-700';
   if (state === 'failed') return 'bg-red-100 text-red-700';
   return 'bg-blue-100 text-blue-700';
 }
 
-export function getExigencyLabel(value: QuestExigency['onMissedFinish']): string {
+export function getExitStrategyLabel(value: QuestExitStrategy['onMissedFinish']): string {
   switch (value) {
     case 'reschedule':
       return 'Set new end date';
@@ -304,13 +308,13 @@ const ANY_TASK_DONE_TEMPLATE: TaskTemplate = {
   secondaryTag: null,
 };
 
-function isAnyTaskQuest(quest: Quest): boolean {
+function isAnyTaskQuest(quest: Smarter): boolean {
   return quest.timely.conditionType === 'none' &&
     (quest.measurable.taskTemplateRefs?.length ?? 0) === 0 &&
     quest.specific.unit === 'tasks';
 }
 
-export function getQuestTaskTemplateRefs(quest: Quest): string[] {
+export function getQuestTaskTemplateRefs(quest: Smarter): string[] {
   if (isAnyTaskQuest(quest)) {
     return [ANY_TASK_DONE_TEMPLATE.id!];
   }
@@ -328,7 +332,7 @@ export function getQuestTaskTemplateRefs(quest: Quest): string[] {
 }
 
 export function getQuestTaskTemplates(
-  quest: Quest,
+  quest: Smarter,
   scheduleTemplates: Record<string, TaskTemplate>,
 ): Array<{ ref: string; template: TaskTemplate | null }> {
   if (isAnyTaskQuest(quest)) {
@@ -350,7 +354,7 @@ function formatRecurrenceSummary(rule: RecurrenceRule | null): string {
 }
 
 export function getQuestMeasurableSummary(
-  quest: Quest,
+  quest: Smarter,
   scheduleTemplates: Record<string, TaskTemplate>,
 ): string {
   const templates = getQuestTaskTemplates(quest, scheduleTemplates);
@@ -383,7 +387,7 @@ export function getQuestMeasurableSummary(
   return 'No measurable templates';
 }
 
-export function getQuestTimelySummary(quest: Quest): string {
+export function getQuestTimelySummary(quest: Smarter): string {
   if (quest.timely.conditionType === 'none') return 'No markers (system quest)';
   if (quest.timely.conditionType === 'interval') {
     return `Check-in: ${formatRecurrenceSummary(quest.timely.interval)}`;

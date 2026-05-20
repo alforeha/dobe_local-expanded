@@ -10,17 +10,17 @@ import { GoalChainPage } from './GoalChainPage';
 import { GoalQuestPage } from './GoalQuestPage';
 import { GoalProgressBar, GoalSection, GoalStateBadge } from './GoalEditorShared';
 import {
-  createBlankAct,
-  getActActiveChain,
-  getChainProgressPercent,
+  createBlankAspiration,
+  getAspirationActiveWoop,
+  getWoopProgressPercent,
   getQuestDisplayState,
   getQuestTaskTemplates,
   getQuestTimelySummary,
-  normalizeActForSave,
+  normalizeAspirationForSave,
 } from './goalEditorUtils';
 import type { GoalPage } from './goalEditorUtils';
-import { STARTER_ACT_IDS } from '../../../../../coach/StarterQuestLibrary';
-import type { Act } from '../../../../../types';
+import { STARTER_ASPIRATION_IDS } from '../../../../../coach/StarterQuestLibrary';
+import type { Aspiration } from '../../../../../types';
 import { IconDisplay } from '../../../../shared/IconDisplay';
 
 type HabitatFilter = 'habitats' | 'adventures';
@@ -33,17 +33,17 @@ function GoalListActRow({
   onOpenChain,
   onOpenQuest,
 }: {
-  act: Act;
+  act: Aspiration;
   canEdit: boolean;
   isLocked: boolean;
-  onOpen: (act: Act) => void;
-  onOpenChain: (act: Act, chainIdx: number) => void;
-  onOpenQuest: (act: Act, chainIdx: number, questIdx: number) => void;
+  onOpen: (act: Aspiration) => void;
+  onOpenChain: (act: Aspiration, chainIdx: number) => void;
+  onOpenQuest: (act: Aspiration, chainIdx: number, questIdx: number) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [expandedChainIdx, setExpandedChainIdx] = useState<number | null>(null);
-  const activeChain = getActActiveChain(act).chain;
-  const activeProgress = activeChain ? getChainProgressPercent(activeChain) : 0;
+  const activeChain = getAspirationActiveWoop(act).woop;
+  const activeProgress = activeChain ? getWoopProgressPercent(activeChain) : 0;
   const scheduleTaskTemplates = useScheduleStore((state) => state.taskTemplates);
   const scheduleTasks = useScheduleStore((state) => state.tasks);
 
@@ -84,10 +84,10 @@ function GoalListActRow({
       {expanded ? (
         <div className="space-y-3 border-t border-gray-200 px-4 py-3 dark:border-gray-700">
           <div className="space-y-2">
-            {act.chains.length === 0 ? (
-              <p className="text-sm text-gray-500 dark:text-gray-400">No chains yet.</p>
+            {act.woops.length === 0 ? (
+              <p className="text-sm text-gray-500 dark:text-gray-400">No woops yet.</p>
             ) : (
-              act.chains.map((chain, chainIdx) => (
+              act.woops.map((chain, chainIdx) => (
                 <div key={`${chain.name}-${chainIdx}`} className="overflow-hidden rounded-xl bg-gray-50 dark:bg-gray-900">
                   <button
                     type="button"
@@ -98,12 +98,12 @@ function GoalListActRow({
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
                         <p className="min-w-0 flex-1 truncate text-sm font-medium text-gray-800 dark:text-gray-100">
-                          {chain.name || `Chain ${chainIdx + 1}`}
+                          {chain.name || `Woop ${chainIdx + 1}`}
                         </p>
                         <GoalStateBadge state={chain.completionState} />
                       </div>
                       <div className="mt-2">
-                        <GoalProgressBar value={getChainProgressPercent(chain)} />
+                        <GoalProgressBar value={getWoopProgressPercent(chain)} />
                       </div>
                     </div>
                     <span className="text-xs text-gray-400">
@@ -115,11 +115,11 @@ function GoalListActRow({
                       <p className="text-gray-600 dark:text-gray-300">
                         {chain.description || 'No description yet.'}
                       </p>
-                      {chain.quests.length === 0 ? (
-                        <p className="text-sm text-gray-500 dark:text-gray-400">No quests yet.</p>
+                      {chain.smarters.length === 0 ? (
+                        <p className="text-sm text-gray-500 dark:text-gray-400">No smarters yet.</p>
                       ) : (
                         <div className="space-y-2">
-                          {chain.quests.map((quest, questIdx) => (
+                          {chain.smarters.map((quest, questIdx) => (
                             <button
                               key={`${quest.name}-${questIdx}`}
                               type="button"
@@ -134,7 +134,7 @@ function GoalListActRow({
                                   <>
                               <div className="flex items-center gap-2">
                                 <p className="min-w-0 flex-1 truncate text-sm font-semibold text-gray-800 dark:text-gray-100">
-                                  {quest.name || `Quest ${questIdx + 1}`}
+                                  {quest.name || `Smarter ${questIdx + 1}`}
                                 </p>
                                 <span className="text-xs text-gray-500 dark:text-gray-400">{quest.progressPercent}%</span>
                                 <GoalStateBadge state={displayState} />
@@ -190,7 +190,7 @@ function GoalListActRow({
                         onClick={() => onOpenChain(act, chainIdx)}
                         className="rounded-xl border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-800"
                       >
-                        Open Chain
+                        Open Woop
                       </button>
                     </div>
                   ) : null}
@@ -216,11 +216,11 @@ export function GoalRoom() {
     new Set(['habitats', 'adventures']),
   );
   const [pageStack, setPageStack] = useState<GoalPage[]>([{ type: 'list' }]);
-  const [draftActs, setDraftActs] = useState<Record<string, Act>>({});
+  const [draftActs, setDraftActs] = useState<Record<string, Aspiration>>({});
   const [newActDraftId, setNewActDraftId] = useState<string | null>(null);
 
-  const acts = useProgressionStore((s) => s.acts);
-  const setAct = useProgressionStore((s) => s.setAct);
+  const aspirations = useProgressionStore((s) => s.aspirations);
+  const setAspiration = useProgressionStore((s) => s.setAspiration);
   const user = useUserStore((s) => s.user);
   const currentPage = pageStack[pageStack.length - 1] ?? { type: 'list' as const };
 
@@ -229,13 +229,13 @@ export function GoalRoom() {
   }, []);
 
   const habitatActs = useMemo(
-    () => Object.values(acts).filter((act) => act.owner !== 'coach' && (act.habitat ?? 'habitats') === 'habitats'),
-    [acts],
+    () => Object.values(aspirations).filter((act) => act.owner !== 'coach' && (act.habitat ?? 'habitats') === 'habitats'),
+    [aspirations],
   );
 
   const adventureActs = useMemo(() => {
-    return Object.values(acts).filter((act) => act.owner === 'coach');
-  }, [acts]);
+    return Object.values(aspirations).filter((act) => act.owner === 'coach');
+  }, [aspirations]);
 
   function pushPage(page: GoalPage) {
     setPageStack((current) => [...current, page]);
@@ -258,8 +258,8 @@ export function GoalRoom() {
     });
   }
 
-  function updateDraftAct(act: Act) {
-    setDraftActs((current) => ({ ...current, [act.id]: normalizeActForSave(act) }));
+  function updateDraftAct(act: Aspiration) {
+    setDraftActs((current) => ({ ...current, [act.id]: normalizeAspirationForSave(act) }));
   }
 
   function removeDraftAct(actId: string) {
@@ -270,45 +270,45 @@ export function GoalRoom() {
     });
   }
 
-  function getDraftAct(actId: string): Act | null {
+  function getDraftAct(actId: string): Aspiration | null {
     if (draftActs[actId]) return draftActs[actId];
-    return acts[actId] ?? null;
+    return aspirations[actId] ?? null;
   }
 
   function beginNewAct() {
-    const draft = createBlankAct(user?.system.id ?? 'user');
+    const draft = createBlankAspiration(user?.system.id ?? 'user');
     updateDraftAct(draft);
     setNewActDraftId(draft.id);
-    pushPage({ type: 'act', actId: null });
+    pushPage({ type: 'aspiration', aspirationId: null });
   }
 
-  function beginEditAct(act: Act) {
+  function beginEditAct(act: Aspiration) {
     updateDraftAct(act);
-    pushPage({ type: 'act', actId: act.id });
+    pushPage({ type: 'aspiration', aspirationId: act.id });
   }
 
-  function beginOpenChain(act: Act, chainIdx: number) {
+  function beginOpenChain(act: Aspiration, chainIdx: number) {
     updateDraftAct(act);
-    pushPage({ type: 'chain', actId: act.id, chainIdx });
+    pushPage({ type: 'woop', aspirationId: act.id, woopIdx: chainIdx });
   }
 
-  function beginOpenQuest(act: Act, chainIdx: number, questIdx: number) {
+  function beginOpenQuest(act: Aspiration, chainIdx: number, questIdx: number) {
     updateDraftAct(act);
-    pushPage({ type: 'quest', actId: act.id, chainIdx, questIdx });
+    pushPage({ type: 'smarter', aspirationId: act.id, woopIdx: chainIdx, smarterIdx: questIdx });
   }
 
-  function resolvePageAct(page: GoalPage): Act | null {
+  function resolvePageAct(page: GoalPage): Aspiration | null {
     if (page.type === 'list') return null;
-    if (page.type === 'act' && page.actId === null) {
+    if (page.type === 'aspiration' && page.aspirationId === null) {
       return newActDraftId ? getDraftAct(newActDraftId) : null;
     }
-    if (page.type === 'act') return page.actId ? getDraftAct(page.actId) : null;
-    return getDraftAct(page.actId);
+    if (page.type === 'aspiration') return page.aspirationId ? getDraftAct(page.aspirationId) : null;
+    return getDraftAct(page.aspirationId);
   }
 
-  function saveActDraft(act: Act) {
-    const normalized = normalizeActForSave(act);
-    setAct(normalized);
+  function saveActDraft(act: Aspiration) {
+    const normalized = normalizeAspirationForSave(act);
+    setAspiration(normalized);
     updateDraftAct(normalized);
     if (newActDraftId === normalized.id) setNewActDraftId(null);
     popPage();
@@ -323,14 +323,14 @@ export function GoalRoom() {
     if (newActDraftId === act.id) {
       removeDraftAct(act.id);
       setNewActDraftId(null);
-    } else if (acts[act.id]) {
-      updateDraftAct(acts[act.id]);
+    } else if (aspirations[act.id]) {
+      updateDraftAct(aspirations[act.id]);
     }
     popPage();
   }
 
   const showList = currentPage.type === 'list';
-  const showChooseYourPath = showList && habitatFilter.has('adventures') && !!acts[STARTER_ACT_IDS.daily];
+  const showChooseYourPath = showList && habitatFilter.has('adventures') && !!aspirations[STARTER_ASPIRATION_IDS.daily];
 
   const currentAct = resolvePageAct(currentPage);
 
@@ -349,7 +349,7 @@ export function GoalRoom() {
               {habitatFilter.has('habitats') ? (
                 <GoalSection title="Goal Hubs">
                   {habitatActs.length === 0 ? (
-                    <p className="text-sm text-gray-500 dark:text-gray-400">No habitat acts yet.</p>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">No habitat aspirations yet.</p>
                   ) : (
                     <div className="space-y-3">
                       {habitatActs.map((act) => (
@@ -394,7 +394,7 @@ export function GoalRoom() {
         </>
       ) : null}
 
-      {currentPage.type === 'act' && currentAct ? (
+      {currentPage.type === 'aspiration' && currentAct ? (
         <GoalActPage
           act={currentAct}
           readOnly={currentAct.owner === 'coach'}
@@ -404,27 +404,27 @@ export function GoalRoom() {
           onOpenChain={(updatedAct, chainIdx) => {
             updateDraftAct(updatedAct);
             pushPage({
-              type: 'chain',
-              actId: updatedAct.id,
-              chainIdx,
+              type: 'woop',
+              aspirationId: updatedAct.id,
+              woopIdx: chainIdx,
             });
           }}
           onOpenQuest={(updatedAct, chainIdx, questIdx) => {
             updateDraftAct(updatedAct);
             pushPage({
-              type: 'quest',
-              actId: updatedAct.id,
-              chainIdx,
-              questIdx,
+              type: 'smarter',
+              aspirationId: updatedAct.id,
+              woopIdx: chainIdx,
+              smarterIdx: questIdx,
             });
           }}
         />
       ) : null}
 
-      {currentPage.type === 'chain' && currentAct ? (
+      {currentPage.type === 'woop' && currentAct ? (
         <GoalChainPage
           act={currentAct}
-          chainIdx={currentPage.chainIdx}
+          chainIdx={currentPage.woopIdx}
           readOnly={currentAct.owner === 'coach'}
           onBack={popPage}
           onSave={(updatedAct) => {
@@ -434,20 +434,20 @@ export function GoalRoom() {
           onOpenQuest={(updatedAct, chainIdx, questIdx) => {
             updateDraftAct(updatedAct);
             pushPage({
-              type: 'quest',
-              actId: updatedAct.id,
-              chainIdx,
-              questIdx,
+              type: 'smarter',
+              aspirationId: updatedAct.id,
+              woopIdx: chainIdx,
+              smarterIdx: questIdx,
             });
           }}
         />
       ) : null}
 
-      {currentPage.type === 'quest' && currentAct ? (
+      {currentPage.type === 'smarter' && currentAct ? (
         <GoalQuestPage
           act={currentAct}
-          chainIdx={currentPage.chainIdx}
-          questIdx={currentPage.questIdx}
+          chainIdx={currentPage.woopIdx}
+          questIdx={currentPage.smarterIdx}
           readOnly={currentAct.owner === 'coach'}
           onBack={popPage}
           onSave={(updatedAct) => {
@@ -459,3 +459,4 @@ export function GoalRoom() {
     </div>
   );
 }
+

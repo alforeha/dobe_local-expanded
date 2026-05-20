@@ -410,8 +410,8 @@ export function completeTask(
     autoCompleteSystemTask(STARTER_TEMPLATE_IDS.openWelcomeEvent);
   }
 
-  // Quest check-in hook: if this task was fired by a Marker, record the Milestone
-  // and evaluate the Quest finish condition (D04).
+  // Smarter check-in hook: if this task was fired by a Marker, record the Milestone
+  // and evaluate the Smarter finish condition (D04).
   if (updatedTask.questRef) {
     completeMilestone(updatedTask);
 
@@ -419,8 +419,8 @@ export function completeTask(
     const parsedRef = decodeQuestRef(updatedTask.questRef);
     if (parsedRef) {
       const { actId, chainIndex, questIndex } = parsedRef;
-      const act = useProgressionStore.getState().acts[actId];
-      const completedQuest = act?.chains[chainIndex]?.quests[questIndex];
+      const act = useProgressionStore.getState().aspirations[actId];
+      const completedQuest = act?.woops[chainIndex]?.smarters[questIndex];
       if (completedQuest?.completionState === 'complete') {
         pushRibbet('quest.completed');
       } else if (completedQuest) {
@@ -949,3 +949,4 @@ export function updateLocationPoint(taskId: string, eventId: string, resultField
     },
   });
 }
+

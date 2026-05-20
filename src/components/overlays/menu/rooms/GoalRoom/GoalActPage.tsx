@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import type { Act } from '../../../../../types';
+import type { Aspiration } from '../../../../../types';
 import { useResourceStore } from '../../../../../stores/useResourceStore';
 import { useScheduleStore } from '../../../../../stores/useScheduleStore';
 import { IconPicker } from '../../../../shared/IconPicker';
@@ -7,23 +7,23 @@ import { IconDisplay } from '../../../../shared/IconDisplay';
 import { GoalField, GoalPageShell, GoalProgressBar, GoalSection, GoalStateBadge } from './GoalEditorShared';
 import {
   getActToggle,
-  getChainProgressPercent,
+  getWoopProgressPercent,
   getQuestDisplayState,
   getQuestTaskTemplates,
   getQuestTimelySummary,
   getUnlockConditionLabel,
-  normalizeActForSave,
+  normalizeAspirationForSave,
 } from './goalEditorUtils';
 import { starterTaskTemplates } from '../../../../../coach/StarterQuestLibrary';
 
 interface GoalActPageProps {
-  act: Act;
+  act: Aspiration;
   readOnly: boolean;
   onBack: () => void;
   onCancel: () => void;
-  onSave: (act: Act) => void;
-  onOpenChain: (act: Act, chainIdx: number | null) => void;
-  onOpenQuest: (act: Act, chainIdx: number, questIdx: number) => void;
+  onSave: (act: Aspiration) => void;
+  onOpenChain: (act: Aspiration, chainIdx: number | null) => void;
+  onOpenQuest: (act: Aspiration, chainIdx: number, questIdx: number) => void;
 }
 
 export function GoalActPage({
@@ -35,40 +35,40 @@ export function GoalActPage({
   onOpenChain,
   onOpenQuest,
 }: GoalActPageProps) {
-  const [draft, setDraft] = useState<Act>(normalizeActForSave(act));
+  const [draft, setDraft] = useState<Aspiration>(normalizeAspirationForSave(act));
   const [expandedChainIdx, setExpandedChainIdx] = useState<number | null>(null);
   const scheduleTaskTemplates = useScheduleStore((state) => state.taskTemplates);
   const scheduleTasks = useScheduleStore((state) => state.tasks);
   const resources = useResourceStore((state) => state.resources);
 
-  function updateDraft(partial: Partial<Act>) {
-    setDraft((current) => normalizeActForSave({ ...current, ...partial }));
+  function updateDraft(partial: Partial<Aspiration>) {
+    setDraft((current) => normalizeAspirationForSave({ ...current, ...partial }));
   }
 
-  function updateToggle<K extends keyof NonNullable<Act['toggle']>>(key: K, value: NonNullable<Act['toggle']>[K]) {
+  function updateToggle<K extends string>(key: K, value: unknown) {
     const nextToggle = { ...getActToggle(draft), [key]: value };
-    updateDraft({ toggle: nextToggle });
+    updateDraft({ toggle: nextToggle } as Partial<Aspiration>);
   }
 
   function commitAndOpenChain(chainIdx: number | null) {
-    const normalized = normalizeActForSave(draft);
+    const normalized = normalizeAspirationForSave(draft);
     setDraft(normalized);
     onOpenChain(normalized, chainIdx);
   }
 
   function commitAndOpenQuest(chainIdx: number, questIdx: number) {
-    const normalized = normalizeActForSave(draft);
+    const normalized = normalizeAspirationForSave(draft);
     setDraft(normalized);
     onOpenQuest(normalized, chainIdx, questIdx);
   }
 
   const activeChain = useMemo(() => {
     const activeChainIndex = getActToggle(draft).activeChainIndex;
-    return draft.chains[activeChainIndex] ?? null;
+    return draft.woops[activeChainIndex] ?? null;
   }, [draft]);
 
   const activeQuests = useMemo(
-    () => activeChain?.quests.filter((_, questIdx) => getQuestDisplayState(activeChain, questIdx) === 'active') ?? [],
+    () => activeChain?.smarters.filter((_, questIdx) => getQuestDisplayState(activeChain, questIdx) === 'active') ?? [],
     [activeChain],
   );
 
@@ -128,7 +128,7 @@ export function GoalActPage({
       <button
         type="button"
         disabled={readOnly}
-        onClick={() => onSave(normalizeActForSave(draft))}
+        onClick={() => onSave(normalizeAspirationForSave(draft))}
         className="flex-1 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:bg-gray-400"
       >
         Save
@@ -138,12 +138,12 @@ export function GoalActPage({
 
   return (
     <GoalPageShell
-      title={draft.name || 'Act'}
+      title={draft.name || 'Aspiration'}
       subtitle={readOnly ? 'Read-only adventure' : 'Habitat act editor'}
       onBack={onBack}
       footer={footer}
     >
-      <GoalSection title="Act">
+      <GoalSection title="Aspiration">
         <div className="flex items-end gap-4">
           <div className="shrink-0 pb-0.5">
             <IconPicker
@@ -182,9 +182,9 @@ export function GoalActPage({
 
       <GoalSection title="Chains">
         <div className="space-y-3">
-          {draft.chains.map((chain, chainIdx) => {
+          {draft.woops.map((chain, chainIdx) => {
             const isExpanded = expandedChainIdx === chainIdx;
-            const progress = getChainProgressPercent(chain);
+            const progress = getWoopProgressPercent(chain);
             const isActive = getActToggle(draft).activeChainIndex === chainIdx;
             return (
               <div key={`${chain.name}-${chainIdx}`} className="rounded-2xl border border-gray-200 dark:border-gray-700">
@@ -197,7 +197,7 @@ export function GoalActPage({
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
                       <p className="truncate text-sm font-semibold text-gray-800 dark:text-gray-100">
-                        {chain.name || `Chain ${chainIdx + 1}`}
+                        {chain.name || `Woop ${chainIdx + 1}`}
                       </p>
                       {isActive ? (
                         <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700">
@@ -214,13 +214,13 @@ export function GoalActPage({
                 {isExpanded ? (
                   <div className="space-y-3 border-t border-gray-200 px-4 py-3 text-sm dark:border-gray-700">
                     <p className="text-gray-600 dark:text-gray-300">
-                      {chain.quests.length} quests • {chain.completionState} • {getUnlockConditionLabel(chain.unlockCondition)}
+                      {chain.smarters.length} smarters • {chain.completionState} • {getUnlockConditionLabel(chain.unlockCondition)}
                     </p>
                     <div className="space-y-2">
-                      {chain.quests.length === 0 ? (
-                        <p className="text-sm text-gray-500 dark:text-gray-400">No quests yet.</p>
+                      {chain.smarters.length === 0 ? (
+                        <p className="text-sm text-gray-500 dark:text-gray-400">No smarters yet.</p>
                       ) : (
-                        chain.quests.map((quest, questIdx) => {
+                        chain.smarters.map((quest, questIdx) => {
                           const taskTemplatePills = getQuestTaskTemplates(quest, scheduleTaskTemplates);
                           const displayState = getQuestDisplayState(chain, questIdx);
                           const isUnlocked = displayState !== 'pending';
@@ -233,7 +233,7 @@ export function GoalActPage({
                             >
                               <div className="flex items-center gap-2">
                                 <p className="min-w-0 flex-1 truncate text-sm font-semibold text-gray-800 dark:text-gray-100">
-                                  {quest.name || `Quest ${questIdx + 1}`}
+                                  {quest.name || `Smarter ${questIdx + 1}`}
                                 </p>
                                 <span className="text-xs text-gray-500 dark:text-gray-400">{quest.progressPercent}%</span>
                                 <GoalStateBadge state={displayState} />
@@ -288,7 +288,7 @@ export function GoalActPage({
                         onClick={() => commitAndOpenChain(chainIdx)}
                         className="rounded-xl bg-sky-600 px-3 py-2 text-sm font-medium text-white"
                       >
-                        Open Chain
+                        Open Woop
                       </button>
                     </div>
                   </div>
@@ -302,13 +302,13 @@ export function GoalActPage({
               onClick={() => commitAndOpenChain(null)}
               className="w-full rounded-2xl border border-dashed border-emerald-400 px-4 py-3 text-sm font-medium text-emerald-700 hover:bg-emerald-50 dark:text-emerald-300 dark:hover:bg-emerald-950/30"
             >
-              + Add Chain
+              + Add Woop
             </button>
           ) : null}
         </div>
       </GoalSection>
 
-      <GoalSection title="Act Area">
+      <GoalSection title="Aspiration Area">
         <GoalField label="Accountability">
           <div className="rounded-xl bg-gray-100 px-3 py-3 text-sm text-gray-500 dark:bg-gray-900 dark:text-gray-400">
             Share progress with contacts - coming in a future update
@@ -331,7 +331,7 @@ export function GoalActPage({
                 Tasks
               </p>
               {commitmentSummary.templates.length === 0 ? (
-                <p className="text-sm text-gray-500 dark:text-gray-400">No measurable task templates on the active quests yet.</p>
+                <p className="text-sm text-gray-500 dark:text-gray-400">No measurable task templates on the active smarters yet.</p>
               ) : (
                 <div className="flex flex-wrap gap-2">
                   {commitmentSummary.templates.map(({ ref, template }) => (
@@ -356,7 +356,7 @@ export function GoalActPage({
                 Resources
               </p>
               {commitmentSummary.resources.length === 0 ? (
-                <p className="text-sm text-gray-500 dark:text-gray-400">No measurable resources on the active quests yet.</p>
+                <p className="text-sm text-gray-500 dark:text-gray-400">No measurable resources on the active smarters yet.</p>
               ) : (
                 <div className="flex flex-wrap gap-2">
                   {commitmentSummary.resources.map((resource) => (
@@ -381,7 +381,7 @@ export function GoalActPage({
         <div className="space-y-3">
           <h4 className="text-sm font-semibold text-gray-800 dark:text-gray-100">Toggle Area</h4>
           <div className="grid grid-cols-2 gap-4">
-          <GoalField label="Auto-advance chains">
+          <GoalField label="Auto-advance woops">
             <label className="flex items-center justify-between rounded-xl border border-gray-200 px-3 py-2 dark:border-gray-700">
               <span className="text-sm text-gray-700 dark:text-gray-200">Enabled</span>
               <input
@@ -412,13 +412,13 @@ export function GoalActPage({
         <GoalField label="Active chain">
           <select
             value={String(getActToggle(draft).activeChainIndex)}
-            disabled={readOnly || draft.chains.length === 0}
+            disabled={readOnly || draft.woops.length === 0}
             onChange={(e) => updateToggle('activeChainIndex', parseInt(e.target.value, 10) || 0)}
             className="rounded-xl border border-gray-300 px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-900"
           >
-            {draft.chains.map((chain, idx) => (
+            {draft.woops.map((chain, idx) => (
               <option key={`${chain.name}-${idx}`} value={idx}>
-                {chain.name || `Chain ${idx + 1}`}
+                {chain.name || `Woop ${idx + 1}`}
               </option>
             ))}
           </select>
@@ -427,3 +427,4 @@ export function GoalActPage({
     </GoalPageShell>
   );
 }
+

@@ -16,7 +16,7 @@ import { useSystemStore } from '../stores/useSystemStore';
 import { useProgressionStore } from '../stores/useProgressionStore';
 import { getOffsetNow } from '../utils/dateUtils';
 import { commentLibrary } from './index';
-import { STARTER_ACT_IDS } from './StarterQuestLibrary';
+import { STARTER_ASPIRATION_IDS } from './StarterQuestLibrary';
 
 // ── TONE RESOLVER ─────────────────────────────────────────────────────────────
 
@@ -62,13 +62,13 @@ function pickComment(contextKey: string, tone: CoachTone, values: DynamicValues 
  *   5. Recent activity (tasks completed this session)
  *   6. General fallback
  *
- * @param user  Current User — reads milestones and acts from state.
+ * @param user  Current User — reads milestones and aspirations from state.
  */
 export function ribbet(user: User): string {
   const tone = activeTone();
   const hour = getOffsetNow().getHours();
   const milestones = user.progression.stats.milestones;
-  const acts = useProgressionStore.getState().acts;
+  const aspirations = useProgressionStore.getState().aspirations;
 
   if (hour >= 5 && hour < 10) {
     return pickComment('ambient.morning', tone);
@@ -78,12 +78,12 @@ export function ribbet(user: User): string {
     return pickComment('ambient.evening', tone);
   }
 
-  // Onboarding Act — return quest-specific comment when a Q1-Q4 quest is active
-  const onboardingAct = acts[STARTER_ACT_IDS.onboarding];
+  // Onboarding Aspiration — return quest-specific comment when a Q1-Q4 quest is active
+  const onboardingAct = aspirations[STARTER_ASPIRATION_IDS.onboarding];
   if (onboardingAct && onboardingAct.completionState !== 'complete') {
-    const chain = onboardingAct.chains[0];
+    const chain = onboardingAct.woops[0];
     if (chain) {
-      const activeQuestIndex = chain.quests.findIndex(
+      const activeQuestIndex = chain.smarters.findIndex(
         (q) => q.completionState === 'active',
       );
       if (activeQuestIndex !== -1) {
@@ -98,9 +98,9 @@ export function ribbet(user: User): string {
     return pickComment('ambient.general.streak', tone, { streakCount: milestones.streakCurrent });
   }
 
-  const hasActiveQuest = Object.values(acts).some((act) =>
-    act.chains.some((chain) =>
-      chain.quests.some((q) => q.completionState === 'active'),
+  const hasActiveQuest = Object.values(aspirations).some((act) =>
+    act.woops.some((chain) =>
+      chain.smarters.some((q) => q.completionState === 'active'),
     ),
   );
   if (hasActiveQuest) {
@@ -165,3 +165,4 @@ export function peekRibbet(): string[] {
 export function clearRibbet(): void {
   sessionQueue.length = 0;
 }
+

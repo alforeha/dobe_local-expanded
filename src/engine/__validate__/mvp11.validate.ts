@@ -115,7 +115,7 @@ function makeWelcomePlannedEvent(date: string): Record<string, unknown> {
   return {
     id: WELCOME_PE_ID,
     name: 'Welcome to CAN-DO-BE',
-    description: 'Your first step in the pond. Open this event to begin Quest 1.',
+    description: 'Your first step in the pond. Open this event to begin Smarter 1.',
     icon: 'welcome',
     color: '#10b981',
     seedDate: date,
@@ -198,10 +198,10 @@ async function main(): Promise<void> {
   const {
     seedStarterContent,
     unlockAct,
-    STARTER_ACT_IDS,
+    STARTER_ASPIRATION_IDS,
     STARTER_TEMPLATE_IDS,
     makeDailyChain,
-    coachActs,
+    coachAspirations,
   } = await import('../../coach/StarterQuestLibrary');
 
   const { materialisePlannedEvent } = await import('../materialise');
@@ -259,54 +259,54 @@ async function main(): Promise<void> {
   }
   assert('seedStarterContent() — runs without error', seedError === null, String(seedError));
 
-  // ── Onboarding Act exists with correct structure ───────────────────────
-  const obActId = STARTER_ACT_IDS.onboarding;
-  const obAct = useProgressionStore.getState().acts[obActId];
+  // ── Onboarding Aspiration exists with correct structure ───────────────────────
+  const obActId = STARTER_ASPIRATION_IDS.onboarding;
+  const obAct = useProgressionStore.getState().aspirations[obActId];
 
-  assert('Onboarding Act — exists in progressionStore',        !!obAct);
-  assert('Onboarding Act — completionState is active',         obAct?.completionState === 'active');
-  assert('Onboarding Act — has at least 1 chain',              (obAct?.chains.length ?? 0) >= 1);
-  assert('Onboarding Act — chain 0 has 4 quests',              (obAct?.chains[0]?.quests.length ?? 0) === 4);
-  assert('Onboarding Act — Q1 is active',                      obAct?.chains[0]?.quests[0]?.completionState === 'active');
+  assert('Onboarding Aspiration — exists in progressionStore',        !!obAct);
+  assert('Onboarding Aspiration — completionState is active',         obAct?.completionState === 'active');
+  assert('Onboarding Aspiration — has at least 1 chain',              (obAct?.woops.length ?? 0) >= 1);
+  assert('Onboarding Aspiration — chain 0 has 4 smarters',              (obAct?.woops[0]?.smarters.length ?? 0) === 4);
+  assert('Onboarding Aspiration — Q1 is active',                      obAct?.woops[0]?.smarters[0]?.completionState === 'active');
   assert(
-    'Onboarding Act — Q1 marker has nextFire set (today)',
-    obAct?.chains[0]?.quests[0]?.timely.markers[0]?.nextFire === DAY1,
+    'Onboarding Aspiration — Q1 marker has nextFire set (today)',
+    obAct?.woops[0]?.smarters[0]?.timely.markers[0]?.nextFire === DAY1,
   );
 
-  // ── Daily Adventure Act — gated by D87, not in store after seed ──────────
-  const dailyActId = STARTER_ACT_IDS.daily;
+  // ── Daily Adventure Aspiration — gated by D87, not in store after seed ──────────
+  const dailyActId = STARTER_ASPIRATION_IDS.daily;
 
   assert(
-    'Daily Adventure Act — NOT in progressionStore after seed (D87 gating)',
-    !useProgressionStore.getState().acts[dailyActId],
+    'Daily Adventure Aspiration — NOT in progressionStore after seed (D87 gating)',
+    !useProgressionStore.getState().aspirations[dailyActId],
   );
 
-  // Simulate Onboarding Act completion trigger: unlock Daily + all coach acts for testing
-  for (const act of coachActs) {
+  // Simulate Onboarding Aspiration completion trigger: unlock Daily + all coach aspirations for testing
+  for (const act of coachAspirations) {
     unlockAct(act.id);
   }
 
-  const dailyActRaw = useProgressionStore.getState().acts[dailyActId];
+  const dailyActRaw = useProgressionStore.getState().aspirations[dailyActId];
 
-  assert('Daily Adventure Act — exists in progressionStore after unlockAct()', !!dailyActRaw);
-  assert('Daily Adventure Act — completionState is active',  dailyActRaw?.completionState === 'active');
+  assert('Daily Adventure Aspiration — exists in progressionStore after unlockAct()', !!dailyActRaw);
+  assert('Daily Adventure Aspiration — completionState is active',  dailyActRaw?.completionState === 'active');
 
   // Simulate what onboarding completion does: add day 1 chain
   if (dailyActRaw) {
     const chain1 = makeDailyChain(dailyActId, 1, DAY1);
-    useProgressionStore.getState().setAct({
+    useProgressionStore.getState().setAspiration({
       ...dailyActRaw,
-      chains: [...dailyActRaw.chains, chain1],
+      woops: [...dailyActRaw.woops, chain1],
     });
   }
-  const dailyActWithChain = useProgressionStore.getState().acts[dailyActId];
+  const dailyActWithChain = useProgressionStore.getState().aspirations[dailyActId];
   assert(
-    'Daily Adventure Act — has today\'s chain after init',
-    (dailyActWithChain?.chains.length ?? 0) >= 1,
+    'Daily Adventure Aspiration — has today\'s chain after init',
+    (dailyActWithChain?.woops.length ?? 0) >= 1,
   );
   assert(
-    'Daily Adventure Act — today\'s chain name contains DAY1 date',
-    dailyActWithChain?.chains[0]?.name.includes(DAY1) ?? false,
+    'Daily Adventure Aspiration — today\'s chain name contains DAY1 date',
+    dailyActWithChain?.woops[0]?.name.includes(DAY1) ?? false,
   );
 
   // ── Welcome PlannedEvent materialises correctly ───────────────────────
@@ -415,30 +415,30 @@ async function main(): Promise<void> {
   const completedTask = useScheduleStore.getState().tasks[welcomeTaskId];
   assert('Task — completionState updated to complete', completedTask?.completionState === 'complete');
 
-  // ─── FIX-13: Quest 1 (Ripple) progress assertions ─────────────────────
-  const q1AfterComplete = useProgressionStore.getState().acts[obActId]?.chains[0]?.quests[0];
+  // ─── FIX-13: Smarter 1 (Ripple) progress assertions ─────────────────────
+  const q1AfterComplete = useProgressionStore.getState().aspirations[obActId]?.woops[0]?.smarters[0];
   assert(
-    'Quest 1 (Ripple) — completionState is complete',
+    'Smarter 1 (Ripple) — completionState is complete',
     q1AfterComplete?.completionState === 'complete',
     `got: ${q1AfterComplete?.completionState}`,
   );
   assert(
-    'Quest 1 (Ripple) — progressPercent is 100',
+    'Smarter 1 (Ripple) — progressPercent is 100',
     q1AfterComplete?.progressPercent === 100,
     `got: ${q1AfterComplete?.progressPercent}`,
   );
   assert(
-    'Quest 1 (Ripple) — has exactly 1 milestone',
+    'Smarter 1 (Ripple) — has exactly 1 milestone',
     q1AfterComplete?.milestones.length === 1,
     `got: ${q1AfterComplete?.milestones.length}`,
   );
 
-  // ─── FIX-13: Quest 2 (Splash) armed after Quest 1 completes ───────────
-  // completeMilestone() should have fired Quest 2's first interval marker
-  // so a Check-In task now exists in the schedule for Quest 2.
-  const q2AfterFire = useProgressionStore.getState().acts[obActId]?.chains[0]?.quests[1];
+  // ─── FIX-13: Smarter 2 (Splash) armed after Smarter 1 completes ───────────
+  // completeMilestone() should have fired Smarter 2's first interval marker
+  // so a Check-In task now exists in the schedule for Smarter 2.
+  const q2AfterFire = useProgressionStore.getState().aspirations[obActId]?.woops[0]?.smarters[1];
   assert(
-    'Quest 2 (Splash) — remains active after Quest 1 completes',
+    'Smarter 2 (Splash) — remains active after Smarter 1 completes',
     q2AfterFire?.completionState === 'active',
     `got: ${q2AfterFire?.completionState}`,
   );
@@ -448,7 +448,7 @@ async function main(): Promise<void> {
     (t) => t.questRef === q2TaskRef && t.completionState !== 'complete',
   );
   assert(
-    'Quest 2 (Splash) — armed: a task with its questRef exists in the schedule',
+    'Smarter 2 (Splash) — armed: a task with its questRef exists in the schedule',
     q2TaskExists,
     `tasks with questRefs: ${allTasksAfterQ1.filter((t) => t.questRef).map((t) => t.questRef).join(', ')}`,
   );
@@ -459,10 +459,10 @@ async function main(): Promise<void> {
   const q2Task = allTasksAfterQ1.find(
     (t) => t.questRef === q2TaskRef && t.completionState !== 'complete',
   )!;
-  assert('Quest 2 (Splash) — task found before Q2 complete call', !!q2Task);
+  assert('Smarter 2 (Splash) — task found before Q2 complete call', !!q2Task);
 
   if (q2Task) {
-    // Seed prior Quest 3 actions before Quest 2 completes so activation backfill
+    // Seed prior Smarter 3 actions before Smarter 2 completes so activation backfill
     // can reflect existing state immediately on the newly fired learnGrounds task.
     const userBeforeQ2Complete = useUserStore.getState().user!;
     useUserStore.getState().setUser({
@@ -476,7 +476,7 @@ async function main(): Promise<void> {
     useScheduleStore.getState().setPlannedEvent({
       id: 'pe-mvp11-routine-0001',
       name: 'Validation Routine',
-      description: 'Pre-existing routine for Quest 3 backfill coverage.',
+      description: 'Pre-existing routine for Smarter 3 backfill coverage.',
       icon: 'routine',
       color: '#22c55e',
       seedDate: DAY1,
@@ -563,16 +563,16 @@ async function main(): Promise<void> {
     } catch (e) {
       q2CompleteError = e;
     }
-    assert('Quest 2 (Splash) — completeTask runs without error', q2CompleteError === null, String(q2CompleteError));
+    assert('Smarter 2 (Splash) — completeTask runs without error', q2CompleteError === null, String(q2CompleteError));
 
-    const q2AfterComplete = useProgressionStore.getState().acts[obActId]?.chains[0]?.quests[1];
+    const q2AfterComplete = useProgressionStore.getState().aspirations[obActId]?.woops[0]?.smarters[1];
     assert(
-      'Quest 2 (Splash) — completionState is complete',
+      'Smarter 2 (Splash) — completionState is complete',
       q2AfterComplete?.completionState === 'complete',
       `got: ${q2AfterComplete?.completionState}`,
     );
     assert(
-      'Quest 2 (Splash) — progressPercent is 100',
+      'Smarter 2 (Splash) — progressPercent is 100',
       q2AfterComplete?.progressPercent === 100,
       `got: ${q2AfterComplete?.progressPercent}`,
     );
@@ -584,7 +584,7 @@ async function main(): Promise<void> {
       (t) => t.questRef === q3TaskRef && t.completionState !== 'complete',
     );
     assert(
-      'Quest 3 (High Ground) — armed after Quest 2 completes',
+      'Smarter 3 (High Ground) — armed after Smarter 2 completes',
       q3TaskExists,
       `tasks with questRefs: ${allTasksAfterQ2.filter((t) => t.questRef).map((t) => t.questRef).join(', ')}`,
     );
@@ -597,23 +597,23 @@ async function main(): Promise<void> {
       q3Items.filter((item) => item.checked === true).map((item) => item.key),
     );
     assert(
-      'Quest 3 (High Ground) — backfills completed roll on activation',
+      'Smarter 3 (High Ground) — backfills completed roll on activation',
       q3Checked.has('complete_roll'),
       `checked: ${[...q3Checked].join(', ')}`,
     );
     assert(
-      'Quest 3 (High Ground) — backfills add favourite on activation',
+      'Smarter 3 (High Ground) — backfills add favourite on activation',
       q3Checked.has('add_favourite'),
       `checked: ${[...q3Checked].join(', ')}`,
     );
     assert(
-      'Quest 3 (High Ground) — backfills open schedule on activation',
+      'Smarter 3 (High Ground) — backfills open schedule on activation',
       q3Checked.has('open_schedule'),
       `checked: ${[...q3Checked].join(', ')}`,
     );
-    const q3AfterBackfill = useProgressionStore.getState().acts[obActId]?.chains[0]?.quests[2];
+    const q3AfterBackfill = useProgressionStore.getState().aspirations[obActId]?.woops[0]?.smarters[2];
     assert(
-      'Quest 3 (High Ground) — progressPercent reflects 3 of 6 backfilled items',
+      'Smarter 3 (High Ground) — progressPercent reflects 3 of 6 backfilled items',
       q3AfterBackfill?.progressPercent === 50,
       `got: ${q3AfterBackfill?.progressPercent}`,
     );
@@ -666,17 +666,17 @@ async function main(): Promise<void> {
   );
 
   // New Daily Adventure chain for Day 2 — simulate app behaviour by adding chain 2
-  const dailyActAfterChain2 = useProgressionStore.getState().acts[dailyActId];
-  const day2DailyChain = dailyActAfterChain2?.chains[1];
+  const dailyActAfterChain2 = useProgressionStore.getState().aspirations[dailyActId];
+  const day2DailyChain = dailyActAfterChain2?.woops[1];
 
   assert(
-    'Daily Adventure Act — chain count increased to 2 after Day 2',
-    (dailyActAfterChain2?.chains.length ?? 0) >= 2,
-    `chains: ${dailyActAfterChain2?.chains.length}`,
+    'Daily Adventure Aspiration — chain count increased to 2 after Day 2',
+    (dailyActAfterChain2?.woops.length ?? 0) >= 2,
+    `woops: ${dailyActAfterChain2?.woops.length}`,
   );
   assert(
-    'Daily Adventure Act — chains[1] name contains DAY2',
-    dailyActAfterChain2?.chains[1]?.name.includes(DAY2) ?? false,
+    'Daily Adventure Aspiration — woops[1] name contains DAY2',
+    dailyActAfterChain2?.woops[1]?.name.includes(DAY2) ?? false,
   );
 
   // ═══════════════════════════════════════════════════════════════════════
@@ -686,18 +686,18 @@ async function main(): Promise<void> {
   section('PHASE 4 — Day 2 + Day 3 Activity');
 
   assert(
-    'Daily Adventure Act â€” Day 1 chain closes as failed after missed day',
-    dailyActAfterChain2?.chains[0]?.completionState === 'failed',
-    `got: ${dailyActAfterChain2?.chains[0]?.completionState}`,
+    'Daily Adventure Aspiration â€” Day 1 chain closes as failed after missed day',
+    dailyActAfterChain2?.woops[0]?.completionState === 'failed',
+    `got: ${dailyActAfterChain2?.woops[0]?.completionState}`,
   );
   assert(
-    'Daily Adventure Act â€” Day 2 chain starts active',
+    'Daily Adventure Aspiration â€” Day 2 chain starts active',
     day2DailyChain?.completionState === 'active',
     `got: ${day2DailyChain?.completionState}`,
   );
   assert(
-    'Daily Adventure Act â€” Day 2 chain has 4 fresh active quests',
-    day2DailyChain?.quests.every((quest) => quest.completionState === 'active') ?? false,
+    'Daily Adventure Aspiration â€” Day 2 chain has 4 fresh active smarters',
+    day2DailyChain?.smarters.every((quest) => quest.completionState === 'active') ?? false,
   );
 
   const xpBeforeDay2 = useUserStore.getState().user!.progression.stats.xp;
@@ -738,20 +738,20 @@ async function main(): Promise<void> {
   const day2EventInHistory = useScheduleStore.getState().historyEvents[d2evId];
   assert('Day 2 — event archived after Day 3 rollover', !!day2EventInHistory);
 
-  const dailyActAfterDay3 = useProgressionStore.getState().acts[dailyActId];
-  const day3DailyChain = dailyActAfterDay3?.chains[2];
+  const dailyActAfterDay3 = useProgressionStore.getState().aspirations[dailyActId];
+  const day3DailyChain = dailyActAfterDay3?.woops[2];
   assert(
-    'Daily Adventure Act â€” chain count increased to 3 after Day 3 rollover',
-    (dailyActAfterDay3?.chains.length ?? 0) >= 3,
-    `chains: ${dailyActAfterDay3?.chains.length}`,
+    'Daily Adventure Aspiration â€” chain count increased to 3 after Day 3 rollover',
+    (dailyActAfterDay3?.woops.length ?? 0) >= 3,
+    `woops: ${dailyActAfterDay3?.woops.length}`,
   );
   assert(
-    'Daily Adventure Act â€” Day 2 chain closes as failed after missed day',
-    dailyActAfterDay3?.chains[1]?.completionState === 'failed',
-    `got: ${dailyActAfterDay3?.chains[1]?.completionState}`,
+    'Daily Adventure Aspiration â€” Day 2 chain closes as failed after missed day',
+    dailyActAfterDay3?.woops[1]?.completionState === 'failed',
+    `got: ${dailyActAfterDay3?.woops[1]?.completionState}`,
   );
   assert(
-    'Daily Adventure Act â€” Day 3 chain starts active',
+    'Daily Adventure Aspiration â€” Day 3 chain starts active',
     day3DailyChain?.completionState === 'active',
     `got: ${day3DailyChain?.completionState}`,
   );
@@ -902,7 +902,7 @@ async function main(): Promise<void> {
 
   // Seed Acts so achievement checks have context (D87: seed then unlock all)
   seedStarterContent(false);
-  for (const act of coachActs) {
+  for (const act of coachAspirations) {
     unlockAct(act.id);
   }
 
@@ -1075,3 +1075,4 @@ main().catch((err: unknown) => {
   console.error('MVP11 validation script threw:', err);
   process.exit(1);
 });
+

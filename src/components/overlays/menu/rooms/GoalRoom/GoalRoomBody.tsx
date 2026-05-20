@@ -1,9 +1,9 @@
-import type { Act } from '../../../../../types';
+import type { Aspiration } from '../../../../../types';
 import { ActBlock } from './ActBlock';
 
 interface GoalRoomBodyProps {
-  acts: Act[];
-  onEdit: (act: Act) => void;
+  acts: Aspiration[];
+  onEdit: (act: Aspiration) => void;
 }
 
 export function GoalRoomBody({ acts, onEdit }: GoalRoomBodyProps) {

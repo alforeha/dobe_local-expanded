@@ -1,18 +1,18 @@
-import { STARTER_ACT_IDS, unlockAct } from '../../../../../coach/StarterQuestLibrary';
+import { STARTER_ASPIRATION_IDS, unlockAct } from '../../../../../coach/StarterQuestLibrary';
 import { useProgressionStore } from '../../../../../stores/useProgressionStore';
 import { IconDisplay } from '../../../../shared/IconDisplay';
 
 const STAT_PATHS = [
-  { id: STARTER_ACT_IDS.health, label: 'Health', iconKey: 'act-health' },
-  { id: STARTER_ACT_IDS.strength, label: 'Strength', iconKey: 'fitness' },
-  { id: STARTER_ACT_IDS.agility, label: 'Agility', iconKey: 'act-agility' },
-  { id: STARTER_ACT_IDS.defense, label: 'Defense', iconKey: 'act-defense' },
-  { id: STARTER_ACT_IDS.charisma, label: 'Charisma', iconKey: 'act-charisma' },
-  { id: STARTER_ACT_IDS.wisdom, label: 'Wisdom', iconKey: 'act-wisdom' },
+  { id: STARTER_ASPIRATION_IDS.health, label: 'Health', iconKey: 'act-health' },
+  { id: STARTER_ASPIRATION_IDS.strength, label: 'Strength', iconKey: 'fitness' },
+  { id: STARTER_ASPIRATION_IDS.agility, label: 'Agility', iconKey: 'act-agility' },
+  { id: STARTER_ASPIRATION_IDS.defense, label: 'Defense', iconKey: 'act-defense' },
+  { id: STARTER_ASPIRATION_IDS.charisma, label: 'Charisma', iconKey: 'act-charisma' },
+  { id: STARTER_ASPIRATION_IDS.wisdom, label: 'Wisdom', iconKey: 'act-wisdom' },
 ] as const;
 
 export function ChooseYourPath() {
-  const acts = useProgressionStore((state) => state.acts);
+  const aspirations = useProgressionStore((state) => state.aspirations);
 
   return (
     <div className="mx-4 mb-1 mt-3 overflow-hidden rounded-xl border border-gray-100 bg-white dark:border-gray-700 dark:bg-gray-800">
@@ -26,7 +26,7 @@ export function ChooseYourPath() {
       </div>
       <div className="grid grid-cols-2 gap-2 px-3 pb-3">
         {STAT_PATHS.map(({ id, label, iconKey }) => {
-          const isUnlocked = Boolean(acts[id]);
+          const isUnlocked = Boolean(aspirations[id]);
           return (
             <button
               key={id}
@@ -53,3 +53,4 @@ export function ChooseYourPath() {
     </div>
   );
 }
+

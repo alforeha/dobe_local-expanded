@@ -21,7 +21,7 @@ import { OneOffEventPopup } from '../overlays/menu/rooms/ScheduleRoom/OneOffEven
 import {
   seedStarterContent,
   STARTER_TEMPLATE_IDS,
-  STARTER_ACT_IDS,
+  STARTER_ASPIRATION_IDS,
 } from '../../coach/StarterQuestLibrary';
 import { evaluatePlannedEventCreatedMarkers } from '../../engine/markerEngine';
 import { autoCompleteSystemTask } from '../../engine/resourceEngine';
@@ -234,7 +234,7 @@ export function AppShell() {
     // 2. Apply dark theme (default per D72)
     useSystemStore.getState().setThemeMode('dark');
 
-    // 3. Seed Onboarding Act (D87 — other Acts unlock on game events)
+    // 3. Seed Onboarding Aspiration (D87 — other Acts unlock on game events)
     seedStarterContent();
 
     // 4. Create Welcome Event and Task directly in schedule store (D86)
@@ -250,8 +250,8 @@ export function AppShell() {
       resourceRef: null,
       location: null,
       sharedWith: null,
-      questRef: `${STARTER_ACT_IDS.onboarding}|0|0`,
-      actRef: STARTER_ACT_IDS.onboarding,
+      questRef: `${STARTER_ASPIRATION_IDS.onboarding}|0|0`,
+      actRef: STARTER_ASPIRATION_IDS.onboarding,
       secondaryTag: null,
     };
     const welcomeEventId = uuidv4();
@@ -454,3 +454,4 @@ export function AppShell() {
     </div>
   );
 }
+

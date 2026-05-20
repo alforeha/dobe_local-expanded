@@ -47,7 +47,7 @@ import { completeMilestone, decodeQuestRef, encodeQuestRef } from './markerEngin
 import { checkAchievements } from '../coach/checkAchievements';
 import { awardBadge } from '../coach/rewardPipeline';
 import { pushRibbet } from '../coach/ribbet';
-import { starterTaskTemplates, STARTER_ACT_IDS, STARTER_TEMPLATE_IDS } from '../coach/StarterQuestLibrary';
+import { starterTaskTemplates, STARTER_ASPIRATION_IDS, STARTER_TEMPLATE_IDS } from '../coach/StarterQuestLibrary';
 import { taskTemplateLibrary } from '../coach';
 import { getItemTaskTemplateMeta, getItemTemplateByRef } from '../coach/ItemLibrary';
 import { isWisdomTemplate } from './xpBoosts';
@@ -439,19 +439,19 @@ function autoCompleteSystemTaskInternal(templateRef: string, skipOnboardingBackf
     scheduleStore.setTask(completedTask);
   }
 
-  const acts = useProgressionStore.getState().acts;
-  for (const act of Object.values(acts)) {
-    for (let chainIndex = 0; chainIndex < act.chains.length; chainIndex++) {
-      const chain = act.chains[chainIndex];
-      for (let questIndex = 0; questIndex < chain.quests.length; questIndex++) {
-        const quest = chain.quests[questIndex];
+  const aspirations = useProgressionStore.getState().aspirations;
+  for (const act of Object.values(aspirations)) {
+    for (let chainIndex = 0; chainIndex < act.woops.length; chainIndex++) {
+      const chain = act.woops[chainIndex];
+      for (let questIndex = 0; questIndex < chain.smarters.length; questIndex++) {
+        const quest = chain.smarters[questIndex];
         if (quest.completionState !== 'active') continue;
         if (!isQuestEligibleForSystemCompletion(act.id, chainIndex, questIndex)) continue;
         if (!(quest.measurable.taskTemplateRefs ?? []).includes(templateRef)) continue;
 
         updateQuestProgress(act.id, chainIndex, questIndex);
 
-        const freshQuest = useProgressionStore.getState().acts[act.id]?.chains[chainIndex]?.quests[questIndex];
+        const freshQuest = useProgressionStore.getState().aspirations[act.id]?.woops[chainIndex]?.smarters[questIndex];
         if (!freshQuest || freshQuest.completionState !== 'active') continue;
         if (!evaluateQuestSpecific(freshQuest, completedTask)) continue;
 
@@ -461,7 +461,7 @@ function autoCompleteSystemTaskInternal(templateRef: string, skipOnboardingBackf
           actRef: act.id,
         });
 
-        const completedQuest = useProgressionStore.getState().acts[act.id]?.chains[chainIndex]?.quests[questIndex];
+        const completedQuest = useProgressionStore.getState().aspirations[act.id]?.woops[chainIndex]?.smarters[questIndex];
         if (!completedQuest || completedQuest.completionState !== 'complete') continue;
         pushRibbet('quest.completed');
       }
@@ -500,23 +500,23 @@ function hasCompletedQuickActionTask(templateRef: string): boolean {
 }
 
 function getCurrentOnboardingQuest() {
-  const onboardingAct = useProgressionStore.getState().acts[STARTER_ACT_IDS.onboarding];
-  const onboardingChain = onboardingAct?.chains[0];
+  const onboardingAct = useProgressionStore.getState().aspirations[STARTER_ASPIRATION_IDS.onboarding];
+  const onboardingChain = onboardingAct?.woops[0];
   if (!onboardingAct || !onboardingChain) return null;
 
-  const questIndex = onboardingChain.quests.findIndex((quest) => quest.completionState !== 'complete');
+  const questIndex = onboardingChain.smarters.findIndex((quest) => quest.completionState !== 'complete');
   if (questIndex === -1) return null;
 
   return {
     act: onboardingAct,
     chain: onboardingChain,
-    quest: onboardingChain.quests[questIndex] ?? null,
+    quest: onboardingChain.smarters[questIndex] ?? null,
     questIndex,
   };
 }
 
 function isQuestEligibleForSystemCompletion(actId: string, chainIndex: number, questIndex: number): boolean {
-  if (actId !== STARTER_ACT_IDS.onboarding || chainIndex !== 0) return true;
+  if (actId !== STARTER_ASPIRATION_IDS.onboarding || chainIndex !== 0) return true;
   const current = getCurrentOnboardingQuest();
   return current?.questIndex === questIndex;
 }
@@ -1595,15 +1595,15 @@ export function autoCheckQuestItem(templateRef: string, itemKey: string): void {
   const scheduleStore = useScheduleStore.getState();
   const user = useUserStore.getState().user;
   if (!user) return;
-  const acts = useProgressionStore.getState().acts;
+  const aspirations = useProgressionStore.getState().aspirations;
 
   let activeQuestRef: string | null = null;
   outer:
-  for (const act of Object.values(acts)) {
-    for (let chainIndex = 0; chainIndex < act.chains.length; chainIndex++) {
-      const chain = act.chains[chainIndex];
-      for (let questIndex = 0; questIndex < chain.quests.length; questIndex++) {
-        const quest = chain.quests[questIndex];
+  for (const act of Object.values(aspirations)) {
+    for (let chainIndex = 0; chainIndex < act.woops.length; chainIndex++) {
+      const chain = act.woops[chainIndex];
+      for (let questIndex = 0; questIndex < chain.smarters.length; questIndex++) {
+        const quest = chain.smarters[questIndex];
         if (quest.completionState !== 'active') continue;
         const hasMatchingMarker = quest.timely.markers.some(
           (marker) => marker.activeState && marker.taskTemplateRef === templateRef,
@@ -1686,9 +1686,9 @@ export function autoCheckQuestItem(templateRef: string, itemKey: string): void {
     if (parsed) {
       const { actId, chainIndex, questIndex } = parsed;
       const progressionStore = useProgressionStore.getState();
-      const act = progressionStore.acts[actId];
+      const act = progressionStore.aspirations[actId];
       if (act) {
-        const quest = act.chains[chainIndex]?.quests[questIndex];
+        const quest = act.woops[chainIndex]?.smarters[questIndex];
         if (quest && quest.specific.targetValue > 0) {
           const checkedCount = updatedItems.filter((i) => i.checked).length;
           const progressPercent = Math.min(
@@ -1697,18 +1697,18 @@ export function autoCheckQuestItem(templateRef: string, itemKey: string): void {
           );
           const updatedAct = {
             ...act,
-            chains: act.chains.map((c, ci: number) =>
+            woops: act.woops.map((c, ci: number) =>
               ci !== chainIndex
                 ? c
                 : {
                     ...c,
-                    quests: c.quests.map((q, qi: number) =>
+                    smarters: c.smarters.map((q, qi: number) =>
                       qi !== questIndex ? q : { ...q, progressPercent },
                     ),
                   },
             ),
           };
-          progressionStore.setAct(updatedAct);
+          progressionStore.setAspiration(updatedAct);
         }
       }
     }
@@ -1719,3 +1719,4 @@ export function autoCheckQuestItem(templateRef: string, itemKey: string): void {
     completeGTDItem(taskId, user);
   }
 }
+

@@ -21,3 +21,10 @@ export interface ActCommitment {
    */
   routineRefs: string[];
 }
+
+// Per-Smarter execution container — moved from top-level Act
+export interface NestedAct {
+  accountability: null;
+  commitment: ActCommitment;
+  tether: null;
+}

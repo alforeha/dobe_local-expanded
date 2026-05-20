@@ -2,7 +2,7 @@
 // MVP07 VALIDATION SCRIPT
 // Run via: npx tsx src/engine/__validate__/mvp07.validate.ts
 //
-// Tests A01 – A04 acceptance criteria for the Quest System.
+// Tests A01 – A04 acceptance criteria for the Smarter System.
 // Uses dynamic imports so the localStorage stub is active BEFORE Zustand
 // persist middleware initialises (ESM static imports are hoisted and would
 // execute before any inline code, defeating a top-level stub).
@@ -81,7 +81,7 @@ function makeUser(xp = 0): Record<string, unknown> {
 
 function makeQuestTemplate(): Record<string, unknown> {
   return {
-    name:        'Quest Check-in',
+    name:        'Smarter Check-in',
     description: '',
     icon:        '',
     taskType:    'action',
@@ -141,7 +141,7 @@ function makeQuest(options: {
 
   const resolvedMarkers = markers ?? [makeIntervalMarker(actId)];
   return {
-    name:            'Test Quest',
+    name:            'Test Smarter',
     description:     '',
     icon:            '',
     completionState,
@@ -164,7 +164,7 @@ function makeQuest(options: {
       markers:        resolvedMarkers,
       projectedFinish: null,
     },
-    exigency:       { onMissedFinish: 'extend' },
+    exitStrategy:       { onMissedFinish: 'extend' },
     result:         {},
     milestones,
     questReward:    '',
@@ -175,18 +175,18 @@ function makeQuest(options: {
 function makeAct(actId: string, quest: Record<string, unknown>): Record<string, unknown> {
   return {
     id:   actId,
-    name: 'Test Act',
+    name: 'Test Aspiration',
     description: '',
     icon:        '',
     owner:       'user-1',
-    chains: [{
-      name:            'Test Chain',
+    woops: [{
+      name:            'Test Woop',
       description:     '',
       icon:            '',
       wish: '', outcome: '', obstacle: '',
       plan:            {},
       chainReward:     '',
-      quests:          [quest],
+      smarters:          [quest],
       completionState: 'active',
     }],
     accountability: null,
@@ -253,23 +253,23 @@ async function main(): Promise<void> {
   const a01Act = makeAct(a01ActId, a01Quest);
 
   // Seed store + storage (simulating app writing to localStorage)
-  useProgressionStore.getState().setAct(a01Act as never);
+  useProgressionStore.getState().setAspiration(a01Act as never);
   storageSet(storageKey.act(a01ActId), a01Act);
 
   // Simulate hard-reload: read back from localStorage only
   const loaded = storageGet<Record<string, unknown>>(storageKey.act(a01ActId));
 
-  assert('A01.1 — Act reloads from localStorage',          !!loaded);
-  assert('A01.2 — Act.id survives round-trip',              loaded?.id === a01ActId);
+  assert('A01.1 — Aspiration reloads from localStorage',          !!loaded);
+  assert('A01.2 — Aspiration.id survives round-trip',              loaded?.id === a01ActId);
 
-  const loadedChain = (loaded?.chains as unknown[])?.[0] as Record<string, unknown> | undefined;
-  assert('A01.3 — Chain present after reload',              !!loadedChain);
+  const loadedChain = (loaded?.woops as unknown[])?.[0] as Record<string, unknown> | undefined;
+  assert('A01.3 — Woop present after reload',              !!loadedChain);
 
-  const loadedQuestArr = loadedChain?.quests as unknown[] | undefined;
+  const loadedQuestArr = loadedChain?.smarters as unknown[] | undefined;
   const loadedQuest    = loadedQuestArr?.[0] as Record<string, unknown> | undefined;
-  assert('A01.4 — Quest present after reload',              !!loadedQuest);
-  assert('A01.5 — Quest.completionState correct',           loadedQuest?.completionState === 'active');
-  assert('A01.6 — Quest.progressPercent survived',          loadedQuest?.progressPercent === 60);
+  assert('A01.4 — Smarter present after reload',              !!loadedQuest);
+  assert('A01.5 — Smarter.completionState correct',           loadedQuest?.completionState === 'active');
+  assert('A01.6 — Smarter.progressPercent survived',          loadedQuest?.progressPercent === 60);
 
   const loadedMilestones = loadedQuest?.milestones as unknown[] | undefined;
   const loadedMs         = loadedMilestones?.[0] as Record<string, unknown> | undefined;
@@ -281,10 +281,10 @@ async function main(): Promise<void> {
   );
 
   // Also verify the in-memory progressionStore holds the act
-  const inMemAct = useProgressionStore.getState().acts[a01ActId];
-  assert('A01.11 — Act in progressionStore',                !!inMemAct);
-  assert('A01.12 — Quest accessible in progressionStore',
-    !!inMemAct?.chains[0]?.quests[0],
+  const inMemAct = useProgressionStore.getState().aspirations[a01ActId];
+  assert('A01.11 — Aspiration in progressionStore',                !!inMemAct);
+  assert('A01.12 — Smarter accessible in progressionStore',
+    !!inMemAct?.woops[0]?.smarters[0],
   );
 
   // ── A02 — Marker fires correctly when condition is met ───────────────────
@@ -296,7 +296,7 @@ async function main(): Promise<void> {
   const a02aQuest = makeQuest({ actId: a02aActId });      // interval, nextFire=YESTERDAY
   const a02aAct   = makeAct(a02aActId, a02aQuest);
 
-  useProgressionStore.getState().setAct(a02aAct as never);
+  useProgressionStore.getState().setAspiration(a02aAct as never);
   useUserStore.setState({ user: makeUser() as never });
   useScheduleStore.setState({
     taskTemplates: { [QUEST_TMPL_ID]: makeQuestTemplate() } as never,
@@ -319,8 +319,8 @@ async function main(): Promise<void> {
     useUserStore.getState().user?.lists.gtdList.includes(a02aTaskId ?? '') ?? false,
   );
 
-  const a02aFiredAct  = useProgressionStore.getState().acts[a02aActId];
-  const a02aFiredMkr  = a02aFiredAct?.chains[0]?.quests[0]?.timely.markers[0];
+  const a02aFiredAct  = useProgressionStore.getState().aspirations[a02aActId];
+  const a02aFiredMkr  = a02aFiredAct?.woops[0]?.smarters[0]?.timely.markers[0];
   const realToday = new Date().toISOString().slice(0, 10);
   assert('A02a.5 — Marker.lastFired set to today (wall-clock UTC)',
     a02aFiredMkr?.lastFired === realToday,
@@ -343,7 +343,7 @@ async function main(): Promise<void> {
   });
   const a02bAct = makeAct(a02bActId, a02bQuest);
 
-  useProgressionStore.getState().setAct(a02bAct as never);
+  useProgressionStore.getState().setAspiration(a02bAct as never);
   useUserStore.setState({ user: makeUser(100) as never });   // xp = 100 = threshold
   useScheduleStore.setState({
     taskTemplates: { [QUEST_TMPL_ID]: makeQuestTemplate() } as never,
@@ -369,8 +369,8 @@ async function main(): Promise<void> {
     useUserStore.getState().user?.lists.gtdList.includes(a02bTaskId ?? '') ?? false,
   );
 
-  const a02bFiredAct = useProgressionStore.getState().acts[a02bActId];
-  const a02bFiredMkr = a02bFiredAct?.chains[0]?.quests[0]?.timely.markers[0];
+  const a02bFiredAct = useProgressionStore.getState().aspirations[a02bActId];
+  const a02bFiredMkr = a02bFiredAct?.woops[0]?.smarters[0]?.timely.markers[0];
   assert('A02b.5 — Marker.xpAtLastFire snapshots currentXp (100)',
     a02bFiredMkr?.xpAtLastFire === 100,
     `got ${a02bFiredMkr?.xpAtLastFire}`,
@@ -386,7 +386,7 @@ async function main(): Promise<void> {
   );
 
   // Verify resets correctly for next round: with xpAtLastFire=100, delta now = 0 < 100
-  const a02bRefiredMkr = a02bFiredAct?.chains[0]?.quests[0]?.timely.markers[0];
+  const a02bRefiredMkr = a02bFiredAct?.woops[0]?.smarters[0]?.timely.markers[0];
   assert('A02b.8 — evaluateMarkerCondition false after fire (XP delta = 0)',
     !evaluateMarkerCondition({ ...(a02bRefiredMkr ?? {}), xpAtLastFire: 100 } as never, 100),
   );
@@ -400,15 +400,15 @@ async function main(): Promise<void> {
   const a03Quest = makeQuest({ actId: a03ActId, targetValue: 5 });
   const a03Act   = makeAct(a03ActId, a03Quest);
 
-  useProgressionStore.getState().setAct(a03Act as never);
+  useProgressionStore.getState().setAspiration(a03Act as never);
   useUserStore.setState({ user: makeUser() as never });
   useScheduleStore.setState({
     taskTemplates: { [QUEST_TMPL_ID]: makeQuestTemplate() } as never,
   });
 
   // Get the marker from the stored act
-  const a03StoredAct = useProgressionStore.getState().acts[a03ActId]!;
-  const a03Marker    = a03StoredAct.chains[0]!.quests[0]!.timely.markers[0]!;
+  const a03StoredAct = useProgressionStore.getState().aspirations[a03ActId]!;
+  const a03Marker    = a03StoredAct.woops[0]!.smarters[0]!.timely.markers[0]!;
 
   // Fire marker manually
   fireMarker({
@@ -449,8 +449,8 @@ async function main(): Promise<void> {
   // Complete the fired task (this triggers completeMilestone)
   completeTask(a03TaskId!, 'evt-dummy', { resultFields: {} });
 
-  const a03PostAct   = useProgressionStore.getState().acts[a03ActId]!;
-  const a03PostQuest = a03PostAct.chains[0]!.quests[0]!;
+  const a03PostAct   = useProgressionStore.getState().aspirations[a03ActId]!;
+  const a03PostQuest = a03PostAct.woops[0]!.smarters[0]!;
   const ms0          = a03PostQuest.milestones[0] as unknown as Record<string, unknown> | undefined;
 
   assert('A03.9 — Milestone appended to quest.milestones',  a03PostQuest.milestones.length === 1);
@@ -459,33 +459,33 @@ async function main(): Promise<void> {
   assert('A03.12 — Milestone.resourceRef null',              ms0?.resourceRef === null);
   assert('A03.13 — Milestone.completedAt is a string',       typeof ms0?.completedAt === 'string');
 
-  // Quest should still be active (1 milestone, targetValue=5, no numeric result)
-  assert('A03.14 — Quest still active (finish not yet met)', a03PostQuest.completionState === 'active');
+  // Smarter should still be active (1 milestone, targetValue=5, no numeric result)
+  assert('A03.14 — Smarter still active (finish not yet met)', a03PostQuest.completionState === 'active');
 
   // updateQuestProgress should have written progressPercent = round(1/5*100) = 20
-  assert('A03.15 — Quest.progressPercent updated to 20 (count-based fallback, 1/5)',
+  assert('A03.15 — Smarter.progressPercent updated to 20 (count-based fallback, 1/5)',
     a03PostQuest.progressPercent === 20,
     `got ${a03PostQuest.progressPercent}`,
   );
 
-  // A03.16 — Quest finish condition evaluates true and closes the quest
+  // A03.16 — Smarter finish condition evaluates true and closes the quest
   // Simulated by firing and completing with a result that meets targetValue
   const a03bActId = 'act-a03b';
   const a03bQuest = makeQuest({ actId: a03bActId, targetValue: 10 });
   const a03bAct   = makeAct(a03bActId, a03bQuest);
 
-  useProgressionStore.getState().setAct(a03bAct as never);
+  useProgressionStore.getState().setAspiration(a03bAct as never);
 
-  const a03bStoredAct = useProgressionStore.getState().acts[a03bActId]!;
-  const a03bMarker    = a03bStoredAct.chains[0]!.quests[0]!.timely.markers[0]!;
+  const a03bStoredAct = useProgressionStore.getState().aspirations[a03bActId]!;
+  const a03bMarker    = a03bStoredAct.woops[0]!.smarters[0]!.timely.markers[0]!;
 
   fireMarker({ marker: a03bMarker, markerIndex: 0, questIndex: 0, chainIndex: 0, actId: a03bActId });
 
   const a03bTaskId = findTaskByQuestRef(encodeQuestRef(a03bActId, 0, 0));
   completeTask(a03bTaskId!, 'evt-dummy', { resultFields: { score: 10 } as never });
 
-  const a03bPostQuest = useProgressionStore.getState().acts[a03bActId]!.chains[0]!.quests[0]!;
-  assert('A03.16 — Quest completes when evaluateQuestSpecific returns true',
+  const a03bPostQuest = useProgressionStore.getState().aspirations[a03bActId]!.woops[0]!.smarters[0]!;
+  assert('A03.16 — Smarter completes when evaluateQuestSpecific returns true',
     a03bPostQuest.completionState === 'complete',
     `got ${a03bPostQuest.completionState}`,
   );
@@ -497,7 +497,7 @@ async function main(): Promise<void> {
     a03bPostQuest.timely.markers.every((m) => !m.activeState),
   );
 
-  // ── A04 — Quest progress accurate across 3 configurations ────────────────
+  // ── A04 — Smarter progress accurate across 3 configurations ────────────────
 
   section('A04 — Progress accuracy across 3 configurations');
 
@@ -508,22 +508,22 @@ async function main(): Promise<void> {
   const c1Quest = makeQuest({ actId: c1ActId, targetValue: 100 });
   const c1Act   = makeAct(c1ActId, c1Quest);
 
-  useProgressionStore.getState().setAct(c1Act as never);
+  useProgressionStore.getState().setAspiration(c1Act as never);
   useUserStore.setState({ user: makeUser() as never });
   useScheduleStore.setState({
     taskTemplates: { [QUEST_TMPL_ID]: makeQuestTemplate() } as never,
   });
 
-  const c1StoredAct = useProgressionStore.getState().acts[c1ActId]!;
+  const c1StoredAct = useProgressionStore.getState().aspirations[c1ActId]!;
   fireMarker({
-    marker:      c1StoredAct.chains[0]!.quests[0]!.timely.markers[0]!,
+    marker:      c1StoredAct.woops[0]!.smarters[0]!.timely.markers[0]!,
     markerIndex: 0, questIndex: 0, chainIndex: 0, actId: c1ActId,
   });
 
   const c1TaskId = findTaskByQuestRef(encodeQuestRef(c1ActId, 0, 0));
   completeTask(c1TaskId!, 'evt-dummy', { resultFields: { reps: 50 } });
 
-  const c1Quest2 = useProgressionStore.getState().acts[c1ActId]!.chains[0]!.quests[0]!;
+  const c1Quest2 = useProgressionStore.getState().aspirations[c1ActId]!.woops[0]!.smarters[0]!;
   assert('A04.C1.1 — Milestone added (Config 1)',           c1Quest2.milestones.length === 1);
   assert('A04.C1.2 — progressPercent = 50 (50/100)',
     c1Quest2.progressPercent === 50,
@@ -550,31 +550,31 @@ async function main(): Promise<void> {
   const c2Quest = makeQuest({ actId: c2ActId, targetValue: 3 });
   const c2Act   = makeAct(c2ActId, c2Quest);
 
-  useProgressionStore.getState().setAct(c2Act as never);
+  useProgressionStore.getState().setAspiration(c2Act as never);
   useUserStore.setState({ user: makeUser() as never });
   useScheduleStore.setState({
     taskTemplates: { [QUEST_TMPL_ID]: makeQuestTemplate() } as never,
   });
 
   // Fire and complete once (no numeric result → count-based fallback)
-  const c2Stored  = useProgressionStore.getState().acts[c2ActId]!;
+  const c2Stored  = useProgressionStore.getState().aspirations[c2ActId]!;
   fireMarker({
-    marker:      c2Stored.chains[0]!.quests[0]!.timely.markers[0]!,
+    marker:      c2Stored.woops[0]!.smarters[0]!.timely.markers[0]!,
     markerIndex: 0, questIndex: 0, chainIndex: 0, actId: c2ActId,
   });
   const c2t1 = findTaskByQuestRef(encodeQuestRef(c2ActId, 0, 0));
   completeTask(c2t1!, 'evt-dummy', { resultFields: {} });
 
-  const c2q1 = useProgressionStore.getState().acts[c2ActId]!.chains[0]!.quests[0]!;
+  const c2q1 = useProgressionStore.getState().aspirations[c2ActId]!.woops[0]!.smarters[0]!;
   assert('A04.C2.1 — 1 milestone → progressPercent = 33 (1/3 count-based)',
     c2q1.progressPercent === 33,
     `got ${c2q1.progressPercent}`,
   );
-  assert('A04.C2.2 — Quest still active (only 1 of 3)',     c2q1.completionState === 'active');
+  assert('A04.C2.2 — Smarter still active (only 1 of 3)',     c2q1.completionState === 'active');
 
   // Fire and complete a second time
   fireMarker({
-    marker:      useProgressionStore.getState().acts[c2ActId]!.chains[0]!.quests[0]!.timely.markers[0]!,
+    marker:      useProgressionStore.getState().aspirations[c2ActId]!.woops[0]!.smarters[0]!.timely.markers[0]!,
     markerIndex: 0, questIndex: 0, chainIndex: 0, actId: c2ActId,
   });
   const c2t2 = Object.values(useScheduleStore.getState().tasks)
@@ -582,12 +582,12 @@ async function main(): Promise<void> {
     .map((t) => t.id)[0];
   completeTask(c2t2!, 'evt-dummy', { resultFields: {} });
 
-  const c2q2 = useProgressionStore.getState().acts[c2ActId]!.chains[0]!.quests[0]!;
+  const c2q2 = useProgressionStore.getState().aspirations[c2ActId]!.woops[0]!.smarters[0]!;
   assert('A04.C2.3 — 2 milestones → progressPercent = 67 (2/3)',
     c2q2.progressPercent === 67,
     `got ${c2q2.progressPercent}`,
   );
-  assert('A04.C2.4 — Quest still active after 2 milestones', c2q2.completionState === 'active');
+  assert('A04.C2.4 — Smarter still active after 2 milestones', c2q2.completionState === 'active');
 
   // — Config 3: xpThreshold conditionType — same progress math, different fire cadence ─
 
@@ -599,7 +599,7 @@ async function main(): Promise<void> {
   });
   const c3Act = makeAct(c3ActId, c3Quest);
 
-  useProgressionStore.getState().setAct(c3Act as never);
+  useProgressionStore.getState().setAspiration(c3Act as never);
   useUserStore.setState({ user: makeUser(200) as never }); // xp meets threshold
   useScheduleStore.setState({
     taskTemplates: { [QUEST_TMPL_ID]: makeQuestTemplate() } as never,
@@ -616,12 +616,12 @@ async function main(): Promise<void> {
   // Complete with numeric value = 75: progress = 75/100 = 75%
   completeTask(c3TaskId!, 'evt-dummy', { resultFields: { value: 75 } as never });
 
-  const c3QuestPost = useProgressionStore.getState().acts[c3ActId]!.chains[0]!.quests[0]!;
+  const c3QuestPost = useProgressionStore.getState().aspirations[c3ActId]!.woops[0]!.smarters[0]!;
   assert('A04.C3.2 — progressPercent = 75 (75/100 numeric result)',
     c3QuestPost.progressPercent === 75,
     `got ${c3QuestPost.progressPercent}`,
   );
-  assert('A04.C3.3 — Quest still active (75 < 100)',         c3QuestPost.completionState === 'active');
+  assert('A04.C3.3 — Smarter still active (75 < 100)',         c3QuestPost.completionState === 'active');
 
   // ── SUMMARY ──────────────────────────────────────────────────────────────────
 
@@ -636,3 +636,4 @@ main().catch((err: unknown) => {
   console.error('Validation script threw:', err);
   process.exit(1);
 });
+

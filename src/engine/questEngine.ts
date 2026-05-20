@@ -4,11 +4,11 @@
 // evaluateQuestSpecific() — routes to taskInput or resourceRef evaluation path (D01)
 // evaluateMarkerCondition() — xpThreshold delta check only; interval handled by rollover
 // deriveQuestProgress()    — returns 0–100 from measured value vs targetValue
-// updateQuestProgress()    — persists progressPercent + projectedFinish to Quest
+// updateQuestProgress()    — persists progressPercent + projectedFinish to Smarter
 // computeProjectedFinish() — XP rate estimate per Q01 Option B (pending PM confirm)
 // ─────────────────────────────────────────
 
-import type { Quest } from '../types/act';
+import type { Smarter } from '../types/act';
 import type { Task } from '../types/task';
 import type { Marker } from '../types/quest/Marker';
 import type { RecurrenceRule } from '../types/taskTemplate';
@@ -17,7 +17,7 @@ import { useScheduleStore } from '../stores/useScheduleStore';
 import { useResourceStore } from '../stores/useResourceStore';
 import { useUserStore } from '../stores/useUserStore';
 import { localISODate, getAppDate } from '../utils/dateUtils';
-import { starterTaskTemplates, STARTER_ACT_IDS } from '../coach/StarterQuestLibrary';
+import { starterTaskTemplates, STARTER_ASPIRATION_IDS } from '../coach/StarterQuestLibrary';
 
 // ── HELPERS ────────────────────────────────────────────────────────────────────────────────
 
@@ -26,7 +26,7 @@ function todayISO(): string {
 }
 
 function isDailyQuestRef(questRef: string | null | undefined): boolean {
-  return typeof questRef === 'string' && questRef.startsWith(STARTER_ACT_IDS.daily);
+  return typeof questRef === 'string' && questRef.startsWith(STARTER_ASPIRATION_IDS.daily);
 }
 
 function isTodayCompletion(completedAt: string | null | undefined): boolean {
@@ -34,7 +34,7 @@ function isTodayCompletion(completedAt: string | null | undefined): boolean {
   return localISODate(new Date(completedAt)) === getAppDate();
 }
 
-function isAnyTaskQuest(quest: Quest): boolean {
+function isAnyTaskQuest(quest: Smarter): boolean {
   return quest.timely.conditionType === 'none' &&
     (quest.measurable.taskTemplateRefs?.length ?? 0) === 0 &&
     quest.specific.unit === 'tasks';
@@ -220,7 +220,7 @@ export function evaluateTaskCountMarker(marker: Marker, systemEventCount = 0): b
 // ── EVALUATE QUEST SPECIFIC (D01) ─────────────────────────────────────────────
 
 /**
- * Evaluate whether the Quest finish condition is met at Milestone completion.
+ * Evaluate whether the Smarter finish condition is met at Milestone completion.
  *
  * taskInput path  — extracts the first numeric value from completedTask.resultFields
  *                   and checks it against specific.targetValue.
@@ -229,7 +229,7 @@ export function evaluateTaskCountMarker(marker: Marker, systemEventCount = 0): b
  *
  * Returns false when data is missing rather than throwing.
  */
-export function evaluateQuestSpecific(quest: Quest, completedTask: Task): boolean {
+export function evaluateQuestSpecific(quest: Smarter, completedTask: Task): boolean {
   const { specific } = quest;
 
   if (quest.timely.conditionType === 'none') {
@@ -318,7 +318,7 @@ export function evaluateMarkerCondition(marker: Marker, currentUserXp: number): 
 // ── DERIVE QUEST PROGRESS ─────────────────────────────────────────────────────
 
 /**
- * Derive progress percentage (0–100) for a Quest.
+ * Derive progress percentage (0–100) for a Smarter.
  *
  * taskInput path:
  *   Reads the last Milestone's resultFields to extract the latest measured value.
@@ -331,7 +331,7 @@ export function evaluateMarkerCondition(marker: Marker, currentUserXp: number): 
  *
  * Returns 0 when no milestones exist or data is unavailable.
  */
-export function deriveQuestProgress(quest: Quest): number {
+export function deriveQuestProgress(quest: Smarter): number {
   const { specific, milestones } = quest;
   if (specific.targetValue <= 0) return 0;
 
@@ -386,11 +386,11 @@ export function deriveQuestProgress(quest: Quest): number {
 // ── COMPUTE PROJECTED FINISH ──────────────────────────────────────────────────
 
 /**
- * Estimate next check-in date as a proxy for Quest.timely.projectedFinish.
+ * Estimate next check-in date as a proxy for Smarter.timely.projectedFinish.
  *
  * Q01 DECISION — Option B applied (pending PM confirmation):
  *   Only PlannedEvents whose taskList includes a TaskTemplate referenced in
- *   Quest.measurable.taskTemplateRefs contribute to the XP rate estimate.
+ *   Smarter.measurable.taskTemplateRefs contribute to the XP rate estimate.
  *   To switch to Option A (all active PlannedEvents), remove the measurable
  *   template-ref filter below.
  *
@@ -404,9 +404,9 @@ export function deriveQuestProgress(quest: Quest): number {
  *   Returns null when no qualifying events are found in the store.
  *   Note: taskTemplates in the store are user custom only (D34). System
  *   templates from the Coach bundle are not visible here — the function will
- *   return null for quests that reference only system-provided task templates.
+ *   return null for smarters that reference only system-provided task templates.
  */
-export function computeProjectedFinish(quest: Quest): string | null {
+export function computeProjectedFinish(quest: Smarter): string | null {
   if (quest.completionState !== 'active') return null;
 
   if (quest.timely.conditionType === 'interval') {
@@ -462,12 +462,12 @@ export function computeProjectedFinish(quest: Quest): string | null {
 // ── UPDATE QUEST PROGRESS ─────────────────────────────────────────────────────
 
 /**
- * Recalculate and persist Quest.progressPercent and Quest.timely.projectedFinish.
+ * Recalculate and persist Smarter.progressPercent and Smarter.timely.projectedFinish.
  * Called after each Milestone completion by markerEngine.completeMilestone().
  *
- * @param actId        Act uuid
- * @param chainIndex   0-based index of the Chain within Act.chains[]
- * @param questIndex   0-based index of the Quest within Chain.quests[]
+ * @param actId        Aspiration uuid
+ * @param chainIndex   0-based index of the Woop within Aspiration.woops[]
+ * @param questIndex   0-based index of the Smarter within Woop.smarters[]
  */
 export function updateQuestProgress(
   actId: string,
@@ -475,11 +475,11 @@ export function updateQuestProgress(
   questIndex: number,
 ): void {
   const progressionStore = useProgressionStore.getState();
-  const act = progressionStore.acts[actId];
+  const act = progressionStore.aspirations[actId];
   if (!act) return;
-  const chain = act.chains[chainIndex];
+  const chain = act.woops[chainIndex];
   if (!chain) return;
-  const quest = chain.quests[questIndex];
+  const quest = chain.smarters[questIndex];
   if (!quest) return;
 
   const progressPercent = deriveQuestProgress(quest);
@@ -487,11 +487,11 @@ export function updateQuestProgress(
 
   const updatedAct = {
     ...act,
-    chains: act.chains.map((c, ci) => {
+    woops: act.woops.map((c, ci) => {
       if (ci !== chainIndex) return c;
       return {
         ...c,
-        quests: c.quests.map((q, qi) => {
+        smarters: c.smarters.map((q, qi) => {
           if (qi !== questIndex) return q;
           return {
             ...q,
@@ -503,5 +503,6 @@ export function updateQuestProgress(
     }),
   };
 
-  progressionStore.setAct(updatedAct);
+  progressionStore.setAspiration(updatedAct);
 }
+

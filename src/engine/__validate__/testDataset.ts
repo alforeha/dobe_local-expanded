@@ -76,7 +76,7 @@ export async function seedTestDataset(): Promise<TestDatasetResult> {
   const { useSystemStore }      = await import('../../stores/useSystemStore');
   const { useResourceStore }    = await import('../../stores/useResourceStore');
 
-  const { seedStarterContent, unlockAct, coachActs } = await import('../../coach/StarterQuestLibrary');
+  const { seedStarterContent, unlockAct, coachAspirations } = await import('../../coach/StarterQuestLibrary');
   const { awardXP, awardStat }              = await import('../awardPipeline');
   const { checkAchievements }               = await import('../../coach/checkAchievements');
   const { awardBadge }                      = await import('../../coach/rewardPipeline');
@@ -95,7 +95,7 @@ export async function seedTestDataset(): Promise<TestDatasetResult> {
 
   // ── Seed Acts + templates (D87: seed onboarding, then unlock all for dataset) ──
   seedStarterContent(false);
-  for (const act of coachActs) {
+  for (const act of coachAspirations) {
     unlockAct(act.id);
   }
 
@@ -359,3 +359,4 @@ if (typeof window === 'undefined' && process.argv[1]) {
     });
   }
 }
+
