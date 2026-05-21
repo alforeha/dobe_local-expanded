@@ -226,6 +226,7 @@ export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
   const [newActDraftId, setNewActDraftId] = useState<string | null>(null);
   const [drawerView, setDrawerView] = useState<DrawerView>({ level: 'none' });
   const clearCanvasFocusRef = useRef<((scope: 'planet' | 'all') => void) | null>(null);
+  const selectAspirationFromDrawerRef = useRef<((id: string) => void) | null>(null);
 
   const aspirations = useProgressionStore((s) => s.aspirations);
   const setAspiration = useProgressionStore((s) => s.setAspiration);
@@ -366,8 +367,8 @@ export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
   }, []);
   function handleDrawerBack() {
     if (drawerView.level === 'aspiration') {
-      setDrawerView({ level: 'none' });
-      clearCanvasFocusRef.current?.('all');
+      setDrawerView({ level: 'orbit', orbit: drawerView.orbit });
+      clearCanvasFocusRef.current?.('planet');
     } else if (drawerView.level === 'orbit') {
       setDrawerView({ level: 'none' });
       clearCanvasFocusRef.current?.('all');
@@ -509,12 +510,23 @@ export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
           onFocusedOrbitChange={handleFocusedOrbitChange}
           onSelectedAspirationChange={handleSelectedAspirationChange}
           onRegisterClearFocus={(fn) => { clearCanvasFocusRef.current = fn; }}
+          onRegisterSelectAspiration={(fn) => { selectAspirationFromDrawerRef.current = fn; }}
         />
       </div>
       <GoalInspectorDrawer
         open={drawerOpen}
         view={drawerView}
         onBack={handleDrawerBack}
+        userAspirations={userAspirations}
+        adventureAspirations={adventureActs}
+        onSelectAspiration={(asp) => {
+          const orbit = asp.owner === 'coach' ? 'system' : 'user';
+          setDrawerView({ level: 'aspiration', orbit, aspiration: asp });
+          selectAspirationFromDrawerRef.current?.(asp.id);
+        }}
+        onAddAspiration={() => {
+          console.log('Add aspiration tapped');
+        }}
       />
       {/* page stack — reconnects when drawer is wired */}
       {shouldRenderPageStack ? pageStackContent : null}

@@ -19,6 +19,7 @@ interface GoalCanvasProps {
   onFocusedOrbitChange?: (orbit: 'user' | 'system' | null) => void;
   onSelectedAspirationChange?: (aspiration: Aspiration | null) => void;
   onRegisterClearFocus?: (fn: (scope: 'planet' | 'all') => void) => void;
+  onRegisterSelectAspiration?: (fn: (id: string) => void) => void;
 }
 
 interface PlanetPosition {
@@ -121,6 +122,7 @@ export function GoalCanvas({
   onFocusedOrbitChange,
   onSelectedAspirationChange,
   onRegisterClearFocus,
+  onRegisterSelectAspiration,
 }: GoalCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const frameRef = useRef<number | null>(null);
@@ -161,6 +163,10 @@ export function GoalCanvas({
       }
     });
   }, [onRegisterClearFocus]);
+
+  useEffect(() => {
+    onRegisterSelectAspiration?.((id: string) => setSelectedAspirationId(id));
+  }, [onRegisterSelectAspiration]);
 
   useEffect(() => {
     focusedOrbitRef.current = focusedOrbit;
@@ -494,35 +500,37 @@ export function GoalCanvas({
         const rect = event.currentTarget.getBoundingClientRect();
         const clickX = event.clientX - rect.left;
         const clickY = event.clientY - rect.top;
+        const currentFocusedOrbit = focusedOrbitRef.current;
 
         const userOrb = userOrbRef.current;
         const systemOrb = systemOrbRef.current;
 
-        if ((focusedOrbit === null || focusedOrbit === 'user') && userOrb) {
-          const dx = clickX - userOrb.x;
-          const dy = clickY - userOrb.y;
-          if (Math.sqrt(dx * dx + dy * dy) <= userOrb.radius + 12) {
-            setFocusedOrbit('user');
-            setSelectedAspirationId(null);
-            return;
+        if (currentFocusedOrbit === null) {
+          if (userOrb) {
+            const dx = clickX - userOrb.x;
+            const dy = clickY - userOrb.y;
+            if (Math.sqrt(dx * dx + dy * dy) <= userOrb.radius + 12) {
+              setFocusedOrbit('user');
+              setSelectedAspirationId(null);
+              return;
+            }
           }
+
+          if (systemOrb) {
+            const dx = clickX - systemOrb.x;
+            const dy = clickY - systemOrb.y;
+            if (Math.sqrt(dx * dx + dy * dy) <= systemOrb.radius + 12) {
+              setFocusedOrbit('system');
+              setSelectedAspirationId(null);
+            }
+          }
+
+          return;
         }
 
-        if ((focusedOrbit === null || focusedOrbit === 'system') && systemOrb) {
-          const dx = clickX - systemOrb.x;
-          const dy = clickY - systemOrb.y;
-          if (Math.sqrt(dx * dx + dy * dy) <= systemOrb.radius + 12) {
-            setFocusedOrbit('system');
-            setSelectedAspirationId(null);
-            return;
-          }
-        }
-
-        const planetsToTest = focusedOrbit === 'system'
-          ? screenAdventurePlanetPositionsRef.current
-          : focusedOrbit === 'user'
-            ? screenPlanetPositionsRef.current
-            : [...screenPlanetPositionsRef.current, ...screenAdventurePlanetPositionsRef.current];
+        const planetsToTest = currentFocusedOrbit === 'user'
+          ? screenPlanetPositionsRef.current
+          : screenAdventurePlanetPositionsRef.current;
 
         const hit = planetsToTest.find((planet) => {
           const dx = clickX - planet.x;
