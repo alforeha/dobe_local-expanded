@@ -13,6 +13,7 @@ import { GoalQuestPage } from './GoalQuestPage';
 import { GoalProgressBar, GoalSection, GoalStateBadge } from './GoalEditorShared';
 import {
   createBlankAspiration,
+  createBlankSmarter,
   getAspirationActiveWoop,
   getWoopProgressPercent,
   getQuestDisplayState,
@@ -22,7 +23,7 @@ import {
 } from './goalEditorUtils';
 import type { GoalPage } from './goalEditorUtils';
 import { STARTER_ASPIRATION_IDS } from '../../../../../coach/StarterQuestLibrary';
-import type { Aspiration, Woop } from '../../../../../types';
+import type { Aspiration, NestedAct, Smarter, Woop } from '../../../../../types';
 import { IconDisplay } from '../../../../shared/IconDisplay';
 
 type HabitatFilter = 'habitats' | 'adventures';
@@ -228,6 +229,8 @@ export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
   const [drawerEditMode, setDrawerEditMode] = useState(false);
   const [aspirationDraft, setAspirationDraft] = useState<Aspiration | null>(null);
   const [woopDraft, setWoopDraft] = useState<{ aspirationId: string; woopIdx: number | null; woop: Woop } | null>(null);
+  const [smarterDraft, setSmarterDraft] = useState<{ aspirationId: string; woopIdx: number; smarterIdx: number | null; smarter: Smarter } | null>(null);
+  const [isActView, setIsActView] = useState(false);
   const clearCanvasFocusRef = useRef<((scope: 'planet' | 'all') => void) | null>(null);
   const selectAspirationFromDrawerRef = useRef<((id: string) => void) | null>(null);
   const setSelectedWoopRef = useRef<((idx: number | null) => void) | null>(null);
@@ -254,6 +257,9 @@ export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
 
   useEffect(() => {
     drawerViewLevelRef.current = drawerView.level;
+    if (drawerView.level !== 'smarter') {
+      setIsActView(false);
+    }
   }, [drawerView.level]);
 
   useEffect(() => {
@@ -375,6 +381,11 @@ export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
       return;
     }
 
+    if (drawerView.level === 'smarter-edit') {
+      handleCancelSmarterEdit();
+      return;
+    }
+
     if (drawerView.level === 'aspiration') {
       setAspirationDraft(null);
       setDrawerEditMode(false);
@@ -430,7 +441,7 @@ export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
   }
 
   function handleEditWoop(woopIdx: number) {
-    if (drawerView.level !== 'aspiration') return;
+    if (drawerView.level !== 'aspiration' && drawerView.level !== 'woop') return;
 
     woopSnapshotRef.current = drawerView.aspiration.woops[woopIdx] ?? null;
     woopInsertIndexRef.current = null;
@@ -444,7 +455,7 @@ export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
   }
 
   function handleDeleteWoop(woopIdx: number) {
-    if (drawerView.level !== 'aspiration') return;
+    if (drawerView.level !== 'aspiration' && drawerView.level !== 'woop') return;
 
     const asp = drawerView.aspiration;
     const newWoops = asp.woops.filter((_, i) => i !== woopIdx);
@@ -492,6 +503,167 @@ export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
     woopInsertIndexRef.current = null;
   }
 
+  function handleSelectSmarter(smarterIdx: number) {
+    if (drawerView.level !== 'woop') return;
+
+    setDrawerView({
+      level: 'smarter',
+      orbit: drawerView.orbit,
+      aspiration: drawerView.aspiration,
+      woopIdx: drawerView.woopIdx,
+      smarterIdx,
+    });
+    setSelectedSmarterRef.current?.(smarterIdx);
+  }
+
+  function handleAddSmarter() {
+    if (drawerView.level !== 'woop') return;
+
+    const blank = createBlankSmarter();
+    setSmarterDraft({
+      aspirationId: drawerView.aspiration.id,
+      woopIdx: drawerView.woopIdx,
+      smarterIdx: null,
+      smarter: blank,
+    });
+    setDrawerView({
+      level: 'smarter-edit',
+      orbit: drawerView.orbit,
+      aspiration: drawerView.aspiration,
+      woopIdx: drawerView.woopIdx,
+      smarterIdx: null,
+    });
+  }
+
+  function handleEditSmarter(smarterIdx: number) {
+    if (drawerView.level !== 'smarter' && drawerView.level !== 'woop') return;
+
+    setDrawerView({
+      level: 'smarter-edit',
+      orbit: drawerView.orbit,
+      aspiration: drawerView.aspiration,
+      woopIdx: drawerView.woopIdx,
+      smarterIdx,
+    });
+    setSelectedSmarterRef.current?.(smarterIdx);
+  }
+
+  function handleDeleteSmarter(smarterIdx: number) {
+    if (drawerView.level !== 'smarter' && drawerView.level !== 'woop') return;
+
+    const asp = drawerView.aspiration;
+    const woop = asp.woops[drawerView.woopIdx];
+    if (!woop) return;
+
+    const newSmarters = woop.smarters.filter((_, i) => i !== smarterIdx);
+    const newWoops = asp.woops.map((w, i) => i === drawerView.woopIdx ? { ...w, smarters: newSmarters } : w);
+    const updatedAsp = { ...asp, woops: newWoops };
+    setAspiration(updatedAsp);
+    setDrawerView({ level: 'woop', orbit: drawerView.orbit, aspiration: updatedAsp, woopIdx: drawerView.woopIdx });
+    setSelectedSmarterRef.current?.(null);
+  }
+
+  function handleSaveSmarter(updated: Smarter, smarterIdx: number | null) {
+    if (drawerView.level !== 'smarter-edit') return;
+
+    const asp = drawerView.aspiration;
+    const woop = asp.woops[drawerView.woopIdx];
+    if (!woop) return;
+
+    const newSmarters = smarterIdx !== null
+      ? woop.smarters.map((s, i) => i === smarterIdx ? updated : s)
+      : [...woop.smarters, updated];
+    const newWoops = asp.woops.map((w, i) => i === drawerView.woopIdx ? { ...w, smarters: newSmarters } : w);
+    const updatedAsp = { ...asp, woops: newWoops };
+    setAspiration(updatedAsp);
+    setSmarterDraft(null);
+    setDrawerView({ level: 'woop', orbit: drawerView.orbit, aspiration: updatedAsp, woopIdx: drawerView.woopIdx });
+    setSelectedSmarterRef.current?.(null);
+  }
+
+  function handleSaveAct(updatedNestedAct: NestedAct, smarterIdx: number) {
+    if (drawerView.level !== 'act-edit') return;
+
+    const asp = drawerView.aspiration;
+    const woop = asp.woops[drawerView.woopIdx];
+    if (!woop) return;
+
+    const newSmarters = woop.smarters.map((s, i) =>
+      i === smarterIdx ? { ...s, nestedAct: updatedNestedAct } : s,
+    );
+    const newWoops = asp.woops.map((w, i) =>
+      i === drawerView.woopIdx ? { ...w, smarters: newSmarters } : w,
+    );
+    const updatedAsp = { ...asp, woops: newWoops };
+    setAspiration(updatedAsp);
+    setDrawerView({
+      level: 'smarter',
+      orbit: drawerView.orbit,
+      aspiration: updatedAsp,
+      woopIdx: drawerView.woopIdx,
+      smarterIdx,
+    });
+  }
+
+  function handleOpenAct(smarterIdx: number) {
+    if (drawerView.level !== 'smarter' && drawerView.level !== 'woop') return;
+    setDrawerView({
+      level: 'act-edit',
+      orbit: drawerView.orbit,
+      aspiration: drawerView.aspiration,
+      woopIdx: drawerView.woopIdx,
+      smarterIdx,
+    });
+  }
+
+  function handleZoomToAct() {
+    setIsActView(true);
+  }
+
+  function handleProceedToAct(draft: Smarter, smarterIdx: number | null) {
+    if (drawerViewLevelRef.current !== 'smarter-edit') return;
+
+    const view = drawerViewRef.current;
+    if (view.level !== 'smarter-edit') return;
+
+    const asp = view.aspiration;
+    const woop = asp.woops[view.woopIdx];
+    if (!woop) return;
+
+    const newSmarters = smarterIdx !== null
+      ? woop.smarters.map((s, i) => i === smarterIdx ? draft : s)
+      : [...woop.smarters, draft];
+    const newWoops = asp.woops.map((w, i) =>
+      i === view.woopIdx ? { ...w, smarters: newSmarters } : w,
+    );
+    const updatedAsp = { ...asp, woops: newWoops };
+    setAspiration(updatedAsp);
+    setSmarterDraft(null);
+
+    const savedSmarterIdx = smarterIdx ?? newSmarters.length - 1;
+    setSelectedSmarterRef.current?.(savedSmarterIdx);
+    setDrawerView({
+      level: 'act-edit',
+      orbit: view.orbit,
+      aspiration: updatedAsp,
+      woopIdx: view.woopIdx,
+      smarterIdx: savedSmarterIdx,
+    });
+  }
+
+  function handleCancelSmarterEdit() {
+    if (drawerView.level !== 'smarter-edit') return;
+
+    setSmarterDraft(null);
+    setSelectedSmarterRef.current?.(null);
+    setDrawerView({
+      level: 'woop',
+      orbit: drawerView.orbit,
+      aspiration: drawerView.aspiration,
+      woopIdx: drawerView.woopIdx,
+    });
+  }
+
   const handleDrawerEditModeChange = useCallback((editing: boolean) => {
     const currentView = drawerViewRef.current;
     if (editing && !drawerEditModeRef.current) {
@@ -537,6 +709,8 @@ export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
 
   const currentAct = resolvePageAct(currentPage);
   const handleFocusedOrbitChange = useCallback((orbit: 'user' | 'system' | null) => {
+    const level = drawerViewLevelRef.current;
+    if (level === 'woop-edit' || level === 'smarter-edit' || level === 'act-edit') return;
     setSelectedSmarterRef.current?.(null);
     setSelectedWoopRef.current?.(null);
     if (orbit === null) {
@@ -546,6 +720,8 @@ export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
     }
   }, []);
   const handleSelectedAspirationChange = useCallback((aspiration: Aspiration | null) => {
+    const level = drawerViewLevelRef.current;
+    if (level === 'woop-edit' || level === 'smarter-edit' || level === 'act-edit') return;
     setSelectedSmarterRef.current?.(null);
     setSelectedWoopRef.current?.(null);
     if (aspiration === null) return;
@@ -553,9 +729,26 @@ export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
     setDrawerView({ level: 'aspiration', orbit, aspiration });
   }, []);
   function handleDrawerBack() {
+    if (drawerView.level === 'act-edit') {
+      setDrawerView({
+        level: 'smarter-edit',
+        orbit: drawerView.orbit,
+        aspiration: drawerView.aspiration,
+        woopIdx: drawerView.woopIdx,
+        smarterIdx: drawerView.smarterIdx,
+      });
+      return;
+    }
+
+    if (drawerView.level === 'smarter-edit') {
+      handleCancelSmarterEdit();
+      return;
+    }
+
     if (drawerView.level === 'woop-edit') {
       handleCancelWoopEdit();
     } else if (drawerView.level === 'smarter') {
+      setIsActView(false);
       setDrawerView({
         level: 'woop',
         orbit: drawerView.orbit,
@@ -740,6 +933,9 @@ export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
           onRegisterSetSelectedSmarter={(fn) => { setSelectedSmarterRef.current = fn; }}
           aspirationDraft={aspirationDraft}
           woopDraft={woopDraft}
+          smarterDraft={smarterDraft}
+          isActView={isActView || drawerView.level === 'act-edit'}
+          isActEdit={drawerView.level === 'act-edit'}
         />
       </div>
       <GoalInspectorDrawer
@@ -773,6 +969,28 @@ export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
           setWoopDraft({ aspirationId: currentView.aspiration.id, woopIdx: currentView.woopIdx, woop: draft });
         }}
         onWoopDraftClear={() => setWoopDraft(null)}
+        onAddSmarter={handleAddSmarter}
+        onSelectSmarter={handleSelectSmarter}
+        onEditSmarter={handleEditSmarter}
+        onDeleteSmarter={handleDeleteSmarter}
+        onProceedToAct={handleProceedToAct}
+        onOpenAct={handleOpenAct}
+        onZoomToAct={handleZoomToAct}
+        onLeaveActTab={() => setIsActView(false)}
+        onSaveAct={handleSaveAct}
+        onSaveSmarter={handleSaveSmarter}
+        onSmarterDraftChange={(draft) => {
+          const currentView = drawerViewRef.current;
+          if (drawerViewLevelRef.current !== 'smarter-edit' || currentView.level !== 'smarter-edit') return;
+          setSmarterDraft({
+            aspirationId: currentView.aspiration.id,
+            woopIdx: currentView.woopIdx,
+            smarterIdx: currentView.smarterIdx,
+            smarter: draft,
+          });
+        }}
+        onSmarterDraftClear={() => setSmarterDraft(null)}
+        onCancelSmarterEdit={handleCancelSmarterEdit}
         onCancelEdit={handleCancelEdit}
         onDeleteAspiration={handleDeleteAspiration}
       />

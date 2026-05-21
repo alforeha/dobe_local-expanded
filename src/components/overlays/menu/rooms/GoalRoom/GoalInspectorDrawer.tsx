@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
-import type { Aspiration, Woop } from '../../../../../types';
+import type { Aspiration, NestedAct, Smarter, Woop } from '../../../../../types';
 import { IconDisplay } from '../../../../shared/IconDisplay';
+import { GoalActEditor } from './GoalActEditor';
 import { GoalAspirationEditor } from './GoalAspirationEditor';
+import { GoalSmarterEditor } from './GoalSmarterEditor';
 import { GoalWoopEditor } from './GoalWoopEditor';
-import { createBlankWoop } from './goalEditorUtils';
+import { createBlankSmarter, createBlankWoop } from './goalEditorUtils';
 
 export type DrawerView =
   | { level: 'none' }
@@ -11,7 +13,9 @@ export type DrawerView =
   | { level: 'aspiration'; orbit: 'user' | 'system'; aspiration: Aspiration }
   | { level: 'woop-edit'; orbit: 'user' | 'system'; aspiration: Aspiration; woopIdx: number | null }
   | { level: 'woop'; orbit: 'user' | 'system'; aspiration: Aspiration; woopIdx: number }
-  | { level: 'smarter'; orbit: 'user' | 'system'; aspiration: Aspiration; woopIdx: number; smarterIdx: number };
+  | { level: 'smarter-edit'; orbit: 'user' | 'system'; aspiration: Aspiration; woopIdx: number; smarterIdx: number | null }
+  | { level: 'smarter'; orbit: 'user' | 'system'; aspiration: Aspiration; woopIdx: number; smarterIdx: number }
+  | { level: 'act-edit'; orbit: 'user' | 'system'; aspiration: Aspiration; woopIdx: number; smarterIdx: number };
 
 interface GoalInspectorDrawerProps {
   open: boolean;
@@ -32,6 +36,19 @@ interface GoalInspectorDrawerProps {
   onSaveWoop: (woop: Woop, woopIdx: number | null) => void;
   onWoopDraftChange: (draft: Woop) => void;
   onWoopDraftClear: () => void;
+  onAddSmarter: () => void;
+  onSelectSmarter: (smarterIdx: number) => void;
+  onEditSmarter: (smarterIdx: number) => void;
+  onDeleteSmarter: (smarterIdx: number) => void;
+  onProceedToAct: (draft: Smarter, smarterIdx: number | null) => void;
+  onOpenAct: (smarterIdx: number) => void;
+  onZoomToAct: () => void;
+  onLeaveActTab: () => void;
+  onSaveAct: (nestedAct: NestedAct, smarterIdx: number) => void;
+  onSaveSmarter: (smarter: Smarter, smarterIdx: number | null) => void;
+  onSmarterDraftChange: (draft: Smarter) => void;
+  onSmarterDraftClear: () => void;
+  onCancelSmarterEdit: () => void;
   onCancelEdit: () => void;
   onDeleteAspiration: (aspirationId: string) => void;
 }
@@ -138,10 +155,12 @@ function WoopActionsMenu({
   woopIdx,
   onEdit,
   onDelete,
+  onAddSmarter,
 }: {
   woopIdx: number;
   onEdit: (woopIdx: number) => void;
   onDelete: (woopIdx: number) => void;
+  onAddSmarter: () => void;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -193,7 +212,7 @@ function WoopActionsMenu({
           <button
             onClick={() => {
               setMenuOpen(false);
-              console.log('Add SMARTER');
+              onAddSmarter();
             }}
             className="w-full px-4 py-2.5 text-left text-white/70 text-sm hover:bg-white/5"
           >
@@ -208,6 +227,93 @@ function WoopActionsMenu({
           <button
             onClick={() => {
               onDelete(woopIdx);
+              setMenuOpen(false);
+              setConfirmDelete(false);
+            }}
+            className="w-full px-4 py-2.5 text-left text-red-400 text-sm hover:bg-white/5"
+          >
+            Yes, delete
+          </button>
+          <button
+            onClick={() => {
+              setConfirmDelete(false);
+              setMenuOpen(false);
+            }}
+            className="w-full px-4 py-2.5 text-left text-white/40 text-sm hover:bg-white/5 border-t border-white/5"
+          >
+            Cancel
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SmarterActionsMenu({
+  smarterIdx,
+  onEdit,
+  onDelete,
+}: {
+  smarterIdx: number;
+  onEdit: (smarterIdx: number) => void;
+  onDelete: (smarterIdx: number) => void;
+}) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+
+    function handleOutside(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+        setConfirmDelete(false);
+      }
+    }
+
+    document.addEventListener('mousedown', handleOutside);
+    return () => document.removeEventListener('mousedown', handleOutside);
+  }, [menuOpen]);
+
+  return (
+    <div ref={menuRef} className="relative shrink-0">
+      <button
+        onClick={() => {
+          setMenuOpen((p) => !p);
+          setConfirmDelete(false);
+        }}
+        className="text-white/30 hover:text-white/60 px-2 py-1 text-base leading-none"
+      >
+        ...
+      </button>
+
+      {menuOpen && !confirmDelete && (
+        <div className="absolute right-0 top-7 bg-gray-900 border border-white/10 rounded-lg overflow-hidden z-10 min-w-[140px]">
+          <button
+            onClick={() => {
+              setMenuOpen(false);
+              onEdit(smarterIdx);
+            }}
+            className="w-full px-4 py-2.5 text-left text-white/70 text-sm hover:bg-white/5"
+          >
+            Edit SMARTER
+          </button>
+          <button
+            onClick={() => setConfirmDelete(true)}
+            className="w-full px-4 py-2.5 text-left text-red-400/80 text-sm hover:bg-white/5"
+          >
+            Delete SMARTER
+          </button>
+        </div>
+      )}
+
+      {menuOpen && confirmDelete && (
+        <div className="absolute right-0 top-7 bg-gray-900 border border-red-500/20 rounded-lg overflow-hidden z-10 min-w-[150px]">
+          <p className="px-4 pt-3 pb-1 text-white/40 text-xs">Delete this SMARTER?</p>
+          <button
+            onClick={() => {
+              onDelete(smarterIdx);
               setMenuOpen(false);
               setConfirmDelete(false);
             }}
@@ -249,6 +355,19 @@ export function GoalInspectorDrawer({
   onSaveWoop,
   onWoopDraftChange,
   onWoopDraftClear,
+  onAddSmarter,
+  onSelectSmarter,
+  onEditSmarter,
+  onDeleteSmarter,
+  onProceedToAct,
+  onOpenAct,
+  onZoomToAct,
+  onLeaveActTab,
+  onSaveAct,
+  onSaveSmarter,
+  onSmarterDraftChange,
+  onSmarterDraftClear,
+  onCancelSmarterEdit,
   onCancelEdit,
   onDeleteAspiration,
 }: GoalInspectorDrawerProps) {
@@ -260,7 +379,11 @@ export function GoalInspectorDrawer({
     prevLevelRef.current = view.level;
   }, [view.level, onEditModeChange]);
 
-  const label = view.level === 'smarter'
+  const label = view.level === 'act-edit'
+    ? 'Act'
+    : view.level === 'smarter-edit'
+    ? view.smarterIdx !== null ? 'Edit SMARTER' : 'New SMARTER'
+    : view.level === 'smarter'
     ? view.aspiration.woops[view.woopIdx]?.smarters[view.smarterIdx]?.name || 'SMARTER'
     : view.level === 'woop-edit'
     ? view.woopIdx !== null ? 'Edit WOOP' : 'New WOOP'
@@ -435,6 +558,7 @@ export function GoalInspectorDrawer({
                   woopIdx={view.woopIdx}
                   onEdit={onEditWoop}
                   onDelete={onDeleteWoop}
+                  onAddSmarter={onAddSmarter}
                 />
               )}
             </div>
@@ -468,7 +592,16 @@ export function GoalInspectorDrawer({
               <div>
                 <p className="text-white/20 text-xs uppercase tracking-wider mb-1">SMARTERs</p>
                 {woop.smarters.map((s, i) => (
-                  <div key={i} className="flex items-center gap-2 py-2 border-b border-white/5">
+                  <div
+                    key={i}
+                    onClick={() => onSelectSmarter(i)}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') onSelectSmarter(i);
+                    }}
+                    className="w-full flex items-center gap-2 py-2 border-b border-white/5 text-left cursor-pointer"
+                  >
                     <IconDisplay iconKey={s.icon} size={14} className="opacity-60 shrink-0" />
                     <p className="text-white/60 text-xs flex-1 truncate">{s.name || 'SMARTER'}</p>
                     <span className={`text-xs px-1.5 py-0.5 rounded-full ${
@@ -485,67 +618,208 @@ export function GoalInspectorDrawer({
           </div>
         );
       })() : null}
+      {view.level === 'smarter-edit' ? (() => {
+        const woop = view.aspiration.woops[view.woopIdx];
+        const editingSmarter = view.smarterIdx !== null
+          ? woop?.smarters[view.smarterIdx]
+          : createBlankSmarter();
+        if (!editingSmarter) return null;
+
+        return (
+          <GoalSmarterEditor
+            smarter={editingSmarter}
+            onSave={(updated) => onSaveSmarter(updated, view.smarterIdx)}
+            onProceedToAct={(draft) => onProceedToAct(draft, view.smarterIdx)}
+            onCancel={onCancelSmarterEdit}
+            onDraftChange={onSmarterDraftChange}
+            onDraftClear={onSmarterDraftClear}
+          />
+        );
+      })() : null}
+      {view.level === 'act-edit' ? (() => {
+        const woop = view.aspiration.woops[view.woopIdx];
+        const smarter = woop?.smarters[view.smarterIdx];
+        if (!smarter) return null;
+
+        return (
+          <GoalActEditor
+            nestedAct={smarter.nestedAct}
+            onSave={(updated) => onSaveAct(updated, view.smarterIdx)}
+            onBack={() => onBack()}
+          />
+        );
+      })() : null}
       {view.level === 'smarter' ? (() => {
         const woop = view.aspiration.woops[view.woopIdx];
         const smarter = woop?.smarters[view.smarterIdx];
         if (!smarter) return null;
 
         return (
-          <div className="flex-1 overflow-y-auto px-4 py-3 flex flex-col gap-4">
+          <div className="flex-1 overflow-hidden flex flex-col">
             <div className="flex items-center gap-3">
               <IconDisplay iconKey={smarter.icon} size={24} className="opacity-80 shrink-0" />
               <p className="text-white/80 text-sm font-medium flex-1 truncate">
                 {smarter.name || 'SMARTER'}
               </p>
-              <span className={`text-xs px-1.5 py-0.5 rounded-full shrink-0 ${
-                smarter.completionState === 'complete'
-                  ? 'bg-green-900/40 text-green-400'
-                  : 'bg-white/5 text-white/20'
-              }`}>
-                {smarter.completionState}
-              </span>
-            </div>
-
-            <div>
-              <div className="flex items-center justify-between text-xs text-white/30 mb-1">
-                <span>Progress</span>
-                <span>{smarter.progressPercent}%</span>
-              </div>
-              <div className="h-1.5 rounded-full bg-white/5 overflow-hidden">
-                <div
-                  className="h-full rounded-full bg-violet-300/70"
-                  style={{ width: `${smarter.progressPercent}%` }}
-                />
+              <div className="flex items-center gap-1 shrink-0">
+                <span className={`text-xs px-1.5 py-0.5 rounded-full ${
+                  smarter.completionState === 'complete'
+                    ? 'bg-green-900/40 text-green-400'
+                    : 'bg-white/5 text-white/20'
+                }`}>
+                  {smarter.completionState}
+                </span>
+                {view.aspiration.owner !== 'coach' && (
+                  <SmarterActionsMenu
+                    smarterIdx={view.smarterIdx}
+                    onEdit={onEditSmarter}
+                    onDelete={onDeleteSmarter}
+                  />
+                )}
               </div>
             </div>
-
-            {(smarter.specific.targetValue || smarter.specific.unit || smarter.specific.sourceType) && (
-              <div>
-                <p className="text-white/20 text-xs uppercase tracking-wider mb-1">Specific</p>
-                <p className="text-white/60 text-sm">
-                  {[smarter.specific.targetValue, smarter.specific.unit, smarter.specific.sourceType].filter(Boolean).join(' ')}
-                </p>
-              </div>
-            )}
-
-            {(smarter.timely.conditionType || smarter.timely.projectedFinish) && (
-              <div>
-                <p className="text-white/20 text-xs uppercase tracking-wider mb-1">Timely</p>
-                <p className="text-white/60 text-sm">
-                  {[smarter.timely.conditionType, smarter.timely.projectedFinish].filter(Boolean).join(' - ')}
-                </p>
-              </div>
-            )}
-
-            {smarter.exitStrategy.onMissedFinish && (
-              <div>
-                <p className="text-white/20 text-xs uppercase tracking-wider mb-1">Exit Strategy</p>
-                <p className="text-white/60 text-sm">{smarter.exitStrategy.onMissedFinish}</p>
-              </div>
-            )}
+            <SmarterDetailView
+              smarter={smarter}
+              onEditAct={() => onOpenAct(view.smarterIdx)}
+              onZoomToAct={onZoomToAct}
+              onLeaveActTab={onLeaveActTab}
+            />
           </div>
         );
       })() : null}
+    </div>
+  );
+}
+
+function SmarterDetailView({
+  smarter,
+  onEditAct,
+  onZoomToAct,
+  onLeaveActTab,
+}: {
+  smarter: Smarter;
+  onEditAct: () => void;
+  onZoomToAct: () => void;
+  onLeaveActTab: () => void;
+}) {
+  const [activeTab, setActiveTab] = useState(1);
+
+  const TABS = ['Act', 'S', 'M', 'A', 'R', 'T', 'E', 'R'];
+
+  return (
+    <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-col border-r border-white/5 py-2">
+        {TABS.map((letter, i) => (
+          <button
+            key={i}
+            onClick={() => {
+              if (activeTab === 0 && i !== 0) onLeaveActTab();
+              setActiveTab(i);
+              if (i === 0) onZoomToAct();
+            }}
+            className={`w-9 h-9 flex items-center justify-center text-xs font-medium transition-colors
+              ${activeTab === i
+                ? i === 0
+                  ? 'text-amber-400 bg-white/8 border-r-2 border-amber-400 -mr-px'
+                  : 'text-white bg-white/8 border-r-2 border-indigo-400 -mr-px'
+                : 'text-white/25 hover:text-white/50'
+              }`}
+          >
+            {letter}
+          </button>
+        ))}
+      </div>
+
+      <div className="flex-1 overflow-y-auto px-4 py-3 flex flex-col gap-3">
+        {activeTab === 0 && (
+          <div className="flex flex-col gap-3">
+            <div className="flex items-center justify-between">
+              <p className="text-white/50 text-xs uppercase tracking-wider">Act</p>
+              <button
+                onClick={onEditAct}
+                className="text-white/30 text-xs hover:text-white/60"
+              >
+                Edit Act
+              </button>
+            </div>
+            <div>
+              <p className="text-white/20 text-xs uppercase tracking-wider mb-1">Accountability</p>
+              <p className="text-white/25 text-xs">Coming soon</p>
+            </div>
+            <div>
+              <p className="text-white/20 text-xs uppercase tracking-wider mb-1">Commitment</p>
+              {smarter.nestedAct.commitment.trackedTaskRefs.length > 0
+                ? smarter.nestedAct.commitment.trackedTaskRefs.map((ref, i) => (
+                    <p key={i} className="text-white/60 text-xs">{ref}</p>
+                  ))
+                : <p className="text-white/25 text-xs">No task refs set</p>
+              }
+            </div>
+            <div>
+              <p className="text-white/20 text-xs uppercase tracking-wider mb-1">Tether</p>
+              <p className="text-white/25 text-xs">Coming soon</p>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 1 && (
+          <div className="flex flex-col gap-2">
+            <p className="text-white/50 text-xs uppercase tracking-wider">Specific</p>
+            <p className="text-white/60 text-sm">
+              Target: {smarter.specific.targetValue}{smarter.specific.unit ? ` ${smarter.specific.unit}` : ''}
+            </p>
+            <p className="text-white/40 text-xs">Source: {smarter.specific.sourceType}</p>
+          </div>
+        )}
+
+        {activeTab === 2 && (
+          <div className="flex flex-col gap-2">
+            <p className="text-white/50 text-xs uppercase tracking-wider">Measurable</p>
+            {(smarter.measurable.taskTemplateRefs ?? []).length > 0
+              ? smarter.measurable.taskTemplateRefs!.map((ref, i) => (
+                  <p key={i} className="text-white/60 text-xs">{ref}</p>
+                ))
+              : <p className="text-white/25 text-xs">No task refs linked</p>
+            }
+          </div>
+        )}
+
+        {activeTab === 3 && (
+          <div className="flex flex-col gap-2">
+            <p className="text-white/50 text-xs uppercase tracking-wider">Attainable</p>
+            <p className="text-white/40 text-xs">{(smarter.attainable as Record<string, string>).note || 'No notes set'}</p>
+          </div>
+        )}
+
+        {activeTab === 4 && (
+          <div className="flex flex-col gap-2">
+            <p className="text-white/50 text-xs uppercase tracking-wider">Relevant</p>
+            <p className="text-white/40 text-xs">{(smarter.relevant as Record<string, string>).note || 'No notes set'}</p>
+          </div>
+        )}
+
+        {activeTab === 5 && (
+          <div className="flex flex-col gap-2">
+            <p className="text-white/50 text-xs uppercase tracking-wider">Timely</p>
+            <p className="text-white/60 text-sm">{smarter.timely.projectedFinish ?? 'No finish date set'}</p>
+            <p className="text-white/40 text-xs">Condition: {smarter.timely.conditionType}</p>
+          </div>
+        )}
+
+        {activeTab === 6 && (
+          <div className="flex flex-col gap-2">
+            <p className="text-white/50 text-xs uppercase tracking-wider">Exit Strategy</p>
+            <p className="text-white/60 text-sm">{smarter.exitStrategy.onMissedFinish}</p>
+          </div>
+        )}
+
+        {activeTab === 7 && (
+          <div className="flex flex-col gap-2">
+            <p className="text-white/50 text-xs uppercase tracking-wider">Result</p>
+            <p className="text-white/40 text-xs">{(smarter.result as Record<string, string>).note || 'No result defined'}</p>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
