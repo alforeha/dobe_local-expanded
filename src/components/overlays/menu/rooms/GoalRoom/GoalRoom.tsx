@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useProgressionStore } from '../../../../../stores/useProgressionStore';
 import { useScheduleStore } from '../../../../../stores/useScheduleStore';
 import { useUserStore } from '../../../../../stores/useUserStore';
 import { autoCompleteSystemTask } from '../../../../../engine/resourceEngine';
 import { GoalCanvas } from './GoalCanvas';
+import { GoalInspectorDrawer } from './GoalInspectorDrawer';
 import { ChooseYourPath } from './ChooseYourPath';
 import { GoalActPage } from './GoalActPage';
 import { GoalChainPage } from './GoalChainPage';
@@ -222,6 +223,9 @@ export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
   const [pageStack, setPageStack] = useState<GoalPage[]>([{ type: 'list' }]);
   const [draftActs, setDraftActs] = useState<Record<string, Aspiration>>({});
   const [newActDraftId, setNewActDraftId] = useState<string | null>(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [drawerAspiration, setDrawerAspiration] = useState<Aspiration | null>(null);
+  const [drawerOrbit, setDrawerOrbit] = useState<'user' | 'system' | null>(null);
 
   const aspirations = useProgressionStore((s) => s.aspirations);
   const setAspiration = useProgressionStore((s) => s.setAspiration);
@@ -348,6 +352,15 @@ export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
   const showChooseYourPath = showList && habitatFilter.has('adventures') && !!aspirations[STARTER_ASPIRATION_IDS.daily];
 
   const currentAct = resolvePageAct(currentPage);
+  const handleFocusedOrbitChange = useCallback((orbit: 'user' | 'system' | null) => {
+    setDrawerOrbit(orbit);
+    setDrawerOpen(orbit !== null);
+    setDrawerAspiration(null);
+  }, []);
+  const handleSelectedAspirationChange = useCallback((aspiration: Aspiration | null) => {
+    setDrawerAspiration(aspiration);
+    setDrawerOpen(aspiration !== null);
+  }, []);
   const shouldRenderPageStack = false;
   void beginNewAct;
   void toggleFilter;
@@ -471,7 +484,22 @@ export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
 
   return (
     <div className="relative w-full h-full bg-gray-950 overflow-hidden">
-      <GoalCanvas userAspirations={userAspirations} adventureAspirations={adventureActs} />
+      <GoalCanvas
+        userAspirations={userAspirations}
+        adventureAspirations={adventureActs}
+        onFocusedOrbitChange={handleFocusedOrbitChange}
+        onSelectedAspirationChange={handleSelectedAspirationChange}
+      />
+      <GoalInspectorDrawer
+        open={drawerOpen}
+        orbit={drawerOrbit}
+        aspiration={drawerAspiration}
+        onClose={() => {
+          setDrawerOpen(false);
+          setDrawerAspiration(null);
+          setDrawerOrbit(null);
+        }}
+      />
       {/* page stack — reconnects when drawer is wired */}
       {shouldRenderPageStack ? pageStackContent : null}
     </div>

@@ -14,6 +14,8 @@ const MOON_ORBIT_PERIOD_MS = 15000;
 interface GoalCanvasProps {
   userAspirations: Aspiration[];
   adventureAspirations: Aspiration[];
+  onFocusedOrbitChange?: (orbit: 'user' | 'system' | null) => void;
+  onSelectedAspirationChange?: (aspiration: Aspiration | null) => void;
 }
 
 interface PlanetPosition {
@@ -88,16 +90,24 @@ function planetPositionsChanged(previous: PlanetPosition[], next: PlanetPosition
   });
 }
 
-export function GoalCanvas({ userAspirations, adventureAspirations }: GoalCanvasProps) {
+export function GoalCanvas({
+  userAspirations,
+  adventureAspirations,
+  onFocusedOrbitChange,
+  onSelectedAspirationChange,
+}: GoalCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const frameRef = useRef<number | null>(null);
   const startedAtRef = useRef<number | null>(null);
   const planetPositionsRef = useRef<PlanetPosition[]>([]);
   const adventurePlanetPositionsRef = useRef<PlanetPosition[]>([]);
   const moonPositionsRef = useRef<PlanetPosition[]>([]);
+  const userOrbRef = useRef<{ x: number; y: number; radius: number } | null>(null);
+  const systemOrbRef = useRef<{ x: number; y: number; radius: number } | null>(null);
   const [planetPositions, setPlanetPositions] = useState<PlanetPosition[]>([]);
   const [adventurePlanetPositions, setAdventurePlanetPositions] = useState<Array<{ id: string; x: number; y: number; radius: number }>>([]);
   const [selectedAspirationId, setSelectedAspirationId] = useState<string | null>(null);
+  const [focusedOrbit, setFocusedOrbit] = useState<'user' | 'system' | null>(null);
   const [moonPositions, setMoonPositions] = useState<Array<{ id: string; x: number; y: number; radius: number }>>([]);
 
   const selectedAspiration = useMemo(() => {
@@ -106,6 +116,14 @@ export function GoalCanvas({ userAspirations, adventureAspirations }: GoalCanvas
   }, [selectedAspirationId, userAspirations, adventureAspirations]);
 
   const selectedWoops = useMemo(() => selectedAspiration?.woops ?? [], [selectedAspiration]);
+
+  useEffect(() => {
+    onSelectedAspirationChange?.(selectedAspiration ?? null);
+  }, [selectedAspiration, onSelectedAspirationChange]);
+
+  useEffect(() => {
+    onFocusedOrbitChange?.(focusedOrbit);
+  }, [focusedOrbit, onFocusedOrbitChange]);
 
   useEffect(() => {
     const canvas = canvasRef.current!;
@@ -142,24 +160,46 @@ export function GoalCanvas({ userAspirations, adventureAspirations }: GoalCanvas
       const sx = width * 0.65;
       const sy = height * 0.55;
 
-      drawOrb(
-        ctx,
-        ux,
-        uy,
-        ORB_RADIUS * userScale,
-        'rgba(99, 102, 241, 0.85)',
-        'Your Aspirations',
-      );
-      drawOrb(
-        ctx,
-        sx,
-        sy,
-        ORB_RADIUS * systemScale,
-        'rgba(245, 158, 11, 0.85)',
-        'Adventures',
-      );
+      userOrbRef.current = { x: ux, y: uy, radius: ORB_RADIUS };
+      systemOrbRef.current = { x: sx, y: sy, radius: ORB_RADIUS };
 
-      if (userAspirations.length > 0) {
+      if (focusedOrbit === null || focusedOrbit === 'user') {
+        drawOrb(
+          ctx,
+          ux,
+          uy,
+          ORB_RADIUS * userScale,
+          'rgba(99, 102, 241, 0.85)',
+          'Your Aspirations',
+        );
+        if (focusedOrbit === 'user') {
+          ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(ux, uy, 58, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+      }
+
+      if (focusedOrbit === null || focusedOrbit === 'system') {
+        drawOrb(
+          ctx,
+          sx,
+          sy,
+          ORB_RADIUS * systemScale,
+          'rgba(245, 158, 11, 0.85)',
+          'Adventures',
+        );
+        if (focusedOrbit === 'system') {
+          ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(sx, sy, 58, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+      }
+
+      if ((focusedOrbit === null || focusedOrbit === 'user') && userAspirations.length > 0) {
         ctx.strokeStyle = 'rgba(255,255,255,0.06)';
         ctx.lineWidth = 1;
         ctx.beginPath();
@@ -191,7 +231,7 @@ export function GoalCanvas({ userAspirations, adventureAspirations }: GoalCanvas
         setPlanetPositions([]);
       }
 
-      if (adventureAspirations.length > 0) {
+      if ((focusedOrbit === null || focusedOrbit === 'system') && adventureAspirations.length > 0) {
         ctx.strokeStyle = 'rgba(255,255,255,0.06)';
         ctx.lineWidth = 1;
         ctx.beginPath();
@@ -281,7 +321,7 @@ export function GoalCanvas({ userAspirations, adventureAspirations }: GoalCanvas
         cancelAnimationFrame(frameRef.current);
       }
     };
-  }, [userAspirations, adventureAspirations, selectedAspirationId, selectedWoops]);
+  }, [userAspirations, adventureAspirations, selectedAspirationId, selectedWoops, focusedOrbit]);
 
   return (
     <div
@@ -290,6 +330,29 @@ export function GoalCanvas({ userAspirations, adventureAspirations }: GoalCanvas
         const rect = event.currentTarget.getBoundingClientRect();
         const clickX = event.clientX - rect.left;
         const clickY = event.clientY - rect.top;
+
+        const userOrb = userOrbRef.current;
+        const systemOrb = systemOrbRef.current;
+
+        if (userOrb) {
+          const dx = clickX - userOrb.x;
+          const dy = clickY - userOrb.y;
+          if (Math.sqrt(dx * dx + dy * dy) <= userOrb.radius + 12) {
+            setFocusedOrbit((prev) => prev === 'user' ? null : 'user');
+            setSelectedAspirationId(null);
+            return;
+          }
+        }
+
+        if (systemOrb) {
+          const dx = clickX - systemOrb.x;
+          const dy = clickY - systemOrb.y;
+          if (Math.sqrt(dx * dx + dy * dy) <= systemOrb.radius + 12) {
+            setFocusedOrbit((prev) => prev === 'system' ? null : 'system');
+            setSelectedAspirationId(null);
+            return;
+          }
+        }
 
         const allPlanets = [...planetPositionsRef.current, ...adventurePlanetPositionsRef.current];
         const hit = allPlanets.find((planet) => {
@@ -310,7 +373,7 @@ export function GoalCanvas({ userAspirations, adventureAspirations }: GoalCanvas
         className="absolute inset-0 w-full h-full"
         style={{ pointerEvents: 'none' }}
       />
-      {userAspirations.length > 0 ? (
+      {(focusedOrbit === null || focusedOrbit === 'user') && userAspirations.length > 0 ? (
         <div className="absolute inset-0 pointer-events-none">
           {planetPositions.map((position) => {
             const aspiration = userAspirations.find((item) => item.id === position.id);
@@ -344,7 +407,7 @@ export function GoalCanvas({ userAspirations, adventureAspirations }: GoalCanvas
           })}
         </div>
       ) : null}
-      {adventureAspirations.length > 0 ? (
+      {(focusedOrbit === null || focusedOrbit === 'system') && adventureAspirations.length > 0 ? (
         <div className="absolute inset-0 pointer-events-none">
           {adventurePlanetPositions.map((position) => {
             const aspiration = adventureAspirations.find((item) => item.id === position.id);
