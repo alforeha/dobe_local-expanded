@@ -228,6 +228,7 @@ export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
   const clearCanvasFocusRef = useRef<((scope: 'planet' | 'all') => void) | null>(null);
   const selectAspirationFromDrawerRef = useRef<((id: string) => void) | null>(null);
   const setSelectedWoopRef = useRef<((idx: number | null) => void) | null>(null);
+  const setSelectedSmarterRef = useRef<((idx: number | null) => void) | null>(null);
 
   const aspirations = useProgressionStore((s) => s.aspirations);
   const setAspiration = useProgressionStore((s) => s.setAspiration);
@@ -355,6 +356,7 @@ export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
 
   const currentAct = resolvePageAct(currentPage);
   const handleFocusedOrbitChange = useCallback((orbit: 'user' | 'system' | null) => {
+    setSelectedSmarterRef.current?.(null);
     setSelectedWoopRef.current?.(null);
     if (orbit === null) {
       setDrawerView({ level: 'none' });
@@ -363,14 +365,24 @@ export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
     }
   }, []);
   const handleSelectedAspirationChange = useCallback((aspiration: Aspiration | null) => {
+    setSelectedSmarterRef.current?.(null);
     setSelectedWoopRef.current?.(null);
     if (aspiration === null) return;
     const orbit = aspiration.owner === 'coach' ? 'system' : 'user';
     setDrawerView({ level: 'aspiration', orbit, aspiration });
   }, []);
   function handleDrawerBack() {
-    if (drawerView.level === 'woop') {
+    if (drawerView.level === 'smarter') {
+      setDrawerView({
+        level: 'woop',
+        orbit: drawerView.orbit,
+        aspiration: drawerView.aspiration,
+        woopIdx: drawerView.woopIdx,
+      });
+      setSelectedSmarterRef.current?.(null);
+    } else if (drawerView.level === 'woop') {
       setDrawerView({ level: 'aspiration', orbit: drawerView.orbit, aspiration: drawerView.aspiration });
+      setSelectedSmarterRef.current?.(null);
       setSelectedWoopRef.current?.(null);
     } else if (drawerView.level === 'aspiration') {
       setDrawerView({ level: 'orbit', orbit: drawerView.orbit });
@@ -525,10 +537,24 @@ export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
                 aspiration: drawerView.aspiration,
                 woopIdx,
               });
+              setSelectedSmarterRef.current?.(null);
               setSelectedWoopRef.current?.(woopIdx);
             }
           }}
+          onSmarterClick={(smarterIdx) => {
+            if (drawerView.level === 'woop') {
+              setDrawerView({
+                level: 'smarter',
+                orbit: drawerView.orbit,
+                aspiration: drawerView.aspiration,
+                woopIdx: drawerView.woopIdx,
+                smarterIdx,
+              });
+              setSelectedSmarterRef.current?.(smarterIdx);
+            }
+          }}
           onRegisterSetSelectedWoop={(fn) => { setSelectedWoopRef.current = fn; }}
+          onRegisterSetSelectedSmarter={(fn) => { setSelectedSmarterRef.current = fn; }}
         />
       </div>
       <GoalInspectorDrawer
@@ -541,6 +567,7 @@ export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
           const orbit = asp.owner === 'coach' ? 'system' : 'user';
           setDrawerView({ level: 'aspiration', orbit, aspiration: asp });
           selectAspirationFromDrawerRef.current?.(asp.id);
+          setSelectedSmarterRef.current?.(null);
           setSelectedWoopRef.current?.(null);
         }}
         onAddAspiration={() => {

@@ -21,7 +21,9 @@ interface GoalCanvasProps {
   onRegisterClearFocus?: (fn: (scope: 'planet' | 'all') => void) => void;
   onRegisterSelectAspiration?: (fn: (id: string) => void) => void;
   onMoonClick?: (woopIdx: number) => void;
+  onSmarterClick?: (smarterIdx: number) => void;
   onRegisterSetSelectedWoop?: (fn: (idx: number | null) => void) => void;
+  onRegisterSetSelectedSmarter?: (fn: (idx: number | null) => void) => void;
 }
 
 interface PlanetPosition {
@@ -126,7 +128,9 @@ export function GoalCanvas({
   onRegisterClearFocus,
   onRegisterSelectAspiration,
   onMoonClick,
+  onSmarterClick,
   onRegisterSetSelectedWoop,
+  onRegisterSetSelectedSmarter,
 }: GoalCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const frameRef = useRef<number | null>(null);
@@ -135,6 +139,8 @@ export function GoalCanvas({
   const adventurePlanetPositionsRef = useRef<PlanetPosition[]>([]);
   const moonPositionsRef = useRef<PlanetPosition[]>([]);
   const moonWorldPositionsRef = useRef<PlanetPosition[]>([]);
+  const smarterPositionsRef = useRef<Array<{ id: string; x: number; y: number; radius: number }>>([]);
+  const smarterWorldPositionsRef = useRef<Array<{ id: string; x: number; y: number; radius: number }>>([]);
   const userOrbRef = useRef<{ x: number; y: number; radius: number } | null>(null);
   const systemOrbRef = useRef<{ x: number; y: number; radius: number } | null>(null);
   const screenPlanetPositionsRef = useRef<PlanetPosition[]>([]);
@@ -145,11 +151,14 @@ export function GoalCanvas({
   const focusedOrbitRef = useRef<'user' | 'system' | null>(null);
   const selectedAspirationIdRef = useRef<string | null>(null);
   const selectedWoopIdxRef = useRef<number | null>(null);
+  const selectedSmarterIdxRef = useRef<number | null>(null);
   const [planetPositions, setPlanetPositions] = useState<PlanetPosition[]>([]);
   const [adventurePlanetPositions, setAdventurePlanetPositions] = useState<Array<{ id: string; x: number; y: number; radius: number }>>([]);
   const [selectedAspirationId, setSelectedAspirationId] = useState<string | null>(null);
   const [focusedOrbit, setFocusedOrbit] = useState<'user' | 'system' | null>(null);
   const [moonPositions, setMoonPositions] = useState<Array<{ id: string; x: number; y: number; radius: number }>>([]);
+  const [smarterPositions, setSmarterPositions] = useState<Array<{ id: string; x: number; y: number; radius: number }>>([]);
+  const [selectedWoopIdx, setSelectedWoopIdx] = useState<number | null>(null);
   const [cameraSnapshot, setCameraSnapshot] = useState({ x: 0, y: 0, scale: 1 });
 
   const selectedAspiration = useMemo(() => {
@@ -162,6 +171,8 @@ export function GoalCanvas({
   useEffect(() => {
     onRegisterClearFocus?.((scope: 'planet' | 'all') => {
       selectedWoopIdxRef.current = null;
+      selectedSmarterIdxRef.current = null;
+      setSelectedWoopIdx(null);
       if (scope === 'planet') {
         setSelectedAspirationId(null);
       } else {
@@ -174,6 +185,8 @@ export function GoalCanvas({
   useEffect(() => {
     onRegisterSelectAspiration?.((id: string) => {
       selectedWoopIdxRef.current = null;
+      selectedSmarterIdxRef.current = null;
+      setSelectedWoopIdx(null);
       setSelectedAspirationId(id);
     });
   }, [onRegisterSelectAspiration]);
@@ -181,8 +194,16 @@ export function GoalCanvas({
   useEffect(() => {
     onRegisterSetSelectedWoop?.((idx: number | null) => {
       selectedWoopIdxRef.current = idx;
+      selectedSmarterIdxRef.current = null;
+      setSelectedWoopIdx(idx);
     });
   }, [onRegisterSetSelectedWoop]);
+
+  useEffect(() => {
+    onRegisterSetSelectedSmarter?.((idx: number | null) => {
+      selectedSmarterIdxRef.current = idx;
+    });
+  }, [onRegisterSetSelectedSmarter]);
 
   useEffect(() => {
     focusedOrbitRef.current = focusedOrbit;
@@ -235,8 +256,14 @@ export function GoalCanvas({
       const currentFocusedOrbit = focusedOrbitRef.current;
       const currentSelectedAspirationId = selectedAspirationIdRef.current;
       const currentSelectedWoopIdx = selectedWoopIdxRef.current;
+      const currentSelectedSmarterIdx = selectedSmarterIdxRef.current;
 
-      if (currentSelectedWoopIdx !== null) {
+      if (currentSelectedSmarterIdx !== null) {
+        const smarterPos = smarterWorldPositionsRef.current[currentSelectedSmarterIdx];
+        if (smarterPos) {
+          cameraTargetRef.current = { x: smarterPos.x, y: smarterPos.y, scale: 3.2 };
+        }
+      } else if (currentSelectedWoopIdx !== null) {
         const moonPos = moonWorldPositionsRef.current[currentSelectedWoopIdx];
         if (moonPos) {
           cameraTargetRef.current = { x: moonPos.x, y: moonPos.y, scale: 2.2 };
@@ -461,6 +488,67 @@ export function GoalCanvas({
           moonPositionsRef.current = nextMoonScreenPositions;
           setMoonPositions(nextMoonScreenPositions);
         }
+
+        const nextSmarterWorldPositions: PlanetPosition[] = [];
+        const smarterOrbitRadius = currentSelectedWoopIdx !== null ? 55 : 32;
+        const smarterRadius = currentSelectedWoopIdx !== null ? 9 : 5;
+        const smarterColor = currentSelectedWoopIdx !== null
+          ? 'rgba(196, 181, 253, 0.70)'
+          : 'rgba(196, 181, 253, 0.45)';
+
+        nextMoonWorldPositions.forEach((moon, woopIdx) => {
+          if (currentSelectedWoopIdx !== null && currentSelectedWoopIdx !== woopIdx) return;
+
+          const woop = selectedWoops[woopIdx];
+          if (!woop || woop.smarters.length === 0) return;
+
+          if (currentSelectedWoopIdx !== null) {
+            ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.arc(moon.x, moon.y, smarterOrbitRadius, 0, Math.PI * 2);
+            ctx.stroke();
+          }
+
+          woop.smarters.forEach((_, smarterIdx) => {
+            const baseAngle = ((2 * Math.PI) / woop.smarters.length) * smarterIdx;
+            const angle = baseAngle + (elapsed / 10000) * Math.PI * 2;
+            const x = moon.x + Math.cos(angle) * smarterOrbitRadius;
+            const y = moon.y + Math.sin(angle) * smarterOrbitRadius;
+
+            drawPlanet(ctx, x, y, smarterRadius, smarterColor);
+
+            if (currentSelectedWoopIdx !== null) {
+              nextSmarterWorldPositions.push({
+                id: `smarter-${woopIdx}-${smarterIdx}`,
+                x,
+                y,
+                radius: smarterRadius,
+              });
+            }
+          });
+        });
+
+        if (currentSelectedWoopIdx !== null) {
+          const nextSmarterScreenPositions = nextSmarterWorldPositions.map((position) => ({
+            ...position,
+            ...worldToScreen(position.x, position.y, nextCameraSnapshot, canvasCenterX, canvasCenterY),
+            radius: position.radius * nextCameraSnapshot.scale,
+          }));
+
+          if (planetPositionsChanged(smarterPositionsRef.current, nextSmarterScreenPositions)) {
+            smarterPositionsRef.current = nextSmarterScreenPositions;
+            setSmarterPositions(nextSmarterScreenPositions);
+          }
+
+          if (planetPositionsChanged(smarterWorldPositionsRef.current, nextSmarterWorldPositions)) {
+            smarterWorldPositionsRef.current = nextSmarterWorldPositions;
+          }
+        } else if (smarterPositionsRef.current.length > 0) {
+          smarterPositionsRef.current = [];
+          smarterWorldPositionsRef.current = [];
+          setSmarterPositions([]);
+        }
       } else {
         if (currentFocusedOrbit && !currentSelectedAspirationId) {
           const focusedPlanetPositions = currentFocusedOrbit === 'user'
@@ -496,6 +584,12 @@ export function GoalCanvas({
           moonWorldPositionsRef.current = [];
           setMoonPositions([]);
         }
+
+        if (smarterPositionsRef.current.length > 0) {
+          smarterPositionsRef.current = [];
+          smarterWorldPositionsRef.current = [];
+          setSmarterPositions([]);
+        }
       }
 
       ctx.restore();
@@ -525,6 +619,24 @@ export function GoalCanvas({
         const clickY = event.clientY - rect.top;
 
         if (selectedAspirationIdRef.current !== null) {
+          if (selectedWoopIdxRef.current !== null) {
+            const hit = smarterPositionsRef.current.find((smarter) => {
+              const dx = clickX - smarter.x;
+              const dy = clickY - smarter.y;
+              return Math.sqrt(dx * dx + dy * dy) <= smarter.radius + 8;
+            });
+
+            if (hit) {
+              const parts = hit.id.split('-');
+              const smarterIdx = parseInt(parts[2], 10);
+              if (!Number.isNaN(smarterIdx)) {
+                onSmarterClick?.(smarterIdx);
+              }
+            }
+
+            return;
+          }
+
           const hit = moonPositionsRef.current.find((moon) => {
             const dx = clickX - moon.x;
             const dy = clickY - moon.y;
@@ -687,6 +799,38 @@ export function GoalCanvas({
                 }}
               >
                 {woop.name || woop.wish || 'WOOP'}
+              </span>
+            </div>
+          );
+        })}
+        {selectedWoopIdx !== null && smarterPositions.map((smarterPosition) => {
+          const woop = selectedWoops[selectedWoopIdx];
+          const smarterIdx = parseInt(smarterPosition.id.split('-')[2], 10);
+          const smarter = woop?.smarters[smarterIdx];
+          if (!smarter) return null;
+
+          return (
+            <div
+              key={smarterPosition.id}
+              className="absolute flex flex-col items-center gap-0.5 pointer-events-none"
+              style={{
+                left: smarterPosition.x,
+                top: smarterPosition.y,
+                transform: 'translate(-50%, -50%)',
+              }}
+            >
+              <IconDisplay iconKey={smarter.icon} size={10} className="opacity-60" />
+              <span
+                className="text-white/40 text-center"
+                style={{
+                  fontSize: 9,
+                  maxWidth: 56,
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                }}
+              >
+                {smarter.name || 'SMARTER'}
               </span>
             </div>
           );

@@ -5,7 +5,8 @@ export type DrawerView =
   | { level: 'none' }
   | { level: 'orbit'; orbit: 'user' | 'system' }
   | { level: 'aspiration'; orbit: 'user' | 'system'; aspiration: Aspiration }
-  | { level: 'woop'; orbit: 'user' | 'system'; aspiration: Aspiration; woopIdx: number };
+  | { level: 'woop'; orbit: 'user' | 'system'; aspiration: Aspiration; woopIdx: number }
+  | { level: 'smarter'; orbit: 'user' | 'system'; aspiration: Aspiration; woopIdx: number; smarterIdx: number };
 
 interface GoalInspectorDrawerProps {
   open: boolean;
@@ -26,7 +27,9 @@ export function GoalInspectorDrawer({
   onSelectAspiration,
   onAddAspiration,
 }: GoalInspectorDrawerProps) {
-  const label = view.level === 'woop'
+  const label = view.level === 'smarter'
+    ? view.aspiration.woops[view.woopIdx]?.smarters[view.smarterIdx]?.name || 'SMARTER'
+    : view.level === 'woop'
     ? view.aspiration.woops[view.woopIdx]?.name || 'WOOP'
     : view.level === 'aspiration'
       ? view.aspiration.name || 'Aspiration'
@@ -208,6 +211,67 @@ export function GoalInspectorDrawer({
                     </span>
                   </div>
                 ))}
+              </div>
+            )}
+          </div>
+        );
+      })() : null}
+      {view.level === 'smarter' ? (() => {
+        const woop = view.aspiration.woops[view.woopIdx];
+        const smarter = woop?.smarters[view.smarterIdx];
+        if (!smarter) return null;
+
+        return (
+          <div className="flex-1 overflow-y-auto px-4 py-3 flex flex-col gap-4">
+            <div className="flex items-center gap-3">
+              <IconDisplay iconKey={smarter.icon} size={24} className="opacity-80 shrink-0" />
+              <p className="text-white/80 text-sm font-medium flex-1 truncate">
+                {smarter.name || 'SMARTER'}
+              </p>
+              <span className={`text-xs px-1.5 py-0.5 rounded-full shrink-0 ${
+                smarter.completionState === 'complete'
+                  ? 'bg-green-900/40 text-green-400'
+                  : 'bg-white/5 text-white/20'
+              }`}>
+                {smarter.completionState}
+              </span>
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between text-xs text-white/30 mb-1">
+                <span>Progress</span>
+                <span>{smarter.progressPercent}%</span>
+              </div>
+              <div className="h-1.5 rounded-full bg-white/5 overflow-hidden">
+                <div
+                  className="h-full rounded-full bg-violet-300/70"
+                  style={{ width: `${smarter.progressPercent}%` }}
+                />
+              </div>
+            </div>
+
+            {(smarter.specific.targetValue || smarter.specific.unit || smarter.specific.sourceType) && (
+              <div>
+                <p className="text-white/20 text-xs uppercase tracking-wider mb-1">Specific</p>
+                <p className="text-white/60 text-sm">
+                  {[smarter.specific.targetValue, smarter.specific.unit, smarter.specific.sourceType].filter(Boolean).join(' ')}
+                </p>
+              </div>
+            )}
+
+            {(smarter.timely.conditionType || smarter.timely.projectedFinish) && (
+              <div>
+                <p className="text-white/20 text-xs uppercase tracking-wider mb-1">Timely</p>
+                <p className="text-white/60 text-sm">
+                  {[smarter.timely.conditionType, smarter.timely.projectedFinish].filter(Boolean).join(' - ')}
+                </p>
+              </div>
+            )}
+
+            {smarter.exitStrategy.onMissedFinish && (
+              <div>
+                <p className="text-white/20 text-xs uppercase tracking-wider mb-1">Exit Strategy</p>
+                <p className="text-white/60 text-sm">{smarter.exitStrategy.onMissedFinish}</p>
               </div>
             )}
           </div>
