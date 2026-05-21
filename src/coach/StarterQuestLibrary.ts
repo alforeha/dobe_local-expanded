@@ -1075,8 +1075,10 @@ export function seedStarterContent(skipExisting = true): void {
 
   // Seed Acts — Onboarding only (D87)
   for (const act of starterAspirations) {
-    if (skipExisting && progressionStore.aspirations[act.id]) continue;
-    progressionStore.setAspiration(act);
+    // Always reseed coach aspirations to pick up field name changes.
+    if (act.owner === 'coach' || !skipExisting || !progressionStore.aspirations[act.id]) {
+      progressionStore.setAspiration(act);
+    }
   }
 }
 

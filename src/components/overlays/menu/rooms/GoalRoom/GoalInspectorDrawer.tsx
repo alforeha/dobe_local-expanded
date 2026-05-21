@@ -4,7 +4,8 @@ import { IconDisplay } from '../../../../shared/IconDisplay';
 export type DrawerView =
   | { level: 'none' }
   | { level: 'orbit'; orbit: 'user' | 'system' }
-  | { level: 'aspiration'; orbit: 'user' | 'system'; aspiration: Aspiration };
+  | { level: 'aspiration'; orbit: 'user' | 'system'; aspiration: Aspiration }
+  | { level: 'woop'; orbit: 'user' | 'system'; aspiration: Aspiration; woopIdx: number };
 
 interface GoalInspectorDrawerProps {
   open: boolean;
@@ -25,11 +26,13 @@ export function GoalInspectorDrawer({
   onSelectAspiration,
   onAddAspiration,
 }: GoalInspectorDrawerProps) {
-  const label = view.level === 'aspiration'
-    ? view.aspiration.name || 'Aspiration'
-    : view.level === 'orbit'
-      ? view.orbit === 'user' ? 'Your Aspirations' : 'Adventures'
-      : '';
+  const label = view.level === 'woop'
+    ? view.aspiration.woops[view.woopIdx]?.name || 'WOOP'
+    : view.level === 'aspiration'
+      ? view.aspiration.name || 'Aspiration'
+      : view.level === 'orbit'
+        ? view.orbit === 'user' ? 'Your Aspirations' : 'Adventures'
+        : '';
   const orbitList = view.level === 'orbit'
     ? view.orbit === 'user' ? userAspirations : adventureAspirations
     : [];
@@ -151,6 +154,65 @@ export function GoalInspectorDrawer({
           )}
         </div>
       ) : null}
+      {view.level === 'woop' ? (() => {
+        const woop = view.aspiration.woops[view.woopIdx];
+        if (!woop) return null;
+
+        return (
+          <div className="flex-1 overflow-y-auto px-4 py-3 flex flex-col gap-4">
+            <div className="flex items-center gap-3">
+              <IconDisplay iconKey={woop.icon} size={24} className="opacity-80 shrink-0" />
+              <p className="text-white/80 text-sm font-medium flex-1 truncate">
+                {woop.name || woop.wish || 'WOOP'}
+              </p>
+            </div>
+
+            {woop.wish && (
+              <div>
+                <p className="text-white/20 text-xs uppercase tracking-wider mb-1">Wish</p>
+                <p className="text-white/60 text-sm">{woop.wish}</p>
+              </div>
+            )}
+
+            {woop.outcome.length > 0 && (
+              <div>
+                <p className="text-white/20 text-xs uppercase tracking-wider mb-1">Outcome</p>
+                {woop.outcome.map((o, i) => (
+                  <p key={i} className="text-white/60 text-sm">{o}</p>
+                ))}
+              </div>
+            )}
+
+            {woop.obstacle.length > 0 && (
+              <div>
+                <p className="text-white/20 text-xs uppercase tracking-wider mb-1">Obstacle</p>
+                {woop.obstacle.map((o, i) => (
+                  <p key={i} className="text-white/60 text-sm">{o}</p>
+                ))}
+              </div>
+            )}
+
+            {woop.smarters.length > 0 && (
+              <div>
+                <p className="text-white/20 text-xs uppercase tracking-wider mb-1">SMARTERs</p>
+                {woop.smarters.map((s, i) => (
+                  <div key={i} className="flex items-center gap-2 py-2 border-b border-white/5">
+                    <IconDisplay iconKey={s.icon} size={14} className="opacity-60 shrink-0" />
+                    <p className="text-white/60 text-xs flex-1 truncate">{s.name || 'SMARTER'}</p>
+                    <span className={`text-xs px-1.5 py-0.5 rounded-full ${
+                      s.completionState === 'complete'
+                        ? 'bg-green-900/40 text-green-400'
+                        : 'bg-white/5 text-white/20'
+                    }`}>
+                      {s.completionState}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })() : null}
     </div>
   );
 }

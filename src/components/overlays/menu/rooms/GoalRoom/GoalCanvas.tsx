@@ -20,6 +20,8 @@ interface GoalCanvasProps {
   onSelectedAspirationChange?: (aspiration: Aspiration | null) => void;
   onRegisterClearFocus?: (fn: (scope: 'planet' | 'all') => void) => void;
   onRegisterSelectAspiration?: (fn: (id: string) => void) => void;
+  onMoonClick?: (woopIdx: number) => void;
+  onRegisterSetSelectedWoop?: (fn: (idx: number | null) => void) => void;
 }
 
 interface PlanetPosition {
@@ -123,6 +125,8 @@ export function GoalCanvas({
   onSelectedAspirationChange,
   onRegisterClearFocus,
   onRegisterSelectAspiration,
+  onMoonClick,
+  onRegisterSetSelectedWoop,
 }: GoalCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const frameRef = useRef<number | null>(null);
@@ -130,6 +134,7 @@ export function GoalCanvas({
   const planetPositionsRef = useRef<PlanetPosition[]>([]);
   const adventurePlanetPositionsRef = useRef<PlanetPosition[]>([]);
   const moonPositionsRef = useRef<PlanetPosition[]>([]);
+  const moonWorldPositionsRef = useRef<PlanetPosition[]>([]);
   const userOrbRef = useRef<{ x: number; y: number; radius: number } | null>(null);
   const systemOrbRef = useRef<{ x: number; y: number; radius: number } | null>(null);
   const screenPlanetPositionsRef = useRef<PlanetPosition[]>([]);
@@ -139,6 +144,7 @@ export function GoalCanvas({
   const cameraSnapshotRef = useRef({ x: 0, y: 0, scale: 1 });
   const focusedOrbitRef = useRef<'user' | 'system' | null>(null);
   const selectedAspirationIdRef = useRef<string | null>(null);
+  const selectedWoopIdxRef = useRef<number | null>(null);
   const [planetPositions, setPlanetPositions] = useState<PlanetPosition[]>([]);
   const [adventurePlanetPositions, setAdventurePlanetPositions] = useState<Array<{ id: string; x: number; y: number; radius: number }>>([]);
   const [selectedAspirationId, setSelectedAspirationId] = useState<string | null>(null);
@@ -155,6 +161,7 @@ export function GoalCanvas({
 
   useEffect(() => {
     onRegisterClearFocus?.((scope: 'planet' | 'all') => {
+      selectedWoopIdxRef.current = null;
       if (scope === 'planet') {
         setSelectedAspirationId(null);
       } else {
@@ -165,8 +172,17 @@ export function GoalCanvas({
   }, [onRegisterClearFocus]);
 
   useEffect(() => {
-    onRegisterSelectAspiration?.((id: string) => setSelectedAspirationId(id));
+    onRegisterSelectAspiration?.((id: string) => {
+      selectedWoopIdxRef.current = null;
+      setSelectedAspirationId(id);
+    });
   }, [onRegisterSelectAspiration]);
+
+  useEffect(() => {
+    onRegisterSetSelectedWoop?.((idx: number | null) => {
+      selectedWoopIdxRef.current = idx;
+    });
+  }, [onRegisterSetSelectedWoop]);
 
   useEffect(() => {
     focusedOrbitRef.current = focusedOrbit;
@@ -218,8 +234,14 @@ export function GoalCanvas({
 
       const currentFocusedOrbit = focusedOrbitRef.current;
       const currentSelectedAspirationId = selectedAspirationIdRef.current;
+      const currentSelectedWoopIdx = selectedWoopIdxRef.current;
 
-      if (currentSelectedAspirationId) {
+      if (currentSelectedWoopIdx !== null) {
+        const moonPos = moonWorldPositionsRef.current[currentSelectedWoopIdx];
+        if (moonPos) {
+          cameraTargetRef.current = { x: moonPos.x, y: moonPos.y, scale: 2.2 };
+        }
+      } else if (currentSelectedAspirationId) {
         const allPlanets = [...planetPositionsRef.current, ...adventurePlanetPositionsRef.current];
         const target = allPlanets.find((position) => position.id === currentSelectedAspirationId);
         if (target) {
@@ -431,6 +453,10 @@ export function GoalCanvas({
           radius: position.radius * nextCameraSnapshot.scale,
         }));
 
+        if (planetPositionsChanged(moonWorldPositionsRef.current, nextMoonWorldPositions)) {
+          moonWorldPositionsRef.current = nextMoonWorldPositions;
+        }
+
         if (planetPositionsChanged(moonPositionsRef.current, nextMoonScreenPositions)) {
           moonPositionsRef.current = nextMoonScreenPositions;
           setMoonPositions(nextMoonScreenPositions);
@@ -467,6 +493,7 @@ export function GoalCanvas({
 
         if (moonPositionsRef.current.length > 0) {
           moonPositionsRef.current = [];
+          moonWorldPositionsRef.current = [];
           setMoonPositions([]);
         }
       }
@@ -493,13 +520,27 @@ export function GoalCanvas({
       className="absolute inset-0"
       data-camera-scale={cameraSnapshot.scale.toFixed(3)}
       onClick={(event) => {
-        if (selectedAspirationIdRef.current !== null) {
-          return;
-        }
-
         const rect = event.currentTarget.getBoundingClientRect();
         const clickX = event.clientX - rect.left;
         const clickY = event.clientY - rect.top;
+
+        if (selectedAspirationIdRef.current !== null) {
+          const hit = moonPositionsRef.current.find((moon) => {
+            const dx = clickX - moon.x;
+            const dy = clickY - moon.y;
+            return Math.sqrt(dx * dx + dy * dy) <= moon.radius + 10;
+          });
+
+          if (hit) {
+            const woopIdx = parseInt(hit.id.replace('woop-', ''), 10);
+            if (!Number.isNaN(woopIdx)) {
+              onMoonClick?.(woopIdx);
+            }
+          }
+
+          return;
+        }
+
         const currentFocusedOrbit = focusedOrbitRef.current;
 
         const userOrb = userOrbRef.current;
