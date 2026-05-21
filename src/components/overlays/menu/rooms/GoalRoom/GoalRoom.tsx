@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useProgressionStore } from '../../../../../stores/useProgressionStore';
 import { useScheduleStore } from '../../../../../stores/useScheduleStore';
 import { useUserStore } from '../../../../../stores/useUserStore';
 import { autoCompleteSystemTask } from '../../../../../engine/resourceEngine';
 import { GoalCanvas } from './GoalCanvas';
 import { GoalInspectorDrawer } from './GoalInspectorDrawer';
+import type { DrawerView } from './GoalInspectorDrawer';
 import { ChooseYourPath } from './ChooseYourPath';
 import { GoalActPage } from './GoalActPage';
 import { GoalChainPage } from './GoalChainPage';
@@ -223,9 +224,8 @@ export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
   const [pageStack, setPageStack] = useState<GoalPage[]>([{ type: 'list' }]);
   const [draftActs, setDraftActs] = useState<Record<string, Aspiration>>({});
   const [newActDraftId, setNewActDraftId] = useState<string | null>(null);
-  const [drawerOpen, setDrawerOpen] = useState(false);
-  const [drawerAspiration, setDrawerAspiration] = useState<Aspiration | null>(null);
-  const [drawerOrbit, setDrawerOrbit] = useState<'user' | 'system' | null>(null);
+  const [drawerView, setDrawerView] = useState<DrawerView>({ level: 'none' });
+  const clearCanvasFocusRef = useRef<((scope: 'planet' | 'all') => void) | null>(null);
 
   const aspirations = useProgressionStore((s) => s.aspirations);
   const setAspiration = useProgressionStore((s) => s.setAspiration);
@@ -353,14 +353,29 @@ export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
 
   const currentAct = resolvePageAct(currentPage);
   const handleFocusedOrbitChange = useCallback((orbit: 'user' | 'system' | null) => {
-    setDrawerOrbit(orbit);
-    setDrawerOpen(orbit !== null);
-    setDrawerAspiration(null);
+    if (orbit === null) {
+      setDrawerView({ level: 'none' });
+    } else {
+      setDrawerView({ level: 'orbit', orbit });
+    }
   }, []);
   const handleSelectedAspirationChange = useCallback((aspiration: Aspiration | null) => {
-    setDrawerAspiration(aspiration);
-    setDrawerOpen(aspiration !== null);
+    if (aspiration === null) return;
+    const orbit = aspiration.owner === 'coach' ? 'system' : 'user';
+    setDrawerView({ level: 'aspiration', orbit, aspiration });
   }, []);
+  function handleDrawerBack() {
+    if (drawerView.level === 'aspiration') {
+      setDrawerView({ level: 'none' });
+      clearCanvasFocusRef.current?.('all');
+    } else if (drawerView.level === 'orbit') {
+      setDrawerView({ level: 'none' });
+      clearCanvasFocusRef.current?.('all');
+    }
+  }
+  const drawerOpen = drawerView.level !== 'none';
+  const drawerHeightPercent = 55;
+  const canvasHeightPercent = drawerOpen ? 100 - drawerHeightPercent : 100;
   const shouldRenderPageStack = false;
   void beginNewAct;
   void toggleFilter;
@@ -484,21 +499,22 @@ export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
 
   return (
     <div className="relative w-full h-full bg-gray-950 overflow-hidden">
-      <GoalCanvas
-        userAspirations={userAspirations}
-        adventureAspirations={adventureActs}
-        onFocusedOrbitChange={handleFocusedOrbitChange}
-        onSelectedAspirationChange={handleSelectedAspirationChange}
-      />
+      <div
+        className="absolute top-0 left-0 right-0 transition-all duration-300 ease-out"
+        style={{ height: `${canvasHeightPercent}%` }}
+      >
+        <GoalCanvas
+          userAspirations={userAspirations}
+          adventureAspirations={adventureActs}
+          onFocusedOrbitChange={handleFocusedOrbitChange}
+          onSelectedAspirationChange={handleSelectedAspirationChange}
+          onRegisterClearFocus={(fn) => { clearCanvasFocusRef.current = fn; }}
+        />
+      </div>
       <GoalInspectorDrawer
         open={drawerOpen}
-        orbit={drawerOrbit}
-        aspiration={drawerAspiration}
-        onClose={() => {
-          setDrawerOpen(false);
-          setDrawerAspiration(null);
-          setDrawerOrbit(null);
-        }}
+        view={drawerView}
+        onBack={handleDrawerBack}
       />
       {/* page stack — reconnects when drawer is wired */}
       {shouldRenderPageStack ? pageStackContent : null}

@@ -1,13 +1,23 @@
 import type { Aspiration } from '../../../../../types';
 
+export type DrawerView =
+  | { level: 'none' }
+  | { level: 'orbit'; orbit: 'user' | 'system' }
+  | { level: 'aspiration'; orbit: 'user' | 'system'; aspiration: Aspiration };
+
 interface GoalInspectorDrawerProps {
   open: boolean;
-  orbit: 'user' | 'system' | null;
-  aspiration: Aspiration | null;
-  onClose: () => void;
+  view: DrawerView;
+  onBack: () => void;
 }
 
-export function GoalInspectorDrawer({ open, orbit, aspiration, onClose }: GoalInspectorDrawerProps) {
+export function GoalInspectorDrawer({ open, view, onBack }: GoalInspectorDrawerProps) {
+  const label = view.level === 'aspiration'
+    ? view.aspiration.name || 'Aspiration'
+    : view.level === 'orbit'
+      ? view.orbit === 'user' ? 'Your Aspirations' : 'Adventures'
+      : '';
+
   return (
     <div
       className="absolute bottom-0 left-0 right-0 transition-transform duration-300 ease-out"
@@ -23,21 +33,19 @@ export function GoalInspectorDrawer({ open, orbit, aspiration, onClose }: GoalIn
     >
       <div className="flex items-center justify-between px-4 pt-4 pb-2">
         <span className="text-white/80 text-sm font-medium">
-          {aspiration
-            ? aspiration.name || 'Aspiration'
-            : orbit === 'user' ? 'Your Aspirations' : 'Adventures'}
+          {label}
         </span>
         <button
-          onClick={onClose}
-          className="text-white/40 hover:text-white/80 text-xs px-2 py-1"
+          onClick={onBack}
+          className="text-white/40 hover:text-white/80 text-xs px-2 py-1 flex items-center gap-1"
         >
-          close
+          &larr; back
         </button>
       </div>
       <div style={{ height: 1, background: 'rgba(255,255,255,0.06)', margin: '0 16px' }} />
       <div className="flex-1 flex items-center justify-center">
         <span className="text-white/20 text-xs">
-          {aspiration ? 'Aspiration editor - coming next' : 'Orbit overview - coming next'}
+          {view.level === 'aspiration' ? 'Aspiration editor - coming next' : 'Orbit overview - coming next'}
         </span>
       </div>
     </div>
