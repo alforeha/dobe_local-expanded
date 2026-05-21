@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { Aspiration } from '../../../../../types';
+import type { Aspiration, Woop } from '../../../../../types';
 import { IconDisplay } from '../../../../shared/IconDisplay';
 
 const ORB_RADIUS = 48;
@@ -16,6 +16,8 @@ const ORBIT_LEVEL_MOON_ORBIT_RADIUS = 50;
 interface GoalCanvasProps {
   userAspirations: Aspiration[];
   adventureAspirations: Aspiration[];
+  aspirationDraft: Aspiration | null;
+  woopDraft: { aspirationId: string; woopIdx: number | null; woop: Woop } | null;
   onFocusedOrbitChange?: (orbit: 'user' | 'system' | null) => void;
   onSelectedAspirationChange?: (aspiration: Aspiration | null) => void;
   onRegisterClearFocus?: (fn: (scope: 'planet' | 'all') => void) => void;
@@ -31,6 +33,16 @@ interface PlanetPosition {
   x: number;
   y: number;
   radius: number;
+}
+
+interface DraftMoonPosition extends PlanetPosition {
+  label: string;
+  icon: string;
+}
+
+interface DraftPlanetPosition extends PlanetPosition {
+  label: string;
+  icon: string;
 }
 
 function drawOrb(
@@ -123,6 +135,8 @@ function worldToScreen(
 export function GoalCanvas({
   userAspirations,
   adventureAspirations,
+  aspirationDraft,
+  woopDraft,
   onFocusedOrbitChange,
   onSelectedAspirationChange,
   onRegisterClearFocus,
@@ -152,6 +166,12 @@ export function GoalCanvas({
   const selectedAspirationIdRef = useRef<string | null>(null);
   const selectedWoopIdxRef = useRef<number | null>(null);
   const selectedSmarterIdxRef = useRef<number | null>(null);
+  const aspirationDraftRef = useRef<Aspiration | null>(null);
+  const draftPlanetPositionRef = useRef<DraftPlanetPosition | null>(null);
+  const aspirationDraftPosRef = useRef<{ x: number; y: number } | null>(null);
+  const woopDraftRef = useRef(woopDraft);
+  const draftMoonPositionRef = useRef<DraftMoonPosition | null>(null);
+  const woopDraftPosRef = useRef<{ x: number; y: number } | null>(null);
   const [planetPositions, setPlanetPositions] = useState<PlanetPosition[]>([]);
   const [adventurePlanetPositions, setAdventurePlanetPositions] = useState<Array<{ id: string; x: number; y: number; radius: number }>>([]);
   const [selectedAspirationId, setSelectedAspirationId] = useState<string | null>(null);
@@ -160,6 +180,8 @@ export function GoalCanvas({
   const [smarterPositions, setSmarterPositions] = useState<Array<{ id: string; x: number; y: number; radius: number }>>([]);
   const [selectedWoopIdx, setSelectedWoopIdx] = useState<number | null>(null);
   const [cameraSnapshot, setCameraSnapshot] = useState({ x: 0, y: 0, scale: 1 });
+  const [draftPlanetPosition, setDraftPlanetPosition] = useState<DraftPlanetPosition | null>(null);
+  const [draftMoonPosition, setDraftMoonPosition] = useState<DraftMoonPosition | null>(null);
 
   const selectedAspiration = useMemo(() => {
     if (!selectedAspirationId) return null;
@@ -167,6 +189,14 @@ export function GoalCanvas({
   }, [selectedAspirationId, userAspirations, adventureAspirations]);
 
   const selectedWoops = useMemo(() => selectedAspiration?.woops ?? [], [selectedAspiration]);
+
+  useEffect(() => {
+    aspirationDraftRef.current = aspirationDraft;
+  }, [aspirationDraft]);
+
+  useEffect(() => {
+    woopDraftRef.current = woopDraft;
+  }, [woopDraft]);
 
   useEffect(() => {
     onRegisterClearFocus?.((scope: 'planet' | 'all') => {
@@ -257,17 +287,31 @@ export function GoalCanvas({
       const currentSelectedAspirationId = selectedAspirationIdRef.current;
       const currentSelectedWoopIdx = selectedWoopIdxRef.current;
       const currentSelectedSmarterIdx = selectedSmarterIdxRef.current;
+      const currentAspirationDraft = aspirationDraftRef.current;
+      const currentDraft = woopDraftRef.current;
+      const lockedPlanet = currentSelectedAspirationId
+        ? [...planetPositionsRef.current, ...adventurePlanetPositionsRef.current].find((position) => position.id === currentSelectedAspirationId)
+        : null;
 
       if (currentSelectedSmarterIdx !== null) {
         const smarterPos = smarterWorldPositionsRef.current[currentSelectedSmarterIdx];
         if (smarterPos) {
           cameraTargetRef.current = { x: smarterPos.x, y: smarterPos.y, scale: 3.2 };
         }
+      } else if (currentDraft?.woopIdx === null) {
+        const draftTarget = woopDraftPosRef.current ?? (
+          lockedPlanet ? { x: lockedPlanet.x, y: lockedPlanet.y } : null
+        );
+        if (draftTarget) {
+          cameraTargetRef.current = { x: draftTarget.x, y: draftTarget.y, scale: 2.2 };
+        }
       } else if (currentSelectedWoopIdx !== null) {
         const moonPos = moonWorldPositionsRef.current[currentSelectedWoopIdx];
         if (moonPos) {
           cameraTargetRef.current = { x: moonPos.x, y: moonPos.y, scale: 2.2 };
         }
+      } else if (currentAspirationDraft && aspirationDraftPosRef.current) {
+        cameraTargetRef.current = { x: aspirationDraftPosRef.current.x, y: aspirationDraftPosRef.current.y, scale: 1.7 };
       } else if (currentSelectedAspirationId) {
         const allPlanets = [...planetPositionsRef.current, ...adventurePlanetPositionsRef.current];
         const target = allPlanets.find((position) => position.id === currentSelectedAspirationId);
@@ -355,9 +399,12 @@ export function GoalCanvas({
         ctx.beginPath();
         ctx.arc(ux, uy, PLANET_ORBIT_RADIUS, 0, Math.PI * 2);
         ctx.stroke();
+        const totalForSpacing = currentAspirationDraft && !userAspirations.some((aspiration) => aspiration.id === currentAspirationDraft.id)
+          ? userAspirations.length + 1
+          : userAspirations.length;
 
         const nextPlanetPositions = userAspirations.map((aspiration, index) => {
-          const baseAngle = ((2 * Math.PI) / userAspirations.length) * index;
+          const baseAngle = ((2 * Math.PI) / totalForSpacing) * index;
           const angle = baseAngle + (elapsed / PLANET_ORBIT_PERIOD_MS) * Math.PI * 2;
           const x = ux + Math.cos(angle) * PLANET_ORBIT_RADIUS;
           const y = uy + Math.sin(angle) * PLANET_ORBIT_RADIUS;
@@ -392,6 +439,58 @@ export function GoalCanvas({
         planetPositionsRef.current = [];
         screenPlanetPositionsRef.current = [];
         setPlanetPositions([]);
+      }
+
+      if (
+        currentFocusedOrbit === 'user'
+        && currentAspirationDraft
+        && !userAspirations.some((aspiration) => aspiration.id === currentAspirationDraft.id)
+      ) {
+        const idx = userAspirations.length;
+        const total = userAspirations.length + 1;
+        const baseAngle = ((2 * Math.PI) / total) * idx;
+        const angle = baseAngle + (elapsed / PLANET_ORBIT_PERIOD_MS) * Math.PI * 2;
+        const px = ux + Math.cos(angle) * PLANET_ORBIT_RADIUS;
+        const py = uy + Math.sin(angle) * PLANET_ORBIT_RADIUS;
+        aspirationDraftPosRef.current = { x: px, y: py };
+
+        ctx.save();
+        ctx.globalAlpha = 0.5;
+        drawPlanet(ctx, px, py, PLANET_RADIUS, 'rgba(139, 92, 246, 0.75)');
+        ctx.setLineDash([4, 4]);
+        ctx.strokeStyle = 'rgba(255,255,255,0.45)';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.arc(px, py, PLANET_RADIUS + 7, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+
+        const nextDraftPlanetPosition = {
+          id: currentAspirationDraft.id,
+          x: worldToScreen(px, py, nextCameraSnapshot, canvasCenterX, canvasCenterY).x,
+          y: worldToScreen(px, py, nextCameraSnapshot, canvasCenterX, canvasCenterY).y,
+          radius: PLANET_RADIUS * nextCameraSnapshot.scale,
+          label: currentAspirationDraft.name || 'New Aspiration',
+          icon: currentAspirationDraft.icon,
+        };
+        const previousDraftPlanetPosition = draftPlanetPositionRef.current;
+        const draftPlanetChanged = previousDraftPlanetPosition?.id !== nextDraftPlanetPosition.id
+          || previousDraftPlanetPosition?.label !== nextDraftPlanetPosition.label
+          || previousDraftPlanetPosition?.icon !== nextDraftPlanetPosition.icon
+          || Math.abs((previousDraftPlanetPosition?.x ?? 0) - nextDraftPlanetPosition.x) > 1
+          || Math.abs((previousDraftPlanetPosition?.y ?? 0) - nextDraftPlanetPosition.y) > 1
+          || Math.abs((previousDraftPlanetPosition?.radius ?? 0) - nextDraftPlanetPosition.radius) > 1;
+
+        if (draftPlanetChanged) {
+          draftPlanetPositionRef.current = nextDraftPlanetPosition;
+          setDraftPlanetPosition(nextDraftPlanetPosition);
+        }
+      } else if (draftPlanetPositionRef.current) {
+        aspirationDraftPosRef.current = null;
+        draftPlanetPositionRef.current = null;
+        setDraftPlanetPosition(null);
+      } else if (!currentAspirationDraft) {
+        aspirationDraftPosRef.current = null;
       }
 
       if ((currentFocusedOrbit === null || currentFocusedOrbit === 'system') && adventureAspirations.length > 0) {
@@ -439,10 +538,6 @@ export function GoalCanvas({
         setAdventurePlanetPositions([]);
       }
 
-      const lockedPlanet = currentSelectedAspirationId
-        ? [...planetPositionsRef.current, ...adventurePlanetPositionsRef.current].find((position) => position.id === currentSelectedAspirationId)
-        : null;
-
       if (lockedPlanet) {
         ctx.strokeStyle = 'rgba(255,255,255,0.35)';
         ctx.lineWidth = 1.5;
@@ -458,8 +553,14 @@ export function GoalCanvas({
         ctx.arc(lockedPlanet.x, lockedPlanet.y, MOON_ORBIT_RADIUS, 0, Math.PI * 2);
         ctx.stroke();
 
+        const draftExistsForThisPlanet = woopDraftRef.current?.aspirationId === currentSelectedAspirationId
+          && woopDraftRef.current?.woopIdx === null;
+        const totalMoonsForSpacing = draftExistsForThisPlanet
+          ? selectedWoops.length + 1
+          : selectedWoops.length;
+
         const nextMoonWorldPositions = selectedWoops.map((_, index) => {
-          const baseAngle = ((2 * Math.PI) / selectedWoops.length) * index;
+          const baseAngle = ((2 * Math.PI) / totalMoonsForSpacing) * index;
           const angle = baseAngle + (elapsed / MOON_ORBIT_PERIOD_MS) * Math.PI * 2;
           const x = lockedPlanet.x + Math.cos(angle) * MOON_ORBIT_RADIUS;
           const y = lockedPlanet.y + Math.sin(angle) * MOON_ORBIT_RADIUS;
@@ -592,6 +693,121 @@ export function GoalCanvas({
         }
       }
 
+      // Seed draft planet position if not yet in planet position refs.
+      let draftPlanetSeed: PlanetPosition | null = null;
+      if (
+        currentDraft
+        && !planetPositionsRef.current.find((position) => position.id === currentDraft.aspirationId)
+        && !adventurePlanetPositionsRef.current.find((position) => position.id === currentDraft.aspirationId)
+      ) {
+        const draftAspId = currentDraft.aspirationId;
+        const isUserAspiration = userAspirations.some((aspiration) => aspiration.id === draftAspId);
+        const aspirations = isUserAspiration ? userAspirations : adventureAspirations;
+        const orbitCenter = isUserAspiration ? { x: ux, y: uy } : { x: sx, y: sy };
+        const draftAspIndex = aspirations.findIndex((aspiration) => aspiration.id === draftAspId);
+
+        if (draftAspIndex !== -1 && aspirations.length > 0) {
+          const baseAngle = ((2 * Math.PI) / aspirations.length) * draftAspIndex;
+          const angle = baseAngle + (elapsed / PLANET_ORBIT_PERIOD_MS) * Math.PI * 2;
+          draftPlanetSeed = {
+            id: draftAspId,
+            x: orbitCenter.x + Math.cos(angle) * PLANET_ORBIT_RADIUS,
+            y: orbitCenter.y + Math.sin(angle) * PLANET_ORBIT_RADIUS,
+            radius: PLANET_RADIUS,
+          };
+        }
+      }
+
+      const draftPlanetPos = currentDraft
+        ? [
+            ...planetPositionsRef.current,
+            ...adventurePlanetPositionsRef.current,
+            ...(draftPlanetSeed ? [draftPlanetSeed] : []),
+          ].find((position) => position.id === currentDraft.aspirationId)
+        : null;
+      const draftOrbitCenter = draftPlanetPos ?? (
+        currentDraft && cameraTargetRef.current
+          ? { x: cameraTargetRef.current.x, y: cameraTargetRef.current.y, radius: PLANET_RADIUS }
+          : null
+      );
+
+      if (currentDraft && currentDraft.woopIdx === null && draftOrbitCenter) {
+        const draftAspiration = [...userAspirations, ...adventureAspirations].find((aspiration) => aspiration.id === currentDraft.aspirationId);
+        const label = currentDraft.woop.name || currentDraft.woop.wish || 'New WOOP';
+        let draftWorldPosition: PlanetPosition | null = null;
+
+        if (draftAspiration && currentDraft.woopIdx === null) {
+          const idx = draftAspiration.woops.length;
+          const total = draftAspiration.woops.length + 1;
+          const angle = ((2 * Math.PI) / total) * idx + (elapsed / MOON_ORBIT_PERIOD_MS) * Math.PI * 2;
+          const x = draftOrbitCenter.x + Math.cos(angle) * MOON_ORBIT_RADIUS;
+          const y = draftOrbitCenter.y + Math.sin(angle) * MOON_ORBIT_RADIUS;
+          woopDraftPosRef.current = { x, y };
+
+          ctx.save();
+          ctx.globalAlpha = 0.5;
+          drawPlanet(ctx, x, y, MOON_RADIUS, 'rgba(167, 139, 250, 0.70)');
+          ctx.globalAlpha = 1;
+          ctx.setLineDash([4, 4]);
+          ctx.strokeStyle = 'rgba(255,255,255,0.45)';
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.arc(x, y, MOON_RADIUS + 5, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.restore();
+
+          draftWorldPosition = {
+            id: 'woop-draft',
+            x,
+            y,
+            radius: MOON_RADIUS,
+          };
+        } else if (currentDraft.woopIdx !== null) {
+          const existingMoon = moonWorldPositionsRef.current[currentDraft.woopIdx];
+          if (existingMoon) {
+            ctx.save();
+            ctx.setLineDash([4, 4]);
+            ctx.strokeStyle = 'rgba(255,255,255,0.45)';
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.arc(existingMoon.x, existingMoon.y, existingMoon.radius + 6, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.restore();
+
+            draftWorldPosition = existingMoon;
+          }
+        }
+
+        const nextDraftMoonPosition = draftWorldPosition
+          ? {
+              ...draftWorldPosition,
+              ...worldToScreen(draftWorldPosition.x, draftWorldPosition.y, nextCameraSnapshot, canvasCenterX, canvasCenterY),
+              radius: draftWorldPosition.radius * nextCameraSnapshot.scale,
+              label,
+              icon: currentDraft.woop.icon,
+            }
+          : null;
+
+        const previousDraftMoonPosition = draftMoonPositionRef.current;
+        const draftChanged = previousDraftMoonPosition?.id !== nextDraftMoonPosition?.id
+          || previousDraftMoonPosition?.label !== nextDraftMoonPosition?.label
+          || previousDraftMoonPosition?.icon !== nextDraftMoonPosition?.icon
+          || Math.abs((previousDraftMoonPosition?.x ?? 0) - (nextDraftMoonPosition?.x ?? 0)) > 1
+          || Math.abs((previousDraftMoonPosition?.y ?? 0) - (nextDraftMoonPosition?.y ?? 0)) > 1
+          || Math.abs((previousDraftMoonPosition?.radius ?? 0) - (nextDraftMoonPosition?.radius ?? 0)) > 1;
+
+        if (draftChanged) {
+          draftMoonPositionRef.current = nextDraftMoonPosition;
+          setDraftMoonPosition(nextDraftMoonPosition);
+        }
+      } else if (draftMoonPositionRef.current) {
+        woopDraftPosRef.current = null;
+        draftMoonPositionRef.current = null;
+        setDraftMoonPosition(null);
+      } else if (!currentDraft) {
+        woopDraftPosRef.current = null;
+      }
+
       ctx.restore();
       frameRef.current = requestAnimationFrame(drawFrame);
     }
@@ -701,7 +917,7 @@ export function GoalCanvas({
         className="absolute inset-0 w-full h-full"
         style={{ pointerEvents: 'none' }}
       />
-      {(focusedOrbit === null || focusedOrbit === 'user') && userAspirations.length > 0 ? (
+      {(focusedOrbit === null || focusedOrbit === 'user') && (userAspirations.length > 0 || draftPlanetPosition) ? (
         <div className="absolute inset-0 pointer-events-none">
           {planetPositions.map((position) => {
             const aspiration = userAspirations.find((item) => item.id === position.id);
@@ -734,6 +950,32 @@ export function GoalCanvas({
               </div>
             );
           })}
+          {draftPlanetPosition ? (
+            <div
+              className="absolute flex flex-col items-center gap-1"
+              style={{
+                left: draftPlanetPosition.x,
+                top: draftPlanetPosition.y,
+                transform: 'translate(-50%, -50%)',
+                opacity: 0.5,
+                fontStyle: 'italic',
+              }}
+            >
+              <IconDisplay iconKey={draftPlanetPosition.icon} size={16} className="opacity-80" />
+              <span
+                className="text-white/60 text-center leading-tight"
+                style={{
+                  fontSize: 11,
+                  maxWidth: 72,
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                }}
+              >
+                {draftPlanetPosition.label}
+              </span>
+            </div>
+          ) : null}
         </div>
       ) : null}
       {(focusedOrbit === null || focusedOrbit === 'system') && adventureAspirations.length > 0 ? (
@@ -773,7 +1015,10 @@ export function GoalCanvas({
       ) : null}
       <div className="absolute inset-0 pointer-events-none">
         {moonPositions.map((moon, index) => {
-          const woop = selectedWoops[index];
+          const draftForMoon = woopDraft?.aspirationId === selectedAspirationId && woopDraft.woopIdx === index
+            ? woopDraft.woop
+            : null;
+          const woop = draftForMoon ?? selectedWoops[index];
           if (!woop) return null;
 
           return (
@@ -803,6 +1048,33 @@ export function GoalCanvas({
             </div>
           );
         })}
+        {woopDraft?.woopIdx === null && draftMoonPosition ? (
+          <div
+            className="absolute flex flex-col items-center gap-1"
+            style={{
+              left: draftMoonPosition.x,
+              top: draftMoonPosition.y,
+              transform: 'translate(-50%, -50%)',
+              pointerEvents: 'none',
+              opacity: 0.5,
+              fontStyle: 'italic',
+            }}
+          >
+            <IconDisplay iconKey={draftMoonPosition.icon} size={12} className="opacity-70" />
+            <span
+              className="text-white/50 text-center leading-tight"
+              style={{
+                fontSize: 10,
+                maxWidth: 64,
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+              }}
+            >
+              {draftMoonPosition.label}
+            </span>
+          </div>
+        ) : null}
         {selectedWoopIdx !== null && smarterPositions.map((smarterPosition) => {
           const woop = selectedWoops[selectedWoopIdx];
           const smarterIdx = parseInt(smarterPosition.id.split('-')[2], 10);

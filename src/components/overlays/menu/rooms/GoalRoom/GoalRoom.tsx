@@ -22,7 +22,7 @@ import {
 } from './goalEditorUtils';
 import type { GoalPage } from './goalEditorUtils';
 import { STARTER_ASPIRATION_IDS } from '../../../../../coach/StarterQuestLibrary';
-import type { Aspiration } from '../../../../../types';
+import type { Aspiration, Woop } from '../../../../../types';
 import { IconDisplay } from '../../../../shared/IconDisplay';
 
 type HabitatFilter = 'habitats' | 'adventures';
@@ -226,12 +226,17 @@ export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
   const [newActDraftId, setNewActDraftId] = useState<string | null>(null);
   const [drawerView, setDrawerView] = useState<DrawerView>({ level: 'none' });
   const [drawerEditMode, setDrawerEditMode] = useState(false);
+  const [aspirationDraft, setAspirationDraft] = useState<Aspiration | null>(null);
+  const [woopDraft, setWoopDraft] = useState<{ aspirationId: string; woopIdx: number | null; woop: Woop } | null>(null);
   const clearCanvasFocusRef = useRef<((scope: 'planet' | 'all') => void) | null>(null);
   const selectAspirationFromDrawerRef = useRef<((id: string) => void) | null>(null);
   const setSelectedWoopRef = useRef<((idx: number | null) => void) | null>(null);
   const setSelectedSmarterRef = useRef<((idx: number | null) => void) | null>(null);
   const editSnapshotRef = useRef<Aspiration | null>(null);
+  const woopSnapshotRef = useRef<Woop | null>(null);
+  const woopInsertIndexRef = useRef<number | null>(null);
   const drawerViewRef = useRef<DrawerView>(drawerView);
+  const drawerViewLevelRef = useRef(drawerView.level);
   const drawerEditModeRef = useRef(drawerEditMode);
 
   const aspirations = useProgressionStore((s) => s.aspirations);
@@ -246,6 +251,10 @@ export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
   useEffect(() => {
     autoCompleteSystemTask('task-sys-open-adventures');
   }, []);
+
+  useEffect(() => {
+    drawerViewLevelRef.current = drawerView.level;
+  }, [drawerView.level]);
 
   useEffect(() => {
     onNavHiddenChange(true);
@@ -346,6 +355,7 @@ export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
 
   function handleSaveAspiration(updated: Aspiration) {
     setAspiration(updated);
+    setAspirationDraft(null);
     if (drawerView.level === 'aspiration') {
       setDrawerView({ ...drawerView, aspiration: updated });
     }
@@ -353,21 +363,133 @@ export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
   }
 
   function handleLiveUpdateAspiration(updated: Aspiration) {
-    setAspiration(updated);
+    setAspirationDraft(updated);
     if (drawerView.level === 'aspiration') {
       setDrawerView({ ...drawerView, aspiration: updated });
     }
   }
 
   function handleCancelEdit() {
-    if (editSnapshotRef.current) {
-      setAspiration(editSnapshotRef.current);
-      if (drawerView.level === 'aspiration') {
-        setDrawerView({ ...drawerView, aspiration: editSnapshotRef.current });
-      }
+    if (drawerView.level === 'woop-edit') {
+      handleCancelWoopEdit();
+      return;
     }
+
+    if (drawerView.level === 'aspiration') {
+      setAspirationDraft(null);
+      setDrawerEditMode(false);
+
+      if (editSnapshotRef.current === null) {
+        setDrawerView({ level: 'orbit', orbit: 'user' });
+      } else {
+        setDrawerView({ ...drawerView, aspiration: editSnapshotRef.current });
+        editSnapshotRef.current = null;
+      }
+      return;
+    }
+
     editSnapshotRef.current = null;
     setDrawerEditMode(false);
+  }
+
+  function buildAspirationWithWoop(aspiration: Aspiration, updated: Woop, woopIdx: number | null): Aspiration {
+    const newWoops = [...aspiration.woops];
+
+    if (woopIdx !== null) {
+      newWoops[woopIdx] = updated;
+    } else {
+      const insertIndex = woopInsertIndexRef.current ?? newWoops.length;
+      newWoops[insertIndex] = updated;
+    }
+
+    return { ...aspiration, woops: newWoops };
+  }
+
+  function handleAddWoop() {
+    if (drawerView.level !== 'aspiration') return;
+
+    const asp = drawerView.aspiration;
+    woopSnapshotRef.current = null;
+    woopInsertIndexRef.current = asp.woops.length;
+    selectAspirationFromDrawerRef.current?.(asp.id);
+    setDrawerView({
+      level: 'woop-edit',
+      orbit: drawerView.orbit,
+      aspiration: asp,
+      woopIdx: null,
+    });
+  }
+
+  function handleSelectWoop(woopIdx: number) {
+    if (drawerView.level !== 'aspiration') return;
+
+    const asp = drawerView.aspiration;
+    setDrawerView({ level: 'woop', orbit: drawerView.orbit, aspiration: asp, woopIdx });
+    setSelectedSmarterRef.current?.(null);
+    setSelectedWoopRef.current?.(woopIdx);
+  }
+
+  function handleEditWoop(woopIdx: number) {
+    if (drawerView.level !== 'aspiration') return;
+
+    woopSnapshotRef.current = drawerView.aspiration.woops[woopIdx] ?? null;
+    woopInsertIndexRef.current = null;
+    setDrawerView({
+      level: 'woop-edit',
+      orbit: drawerView.orbit,
+      aspiration: drawerView.aspiration,
+      woopIdx,
+    });
+    setSelectedWoopRef.current?.(woopIdx);
+  }
+
+  function handleDeleteWoop(woopIdx: number) {
+    if (drawerView.level !== 'aspiration') return;
+
+    const asp = drawerView.aspiration;
+    const newWoops = asp.woops.filter((_, i) => i !== woopIdx);
+    const updatedAsp = { ...asp, woops: newWoops };
+    setAspiration(updatedAsp);
+    setDrawerView({ level: 'aspiration', orbit: drawerView.orbit, aspiration: updatedAsp });
+    setSelectedSmarterRef.current?.(null);
+    setSelectedWoopRef.current?.(null);
+  }
+
+  function handleSaveWoop(updated: Woop, woopIdx: number | null) {
+    if (drawerView.level !== 'woop-edit') return;
+
+    const updatedAsp = buildAspirationWithWoop(drawerView.aspiration, updated, woopIdx);
+    setAspiration(updatedAsp);
+    setWoopDraft(null);
+    setDrawerView({ level: 'aspiration', orbit: drawerView.orbit, aspiration: updatedAsp });
+    setSelectedWoopRef.current?.(null);
+    woopSnapshotRef.current = null;
+    woopInsertIndexRef.current = null;
+  }
+
+  function handleCancelWoopEdit() {
+    if (drawerView.level !== 'woop-edit') return;
+
+    const restoredWoops = [...drawerView.aspiration.woops];
+    const insertIndex = woopInsertIndexRef.current;
+
+    if (drawerView.woopIdx !== null && woopSnapshotRef.current) {
+      restoredWoops[drawerView.woopIdx] = woopSnapshotRef.current;
+    } else if (drawerView.woopIdx === null && insertIndex !== null && restoredWoops.length > insertIndex) {
+      restoredWoops.splice(insertIndex, 1);
+    }
+
+    const restoredAsp = { ...drawerView.aspiration, woops: restoredWoops };
+    setAspiration(restoredAsp);
+    setWoopDraft(null);
+    setDrawerView({
+      level: 'aspiration',
+      orbit: drawerView.orbit,
+      aspiration: restoredAsp,
+    });
+    setSelectedWoopRef.current?.(null);
+    woopSnapshotRef.current = null;
+    woopInsertIndexRef.current = null;
   }
 
   const handleDrawerEditModeChange = useCallback((editing: boolean) => {
@@ -379,13 +501,12 @@ export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
   }, []);
 
   function handleAddAspiration() {
-    editSnapshotRef.current = drawerView.level === 'aspiration' ? drawerView.aspiration : null;
     const userId = useUserStore.getState().user?.system.id ?? 'user';
     const newAsp = createBlankAspiration(userId);
-    setAspiration(newAsp);
+    editSnapshotRef.current = null;
+    setAspirationDraft(newAsp);
     setDrawerView({ level: 'aspiration', orbit: 'user', aspiration: newAsp });
-    window.setTimeout(() => setDrawerEditMode(true), 0);
-    selectAspirationFromDrawerRef.current?.(newAsp.id);
+    setDrawerEditMode(true);
   }
 
   function handleDeleteAspiration(aspirationId: string) {
@@ -432,7 +553,9 @@ export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
     setDrawerView({ level: 'aspiration', orbit, aspiration });
   }, []);
   function handleDrawerBack() {
-    if (drawerView.level === 'smarter') {
+    if (drawerView.level === 'woop-edit') {
+      handleCancelWoopEdit();
+    } else if (drawerView.level === 'smarter') {
       setDrawerView({
         level: 'woop',
         orbit: drawerView.orbit,
@@ -615,6 +738,8 @@ export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
           }}
           onRegisterSetSelectedWoop={(fn) => { setSelectedWoopRef.current = fn; }}
           onRegisterSetSelectedSmarter={(fn) => { setSelectedSmarterRef.current = fn; }}
+          aspirationDraft={aspirationDraft}
+          woopDraft={woopDraft}
         />
       </div>
       <GoalInspectorDrawer
@@ -637,6 +762,17 @@ export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
         onEditModeChange={handleDrawerEditModeChange}
         onSaveAspiration={handleSaveAspiration}
         onLiveUpdateAspiration={handleLiveUpdateAspiration}
+        onAddWoop={handleAddWoop}
+        onSelectWoop={handleSelectWoop}
+        onEditWoop={handleEditWoop}
+        onDeleteWoop={handleDeleteWoop}
+        onSaveWoop={handleSaveWoop}
+        onWoopDraftChange={(draft) => {
+          const currentView = drawerViewRef.current;
+          if (drawerViewLevelRef.current !== 'woop-edit' || currentView.level !== 'woop-edit') return;
+          setWoopDraft({ aspirationId: currentView.aspiration.id, woopIdx: currentView.woopIdx, woop: draft });
+        }}
+        onWoopDraftClear={() => setWoopDraft(null)}
         onCancelEdit={handleCancelEdit}
         onDeleteAspiration={handleDeleteAspiration}
       />

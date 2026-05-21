@@ -1,12 +1,15 @@
-import { useEffect, useState } from 'react';
-import type { Aspiration } from '../../../../../types';
+import { useEffect, useRef, useState } from 'react';
+import type { Aspiration, Woop } from '../../../../../types';
 import { IconDisplay } from '../../../../shared/IconDisplay';
 import { GoalAspirationEditor } from './GoalAspirationEditor';
+import { GoalWoopEditor } from './GoalWoopEditor';
+import { createBlankWoop } from './goalEditorUtils';
 
 export type DrawerView =
   | { level: 'none' }
   | { level: 'orbit'; orbit: 'user' | 'system' }
   | { level: 'aspiration'; orbit: 'user' | 'system'; aspiration: Aspiration }
+  | { level: 'woop-edit'; orbit: 'user' | 'system'; aspiration: Aspiration; woopIdx: number | null }
   | { level: 'woop'; orbit: 'user' | 'system'; aspiration: Aspiration; woopIdx: number }
   | { level: 'smarter'; orbit: 'user' | 'system'; aspiration: Aspiration; woopIdx: number; smarterIdx: number };
 
@@ -22,6 +25,13 @@ interface GoalInspectorDrawerProps {
   onEditModeChange: (editing: boolean) => void;
   onSaveAspiration: (aspiration: Aspiration) => void;
   onLiveUpdateAspiration: (aspiration: Aspiration) => void;
+  onAddWoop: () => void;
+  onSelectWoop: (woopIdx: number) => void;
+  onEditWoop: (woopIdx: number) => void;
+  onDeleteWoop: (woopIdx: number) => void;
+  onSaveWoop: (woop: Woop, woopIdx: number | null) => void;
+  onWoopDraftChange: (draft: Woop) => void;
+  onWoopDraftClear: () => void;
   onCancelEdit: () => void;
   onDeleteAspiration: (aspirationId: string) => void;
 }
@@ -29,17 +39,34 @@ interface GoalInspectorDrawerProps {
 function AspirationActionsMenu({
   aspirationId,
   onEdit,
+  onAddWoop,
   onDelete,
 }: {
   aspirationId: string;
   onEdit: () => void;
+  onAddWoop: () => void;
   onDelete: (aspirationId: string) => void;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+
+    function handleOutside(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+        setConfirmDelete(false);
+      }
+    }
+
+    document.addEventListener('mousedown', handleOutside);
+    return () => document.removeEventListener('mousedown', handleOutside);
+  }, [menuOpen]);
 
   return (
-    <div className="relative shrink-0">
+    <div ref={menuRef} className="relative shrink-0">
       <button
         onClick={() => {
           setMenuOpen((p) => !p);
@@ -60,6 +87,15 @@ function AspirationActionsMenu({
             className="w-full px-4 py-2.5 text-left text-white/70 text-sm hover:bg-white/5"
           >
             Edit
+          </button>
+          <button
+            onClick={() => {
+              setMenuOpen(false);
+              onAddWoop();
+            }}
+            className="w-full px-4 py-2.5 text-left text-white/70 text-sm hover:bg-white/5"
+          >
+            Add WOOP
           </button>
           <button
             onClick={() => setConfirmDelete(true)}
@@ -98,6 +134,102 @@ function AspirationActionsMenu({
   );
 }
 
+function WoopActionsMenu({
+  woopIdx,
+  onEdit,
+  onDelete,
+}: {
+  woopIdx: number;
+  onEdit: (woopIdx: number) => void;
+  onDelete: (woopIdx: number) => void;
+}) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+
+    function handleOutside(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+        setConfirmDelete(false);
+      }
+    }
+
+    document.addEventListener('mousedown', handleOutside);
+    return () => document.removeEventListener('mousedown', handleOutside);
+  }, [menuOpen]);
+
+  return (
+    <div ref={menuRef} className="relative shrink-0">
+      <button
+        onClick={() => {
+          setMenuOpen((p) => !p);
+          setConfirmDelete(false);
+        }}
+        className="text-white/30 hover:text-white/60 px-2 py-1 text-base leading-none"
+      >
+        ...
+      </button>
+
+      {menuOpen && !confirmDelete && (
+        <div className="absolute right-0 top-7 bg-gray-900 border border-white/10 rounded-lg overflow-hidden z-10 min-w-[120px]">
+          <button
+            onClick={() => {
+              setMenuOpen(false);
+              onEdit(woopIdx);
+            }}
+            className="w-full px-4 py-2.5 text-left text-white/70 text-sm hover:bg-white/5"
+          >
+            Edit
+          </button>
+          <button
+            onClick={() => setConfirmDelete(true)}
+            className="w-full px-4 py-2.5 text-left text-red-400/80 text-sm hover:bg-white/5"
+          >
+            Delete
+          </button>
+          <button
+            onClick={() => {
+              setMenuOpen(false);
+              console.log('Add SMARTER');
+            }}
+            className="w-full px-4 py-2.5 text-left text-white/70 text-sm hover:bg-white/5"
+          >
+            Add SMARTER
+          </button>
+        </div>
+      )}
+
+      {menuOpen && confirmDelete && (
+        <div className="absolute right-0 top-7 bg-gray-900 border border-red-500/20 rounded-lg overflow-hidden z-10 min-w-[150px]">
+          <p className="px-4 pt-3 pb-1 text-white/40 text-xs">Delete this WOOP?</p>
+          <button
+            onClick={() => {
+              onDelete(woopIdx);
+              setMenuOpen(false);
+              setConfirmDelete(false);
+            }}
+            className="w-full px-4 py-2.5 text-left text-red-400 text-sm hover:bg-white/5"
+          >
+            Yes, delete
+          </button>
+          <button
+            onClick={() => {
+              setConfirmDelete(false);
+              setMenuOpen(false);
+            }}
+            className="w-full px-4 py-2.5 text-left text-white/40 text-sm hover:bg-white/5 border-t border-white/5"
+          >
+            Cancel
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function GoalInspectorDrawer({
   open,
   view,
@@ -110,15 +242,28 @@ export function GoalInspectorDrawer({
   onEditModeChange,
   onSaveAspiration,
   onLiveUpdateAspiration,
+  onAddWoop,
+  onSelectWoop,
+  onEditWoop,
+  onDeleteWoop,
+  onSaveWoop,
+  onWoopDraftChange,
+  onWoopDraftClear,
   onCancelEdit,
   onDeleteAspiration,
 }: GoalInspectorDrawerProps) {
+  const prevLevelRef = useRef(view.level);
   useEffect(() => {
-    onEditModeChange(false);
+    if (prevLevelRef.current === 'aspiration' && view.level !== 'aspiration') {
+      onEditModeChange(false);
+    }
+    prevLevelRef.current = view.level;
   }, [view.level, onEditModeChange]);
 
   const label = view.level === 'smarter'
     ? view.aspiration.woops[view.woopIdx]?.smarters[view.smarterIdx]?.name || 'SMARTER'
+    : view.level === 'woop-edit'
+    ? view.woopIdx !== null ? 'Edit WOOP' : 'New WOOP'
     : view.level === 'woop'
     ? view.aspiration.woops[view.woopIdx]?.name || 'WOOP'
     : view.level === 'aspiration'
@@ -223,6 +368,7 @@ export function GoalInspectorDrawer({
               <AspirationActionsMenu
                 aspirationId={view.aspiration.id}
                 onEdit={() => onEditModeChange(true)}
+                onAddWoop={onAddWoop}
                 onDelete={onDeleteAspiration}
               />
             )}
@@ -232,9 +378,10 @@ export function GoalInspectorDrawer({
             <div className="flex flex-col gap-1">
               <p className="text-white/20 text-xs uppercase tracking-wider mb-1">WOOPs</p>
               {view.aspiration.woops.map((woop, i) => (
-                <div
+                <button
                   key={i}
-                  className="flex items-start gap-2 py-2 border-b border-white/5"
+                  onClick={() => onSelectWoop(i)}
+                  className="w-full flex items-center gap-2 py-2 border-b border-white/5 text-left"
                 >
                   <IconDisplay iconKey={woop.icon} size={14} className="opacity-60 shrink-0 mt-0.5" />
                   <div className="flex-1 min-w-0">
@@ -243,14 +390,10 @@ export function GoalInspectorDrawer({
                       <p className="text-white/25 text-xs mt-0.5 truncate">{woop.wish}</p>
                     )}
                   </div>
-                  <span className={`text-xs px-1.5 py-0.5 rounded-full shrink-0 ${
-                    woop.completionState === 'complete'
-                      ? 'bg-green-900/40 text-green-400'
-                      : 'bg-white/5 text-white/20'
-                  }`}>
+                  <span className="text-xs px-1.5 py-0.5 rounded-full bg-white/5 text-white/20 shrink-0">
                     {woop.smarters.length} SMARTERs
                   </span>
-                </div>
+                </button>
               ))}
             </div>
           )}
@@ -260,6 +403,22 @@ export function GoalInspectorDrawer({
           )}
         </div>
       ) : null}
+      {view.level === 'woop-edit' ? (() => {
+        const editingWoop = view.woopIdx !== null
+          ? view.aspiration.woops[view.woopIdx]
+          : createBlankWoop(view.aspiration.woops.length);
+        if (!editingWoop) return null;
+
+        return (
+          <GoalWoopEditor
+            woop={editingWoop}
+            onSave={(updated) => onSaveWoop(updated, view.woopIdx)}
+            onCancel={onCancelEdit}
+            onDraftChange={onWoopDraftChange}
+            onDraftClear={onWoopDraftClear}
+          />
+        );
+      })() : null}
       {view.level === 'woop' ? (() => {
         const woop = view.aspiration.woops[view.woopIdx];
         if (!woop) return null;
@@ -271,6 +430,13 @@ export function GoalInspectorDrawer({
               <p className="text-white/80 text-sm font-medium flex-1 truncate">
                 {woop.name || woop.wish || 'WOOP'}
               </p>
+              {view.aspiration.owner !== 'coach' && (
+                <WoopActionsMenu
+                  woopIdx={view.woopIdx}
+                  onEdit={onEditWoop}
+                  onDelete={onDeleteWoop}
+                />
+              )}
             </div>
 
             {woop.wish && (
