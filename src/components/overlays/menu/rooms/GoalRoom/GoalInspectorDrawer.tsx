@@ -1,5 +1,7 @@
+import { useEffect, useState } from 'react';
 import type { Aspiration } from '../../../../../types';
 import { IconDisplay } from '../../../../shared/IconDisplay';
+import { GoalAspirationEditor } from './GoalAspirationEditor';
 
 export type DrawerView =
   | { level: 'none' }
@@ -16,6 +18,84 @@ interface GoalInspectorDrawerProps {
   adventureAspirations: Aspiration[];
   onSelectAspiration: (aspiration: Aspiration) => void;
   onAddAspiration: () => void;
+  editMode: boolean;
+  onEditModeChange: (editing: boolean) => void;
+  onSaveAspiration: (aspiration: Aspiration) => void;
+  onLiveUpdateAspiration: (aspiration: Aspiration) => void;
+  onCancelEdit: () => void;
+  onDeleteAspiration: (aspirationId: string) => void;
+}
+
+function AspirationActionsMenu({
+  aspirationId,
+  onEdit,
+  onDelete,
+}: {
+  aspirationId: string;
+  onEdit: () => void;
+  onDelete: (aspirationId: string) => void;
+}) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+
+  return (
+    <div className="relative shrink-0">
+      <button
+        onClick={() => {
+          setMenuOpen((p) => !p);
+          setConfirmDelete(false);
+        }}
+        className="text-white/30 hover:text-white/60 px-2 py-1 text-base leading-none"
+      >
+        ...
+      </button>
+
+      {menuOpen && !confirmDelete && (
+        <div className="absolute right-0 top-7 bg-gray-900 border border-white/10 rounded-lg overflow-hidden z-10 min-w-[120px]">
+          <button
+            onClick={() => {
+              setMenuOpen(false);
+              onEdit();
+            }}
+            className="w-full px-4 py-2.5 text-left text-white/70 text-sm hover:bg-white/5"
+          >
+            Edit
+          </button>
+          <button
+            onClick={() => setConfirmDelete(true)}
+            className="w-full px-4 py-2.5 text-left text-red-400/80 text-sm hover:bg-white/5"
+          >
+            Delete
+          </button>
+        </div>
+      )}
+
+      {menuOpen && confirmDelete && (
+        <div className="absolute right-0 top-7 bg-gray-900 border border-red-500/20 rounded-lg overflow-hidden z-10 min-w-[150px]">
+          <p className="px-4 pt-3 pb-1 text-white/40 text-xs">Delete this aspiration?</p>
+          <button
+            onClick={() => {
+              onDelete(aspirationId);
+              setMenuOpen(false);
+              setConfirmDelete(false);
+            }}
+            className="w-full px-4 py-2.5 text-left text-red-400 text-sm hover:bg-white/5"
+          >
+            Yes, delete
+          </button>
+          <button
+            onClick={() => {
+              setConfirmDelete(false);
+              setMenuOpen(false);
+            }}
+            className="w-full px-4 py-2.5 text-left text-white/40 text-sm hover:bg-white/5 border-t border-white/5"
+          >
+            Cancel
+          </button>
+        </div>
+      )}
+    </div>
+  );
 }
 
 export function GoalInspectorDrawer({
@@ -26,7 +106,17 @@ export function GoalInspectorDrawer({
   adventureAspirations,
   onSelectAspiration,
   onAddAspiration,
+  editMode,
+  onEditModeChange,
+  onSaveAspiration,
+  onLiveUpdateAspiration,
+  onCancelEdit,
+  onDeleteAspiration,
 }: GoalInspectorDrawerProps) {
+  useEffect(() => {
+    onEditModeChange(false);
+  }, [view.level, onEditModeChange]);
+
   const label = view.level === 'smarter'
     ? view.aspiration.woops[view.woopIdx]?.smarters[view.smarterIdx]?.name || 'SMARTER'
     : view.level === 'woop'
@@ -108,7 +198,18 @@ export function GoalInspectorDrawer({
           )}
         </>
       ) : null}
-      {view.level === 'aspiration' ? (
+      {view.level === 'aspiration' && editMode ? (
+        <GoalAspirationEditor
+          aspiration={view.aspiration}
+          onSave={(updated) => {
+            onSaveAspiration(updated);
+            onEditModeChange(false);
+          }}
+          onCancel={onCancelEdit}
+          onLiveUpdate={onLiveUpdateAspiration}
+        />
+      ) : null}
+      {view.level === 'aspiration' && !editMode ? (
         <div className="flex-1 overflow-y-auto px-4 py-3 flex flex-col gap-4">
           <div className="flex items-center gap-3">
             <IconDisplay iconKey={view.aspiration.icon} size={28} className="opacity-90 shrink-0" />
@@ -119,9 +220,11 @@ export function GoalInspectorDrawer({
               )}
             </div>
             {view.aspiration.owner !== 'coach' && (
-              <button className="text-white/30 text-xs hover:text-white/60 shrink-0">
-                Edit
-              </button>
+              <AspirationActionsMenu
+                aspirationId={view.aspiration.id}
+                onEdit={() => onEditModeChange(true)}
+                onDelete={onDeleteAspiration}
+              />
             )}
           </div>
 

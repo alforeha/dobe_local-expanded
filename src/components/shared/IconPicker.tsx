@@ -8,9 +8,10 @@ interface IconPickerProps {
   label?: string;
   align?: 'left' | 'center' | 'right';
   allowedKeys?: string[];
+  forceUpward?: boolean;
 }
 
-export function IconPicker({ value, onChange, label, align = 'center', allowedKeys }: IconPickerProps) {
+export function IconPicker({ value, onChange, label, align = 'center', allowedKeys, forceUpward }: IconPickerProps) {
   const [open, setOpen] = useState(false);
   const [popoverPosition, setPopoverPosition] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -40,7 +41,7 @@ export function IconPicker({ value, onChange, label, align = 'center', allowedKe
       const pickerWidth = pickerRef.current?.offsetWidth ?? 352;
       const triggerRect = triggerRef.current.getBoundingClientRect();
       const spaceBelow = window.innerHeight - triggerRect.bottom;
-      const shouldOpenUpward = spaceBelow < pickerHeight && triggerRect.top > spaceBelow;
+      const shouldOpenUpward = forceUpward || (spaceBelow < pickerHeight && triggerRect.top > spaceBelow);
       const shouldAlignRight = window.innerWidth - triggerRect.left < pickerWidth;
 
       const top = shouldOpenUpward
@@ -70,7 +71,7 @@ export function IconPicker({ value, onChange, label, align = 'center', allowedKe
       window.removeEventListener('resize', updatePopoverPosition);
       window.removeEventListener('scroll', updatePopoverPosition, true);
     };
-  }, [align, open]);
+  }, [align, forceUpward, open]);
 
   const normalised = value?.toLowerCase?.() ?? '';
   const entries = Object.entries(ICON_MAP).filter(([key]) => (

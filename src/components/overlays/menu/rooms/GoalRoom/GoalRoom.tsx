@@ -225,15 +225,23 @@ export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
   const [draftActs, setDraftActs] = useState<Record<string, Aspiration>>({});
   const [newActDraftId, setNewActDraftId] = useState<string | null>(null);
   const [drawerView, setDrawerView] = useState<DrawerView>({ level: 'none' });
+  const [drawerEditMode, setDrawerEditMode] = useState(false);
   const clearCanvasFocusRef = useRef<((scope: 'planet' | 'all') => void) | null>(null);
   const selectAspirationFromDrawerRef = useRef<((id: string) => void) | null>(null);
   const setSelectedWoopRef = useRef<((idx: number | null) => void) | null>(null);
   const setSelectedSmarterRef = useRef<((idx: number | null) => void) | null>(null);
+  const editSnapshotRef = useRef<Aspiration | null>(null);
+  const drawerViewRef = useRef<DrawerView>(drawerView);
+  const drawerEditModeRef = useRef(drawerEditMode);
 
   const aspirations = useProgressionStore((s) => s.aspirations);
   const setAspiration = useProgressionStore((s) => s.setAspiration);
+  const removeAspiration = useProgressionStore((s) => s.removeAspiration);
   const user = useUserStore((s) => s.user);
   const currentPage = pageStack[pageStack.length - 1] ?? { type: 'list' as const };
+
+  drawerViewRef.current = drawerView;
+  drawerEditModeRef.current = drawerEditMode;
 
   useEffect(() => {
     autoCompleteSystemTask('task-sys-open-adventures');
@@ -334,6 +342,58 @@ export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
     updateDraftAct(normalized);
     if (newActDraftId === normalized.id) setNewActDraftId(null);
     popPage();
+  }
+
+  function handleSaveAspiration(updated: Aspiration) {
+    setAspiration(updated);
+    if (drawerView.level === 'aspiration') {
+      setDrawerView({ ...drawerView, aspiration: updated });
+    }
+    editSnapshotRef.current = null;
+  }
+
+  function handleLiveUpdateAspiration(updated: Aspiration) {
+    setAspiration(updated);
+    if (drawerView.level === 'aspiration') {
+      setDrawerView({ ...drawerView, aspiration: updated });
+    }
+  }
+
+  function handleCancelEdit() {
+    if (editSnapshotRef.current) {
+      setAspiration(editSnapshotRef.current);
+      if (drawerView.level === 'aspiration') {
+        setDrawerView({ ...drawerView, aspiration: editSnapshotRef.current });
+      }
+    }
+    editSnapshotRef.current = null;
+    setDrawerEditMode(false);
+  }
+
+  const handleDrawerEditModeChange = useCallback((editing: boolean) => {
+    const currentView = drawerViewRef.current;
+    if (editing && !drawerEditModeRef.current) {
+      editSnapshotRef.current = currentView.level === 'aspiration' ? currentView.aspiration : null;
+    }
+    setDrawerEditMode(editing);
+  }, []);
+
+  function handleAddAspiration() {
+    editSnapshotRef.current = drawerView.level === 'aspiration' ? drawerView.aspiration : null;
+    const userId = useUserStore.getState().user?.system.id ?? 'user';
+    const newAsp = createBlankAspiration(userId);
+    setAspiration(newAsp);
+    setDrawerView({ level: 'aspiration', orbit: 'user', aspiration: newAsp });
+    window.setTimeout(() => setDrawerEditMode(true), 0);
+    selectAspirationFromDrawerRef.current?.(newAsp.id);
+  }
+
+  function handleDeleteAspiration(aspirationId: string) {
+    removeAspiration(aspirationId);
+    setDrawerView({ level: 'orbit', orbit: 'user' });
+    setDrawerEditMode(false);
+    editSnapshotRef.current = null;
+    clearCanvasFocusRef.current?.('planet');
   }
 
   function cancelActDraft(page: GoalPage) {
@@ -571,8 +631,14 @@ export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
           setSelectedWoopRef.current?.(null);
         }}
         onAddAspiration={() => {
-          console.log('Add aspiration tapped');
+          handleAddAspiration();
         }}
+        editMode={drawerEditMode}
+        onEditModeChange={handleDrawerEditModeChange}
+        onSaveAspiration={handleSaveAspiration}
+        onLiveUpdateAspiration={handleLiveUpdateAspiration}
+        onCancelEdit={handleCancelEdit}
+        onDeleteAspiration={handleDeleteAspiration}
       />
       {/* page stack — reconnects when drawer is wired */}
       {shouldRenderPageStack ? pageStackContent : null}
