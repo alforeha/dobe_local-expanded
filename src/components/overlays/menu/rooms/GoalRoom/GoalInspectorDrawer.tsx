@@ -6,6 +6,7 @@ import { GoalAspirationEditor } from './GoalAspirationEditor';
 import { GoalSmarterEditor } from './GoalSmarterEditor';
 import { GoalWoopEditor } from './GoalWoopEditor';
 import { createBlankSmarter, createBlankWoop } from './goalEditorUtils';
+import { analyzeWoopText, BANK_COLORS, type WoopBankMatch } from './woopKeywordEngine';
 
 export type DrawerView =
   | { level: 'none' }
@@ -547,75 +548,15 @@ export function GoalInspectorDrawer({
         if (!woop) return null;
 
         return (
-          <div className="flex-1 overflow-y-auto px-4 py-3 flex flex-col gap-4">
-            <div className="flex items-center gap-3">
-              <IconDisplay iconKey={woop.icon} size={24} className="opacity-80 shrink-0" />
-              <p className="text-white/80 text-sm font-medium flex-1 truncate">
-                {woop.name || woop.wish || 'WOOP'}
-              </p>
-              {view.aspiration.owner !== 'coach' && (
-                <WoopActionsMenu
-                  woopIdx={view.woopIdx}
-                  onEdit={onEditWoop}
-                  onDelete={onDeleteWoop}
-                  onAddSmarter={onAddSmarter}
-                />
-              )}
-            </div>
-
-            {woop.wish && (
-              <div>
-                <p className="text-white/20 text-xs uppercase tracking-wider mb-1">Wish</p>
-                <p className="text-white/60 text-sm">{woop.wish}</p>
-              </div>
-            )}
-
-            {woop.outcome.length > 0 && (
-              <div>
-                <p className="text-white/20 text-xs uppercase tracking-wider mb-1">Outcome</p>
-                {woop.outcome.map((o, i) => (
-                  <p key={i} className="text-white/60 text-sm">{o}</p>
-                ))}
-              </div>
-            )}
-
-            {woop.obstacle.length > 0 && (
-              <div>
-                <p className="text-white/20 text-xs uppercase tracking-wider mb-1">Obstacle</p>
-                {woop.obstacle.map((o, i) => (
-                  <p key={i} className="text-white/60 text-sm">{o}</p>
-                ))}
-              </div>
-            )}
-
-            {woop.smarters.length > 0 && (
-              <div>
-                <p className="text-white/20 text-xs uppercase tracking-wider mb-1">SMARTERs</p>
-                {woop.smarters.map((s, i) => (
-                  <div
-                    key={i}
-                    onClick={() => onSelectSmarter(i)}
-                    role="button"
-                    tabIndex={0}
-                    onKeyDown={(event) => {
-                      if (event.key === 'Enter' || event.key === ' ') onSelectSmarter(i);
-                    }}
-                    className="w-full flex items-center gap-2 py-2 border-b border-white/5 text-left cursor-pointer"
-                  >
-                    <IconDisplay iconKey={s.icon} size={14} className="opacity-60 shrink-0" />
-                    <p className="text-white/60 text-xs flex-1 truncate">{s.name || 'SMARTER'}</p>
-                    <span className={`text-xs px-1.5 py-0.5 rounded-full ${
-                      s.completionState === 'complete'
-                        ? 'bg-green-900/40 text-green-400'
-                        : 'bg-white/5 text-white/20'
-                    }`}>
-                      {s.completionState}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+          <WoopDetailView
+            woop={woop}
+            aspirationOwner={view.aspiration.owner}
+            woopIdx={view.woopIdx}
+            onEditWoop={onEditWoop}
+            onDeleteWoop={onDeleteWoop}
+            onAddSmarter={onAddSmarter}
+            onSelectSmarter={onSelectSmarter}
+          />
         );
       })() : null}
       {view.level === 'smarter-edit' ? (() => {
@@ -687,6 +628,167 @@ export function GoalInspectorDrawer({
           </div>
         );
       })() : null}
+    </div>
+  );
+}
+
+function WoopDetailView({
+  woop,
+  aspirationOwner,
+  woopIdx,
+  onEditWoop,
+  onDeleteWoop,
+  onAddSmarter,
+  onSelectSmarter,
+}: {
+  woop: Woop;
+  aspirationOwner: string;
+  woopIdx: number;
+  onEditWoop: (idx: number) => void;
+  onDeleteWoop: (idx: number) => void;
+  onAddSmarter: () => void;
+  onSelectSmarter: (idx: number) => void;
+}) {
+  const [activeTab, setActiveTab] = useState(0);
+  const TABS = ['W', 'O', 'O', 'P'];
+  const wishSeq = analyzeWoopText(woop.wish);
+  const outcomeSeq = analyzeWoopText(woop.outcome.join(' '));
+  const obstacleSeq = analyzeWoopText(woop.obstacle.join(' '));
+
+  function buildDisplayGradient(seq: WoopBankMatch[], alpha = 0.18): string {
+    if (seq.length === 0) return 'transparent';
+    const colors = seq.map(bank => BANK_COLORS[bank].replace('1)', `${alpha})`));
+    if (colors.length === 1) return `linear-gradient(to bottom, ${colors[0]}, transparent)`;
+    return `linear-gradient(to right, ${colors.join(', ')})`;
+  }
+
+  function buildAllGradient(): string {
+    const allSeq = [...wishSeq, ...outcomeSeq, ...obstacleSeq];
+    if (allSeq.length === 0) return 'transparent';
+    const colors = allSeq.map(bank => BANK_COLORS[bank].replace('1)', '0.18)'));
+    if (colors.length === 1) return `linear-gradient(to bottom, ${colors[0]}, transparent)`;
+    return `linear-gradient(to right, ${colors.join(', ')})`;
+  }
+
+  return (
+    <div className="flex flex-col flex-1 overflow-hidden">
+      <div className="flex items-center gap-3 px-4 pt-3 pb-2 border-b border-white/5">
+        <IconDisplay iconKey={woop.icon} size={20} className="opacity-80 shrink-0" />
+        <p className="text-white/80 text-sm font-medium flex-1 truncate">
+          {woop.name || woop.wish || 'WOOP'}
+        </p>
+        {aspirationOwner !== 'coach' && (
+          <WoopActionsMenu
+            woopIdx={woopIdx}
+            onEdit={onEditWoop}
+            onDelete={onDeleteWoop}
+            onAddSmarter={onAddSmarter}
+          />
+        )}
+      </div>
+
+      <div className="flex border-b border-white/5">
+        {TABS.map((letter, i) => (
+          <button
+            key={i}
+            onClick={() => setActiveTab(i)}
+            className={`flex-1 py-2.5 text-xs font-medium transition-colors border-b-2 -mb-px ${
+              activeTab === i
+                ? 'text-white border-indigo-400'
+                : 'text-white/25 border-transparent hover:text-white/50'
+            }`}
+          >
+            {letter}
+          </button>
+        ))}
+      </div>
+
+      <div
+        className="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-3 transition-all duration-700"
+        style={{
+          background: activeTab === 3
+            ? buildAllGradient()
+            : activeTab === 0
+            ? buildDisplayGradient(wishSeq)
+            : activeTab === 1
+            ? buildDisplayGradient(outcomeSeq)
+            : buildDisplayGradient(obstacleSeq),
+        }}
+      >
+        {activeTab === 0 && (
+          <div className="flex flex-col items-center justify-center flex-1 gap-3 py-4">
+            <p className="text-white/30 text-xs uppercase tracking-wider">Wish</p>
+            <div className="w-full rounded-lg border border-white/10 px-4 py-3 bg-black/20">
+              <p className="text-white/70 text-sm text-center leading-relaxed">
+                {woop.wish || 'No wish set'}
+              </p>
+            </div>
+          </div>
+        )}
+        {activeTab === 1 && (
+          <div className="flex flex-col gap-3 py-4">
+            <p className="text-white/30 text-xs uppercase tracking-wider text-center">Outcome</p>
+            {woop.outcome.length > 0
+              ? woop.outcome.map((o, i) => (
+                  <div key={i} className="w-full rounded-lg border border-white/10 px-4 py-3 bg-black/20">
+                    <p className="text-white/70 text-sm leading-relaxed">{o}</p>
+                  </div>
+                ))
+              : <p className="text-white/25 text-xs text-center py-4">No outcomes defined</p>
+            }
+          </div>
+        )}
+        {activeTab === 2 && (
+          <div className="flex flex-col gap-3 py-4">
+            <p className="text-white/30 text-xs uppercase tracking-wider text-center">Obstacle</p>
+            {woop.obstacle.length > 0
+              ? woop.obstacle.map((o, i) => (
+                  <div key={i} className="w-full rounded-lg border border-white/10 px-4 py-3 bg-black/20">
+                    <p className="text-white/70 text-sm leading-relaxed">{o}</p>
+                  </div>
+                ))
+              : <p className="text-white/25 text-xs text-center py-4">No obstacles defined</p>
+            }
+          </div>
+        )}
+        {activeTab === 3 && (
+          <div className="flex flex-col gap-2">
+            {woop.smarters.length > 0
+              ? woop.smarters.map((smarter, i) => (
+                  <div
+                    key={i}
+                    onClick={() => onSelectSmarter(i)}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') onSelectSmarter(i);
+                    }}
+                    className="flex items-center gap-2 py-2 border-b border-white/5 cursor-pointer"
+                  >
+                    <IconDisplay iconKey={smarter.icon} size={14} className="opacity-60 shrink-0" />
+                    <p className="text-white/60 text-xs flex-1 truncate">{smarter.name || 'SMARTER'}</p>
+                    <span className={`text-xs px-1.5 py-0.5 rounded-full ${
+                      smarter.completionState === 'complete'
+                        ? 'bg-green-900/40 text-green-400'
+                        : 'bg-white/5 text-white/20'
+                    }`}>
+                      {smarter.completionState}
+                    </span>
+                  </div>
+                ))
+              : <p className="text-white/25 text-xs text-center py-4">No SMARTERs yet</p>
+            }
+            {aspirationOwner !== 'coach' && (
+              <button
+                onClick={onAddSmarter}
+                className="w-full py-2 rounded-lg border border-white/10 text-white/40 text-xs hover:text-white/60 mt-2"
+              >
+                + Add SMARTER
+              </button>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
