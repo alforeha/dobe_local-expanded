@@ -6,7 +6,15 @@
 // as meaningful progress events for this Quest.
 // ─────────────────────────────────────────
 
+export interface QuestMeasurableTaskTarget {
+  ref: string;
+  target: number;
+}
+
 export interface QuestMeasurable {
   taskTemplateRefs?: string[];
+  taskTargets?: QuestMeasurableTaskTarget[];
   resourceRef?: string;
+  targetCompletions?: number;
+  frequency?: 'daily' | 'weekly' | 'monthly';
 }

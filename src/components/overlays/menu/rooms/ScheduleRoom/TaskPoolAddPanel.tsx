@@ -10,7 +10,6 @@ import type { InlineTaskEntry, ResourceTaskEntry, TaskEntry, TaskType, TemplateT
 import type { InventoryItemTemplate, ItemRecurringTask } from '../../../../../types/resource';
 import type { InputFields, TaskTemplate } from '../../../../../types/taskTemplate';
 import type { StatGroupKey } from '../../../../../types/user';
-import { normalizeRecurrenceMode } from '../../../../../types/resource';
 import { getUserInventoryItemTemplates, mergeInventoryItemTemplates, resolveInventoryItemTemplate } from '../../../../../utils/inventoryItems';
 import { getCustomTemplatePool, getLibraryTemplatePool, resolveTaskTemplate } from '../../../../../utils/resolveTaskTemplate';
 import { IconDisplay } from '../../../../shared/IconDisplay';
@@ -50,6 +49,7 @@ interface TaskPoolAddPanelProps {
   onAdd: (entry: TaskEntry) => void;
   onClose: () => void;
   embedded?: boolean;
+  hideTabs?: AddPanelTab[];
   initialTab?: AddPanelTab;
 }
 
@@ -197,7 +197,7 @@ interface ResourceTaskGroup {
   subgroups: ResourceTaskSubgroup[];
 }
 
-export function TaskPoolAddPanel({ onAdd, onClose, embedded = false, initialTab = 'library' }: TaskPoolAddPanelProps) {
+export function TaskPoolAddPanel({ onAdd, onClose, embedded = false, hideTabs, initialTab = 'library' }: TaskPoolAddPanelProps) {
   const taskTemplates = useScheduleStore((state) => state.taskTemplates);
   const resources = useResourceStore((state) => state.resources);
   const user = useUserStore((state) => state.user);
@@ -211,10 +211,17 @@ export function TaskPoolAddPanel({ onAdd, onClose, embedded = false, initialTab 
   const [taskType, setTaskType] = useState<DraftTaskType>('CHECK');
   const [draftInputFields, setDraftInputFields] = useState<Partial<InputFields>>(defaultInputFields(taskType));
   const [error, setError] = useState('');
+  const visibleTabs = ADD_PANEL_TABS.filter((tab) => !hideTabs?.includes(tab.id));
 
   useEffect(() => {
     setDraftInputFields(defaultInputFields(taskType));
   }, [taskType]);
+
+  useEffect(() => {
+    if (hideTabs?.includes(activeTab)) {
+      setActiveTab('library');
+    }
+  }, [activeTab, hideTabs]);
 
   const libraryTemplates = useMemo(
     () => getLibraryTemplatePool().filter((template): template is TaskTemplate & { id: string } => Boolean(template.id) && template.isSystem !== true),
@@ -240,7 +247,6 @@ export function TaskPoolAddPanel({ onAdd, onClose, embedded = false, initialTab 
     for (const resource of Object.values(resources)) {
       if (resource.type === 'home') {
         for (const chore of resource.chores ?? []) {
-          if (normalizeRecurrenceMode(chore.recurrenceMode) !== 'never') continue;
           rows.push({
             key: `home:${resource.id}:${chore.id}`,
             resourceId: resource.id,
@@ -259,8 +265,6 @@ export function TaskPoolAddPanel({ onAdd, onClose, embedded = false, initialTab 
               const itemName = itemTemplate?.name ?? 'Unknown Item';
 
               for (const task of placement.recurringTasks ?? []) {
-                if (normalizeRecurrenceMode(task.recurrenceMode) !== 'never') continue;
-
                 rows.push({
                   key: `home:${resource.id}:room:${room.id}:placement:${placement.id}:task:${task.id}`,
                   groupKey: `home:${resource.id}:room:${room.id}`,
@@ -285,7 +289,6 @@ export function TaskPoolAddPanel({ onAdd, onClose, embedded = false, initialTab 
 
       if (resource.type === 'vehicle') {
         for (const task of resource.maintenanceTasks ?? []) {
-          if (normalizeRecurrenceMode(task.recurrenceMode) !== 'never') continue;
           rows.push({
             key: `vehicle:${resource.id}:${task.id}`,
             resourceId: resource.id,
@@ -301,7 +304,6 @@ export function TaskPoolAddPanel({ onAdd, onClose, embedded = false, initialTab 
 
       if (resource.type === 'account') {
         for (const task of resource.accountTasks ?? []) {
-          if (normalizeRecurrenceMode(task.recurrenceMode) !== 'never') continue;
           rows.push({
             key: `account:${resource.id}:${task.id}`,
             resourceId: resource.id,
@@ -326,7 +328,6 @@ export function TaskPoolAddPanel({ onAdd, onClose, embedded = false, initialTab 
           const itemTemplate = mergedTemplates.find((template) => template.id === item.itemTemplateRef);
           const itemName = itemTemplate?.name ?? item.itemTemplateRef;
           for (const task of item.recurringTasks ?? []) {
-            if (normalizeRecurrenceMode(task.recurrenceMode) !== 'never') continue;
             rows.push({
               key: `inventory:${resource.id}:${task.id}`,
               resourceId: resource.id,
@@ -342,7 +343,6 @@ export function TaskPoolAddPanel({ onAdd, onClose, embedded = false, initialTab 
 
         for (const container of resource.containers ?? []) {
           if (container.kind !== 'bag' || !container.carryTask) continue;
-          if (normalizeRecurrenceMode(container.carryTask.recurrenceMode) !== 'never') continue;
           rows.push({
             key: `inventory:${resource.id}:bag:${container.id}:${container.carryTask.id}`,
             groupKey: `inventory:${resource.id}:bags`,
@@ -481,7 +481,7 @@ export function TaskPoolAddPanel({ onAdd, onClose, embedded = false, initialTab 
       <div className="flex flex-col gap-4">
         {!embedded && (
           <div className="flex flex-wrap gap-2 border-b border-gray-200 pb-3 dark:border-gray-700">
-            {ADD_PANEL_TABS.map((tab) => (
+            {visibleTabs.map((tab) => (
               <button
                 key={tab.id}
                 type="button"

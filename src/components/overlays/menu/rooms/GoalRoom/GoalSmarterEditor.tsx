@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react';
+import { useScheduleStore } from '../../../../../stores/useScheduleStore';
 import type { ExitStrategyOption, Smarter } from '../../../../../types';
 import type { Weekday } from '../../../../../types/taskTemplate';
+import { IconDisplay } from '../../../../shared/IconDisplay';
+import { TaskPoolAddPanel } from '../ScheduleRoom/TaskPoolAddPanel';
 import { CustomSelect } from './CustomSelect';
 import { IconPicker } from '../../../../shared/IconPicker';
 
@@ -36,17 +39,27 @@ export function GoalSmarterEditor({
   onDraftChange,
   onDraftClear,
 }: GoalSmarterEditorProps) {
+  const taskTemplates = useScheduleStore((s) => s.taskTemplates);
   const [name, setName] = useState(smarter.name);
   const [icon, setIcon] = useState(smarter.icon);
   const [activeTab, setActiveTab] = useState(0);
   const [specific, setSpecific] = useState(smarter.specific);
   const [measurableRefs, setMeasurableRefs] = useState<string[]>(smarter.measurable.taskTemplateRefs ?? []);
+  const [taskTargets, setTaskTargets] = useState<Array<{ ref: string; target: number }>>(
+    smarter.measurable.taskTargets ?? []
+  );
+  const [targetCompletions, setTargetCompletions] = useState<number>(
+    (smarter.measurable as Record<string, number>).targetCompletions ?? 1
+  );
+  const [measurableFrequency, setMeasurableFrequency] = useState<'daily' | 'weekly' | 'monthly'>(
+    ((smarter.measurable as Record<string, string>).frequency as 'daily' | 'weekly' | 'monthly') ?? 'weekly'
+  );
+  const [showTaskPicker, setShowTaskPicker] = useState(false);
+  const [taskNames, setTaskNames] = useState<Record<string, string>>({});
+  const [confirmRemoveRef, setConfirmRemoveRef] = useState<string | null>(null);
   const [attainableNote, setAttainableNote] = useState('');
   const [relevantNote, setRelevantNote] = useState('');
   const [projectedFinish, setProjectedFinish] = useState(smarter.timely.projectedFinish ?? '');
-  const [checkInFrequency, setCheckInFrequency] = useState<'daily' | 'weekly' | 'monthly'>(
-    (smarter.timely.interval?.frequency as 'daily' | 'weekly' | 'monthly') ?? 'weekly'
-  );
   const [checkInEvery, setCheckInEvery] = useState<number>(smarter.timely.interval?.interval ?? 1);
   const [checkInWeekday, setCheckInWeekday] = useState<Weekday>(
     smarter.timely.interval?.days?.[0] ?? 'mon'
@@ -68,7 +81,13 @@ export function GoalSmarterEditor({
       name: next.name ?? name,
       icon: next.icon ?? icon,
       specific: next.specific ?? specific,
-      measurable: { ...smarter.measurable, taskTemplateRefs: measurableRefs },
+      measurable: {
+        ...smarter.measurable,
+        taskTemplateRefs: measurableRefs,
+        taskTargets,
+        targetCompletions,
+        frequency: measurableFrequency,
+      },
       attainable: { ...smarter.attainable, note: attainableNote },
       relevant: {
         ...smarter.relevant,
@@ -81,10 +100,10 @@ export function GoalSmarterEditor({
         ...smarter.timely,
         projectedFinish: projectedFinish || null,
         interval: projectedFinish ? {
-          frequency: checkInFrequency,
-          days: checkInFrequency === 'weekly' ? [checkInWeekday] : [],
-          interval: checkInFrequency === 'daily' ? checkInEvery : 1,
-          monthlyDay: checkInFrequency === 'monthly' ? checkInMonthDay : null,
+          frequency: measurableFrequency,
+          days: measurableFrequency === 'weekly' ? [checkInWeekday] : [],
+          interval: measurableFrequency === 'daily' ? checkInEvery : 1,
+          monthlyDay: measurableFrequency === 'monthly' ? checkInMonthDay : null,
           endsOn: projectedFinish,
           customCondition: null,
         } : null,
@@ -92,6 +111,18 @@ export function GoalSmarterEditor({
       exitStrategy: { onMissedFinish },
       result: { ...smarter.result, note: resultNote },
     };
+  }
+
+  function getTargetForRef(ref: string): number {
+    return taskTargets.find((target) => target.ref === ref)?.target ?? 1;
+  }
+
+  function setTargetForRef(ref: string, target: number) {
+    setTaskTargets((prev) => {
+      const exists = prev.find((entry) => entry.ref === ref);
+      if (exists) return prev.map((entry) => entry.ref === ref ? { ...entry, target } : entry);
+      return [...prev, { ref, target }];
+    });
   }
 
   useEffect(() => {
@@ -198,41 +229,96 @@ export function GoalSmarterEditor({
             )}
 
             {activeTab === 1 && (
-              <div className="flex flex-col gap-2">
-                {measurableRefs.map((ref, i) => (
-                  <div key={i} className="flex gap-2">
-                    <input
-                      value={ref}
-                      onChange={(e) => {
-                        const next = [...measurableRefs];
-                        next[i] = e.target.value;
-                        setMeasurableRefs(next);
-                        onDraftChange({ ...buildDraft(), measurable: { ...smarter.measurable, taskTemplateRefs: next } });
-                      }}
-                      placeholder="task-template-id"
-                      className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white/80 text-sm placeholder-white/20 focus:outline-none focus:border-white/25"
+              <div className="flex flex-col gap-3">
+                <div className="flex flex-col gap-1">
+                  <label className="text-white/30 text-xs uppercase tracking-wider">Tracked Tasks</label>
+                  {measurableRefs.length === 0 && (
+                    <p className="text-white/20 text-xs">No tasks linked yet</p>
+                  )}
+                  {measurableRefs.map((ref, i) => {
+                    const template = taskTemplates[ref];
+                    const displayName = template?.name ?? taskNames[ref] ?? ref;
+                    const displayIcon = template?.icon ?? 'quest';
+                    const isConfirming = confirmRemoveRef === ref;
+
+                    return (
+                      <div key={i} className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-lg px-3 py-2">
+                        <IconDisplay iconKey={displayIcon} size={14} className="opacity-60 shrink-0" />
+                        <p className="text-white/70 text-xs flex-1 truncate">{displayName}</p>
+                        <input
+                          type="number"
+                          min={1}
+                          value={getTargetForRef(ref)}
+                          onChange={(e) => setTargetForRef(ref, Math.max(1, Number(e.target.value)))}
+                          className="w-12 bg-white/5 border border-white/10 rounded px-2 py-1 text-white/70 text-xs focus:outline-none text-center"
+                        />
+                        {isConfirming ? (
+                          <span className="flex items-center gap-1 shrink-0">
+                            <button
+                              onClick={() => {
+                                setMeasurableRefs((prev) => prev.filter((_, j) => j !== i));
+                                setTaskTargets((prev) => prev.filter((target) => target.ref !== ref));
+                                setTaskNames((prev) => {
+                                  const next = { ...prev };
+                                  delete next[ref];
+                                  return next;
+                                });
+                                setConfirmRemoveRef(null);
+                              }}
+                              className="text-red-400 text-xs hover:text-red-300"
+                            >
+                              confirm
+                            </button>
+                            <button
+                              onClick={() => setConfirmRemoveRef(null)}
+                              className="text-white/30 text-xs hover:text-white/50"
+                            >
+                              cancel
+                            </button>
+                          </span>
+                        ) : (
+                          <button
+                            onClick={() => setConfirmRemoveRef(ref)}
+                            className="text-white/20 hover:text-red-400/60 text-xs px-1"
+                          >
+                            x
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div className="flex gap-2 items-end">
+                  <div className="flex flex-col gap-1 flex-1">
+                    <label className="text-white/30 text-xs uppercase tracking-wider">Frequency</label>
+                    <CustomSelect
+                      value={measurableFrequency}
+                      onChange={(val) => setMeasurableFrequency(val as 'daily' | 'weekly' | 'monthly')}
+                      options={[
+                        { value: 'daily', label: 'Daily' },
+                        { value: 'weekly', label: 'Weekly' },
+                        { value: 'monthly', label: 'Monthly' },
+                      ]}
                     />
-                    <button
-                      onClick={() => {
-                        const next = measurableRefs.filter((_, j) => j !== i);
-                        setMeasurableRefs(next);
-                        onDraftChange({ ...buildDraft(), measurable: { ...smarter.measurable, taskTemplateRefs: next } });
-                      }}
-                      className="text-white/20 hover:text-red-400/60 text-xs px-2"
-                    >
-                      x
-                    </button>
                   </div>
-                ))}
+                  <div className="flex flex-col gap-1 flex-1">
+                    <label className="text-white/30 text-xs uppercase tracking-wider">Target Per Check-in</label>
+                    <input
+                      type="number"
+                      min={1}
+                      value={targetCompletions}
+                      onChange={(e) => setTargetCompletions(Math.max(1, Number(e.target.value)))}
+                      className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white/80 text-sm focus:outline-none focus:border-white/25"
+                    />
+                  </div>
+                </div>
+
                 <button
-                  onClick={() => {
-                    const next = [...measurableRefs, ''];
-                    setMeasurableRefs(next);
-                    onDraftChange({ ...buildDraft(), measurable: { ...smarter.measurable, taskTemplateRefs: next } });
-                  }}
-                  className="text-white/30 text-xs hover:text-white/50 text-left mt-1"
+                  onClick={() => setShowTaskPicker(true)}
+                  className="w-full py-2 rounded-lg border border-white/10 text-white/40 text-xs hover:text-white/60"
                 >
-                  + Add task ref
+                  + Pick Task
                 </button>
               </div>
             )}
@@ -311,7 +397,58 @@ export function GoalSmarterEditor({
 
             {activeTab === 4 && (
               <div className="flex flex-col gap-3">
-                {/* End date */}
+                <div className="flex gap-2 items-end">
+                  <div className="flex flex-col gap-1 flex-1">
+                    <label className="text-white/30 text-xs uppercase tracking-wider">Check-in Frequency</label>
+                    <p className="text-white/50 text-sm px-3 py-2 bg-white/3 rounded-lg border border-white/5 capitalize">
+                      {measurableFrequency}
+                    </p>
+                  </div>
+                  {measurableFrequency === 'daily' && (
+                    <div className="flex flex-col gap-1 flex-1">
+                        <label className="text-white/30 text-xs uppercase tracking-wider">Every N Days</label>
+                        <input
+                          type="number"
+                          min={1}
+                          value={checkInEvery}
+                          onChange={(e) => setCheckInEvery(Math.max(1, Number(e.target.value)))}
+                          className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white/80 text-sm focus:outline-none focus:border-white/25"
+                        />
+                    </div>
+                  )}
+                  {measurableFrequency === 'weekly' && (
+                    <div className="flex flex-col gap-1 flex-1">
+                      <label className="text-white/30 text-xs uppercase tracking-wider">On</label>
+                      <CustomSelect
+                        value={checkInWeekday}
+                        onChange={(val) => setCheckInWeekday(val as Weekday)}
+                        options={[
+                          { value: 'mon', label: 'Monday' },
+                          { value: 'tue', label: 'Tuesday' },
+                          { value: 'wed', label: 'Wednesday' },
+                          { value: 'thu', label: 'Thursday' },
+                          { value: 'fri', label: 'Friday' },
+                          { value: 'sat', label: 'Saturday' },
+                          { value: 'sun', label: 'Sunday' },
+                        ]}
+                      />
+                    </div>
+                  )}
+                  {measurableFrequency === 'monthly' && (
+                    <div className="flex flex-col gap-1 flex-1">
+                      <label className="text-white/30 text-xs uppercase tracking-wider">Day of Month</label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={31}
+                        value={checkInMonthDay}
+                        onChange={(e) => setCheckInMonthDay(Math.min(31, Math.max(1, Number(e.target.value))))}
+                        className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white/80 text-sm focus:outline-none focus:border-white/25"
+                      />
+                    </div>
+                  )}
+                </div>
+
                 <div className="flex flex-col gap-1">
                   <label className="text-white/30 text-xs uppercase tracking-wider">Target Finish Date</label>
                   <input
@@ -322,78 +459,14 @@ export function GoalSmarterEditor({
                   />
                 </div>
 
-                {/* Check-in recurrence */}
-                <div className="flex gap-2">
-                  {/* Frequency - left */}
-                  <div className="flex flex-col gap-1 flex-1">
-                    <label className="text-white/30 text-xs uppercase tracking-wider">Frequency</label>
-                    <CustomSelect
-                      value={checkInFrequency}
-                      onChange={(val) => setCheckInFrequency(val as 'daily' | 'weekly' | 'monthly')}
-                      options={[
-                        { value: 'daily', label: 'Daily' },
-                        { value: 'weekly', label: 'Weekly' },
-                        { value: 'monthly', label: 'Monthly' },
-                      ]}
-                    />
-                  </div>
-
-                  {/* Context-aware right field */}
-                  <div className="flex flex-col gap-1 flex-1">
-                    {checkInFrequency === 'daily' && (
-                      <>
-                        <label className="text-white/30 text-xs uppercase tracking-wider">Every N Days</label>
-                        <input
-                          type="number"
-                          min={1}
-                          value={checkInEvery}
-                          onChange={(e) => setCheckInEvery(Math.max(1, Number(e.target.value)))}
-                          className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white/80 text-sm focus:outline-none focus:border-white/25"
-                        />
-                      </>
-                    )}
-                    {checkInFrequency === 'weekly' && (
-                      <>
-                        <label className="text-white/30 text-xs uppercase tracking-wider">On</label>
-                        <CustomSelect
-                          value={checkInWeekday}
-                          onChange={(val) => setCheckInWeekday(val as Weekday)}
-                          options={[
-                            { value: 'mon', label: 'Monday' },
-                            { value: 'tue', label: 'Tuesday' },
-                            { value: 'wed', label: 'Wednesday' },
-                            { value: 'thu', label: 'Thursday' },
-                            { value: 'fri', label: 'Friday' },
-                            { value: 'sat', label: 'Saturday' },
-                            { value: 'sun', label: 'Sunday' },
-                          ]}
-                        />
-                      </>
-                    )}
-                    {checkInFrequency === 'monthly' && (
-                      <>
-                        <label className="text-white/30 text-xs uppercase tracking-wider">Day of Month</label>
-                        <input
-                          type="number"
-                          min={1}
-                          max={31}
-                          value={checkInMonthDay}
-                          onChange={(e) => setCheckInMonthDay(Math.min(31, Math.max(1, Number(e.target.value))))}
-                          className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white/80 text-sm focus:outline-none focus:border-white/25"
-                        />
-                      </>
-                    )}
-                  </div>
-                </div>
-
                 {/* Check-in preview */}
                 {projectedFinish ? (() => {
                   const end = new Date(projectedFinish);
                   const now = new Date();
                   const diffDays = Math.max(1, Math.ceil((end.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)));
-                  const periodDays = checkInFrequency === 'daily'
+                  const periodDays = measurableFrequency === 'daily'
                     ? checkInEvery
-                    : checkInFrequency === 'weekly'
+                    : measurableFrequency === 'weekly'
                     ? 7
                     : 30;
                   const totalCheckins = Math.max(1, Math.floor(diffDays / periodDays));
@@ -480,6 +553,25 @@ export function GoalSmarterEditor({
           </div>
         </div>
       </div>
+      {showTaskPicker && (
+        <TaskPoolAddPanel
+          hideTabs={['new']}
+          onClose={() => setShowTaskPicker(false)}
+          onAdd={(entry) => {
+            const ref = entry.kind === 'template' ? entry.templateRef
+              : entry.kind === 'resource' ? entry.taskId
+              : entry.id;
+            if (ref && !measurableRefs.includes(ref)) {
+              setMeasurableRefs((prev) => [...prev, ref]);
+              setTaskTargets((prev) => prev.some((target) => target.ref === ref) ? prev : [...prev, { ref, target: 1 }]);
+              if (entry.kind === 'resource' && entry.taskName) {
+                setTaskNames((prev) => ({ ...prev, [ref]: entry.taskName }));
+              }
+            }
+            setShowTaskPicker(false);
+          }}
+        />
+      )}
     </div>
   );
 }
