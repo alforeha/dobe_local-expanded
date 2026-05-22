@@ -10,6 +10,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import type { Marker } from '../types/quest/Marker';
 import type { Milestone } from '../types/quest/Milestone';
+import type { Smarter } from '../types';
 import type { RecurrenceRule } from '../types/taskTemplate';
 import type { Task } from '../types/task';
 import type { GTDItem } from '../types/task';
@@ -115,6 +116,41 @@ function findTodayCompletedTaskForMeasurable(taskTemplateRefs: string[]): Task |
  */
 export function encodeQuestRef(actId: string, chainIndex: number, questIndex: number): string {
   return `${actId}${QUEST_REF_SEP}${chainIndex}${QUEST_REF_SEP}${questIndex}`;
+}
+
+export function generateSmarterMarkers(
+  smarter: Smarter,
+  smarterIdx: number,
+  woopIdx: number,
+  actId: string,
+  checkInTemplateRef: string,
+): Marker[] {
+  const { timely, measurable } = smarter;
+  const refs = measurable.taskTemplateRefs ?? [];
+
+  // Need at least one task ref and a projected finish to generate markers
+  if (refs.length === 0 || !timely.projectedFinish) return [];
+  if (!timely.interval) return [];
+
+  const questRef = encodeQuestRef(actId, woopIdx, smarterIdx);
+
+  const marker: Marker = {
+    questRef,
+    conditionType: 'interval',
+    triggerSource: 'rollover',
+    interval: timely.interval,
+    xpThreshold: null,
+    threshold: null,
+    taskCountScope: null,
+    taskTemplateRef: checkInTemplateRef,
+    lastFired: null,
+    xpAtLastFire: null,
+    taskCountAtLastFire: null,
+    nextFire: null, // fireInitialIntervalMarkers will set this on first fire
+    activeState: true,
+    sideEffects: null,
+  };
+  return [marker];
 }
 
 /**

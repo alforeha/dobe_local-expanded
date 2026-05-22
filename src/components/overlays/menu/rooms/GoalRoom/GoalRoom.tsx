@@ -3,6 +3,7 @@ import { useProgressionStore } from '../../../../../stores/useProgressionStore';
 import { useScheduleStore } from '../../../../../stores/useScheduleStore';
 import { useUserStore } from '../../../../../stores/useUserStore';
 import { autoCompleteSystemTask } from '../../../../../engine/resourceEngine';
+import { fireInitialIntervalMarkers, generateSmarterMarkers } from '../../../../../engine/markerEngine';
 import { GoalCanvas } from './GoalCanvas';
 import { GoalInspectorDrawer } from './GoalInspectorDrawer';
 import type { DrawerView } from './GoalInspectorDrawer';
@@ -24,6 +25,7 @@ import {
 import type { GoalPage } from './goalEditorUtils';
 import { STARTER_ASPIRATION_IDS } from '../../../../../coach/StarterQuestLibrary';
 import type { Aspiration, NestedAct, Smarter, Woop } from '../../../../../types';
+import type { LogInputFields } from '../../../../../types/taskTemplate';
 import { IconDisplay } from '../../../../shared/IconDisplay';
 
 type HabitatFilter = 'habitats' | 'adventures';
@@ -563,21 +565,84 @@ export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
     setSelectedSmarterRef.current?.(null);
   }
 
-  function handleSaveSmarter(updated: Smarter, smarterIdx: number | null) {
-    if (drawerView.level !== 'smarter-edit') return;
+  function createCheckinTemplate(
+    smarter: Smarter,
+    aspirationId: string,
+    woopIdx: number,
+    smarterIdx: number,
+  ): string {
+    const key = `goal-checkin-${aspirationId}-${woopIdx}-${smarterIdx}`;
+    const trackedCount = smarter.measurable.taskTemplateRefs?.length ?? 0;
+    const template = {
+      id: key,
+      isCustom: false,
+      isSystem: true,
+      name: `Check in: ${smarter.name || 'SMARTER'}`,
+      description: `Goal check-in for ${smarter.name}. Target: ${smarter.specific.targetValue}${smarter.specific.unit ? ' ' + smarter.specific.unit : ''}. Tracking ${trackedCount} task${trackedCount !== 1 ? 's' : ''}.`,
+      icon: smarter.icon || 'quest',
+      taskType: 'LOG' as const,
+      inputFields: {
+        prompt: `Log your current total toward ${smarter.name || 'your goal'}${smarter.specific.unit ? ' (' + smarter.specific.unit + ')' : ''}`,
+        unit: smarter.specific.unit ?? null,
+        amount: null,
+        value: '',
+        resourceRef: null,
+        logKind: 'goal-checkin',
+        currentValue: null,
+        newValue: null,
+        entryMode: null,
+      } as LogInputFields,
+      xpAward: { health: 0, strength: 0, agility: 0, defense: 5, charisma: 0, wisdom: 5 },
+      xpBonus: 0,
+      cooldown: null,
+      media: null,
+      items: [],
+      secondaryTag: null,
+    };
+    useScheduleStore.getState().setTaskTemplate(key, template);
+    return key;
+  }
 
-    const asp = drawerView.aspiration;
-    const woop = asp.woops[drawerView.woopIdx];
+  function handleSaveSmarter(updated: Smarter, smarterIdx: number | null) {
+    if (drawerViewLevelRef.current !== 'smarter-edit') return;
+
+    const view = drawerViewRef.current;
+    if (view.level !== 'smarter-edit') return;
+
+    const asp = view.aspiration;
+    const woop = asp.woops[view.woopIdx];
     if (!woop) return;
 
+    const savedIdx = smarterIdx ?? woop.smarters.length;
+
+    // Generate markers for this smarter if Timely and Measurable are configured
+    const checkInRef = createCheckinTemplate(updated, asp.id, view.woopIdx, savedIdx);
+    const markers = generateSmarterMarkers(updated, savedIdx, view.woopIdx, asp.id, checkInRef);
+    const updatedWithMarkers: Smarter = markers.length > 0
+      ? { ...updated, timely: { ...updated.timely, markers } }
+      : updated;
+
     const newSmarters = smarterIdx !== null
-      ? woop.smarters.map((s, i) => i === smarterIdx ? updated : s)
-      : [...woop.smarters, updated];
-    const newWoops = asp.woops.map((w, i) => i === drawerView.woopIdx ? { ...w, smarters: newSmarters } : w);
+      ? woop.smarters.map((s, i) => i === smarterIdx ? updatedWithMarkers : s)
+      : [...woop.smarters, updatedWithMarkers];
+    const newWoops = asp.woops.map((w, i) =>
+      i === view.woopIdx ? { ...w, smarters: newSmarters } : w,
+    );
     const updatedAsp = { ...asp, woops: newWoops };
     setAspiration(updatedAsp);
     setSmarterDraft(null);
-    setDrawerView({ level: 'woop', orbit: drawerView.orbit, aspiration: updatedAsp, woopIdx: drawerView.woopIdx });
+
+    // Fire initial markers so first check-in task appears in GTD immediately if due
+    if (markers.length > 0) {
+      fireInitialIntervalMarkers(asp.id, view.woopIdx);
+    }
+
+    setDrawerView({
+      level: 'woop',
+      orbit: view.orbit,
+      aspiration: updatedAsp,
+      woopIdx: view.woopIdx,
+    });
     setSelectedSmarterRef.current?.(null);
   }
 
@@ -630,15 +695,29 @@ export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
     const woop = asp.woops[view.woopIdx];
     if (!woop) return;
 
+    const savedIdx = smarterIdx ?? woop.smarters.length;
+
+    // Generate markers for this smarter if Timely and Measurable are configured
+    const checkInRef = createCheckinTemplate(draft, asp.id, view.woopIdx, savedIdx);
+    const markers = generateSmarterMarkers(draft, savedIdx, view.woopIdx, asp.id, checkInRef);
+    const draftWithMarkers: Smarter = markers.length > 0
+      ? { ...draft, timely: { ...draft.timely, markers } }
+      : draft;
+
     const newSmarters = smarterIdx !== null
-      ? woop.smarters.map((s, i) => i === smarterIdx ? draft : s)
-      : [...woop.smarters, draft];
+      ? woop.smarters.map((s, i) => i === smarterIdx ? draftWithMarkers : s)
+      : [...woop.smarters, draftWithMarkers];
     const newWoops = asp.woops.map((w, i) =>
       i === view.woopIdx ? { ...w, smarters: newSmarters } : w,
     );
     const updatedAsp = { ...asp, woops: newWoops };
     setAspiration(updatedAsp);
     setSmarterDraft(null);
+
+    // Fire initial markers so first check-in task appears in GTD immediately if due
+    if (markers.length > 0) {
+      fireInitialIntervalMarkers(asp.id, view.woopIdx);
+    }
 
     const savedSmarterIdx = smarterIdx ?? newSmarters.length - 1;
     setSelectedSmarterRef.current?.(savedSmarterIdx);
