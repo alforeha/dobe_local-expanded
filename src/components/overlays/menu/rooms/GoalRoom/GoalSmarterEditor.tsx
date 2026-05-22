@@ -1,9 +1,13 @@
 import { useEffect, useState } from 'react';
 import type { ExitStrategyOption, Smarter } from '../../../../../types';
+import type { Weekday } from '../../../../../types/taskTemplate';
+import { CustomSelect } from './CustomSelect';
 import { IconPicker } from '../../../../shared/IconPicker';
 
 interface GoalSmarterEditorProps {
   smarter: Smarter;
+  woopOutcomes: string[];
+  woopObstacles: string[];
   onSave: (updated: Smarter) => void;
   onProceedToAct: (draft: Smarter) => void;
   onCancel: () => void;
@@ -25,6 +29,8 @@ const TAB_DESCRIPTIONS = [
 
 export function GoalSmarterEditor({
   smarter,
+  woopOutcomes,
+  woopObstacles,
   onProceedToAct,
   onCancel,
   onDraftChange,
@@ -38,6 +44,21 @@ export function GoalSmarterEditor({
   const [attainableNote, setAttainableNote] = useState('');
   const [relevantNote, setRelevantNote] = useState('');
   const [projectedFinish, setProjectedFinish] = useState(smarter.timely.projectedFinish ?? '');
+  const [checkInFrequency, setCheckInFrequency] = useState<'daily' | 'weekly' | 'monthly'>(
+    (smarter.timely.interval?.frequency as 'daily' | 'weekly' | 'monthly') ?? 'weekly'
+  );
+  const [checkInEvery, setCheckInEvery] = useState<number>(smarter.timely.interval?.interval ?? 1);
+  const [checkInWeekday, setCheckInWeekday] = useState<Weekday>(
+    smarter.timely.interval?.days?.[0] ?? 'mon'
+  );
+  const [checkInMonthDay, setCheckInMonthDay] = useState<number>(
+    smarter.timely.interval?.monthlyDay ?? 1
+  );
+  const [statGroup, setStatGroup] = useState<string>(
+    (smarter.relevant as Record<string, string>).statGroup ?? ''
+  );
+  const [resolvesType, setResolvesType] = useState<'outcome' | 'obstacle' | ''>('');
+  const [resolvesIdx, setResolvesIdx] = useState<number>(-1);
   const [onMissedFinish, setOnMissedFinish] = useState(smarter.exitStrategy.onMissedFinish);
   const [resultNote, setResultNote] = useState('');
 
@@ -49,8 +70,25 @@ export function GoalSmarterEditor({
       specific: next.specific ?? specific,
       measurable: { ...smarter.measurable, taskTemplateRefs: measurableRefs },
       attainable: { ...smarter.attainable, note: attainableNote },
-      relevant: { ...smarter.relevant, note: relevantNote },
-      timely: { ...smarter.timely, projectedFinish: projectedFinish || null },
+      relevant: {
+        ...smarter.relevant,
+        note: relevantNote,
+        statGroup: statGroup || undefined,
+        resolvesType: resolvesType || undefined,
+        resolvesIdx: resolvesIdx >= 0 ? resolvesIdx : undefined,
+      },
+      timely: {
+        ...smarter.timely,
+        projectedFinish: projectedFinish || null,
+        interval: projectedFinish ? {
+          frequency: checkInFrequency,
+          days: checkInFrequency === 'weekly' ? [checkInWeekday] : [],
+          interval: checkInFrequency === 'daily' ? checkInEvery : 1,
+          monthlyDay: checkInFrequency === 'monthly' ? checkInMonthDay : null,
+          endsOn: projectedFinish,
+          customCondition: null,
+        } : null,
+      },
       exitStrategy: { onMissedFinish },
       result: { ...smarter.result, note: resultNote },
     };
@@ -147,18 +185,14 @@ export function GoalSmarterEditor({
                 </div>
                 <div className="flex flex-col gap-1">
                   <label className="text-white/30 text-xs uppercase tracking-wider">Source</label>
-                  <select
+                  <CustomSelect
                     value={specific.sourceType}
-                    onChange={(e) => {
-                      const next = { ...specific, sourceType: e.target.value as 'taskInput' | 'resourceRef' };
-                      setSpecific(next);
-                      onDraftChange(buildDraft({ specific: next }));
-                    }}
-                    className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white/80 text-sm focus:outline-none focus:border-white/25"
-                  >
-                    <option value="taskInput">Task Input</option>
-                    <option value="resourceRef">Resource Reference</option>
-                  </select>
+                    onChange={(val) => setSpecific({ ...specific, sourceType: val as 'taskInput' | 'resourceRef' })}
+                    options={[
+                      { value: 'taskInput', label: 'Task Input' },
+                      { value: 'resourceRef', label: 'Resource Reference' },
+                    ]}
+                  />
                 </div>
               </div>
             )}
@@ -217,50 +251,180 @@ export function GoalSmarterEditor({
             )}
 
             {activeTab === 3 && (
-              <textarea
-                value={relevantNote}
-                onChange={(e) => {
-                  setRelevantNote(e.target.value);
-                  onDraftChange({ ...buildDraft(), relevant: { ...smarter.relevant, note: e.target.value } });
-                }}
-                placeholder="Why does this matter to you?"
-                rows={4}
-                className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white/80 text-sm placeholder-white/20 focus:outline-none focus:border-white/25 resize-none"
-              />
+              <div className="flex flex-col gap-3">
+                {/* Why it matters */}
+                <textarea
+                  value={relevantNote}
+                  onChange={(e) => setRelevantNote(e.target.value)}
+                  placeholder="Why does this matter to you?"
+                  rows={2}
+                  className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white/80 text-sm placeholder-white/20 focus:outline-none focus:border-white/25 resize-none"
+                />
+
+                {/* Stat group */}
+                <div className="flex flex-col gap-1">
+                  <label className="text-white/30 text-xs uppercase tracking-wider">Stat Group</label>
+                  <CustomSelect
+                    value={statGroup}
+                    onChange={setStatGroup}
+                    options={[
+                      { value: '', label: 'None' },
+                      { value: 'health', label: 'Health' },
+                      { value: 'strength', label: 'Strength' },
+                      { value: 'agility', label: 'Agility' },
+                      { value: 'defense', label: 'Defense' },
+                      { value: 'charisma', label: 'Charisma' },
+                      { value: 'wisdom', label: 'Wisdom' },
+                    ]}
+                  />
+                </div>
+
+                {/* Resolves - which outcome or obstacle */}
+                {(woopOutcomes.length > 0 || woopObstacles.length > 0) && (
+                  <div className="flex flex-col gap-1">
+                    <label className="text-white/30 text-xs uppercase tracking-wider">Resolves</label>
+                    <CustomSelect
+                      value={resolvesType === '' ? '' : `${resolvesType}-${resolvesIdx}`}
+                      onChange={(val) => {
+                        if (!val) { setResolvesType(''); setResolvesIdx(-1); return; }
+                        const [type, idx] = val.split('-');
+                        setResolvesType(type as 'outcome' | 'obstacle');
+                        setResolvesIdx(Number(idx));
+                      }}
+                      options={[
+                        { value: '', label: 'Not linked' },
+                        ...woopOutcomes.map((o, i) => ({
+                          value: `outcome-${i}`,
+                          label: `Outcome: ${o.slice(0, 40)}${o.length > 40 ? '...' : ''}`,
+                        })),
+                        ...woopObstacles.map((o, i) => ({
+                          value: `obstacle-${i}`,
+                          label: `Obstacle: ${o.slice(0, 40)}${o.length > 40 ? '...' : ''}`,
+                        })),
+                      ]}
+                      placeholder="Not linked"
+                    />
+                  </div>
+                )}
+              </div>
             )}
 
             {activeTab === 4 && (
-              <div className="flex flex-col gap-1">
-                <label className="text-white/30 text-xs uppercase tracking-wider">Projected Finish</label>
-                <input
-                  type="date"
-                  value={projectedFinish}
-                  onChange={(e) => {
-                    setProjectedFinish(e.target.value);
-                    onDraftChange({ ...buildDraft(), timely: { ...smarter.timely, projectedFinish: e.target.value || null } });
-                  }}
-                  className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white/80 text-sm focus:outline-none focus:border-white/25"
-                />
+              <div className="flex flex-col gap-3">
+                {/* End date */}
+                <div className="flex flex-col gap-1">
+                  <label className="text-white/30 text-xs uppercase tracking-wider">Target Finish Date</label>
+                  <input
+                    type="date"
+                    value={projectedFinish}
+                    onChange={(e) => setProjectedFinish(e.target.value)}
+                    className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white/80 text-sm focus:outline-none focus:border-white/25"
+                  />
+                </div>
+
+                {/* Check-in recurrence */}
+                <div className="flex gap-2">
+                  {/* Frequency - left */}
+                  <div className="flex flex-col gap-1 flex-1">
+                    <label className="text-white/30 text-xs uppercase tracking-wider">Frequency</label>
+                    <CustomSelect
+                      value={checkInFrequency}
+                      onChange={(val) => setCheckInFrequency(val as 'daily' | 'weekly' | 'monthly')}
+                      options={[
+                        { value: 'daily', label: 'Daily' },
+                        { value: 'weekly', label: 'Weekly' },
+                        { value: 'monthly', label: 'Monthly' },
+                      ]}
+                    />
+                  </div>
+
+                  {/* Context-aware right field */}
+                  <div className="flex flex-col gap-1 flex-1">
+                    {checkInFrequency === 'daily' && (
+                      <>
+                        <label className="text-white/30 text-xs uppercase tracking-wider">Every N Days</label>
+                        <input
+                          type="number"
+                          min={1}
+                          value={checkInEvery}
+                          onChange={(e) => setCheckInEvery(Math.max(1, Number(e.target.value)))}
+                          className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white/80 text-sm focus:outline-none focus:border-white/25"
+                        />
+                      </>
+                    )}
+                    {checkInFrequency === 'weekly' && (
+                      <>
+                        <label className="text-white/30 text-xs uppercase tracking-wider">On</label>
+                        <CustomSelect
+                          value={checkInWeekday}
+                          onChange={(val) => setCheckInWeekday(val as Weekday)}
+                          options={[
+                            { value: 'mon', label: 'Monday' },
+                            { value: 'tue', label: 'Tuesday' },
+                            { value: 'wed', label: 'Wednesday' },
+                            { value: 'thu', label: 'Thursday' },
+                            { value: 'fri', label: 'Friday' },
+                            { value: 'sat', label: 'Saturday' },
+                            { value: 'sun', label: 'Sunday' },
+                          ]}
+                        />
+                      </>
+                    )}
+                    {checkInFrequency === 'monthly' && (
+                      <>
+                        <label className="text-white/30 text-xs uppercase tracking-wider">Day of Month</label>
+                        <input
+                          type="number"
+                          min={1}
+                          max={31}
+                          value={checkInMonthDay}
+                          onChange={(e) => setCheckInMonthDay(Math.min(31, Math.max(1, Number(e.target.value))))}
+                          className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white/80 text-sm focus:outline-none focus:border-white/25"
+                        />
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                {/* Check-in preview */}
+                {projectedFinish ? (() => {
+                  const end = new Date(projectedFinish);
+                  const now = new Date();
+                  const diffDays = Math.max(1, Math.ceil((end.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)));
+                  const periodDays = checkInFrequency === 'daily'
+                    ? checkInEvery
+                    : checkInFrequency === 'weekly'
+                    ? 7
+                    : 30;
+                  const totalCheckins = Math.max(1, Math.floor(diffDays / periodDays));
+                  const progressPerCheckin = Math.round(100 / totalCheckins);
+                  return (
+                    <div className="rounded-lg border border-white/10 px-3 py-2 bg-white/3">
+                      <p className="text-white/40 text-xs">
+                        {totalCheckins} check-in{totalCheckins !== 1 ? 's' : ''} expected -{' '}
+                        ~{progressPerCheckin}% progress each
+                      </p>
+                    </div>
+                  );
+                })() : (
+                  <p className="text-white/20 text-xs">Set a finish date to see check-in preview</p>
+                )}
               </div>
             )}
 
             {activeTab === 5 && (
               <div className="flex flex-col gap-1">
                 <label className="text-white/30 text-xs uppercase tracking-wider">On Missed Finish</label>
-                <select
+                <CustomSelect
                   value={onMissedFinish}
-                  onChange={(e) => {
-                    const next = e.target.value as ExitStrategyOption;
-                    setOnMissedFinish(next);
-                    onDraftChange({ ...buildDraft(), exitStrategy: { onMissedFinish: next } });
-                  }}
-                  className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white/80 text-sm focus:outline-none focus:border-white/25"
-                >
-                  <option value="sleep">Sleep - pause until resumed</option>
-                  <option value="restart">Restart - begin again</option>
-                  <option value="extend">Extend - push the deadline</option>
-                  <option value="reschedule">Reschedule - pick a new date</option>
-                </select>
+                  onChange={(val) => setOnMissedFinish(val as ExitStrategyOption)}
+                  options={[
+                    { value: 'sleep', label: 'Sleep — pause until resumed' },
+                    { value: 'restart', label: 'Restart — begin again' },
+                    { value: 'extend', label: 'Extend — push the deadline' },
+                    { value: 'reschedule', label: 'Reschedule — pick a new date' },
+                  ]}
+                />
               </div>
             )}
 

@@ -569,6 +569,8 @@ export function GoalInspectorDrawer({
         return (
           <GoalSmarterEditor
             smarter={editingSmarter}
+            woopOutcomes={woop?.outcome ?? []}
+            woopObstacles={woop?.obstacle ?? []}
             onSave={(updated) => onSaveSmarter(updated, view.smarterIdx)}
             onProceedToAct={(draft) => onProceedToAct(draft, view.smarterIdx)}
             onCancel={onCancelSmarterEdit}
