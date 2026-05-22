@@ -38,6 +38,7 @@ interface GoalInspectorDrawerProps {
   onWoopDraftChange: (draft: Woop) => void;
   onWoopDraftClear: () => void;
   onAddSmarter: () => void;
+  onAutoSeedSmarterPlans: () => void;
   onSelectSmarter: (smarterIdx: number) => void;
   onEditSmarter: (smarterIdx: number) => void;
   onDeleteSmarter: (smarterIdx: number) => void;
@@ -357,6 +358,7 @@ export function GoalInspectorDrawer({
   onWoopDraftChange,
   onWoopDraftClear,
   onAddSmarter,
+  onAutoSeedSmarterPlans,
   onSelectSmarter,
   onEditSmarter,
   onDeleteSmarter,
@@ -555,6 +557,7 @@ export function GoalInspectorDrawer({
             onEditWoop={onEditWoop}
             onDeleteWoop={onDeleteWoop}
             onAddSmarter={onAddSmarter}
+            onAutoSeedSmarterPlans={onAutoSeedSmarterPlans}
             onSelectSmarter={onSelectSmarter}
           />
         );
@@ -641,6 +644,7 @@ function WoopDetailView({
   onEditWoop,
   onDeleteWoop,
   onAddSmarter,
+  onAutoSeedSmarterPlans,
   onSelectSmarter,
 }: {
   woop: Woop;
@@ -649,6 +653,7 @@ function WoopDetailView({
   onEditWoop: (idx: number) => void;
   onDeleteWoop: (idx: number) => void;
   onAddSmarter: () => void;
+  onAutoSeedSmarterPlans: () => void;
   onSelectSmarter: (idx: number) => void;
 }) {
   const [activeTab, setActiveTab] = useState(0);
@@ -780,10 +785,35 @@ function WoopDetailView({
                 ))
               : <p className="text-white/25 text-xs text-center py-4">No SMARTERs yet</p>
             }
+            {aspirationOwner !== 'coach' && (() => {
+              // Count outcomes and obstacles without a resolver
+              const resolvedOutcomes = new Set(
+                woop.smarters
+                  .filter(s => (s.relevant as Record<string, string>).resolvesType === 'outcome')
+                  .map(s => (s.relevant as Record<string, number>).resolvesIdx)
+              );
+              const resolvedObstacles = new Set(
+                woop.smarters
+                  .filter(s => (s.relevant as Record<string, string>).resolvesType === 'obstacle')
+                  .map(s => (s.relevant as Record<string, number>).resolvesIdx)
+              );
+              const unresolvedCount =
+                woop.outcome.filter((_, i) => !resolvedOutcomes.has(i)).length +
+                woop.obstacle.filter((_, i) => !resolvedObstacles.has(i)).length;
+
+              return unresolvedCount > 0 ? (
+                <button
+                  onClick={onAutoSeedSmarterPlans}
+                  className="w-full py-2 rounded-lg border border-indigo-400/30 text-indigo-300/70 text-xs hover:text-indigo-300 hover:border-indigo-400/50 mt-1"
+                >
+                  ✦ Seed {unresolvedCount} unresolved plan{unresolvedCount !== 1 ? 's' : ''}
+                </button>
+              ) : null;
+            })()}
             {aspirationOwner !== 'coach' && (
               <button
                 onClick={onAddSmarter}
-                className="w-full py-2 rounded-lg border border-white/10 text-white/40 text-xs hover:text-white/60 mt-2"
+                className="w-full py-2 rounded-lg border border-white/10 text-white/40 text-xs hover:text-white/60 mt-1"
               >
                 + Add SMARTER
               </button>
@@ -867,12 +897,31 @@ function SmarterDetailView({
         )}
 
         {activeTab === 1 && (
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-3">
             <p className="text-white/50 text-xs uppercase tracking-wider">Specific</p>
-            <p className="text-white/60 text-sm">
-              Target: {smarter.specific.targetValue}{smarter.specific.unit ? ` ${smarter.specific.unit}` : ''}
-            </p>
-            <p className="text-white/40 text-xs">Source: {smarter.specific.sourceType}</p>
+            {smarter.specific.goalType && (
+              <div className="rounded-lg border border-white/10 px-3 py-2 bg-white/3">
+                <p className="text-white/60 text-xs capitalize">{smarter.specific.goalType}</p>
+              </div>
+            )}
+            <div className="flex gap-3">
+              <div className="flex-1">
+                <p className="text-white/20 text-xs uppercase tracking-wider mb-1">
+                  {smarter.specific.goalType === 'reduction' ? 'Target Max' : 'Target'}
+                </p>
+                <p className="text-white/60 text-sm">
+                  {smarter.specific.targetValue}{smarter.specific.unit ? ` ${smarter.specific.unit}` : ''}
+                </p>
+              </div>
+              {smarter.specific.startValue != null && (
+                <div className="flex-1">
+                  <p className="text-white/20 text-xs uppercase tracking-wider mb-1">Starting From</p>
+                  <p className="text-white/60 text-sm">
+                    {smarter.specific.startValue}{smarter.specific.unit ? ` ${smarter.specific.unit}` : ''}
+                  </p>
+                </div>
+              )}
+            </div>
           </div>
         )}
 
@@ -881,46 +930,131 @@ function SmarterDetailView({
             <p className="text-white/50 text-xs uppercase tracking-wider">Measurable</p>
             {(smarter.measurable.taskTemplateRefs ?? []).length > 0
               ? smarter.measurable.taskTemplateRefs!.map((ref, i) => (
-                  <p key={i} className="text-white/60 text-xs">{ref}</p>
+                  <div key={i} className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-lg px-3 py-2">
+                    <p className="text-white/60 text-xs flex-1 truncate">{ref}</p>
+                  </div>
                 ))
-              : <p className="text-white/25 text-xs">No task refs linked</p>
+              : <p className="text-white/25 text-xs">No tasks linked</p>
             }
           </div>
         )}
 
         {activeTab === 3 && (
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-3">
             <p className="text-white/50 text-xs uppercase tracking-wider">Attainable</p>
-            <p className="text-white/40 text-xs">{(smarter.attainable as Record<string, string>).note || 'No notes set'}</p>
+            <div className="flex items-center justify-between">
+              <p className="text-white/30 text-xs">91-Day Feasibility</p>
+              <p className="text-white/60 text-sm font-medium">
+                {(smarter.attainable as Record<string, number>).feasibilityPct ?? 100}%
+              </p>
+            </div>
+            {(smarter.attainable as Record<string, boolean>).takesLonger && (
+              <p className="text-amber-400/70 text-xs">Takes longer than 91 days — tether planned</p>
+            )}
+            {((smarter.attainable as Record<string, string[]>).neededItems ?? []).length > 0 && (
+              <div>
+                <p className="text-white/20 text-xs uppercase tracking-wider mb-1">Prerequisites</p>
+                {(smarter.attainable as Record<string, string[]>).neededItems.map((item, i) => (
+                  <p key={i} className="text-white/50 text-xs">{item}</p>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
         {activeTab === 4 && (
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-3">
             <p className="text-white/50 text-xs uppercase tracking-wider">Relevant</p>
-            <p className="text-white/40 text-xs">{(smarter.relevant as Record<string, string>).note || 'No notes set'}</p>
+            {(smarter.relevant as Record<string, string>).statGroup && (
+              <div>
+                <p className="text-white/20 text-xs uppercase tracking-wider mb-1">Stat Group</p>
+                <p className="text-white/60 text-sm capitalize">
+                  {(smarter.relevant as Record<string, string>).statGroup}
+                </p>
+              </div>
+            )}
+            {(smarter.relevant as Record<string, string>).resolvesType && (
+              <div>
+                <p className="text-white/20 text-xs uppercase tracking-wider mb-1">Resolves</p>
+                <p className="text-white/60 text-sm capitalize">
+                  {(smarter.relevant as Record<string, string>).resolvesType}{' '}
+                  {Number((smarter.relevant as Record<string, number>).resolvesIdx) + 1}
+                </p>
+              </div>
+            )}
+            {!(smarter.relevant as Record<string, string>).statGroup &&
+             !(smarter.relevant as Record<string, string>).resolvesType && (
+              <p className="text-white/25 text-xs">Not configured</p>
+            )}
           </div>
         )}
 
         {activeTab === 5 && (
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-3">
             <p className="text-white/50 text-xs uppercase tracking-wider">Timely</p>
-            <p className="text-white/60 text-sm">{smarter.timely.projectedFinish ?? 'No finish date set'}</p>
-            <p className="text-white/40 text-xs">Condition: {smarter.timely.conditionType}</p>
+            {(smarter.timely as unknown as Record<string, string>).startDate && smarter.timely.projectedFinish && (() => {
+              const start = new Date((smarter.timely as unknown as Record<string, string>).startDate);
+              const end = new Date(smarter.timely.projectedFinish!);
+              const days = Math.max(1, Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)));
+              return (
+                <div className="rounded-lg border border-white/10 px-3 py-2 bg-white/3">
+                  <p className="text-white/60 text-sm font-medium">{days}-day mission</p>
+                  <p className="text-white/30 text-xs mt-0.5">
+                    {(smarter.timely as unknown as Record<string, string>).startDate} → {smarter.timely.projectedFinish}
+                  </p>
+                </div>
+              );
+            })()}
+            {smarter.timely.interval && (
+              <div>
+                <p className="text-white/20 text-xs uppercase tracking-wider mb-1">Check-in Schedule</p>
+                <p className="text-white/60 text-sm capitalize">{smarter.timely.interval.frequency}
+                  {smarter.timely.interval.days?.length > 0 ? ` — ${smarter.timely.interval.days[0]}` : ''}
+                  {smarter.timely.interval.monthlyDay ? ` — day ${smarter.timely.interval.monthlyDay}` : ''}
+                </p>
+              </div>
+            )}
+            {!smarter.timely.projectedFinish && (
+              <p className="text-white/25 text-xs">No timeline set</p>
+            )}
           </div>
         )}
 
         {activeTab === 6 && (
           <div className="flex flex-col gap-2">
             <p className="text-white/50 text-xs uppercase tracking-wider">Exit Strategy</p>
-            <p className="text-white/60 text-sm">{smarter.exitStrategy.onMissedFinish}</p>
+            <p className="text-white/60 text-sm capitalize">{smarter.exitStrategy.onMissedFinish}</p>
+            <p className="text-white/25 text-xs">
+              {smarter.exitStrategy.onMissedFinish === 'sleep' && 'Pauses at end date until resumed'}
+              {smarter.exitStrategy.onMissedFinish === 'restart' && 'Resets progress and begins fresh'}
+              {smarter.exitStrategy.onMissedFinish === 'extend' && 'Adds one more check-in period'}
+              {smarter.exitStrategy.onMissedFinish === 'reschedule' && 'Pick a new end date, progress kept'}
+            </p>
           </div>
         )}
 
         {activeTab === 7 && (
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-3">
             <p className="text-white/50 text-xs uppercase tracking-wider">Result</p>
-            <p className="text-white/40 text-xs">{(smarter.result as Record<string, string>).note || 'No result defined'}</p>
+            {(smarter.result as Record<string, string>).description && (
+              <p className="text-white/60 text-sm">
+                {(smarter.result as Record<string, string>).description}
+              </p>
+            )}
+            {(smarter.result as Record<string, string>).itemRef && (
+              <div>
+                <p className="text-white/20 text-xs uppercase tracking-wider mb-1">Item Placement</p>
+                <p className="text-white/50 text-xs">{(smarter.result as Record<string, string>).itemRef}</p>
+              </div>
+            )}
+            {(smarter.result as Record<string, boolean>).executesTether && (
+              <p className="text-amber-400/70 text-xs">Completion will execute a tether</p>
+            )}
+            {!(smarter.result as Record<string, string>).description &&
+             !(smarter.result as Record<string, string>).itemRef &&
+             !(smarter.result as Record<string, boolean>).executesTether && (
+              <p className="text-white/25 text-xs">No result defined</p>
+            )}
           </div>
         )}
       </div>

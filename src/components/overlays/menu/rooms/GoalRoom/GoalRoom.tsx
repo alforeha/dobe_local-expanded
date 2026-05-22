@@ -537,6 +537,57 @@ export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
     });
   }
 
+  function handleAutoSeedSmarterPlans() {
+    if (drawerView.level !== 'woop') return;
+    const woop = drawerView.aspiration.woops[drawerView.woopIdx];
+    if (!woop) return;
+
+    const resolvedOutcomes = new Set(
+      woop.smarters
+        .filter(s => (s.relevant as Record<string, string>).resolvesType === 'outcome')
+        .map(s => (s.relevant as Record<string, number>).resolvesIdx)
+    );
+    const resolvedObstacles = new Set(
+      woop.smarters
+        .filter(s => (s.relevant as Record<string, string>).resolvesType === 'obstacle')
+        .map(s => (s.relevant as Record<string, number>).resolvesIdx)
+    );
+
+    const newSmarters: Smarter[] = [];
+
+    woop.outcome.forEach((outcome, i) => {
+      if (resolvedOutcomes.has(i)) return;
+      const blank = createBlankSmarter();
+      newSmarters.push({
+        ...blank,
+        name: outcome.slice(0, 60) || `Outcome ${i + 1} Plan`,
+        relevant: { resolvesType: 'outcome', resolvesIdx: i },
+      });
+    });
+
+    woop.obstacle.forEach((obstacle, i) => {
+      if (resolvedObstacles.has(i)) return;
+      const blank = createBlankSmarter();
+      newSmarters.push({
+        ...blank,
+        name: obstacle.slice(0, 60) || `Obstacle ${i + 1} Plan`,
+        relevant: { resolvesType: 'obstacle', resolvesIdx: i },
+      });
+    });
+
+    if (newSmarters.length === 0) return;
+
+    const asp = drawerView.aspiration;
+    const newWoops = asp.woops.map((w, i) =>
+      i === drawerView.woopIdx
+        ? { ...w, smarters: [...w.smarters, ...newSmarters] }
+        : w
+    );
+    const updatedAsp = { ...asp, woops: newWoops };
+    setAspiration(updatedAsp);
+    setDrawerView({ ...drawerView, aspiration: updatedAsp });
+  }
+
   function handleEditSmarter(smarterIdx: number) {
     if (drawerView.level !== 'smarter' && drawerView.level !== 'woop') return;
 
@@ -1049,6 +1100,7 @@ export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
         }}
         onWoopDraftClear={() => setWoopDraft(null)}
         onAddSmarter={handleAddSmarter}
+        onAutoSeedSmarterPlans={handleAutoSeedSmarterPlans}
         onSelectSmarter={handleSelectSmarter}
         onEditSmarter={handleEditSmarter}
         onDeleteSmarter={handleDeleteSmarter}
