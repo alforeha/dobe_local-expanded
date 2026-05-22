@@ -86,7 +86,8 @@ function stripLibraryTaskTemplates(taskTemplates: Record<string, TaskTemplate> |
 
   for (const [key, template] of Object.entries(taskTemplates ?? {})) {
     const isUuidKey = UUID_V4_PATTERN.test(key);
-    const isTrustedUserTemplate = isUuidKey && template.isCustom === true;
+    const isGoalCheckin = key.startsWith('goal-checkin-');
+    const isTrustedUserTemplate = (isUuidKey && template.isCustom === true) || isGoalCheckin;
 
     if (!isTrustedUserTemplate) {
       changed = true;

@@ -70,8 +70,12 @@ export function GoalSmarterEditor({
   const [statGroup, setStatGroup] = useState<string>(
     (smarter.relevant as Record<string, string>).statGroup ?? ''
   );
-  const [resolvesType, setResolvesType] = useState<'outcome' | 'obstacle' | ''>('');
-  const [resolvesIdx, setResolvesIdx] = useState<number>(-1);
+  const [resolvesType, setResolvesType] = useState<'outcome' | 'obstacle' | ''>(
+    (smarter.relevant as Record<string, string>).resolvesType as 'outcome' | 'obstacle' | '' ?? ''
+  );
+  const [resolvesIdx, setResolvesIdx] = useState<number>(
+    (smarter.relevant as Record<string, number>).resolvesIdx ?? -1
+  );
   const [onMissedFinish, setOnMissedFinish] = useState(smarter.exitStrategy.onMissedFinish);
   const [resultNote, setResultNote] = useState('');
 

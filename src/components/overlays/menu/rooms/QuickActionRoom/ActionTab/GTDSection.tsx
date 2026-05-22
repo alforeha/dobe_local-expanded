@@ -269,6 +269,10 @@ export function GTDSection() {
     setDeleteConfirmId(null);
   }
 
+  const isGoalCheckin = expandedEntry?.kind === 'system'
+    && typeof expandedEntry.task?.templateRef === 'string'
+    && expandedEntry.task.templateRef.startsWith('goal-checkin-');
+
   return (
     <>
       <div className="mb-5">
@@ -322,7 +326,7 @@ export function GTDSection() {
                   }
             }
             onDelete={
-              expandedEntry.kind === 'system' && expandedEntry.isMilestone
+              expandedEntry.kind === 'system' && expandedEntry.isMilestone && !isGoalCheckin
                 ? null
                 : () => handleDelete(expandedEntry)
             }
