@@ -556,8 +556,10 @@ function makeQuest(
 
 function taskInputSpecific(targetValue: number, unit: string | null = null): QuestSpecific {
   return {
+    goalType: 'numeric',
     targetValue,
     unit,
+    startValue: null,
     sourceType: 'taskInput',
     resourceRef: null,
     resourceProperty: null,

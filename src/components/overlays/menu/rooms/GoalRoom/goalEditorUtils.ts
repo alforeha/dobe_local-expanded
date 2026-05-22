@@ -73,8 +73,10 @@ export function createBlankSmarter(): Smarter {
     icon: 'quest',
     completionState: 'active',
     specific: {
+      goalType: 'numeric',
       targetValue: 1,
       unit: null,
+      startValue: null,
       sourceType: 'taskInput',
       resourceRef: null,
       resourceProperty: null,

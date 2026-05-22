@@ -14,7 +14,7 @@ import type { Milestone } from './quest/Milestone';
 
 // Re-export quest subtypes so existing consumers (e.g. rollover.ts importing
 // Marker from '../types/act') continue to resolve without path changes.
-export type { QuestSourceType, QuestSpecific } from './quest/specific';
+export type { GoalType, QuestSourceType, QuestSpecific } from './quest/specific';
 export type { MarkerConditionType, Marker } from './quest/Marker';
 export type { QuestTimely } from './quest/timely';
 export type { Milestone } from './quest/Milestone';

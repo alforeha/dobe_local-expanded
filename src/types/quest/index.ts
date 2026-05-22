@@ -4,7 +4,7 @@
 // Consumers can import directly from here or via src/types (re-exported from act.ts).
 // ─────────────────────────────────────────
 
-export type { QuestSourceType, QuestSpecific } from './specific';
+export type { GoalType, QuestSourceType, QuestSpecific } from './specific';
 export type { MarkerConditionType, Marker } from './Marker';
 export type { QuestTimely } from './timely';
 export type { Milestone } from './Milestone';

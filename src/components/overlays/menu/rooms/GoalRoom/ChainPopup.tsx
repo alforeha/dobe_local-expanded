@@ -64,8 +64,10 @@ function blankQuest(): Smarter {
     icon: '🎯',
     completionState: 'active',
     specific: {
+      goalType: 'numeric',
       targetValue: 1,
       unit: null,
+      startValue: null,
       sourceType: 'taskInput',
       resourceRef: null,
       resourceProperty: null,
@@ -153,8 +155,10 @@ function formStateToQuest(f: QuestFormState, existing: Smarter): Smarter {
     description: f.description.trim(),
     completionState: f.completionState,
     specific: {
+      goalType: existing.specific.goalType ?? 'numeric',
       targetValue: Math.max(1, parseInt(f.targetValue, 10) || 1),
       unit: f.unit.trim() || null,
+      startValue: existing.specific.startValue ?? null,
       sourceType: f.sourceType,
       resourceRef: existing.specific.resourceRef,
       resourceProperty: existing.specific.resourceProperty,
