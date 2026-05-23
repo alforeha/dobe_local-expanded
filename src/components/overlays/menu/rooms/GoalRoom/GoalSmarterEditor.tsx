@@ -823,10 +823,10 @@ export function GoalSmarterEditor({
                   value={onMissedFinish}
                   onChange={(val) => setOnMissedFinish(val as ExitStrategyOption)}
                   options={[
-                    { value: 'sleep', label: 'Sleep — pause until resumed' },
-                    { value: 'restart', label: 'Restart — reset and begin again' },
-                    { value: 'extend', label: 'Extend — add one more check-in' },
-                    { value: 'reschedule', label: 'Reschedule — pick a new end date' },
+                    { value: 'sleep', label: 'Sleep - pause until resumed' },
+                    { value: 'restart', label: 'Restart - reset and begin again' },
+                    { value: 'extend', label: 'Extend - add one more check-in' },
+                    { value: 'reschedule', label: 'Reschedule - pick a new end date' },
                   ]}
                 />
                 <div className="rounded-lg border border-white/10 px-3 py-2 bg-white/3">
@@ -837,7 +837,7 @@ export function GoalSmarterEditor({
                     <p className="text-white/40 text-xs">Progress resets to zero and the mission starts fresh from today.</p>
                   )}
                   {onMissedFinish === 'extend' && (
-                    <p className="text-white/40 text-xs">One additional check-in period is added to the mission window — giving you one more cycle to hit the target.</p>
+                    <p className="text-white/40 text-xs">One additional check-in period is added to the mission window - giving you one more cycle to hit the target.</p>
                   )}
                   {onMissedFinish === 'reschedule' && (
                     <p className="text-white/40 text-xs">You choose a new end date. Progress is kept and the mission continues from where it left off.</p>
@@ -860,7 +860,7 @@ export function GoalSmarterEditor({
                       <input
                         value={resultItemRef}
                         onChange={(e) => setResultItemRef(e.target.value)}
-                        placeholder="Item or stash ref — placed when goal completes"
+                        placeholder="Item or stash ref - placed when goal completes"
                         className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white/80 text-sm placeholder-white/20 focus:outline-none focus:border-white/25"
                       />
                       <p className="text-white/20 text-xs mt-1">
@@ -884,7 +884,7 @@ export function GoalSmarterEditor({
                   {specific.goalType === 'binary' && (
                     <div className="rounded-lg border border-white/10 px-3 py-3 bg-white/3">
                       <p className="text-white/50 text-sm">Completion is the result.</p>
-                      <p className="text-white/25 text-xs mt-1">No additional artifact needed — marking done is the end state.</p>
+                      <p className="text-white/25 text-xs mt-1">No additional artifact needed - marking done is the end state.</p>
                     </div>
                   )}
 
