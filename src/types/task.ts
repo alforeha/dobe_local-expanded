@@ -7,6 +7,9 @@
 
 import type { InputFields, TaskSecondaryTag, XpAward } from './taskTemplate';
 
+export type TaskCategory = 'system' | 'userTemplate' | 'resource' | 'event' | 'goalAction' | 'variable';
+export type GoalActionSubtype = 'checkIn' | 'goalQuest';
+
 // ── LOCATION ─────────────────────────────────────────────────────────────────
 
 export interface TaskLocation {
@@ -26,6 +29,8 @@ export type TaskCompletionState = 'pending' | 'complete' | 'skipped';
 export interface Task {
   /** uuid */
   id: string;
+  category?: TaskCategory;
+  goalActionSubtype?: GoalActionSubtype | null;
   /** Ref to originating TaskTemplate. Unique one-off tasks store null. */
   templateRef: string | null;
   /** true for unique one-off tasks that do not resolve through a TaskTemplate. */
@@ -62,6 +67,8 @@ export interface Task {
    * null for regular schedule tasks.
    */
   questRef: string | null;
+  /** Structured goal linkage field. Separate from questRef. */
+  goalRef?: string | null;
   /**
    * Act uuid — mirrors the actId encoded in questRef for explicit cross-reference.
    * null for regular schedule tasks.

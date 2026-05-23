@@ -7,6 +7,8 @@
 // Also contains: RecurrenceRule, inputFields shapes for all 15 TaskTypes (D38, D41).
 // ─────────────────────────────────────────
 
+import type { TaskCategory } from './task';
+
 // ── RECURRENCE RULE ───────────────────────────────────────────────────────────
 // Custom lightweight recurrence definition.
 // Used by PlannedEvent, Marker, and Resource Account bills/paydays (D28, D37).
@@ -391,6 +393,7 @@ export interface XpAward {
 export interface TaskTemplate {
   /** Identifier used only on prebuilt templates (app bundle). Not present on user custom templates. */
   id?: string;
+  category?: TaskCategory;
   /**
    * true  = user-created via TaskTemplatePopup (editable in Task Room).
    * false / undefined = seeded prebuilt template (read-only in Task Room).
