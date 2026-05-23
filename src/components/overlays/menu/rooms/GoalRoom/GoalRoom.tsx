@@ -7,226 +7,18 @@ import { fireInitialIntervalMarkers, generateSmarterMarkers } from '../../../../
 import { GoalCanvas } from './GoalCanvas';
 import { GoalInspectorDrawer } from './GoalInspectorDrawer';
 import type { DrawerView } from './GoalInspectorDrawer';
-import { ChooseYourPath } from './ChooseYourPath';
-import { GoalActPage } from './GoalActPage';
-import { GoalChainPage } from './GoalChainPage';
-import { GoalQuestPage } from './GoalQuestPage';
-import { GoalProgressBar, GoalSection, GoalStateBadge } from './GoalEditorShared';
 import {
   createBlankAspiration,
   createBlankSmarter,
-  getAspirationActiveWoop,
-  getWoopProgressPercent,
-  getQuestDisplayState,
-  getQuestTaskTemplates,
-  getQuestTimelySummary,
-  normalizeAspirationForSave,
 } from './goalEditorUtils';
-import type { GoalPage } from './goalEditorUtils';
-import { STARTER_ASPIRATION_IDS } from '../../../../../coach/StarterQuestLibrary';
 import type { Aspiration, NestedAct, Smarter, Woop } from '../../../../../types';
 import type { LogInputFields } from '../../../../../types/taskTemplate';
-import { IconDisplay } from '../../../../shared/IconDisplay';
-
-type HabitatFilter = 'habitats' | 'adventures';
 
 interface GoalRoomProps {
   onNavHiddenChange: (hidden: boolean) => void;
 }
 
-function GoalListActRow({
-  act,
-  canEdit,
-  isLocked,
-  onOpen,
-  onOpenChain,
-  onOpenQuest,
-}: {
-  act: Aspiration;
-  canEdit: boolean;
-  isLocked: boolean;
-  onOpen: (act: Aspiration) => void;
-  onOpenChain: (act: Aspiration, chainIdx: number) => void;
-  onOpenQuest: (act: Aspiration, chainIdx: number, questIdx: number) => void;
-}) {
-  const [expanded, setExpanded] = useState(false);
-  const [expandedChainIdx, setExpandedChainIdx] = useState<number | null>(null);
-  const activeChain = getAspirationActiveWoop(act).woop;
-  const activeProgress = activeChain ? getWoopProgressPercent(activeChain) : 0;
-  const scheduleTaskTemplates = useScheduleStore((state) => state.taskTemplates);
-  const scheduleTasks = useScheduleStore((state) => state.tasks);
-
-  const completedTaskTemplateRefs = new Set(
-    Object.values(scheduleTasks)
-      .filter((task) => task.completionState === 'complete')
-      .map((task) => task.templateRef),
-  );
-
-  function getCompletionNeededLabel(targetValue: number) {
-    const safeTarget = Math.max(1, targetValue || 1);
-    return `${safeTarget} completion${safeTarget === 1 ? '' : 's'} needed`;
-  }
-
-  return (
-    <div className={`overflow-hidden rounded-2xl border ${isLocked ? 'border-gray-200 opacity-60 dark:border-gray-800' : 'border-gray-200 dark:border-gray-700'}`}>
-      <button
-        type="button"
-        onClick={() => setExpanded((current) => !current)}
-        className="flex w-full items-center gap-3 px-4 py-3 text-left"
-      >
-        <IconDisplay iconKey={act.icon} size={20} className="h-5 w-5 shrink-0 object-contain" alt="" />
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <p className="truncate text-sm font-semibold text-gray-800 dark:text-gray-100">{act.name}</p>
-            {act.owner === 'coach' ? (
-              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-700">
-                Read-only
-              </span>
-            ) : null}
-          </div>
-          <div className="mt-2">
-            <GoalProgressBar value={activeProgress} />
-          </div>
-        </div>
-        <span className="text-xs text-gray-400">{expanded ? 'Hide' : 'Show'}</span>
-      </button>
-      {expanded ? (
-        <div className="space-y-3 border-t border-gray-200 px-4 py-3 dark:border-gray-700">
-          <div className="space-y-2">
-            {act.woops.length === 0 ? (
-              <p className="text-sm text-gray-500 dark:text-gray-400">No woops yet.</p>
-            ) : (
-              act.woops.map((chain, chainIdx) => (
-                <div key={`${chain.name}-${chainIdx}`} className="overflow-hidden rounded-xl bg-gray-50 dark:bg-gray-900">
-                  <button
-                    type="button"
-                    onClick={() => setExpandedChainIdx((current) => current === chainIdx ? null : chainIdx)}
-                    className="flex w-full items-center gap-2 px-3 py-2 text-left"
-                  >
-                    <IconDisplay iconKey={chain.icon} size={16} className="h-4 w-4 shrink-0 object-contain" alt="" />
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        <p className="min-w-0 flex-1 truncate text-sm font-medium text-gray-800 dark:text-gray-100">
-                          {chain.name || `Woop ${chainIdx + 1}`}
-                        </p>
-                        <GoalStateBadge state={chain.completionState} />
-                      </div>
-                      <div className="mt-2">
-                        <GoalProgressBar value={getWoopProgressPercent(chain)} />
-                      </div>
-                    </div>
-                    <span className="text-xs text-gray-400">
-                      {expandedChainIdx === chainIdx ? 'Hide' : 'Show'}
-                    </span>
-                  </button>
-                  {expandedChainIdx === chainIdx ? (
-                    <div className="space-y-2 border-t border-gray-200 px-3 py-3 text-sm dark:border-gray-700">
-                      <p className="text-gray-600 dark:text-gray-300">
-                        {chain.description || 'No description yet.'}
-                      </p>
-                      {chain.smarters.length === 0 ? (
-                        <p className="text-sm text-gray-500 dark:text-gray-400">No smarters yet.</p>
-                      ) : (
-                        <div className="space-y-2">
-                          {chain.smarters.map((quest, questIdx) => (
-                            <button
-                              key={`${quest.name}-${questIdx}`}
-                              type="button"
-                              onClick={() => onOpenQuest(act, chainIdx, questIdx)}
-                              className="w-full rounded-xl border border-gray-200 px-3 py-3 text-left transition-colors hover:bg-white dark:border-gray-700 dark:hover:bg-gray-800"
-                            >
-                              {(() => {
-                                const displayState = getQuestDisplayState(chain, questIdx);
-                                const isUnlocked = displayState !== 'pending';
-                                const taskTemplatePills = getQuestTaskTemplates(quest, scheduleTaskTemplates);
-                                return (
-                                  <>
-                              <div className="flex items-center gap-2">
-                                <p className="min-w-0 flex-1 truncate text-sm font-semibold text-gray-800 dark:text-gray-100">
-                                  {quest.name || `Smarter ${questIdx + 1}`}
-                                </p>
-                                <span className="text-xs text-gray-500 dark:text-gray-400">{quest.progressPercent}%</span>
-                                <GoalStateBadge state={displayState} />
-                              </div>
-                              <div className="mt-2">
-                                <GoalProgressBar value={quest.progressPercent} />
-                              </div>
-                              <p className="mt-2 line-clamp-2 text-sm text-gray-600 dark:text-gray-300">
-                                {quest.description || 'No description yet.'}
-                              </p>
-                              {taskTemplatePills.length > 0 || quest.measurable.resourceRef ? (
-                                <div className="mt-2 flex flex-wrap gap-2">
-                                  {taskTemplatePills.map(({ ref, template }) => (
-                                    <div
-                                      key={ref}
-                                      className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs ${
-                                        isUnlocked && completedTaskTemplateRefs.has(ref)
-                                          ? 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400'
-                                          : 'bg-emerald-50 text-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-200'
-                                      }`}
-                                    >
-                                      <IconDisplay iconKey={template?.icon ?? 'task'} size={14} className="h-3.5 w-3.5 object-contain" alt="" />
-                                      <span>{template?.name ?? ref}</span>
-                                    </div>
-                                  ))}
-                                  {quest.measurable.resourceRef ? (
-                                    <div
-                                      className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs ${
-                                        isUnlocked && quest.progressPercent > 0
-                                          ? 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400'
-                                          : 'bg-sky-50 text-sky-800 dark:bg-sky-950/30 dark:text-sky-200'
-                                      }`}
-                                    >
-                                      <IconDisplay iconKey="resource" size={14} className="h-3.5 w-3.5 object-contain" alt="" />
-                                      <span>{quest.measurable.resourceRef}</span>
-                                    </div>
-                                  ) : null}
-                                </div>
-                              ) : null}
-                              <div className="mt-2 flex items-center justify-between gap-3 text-xs text-gray-500 dark:text-gray-400">
-                                <span>{getCompletionNeededLabel(quest.specific.targetValue)}</span>
-                                <span className="truncate text-right">{getQuestTimelySummary(quest)}</span>
-                              </div>
-                                  </>
-                                );
-                              })()}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                      <button
-                        type="button"
-                        onClick={() => onOpenChain(act, chainIdx)}
-                        className="rounded-xl border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-800"
-                      >
-                        Open Woop
-                      </button>
-                    </div>
-                  ) : null}
-                </div>
-              ))
-            )}
-          </div>
-          <button
-            type="button"
-            onClick={() => onOpen(act)}
-            className="rounded-xl border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-800"
-          >
-            {canEdit ? 'Edit' : 'View'}
-          </button>
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
 export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
-  const [habitatFilter, setHabitatFilter] = useState<Set<HabitatFilter>>(
-    new Set(['habitats', 'adventures']),
-  );
-  const [pageStack, setPageStack] = useState<GoalPage[]>([{ type: 'list' }]);
-  const [draftActs, setDraftActs] = useState<Record<string, Aspiration>>({});
-  const [newActDraftId, setNewActDraftId] = useState<string | null>(null);
   const [drawerView, setDrawerView] = useState<DrawerView>({ level: 'none' });
   const [drawerEditMode, setDrawerEditMode] = useState(false);
   const [aspirationDraft, setAspirationDraft] = useState<Aspiration | null>(null);
@@ -247,8 +39,6 @@ export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
   const aspirations = useProgressionStore((s) => s.aspirations);
   const setAspiration = useProgressionStore((s) => s.setAspiration);
   const removeAspiration = useProgressionStore((s) => s.removeAspiration);
-  const user = useUserStore((s) => s.user);
-  const currentPage = pageStack[pageStack.length - 1] ?? { type: 'list' as const };
 
   drawerViewRef.current = drawerView;
   drawerEditModeRef.current = drawerEditMode;
@@ -270,96 +60,14 @@ export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const habitatActs = useMemo(
-    () => Object.values(aspirations).filter((act) => act.owner !== 'coach' && (act.habitat ?? 'habitats') === 'habitats'),
-    [aspirations],
-  );
-
   const userAspirations = useMemo(
     () => Object.values(aspirations).filter((act) => act.owner !== 'coach'),
     [aspirations],
   );
 
-  const adventureActs = useMemo(() => {
+  const systemAspirations = useMemo(() => {
     return Object.values(aspirations).filter((act) => act.owner === 'coach');
   }, [aspirations]);
-
-  function pushPage(page: GoalPage) {
-    setPageStack((current) => [...current, page]);
-  }
-
-  function popPage() {
-    setPageStack((current) => current.length > 1 ? current.slice(0, -1) : current);
-  }
-
-  function toggleFilter(h: HabitatFilter) {
-    setHabitatFilter((prev) => {
-      const next = new Set(prev);
-      if (next.has(h)) {
-        if (next.size === 1) return prev;
-        next.delete(h);
-      } else {
-        next.add(h);
-      }
-      return next;
-    });
-  }
-
-  function updateDraftAct(act: Aspiration) {
-    setDraftActs((current) => ({ ...current, [act.id]: normalizeAspirationForSave(act) }));
-  }
-
-  function removeDraftAct(actId: string) {
-    setDraftActs((current) => {
-      const next = { ...current };
-      delete next[actId];
-      return next;
-    });
-  }
-
-  function getDraftAct(actId: string): Aspiration | null {
-    if (draftActs[actId]) return draftActs[actId];
-    return aspirations[actId] ?? null;
-  }
-
-  function beginNewAct() {
-    const draft = createBlankAspiration(user?.system.id ?? 'user');
-    updateDraftAct(draft);
-    setNewActDraftId(draft.id);
-    pushPage({ type: 'aspiration', aspirationId: null });
-  }
-
-  function beginEditAct(act: Aspiration) {
-    updateDraftAct(act);
-    pushPage({ type: 'aspiration', aspirationId: act.id });
-  }
-
-  function beginOpenChain(act: Aspiration, chainIdx: number) {
-    updateDraftAct(act);
-    pushPage({ type: 'woop', aspirationId: act.id, woopIdx: chainIdx });
-  }
-
-  function beginOpenQuest(act: Aspiration, chainIdx: number, questIdx: number) {
-    updateDraftAct(act);
-    pushPage({ type: 'smarter', aspirationId: act.id, woopIdx: chainIdx, smarterIdx: questIdx });
-  }
-
-  function resolvePageAct(page: GoalPage): Aspiration | null {
-    if (page.type === 'list') return null;
-    if (page.type === 'aspiration' && page.aspirationId === null) {
-      return newActDraftId ? getDraftAct(newActDraftId) : null;
-    }
-    if (page.type === 'aspiration') return page.aspirationId ? getDraftAct(page.aspirationId) : null;
-    return getDraftAct(page.aspirationId);
-  }
-
-  function saveActDraft(act: Aspiration) {
-    const normalized = normalizeAspirationForSave(act);
-    setAspiration(normalized);
-    updateDraftAct(normalized);
-    if (newActDraftId === normalized.id) setNewActDraftId(null);
-    popPage();
-  }
 
   function handleSaveAspiration(updated: Aspiration) {
     setAspiration(updated);
@@ -819,25 +527,6 @@ export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
     clearCanvasFocusRef.current?.('planet');
   }
 
-  function cancelActDraft(page: GoalPage) {
-    const act = resolvePageAct(page);
-    if (!act) {
-      popPage();
-      return;
-    }
-    if (newActDraftId === act.id) {
-      removeDraftAct(act.id);
-      setNewActDraftId(null);
-    } else if (aspirations[act.id]) {
-      updateDraftAct(aspirations[act.id]);
-    }
-    popPage();
-  }
-
-  const showList = currentPage.type === 'list';
-  const showChooseYourPath = showList && habitatFilter.has('adventures') && !!aspirations[STARTER_ASPIRATION_IDS.daily];
-
-  const currentAct = resolvePageAct(currentPage);
   const handleFocusedOrbitChange = useCallback((orbit: 'user' | 'system' | null) => {
     const level = drawerViewLevelRef.current;
     if (level === 'woop-edit' || level === 'smarter-edit' || level === 'act-edit') return;
@@ -901,126 +590,6 @@ export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
   const drawerOpen = drawerView.level !== 'none';
   const drawerHeightPercent = 55;
   const canvasHeightPercent = drawerOpen ? 100 - drawerHeightPercent : 100;
-  const shouldRenderPageStack = false;
-  void beginNewAct;
-  void toggleFilter;
-
-  const pageStackContent = (
-    <>
-      {showList ? (
-        <div className="flex-1 overflow-y-auto px-4 py-4">
-          <div className="mx-auto flex max-w-5xl flex-col gap-4">
-            {habitatFilter.has('habitats') ? (
-              <GoalSection title="Goal Hubs">
-                {habitatActs.length === 0 ? (
-                  <p className="text-sm text-gray-500 dark:text-gray-400">No habitat aspirations yet.</p>
-                ) : (
-                  <div className="space-y-3">
-                    {habitatActs.map((act) => (
-                      <GoalListActRow
-                        key={act.id}
-                        act={act}
-                        canEdit
-                        isLocked={false}
-                        onOpen={beginEditAct}
-                        onOpenChain={beginOpenChain}
-                        onOpenQuest={beginOpenQuest}
-                      />
-                    ))}
-                  </div>
-                )}
-              </GoalSection>
-            ) : null}
-
-            {habitatFilter.has('adventures') ? (
-              <GoalSection title="Adventures">
-                <div className="space-y-3">
-                  {adventureActs.map((act) => {
-                    return (
-                      <GoalListActRow
-                        key={act.id}
-                        act={act}
-                        canEdit={false}
-                        isLocked={act.completionState !== 'active'}
-                        onOpen={beginEditAct}
-                        onOpenChain={beginOpenChain}
-                        onOpenQuest={beginOpenQuest}
-                      />
-                    );
-                  })}
-                </div>
-              </GoalSection>
-            ) : null}
-
-            {showChooseYourPath ? <ChooseYourPath /> : null}
-          </div>
-        </div>
-      ) : null}
-
-      {currentPage.type === 'aspiration' && currentAct ? (
-        <GoalActPage
-          act={currentAct}
-          readOnly={currentAct.owner === 'coach'}
-          onBack={popPage}
-          onCancel={() => cancelActDraft(currentPage)}
-          onSave={saveActDraft}
-          onOpenChain={(updatedAct, chainIdx) => {
-            updateDraftAct(updatedAct);
-            pushPage({
-              type: 'woop',
-              aspirationId: updatedAct.id,
-              woopIdx: chainIdx,
-            });
-          }}
-          onOpenQuest={(updatedAct, chainIdx, questIdx) => {
-            updateDraftAct(updatedAct);
-            pushPage({
-              type: 'smarter',
-              aspirationId: updatedAct.id,
-              woopIdx: chainIdx,
-              smarterIdx: questIdx,
-            });
-          }}
-        />
-      ) : null}
-
-      {currentPage.type === 'woop' && currentAct ? (
-        <GoalChainPage
-          act={currentAct}
-          chainIdx={currentPage.woopIdx}
-          readOnly={currentAct.owner === 'coach'}
-          onBack={popPage}
-          onSave={(updatedAct) => {
-            updateDraftAct(updatedAct);
-            popPage();
-          }}
-          onOpenQuest={(updatedAct, chainIdx, questIdx) => {
-            updateDraftAct(updatedAct);
-            pushPage({
-              type: 'smarter',
-              aspirationId: updatedAct.id,
-              woopIdx: chainIdx,
-              smarterIdx: questIdx,
-            });
-          }}
-        />
-      ) : null}
-
-      {currentPage.type === 'smarter' && currentAct ? (
-        <GoalQuestPage
-          act={currentAct}
-          chainIdx={currentPage.woopIdx}
-          questIdx={currentPage.smarterIdx}
-          readOnly={currentAct.owner === 'coach'}
-          onBack={popPage}
-          onSave={(updatedAct) => {
-            updateDraftAct(updatedAct);
-            popPage();
-          }}
-        />
-      ) : null}
-    </>
-  );
 
   return (
     <div className="relative w-full h-full bg-gray-950 overflow-hidden">
@@ -1030,7 +599,7 @@ export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
       >
         <GoalCanvas
           userAspirations={userAspirations}
-          adventureAspirations={adventureActs}
+          adventureAspirations={systemAspirations}
           onFocusedOrbitChange={handleFocusedOrbitChange}
           onSelectedAspirationChange={handleSelectedAspirationChange}
           onRegisterClearFocus={(fn) => { clearCanvasFocusRef.current = fn; }}
@@ -1073,7 +642,7 @@ export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
         view={drawerView}
         onBack={handleDrawerBack}
         userAspirations={userAspirations}
-        adventureAspirations={adventureActs}
+        adventureAspirations={systemAspirations}
         onSelectAspiration={(asp) => {
           const orbit = asp.owner === 'coach' ? 'system' : 'user';
           setDrawerView({ level: 'aspiration', orbit, aspiration: asp });
@@ -1125,8 +694,6 @@ export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
         onCancelEdit={handleCancelEdit}
         onDeleteAspiration={handleDeleteAspiration}
       />
-      {/* page stack — reconnects when drawer is wired */}
-      {shouldRenderPageStack ? pageStackContent : null}
     </div>
   );
 }

@@ -1,15 +1,11 @@
-import { useState } from 'react';
 import type { Aspiration } from '../../../../../types';
 import { IconDisplay } from '../../../../shared/IconDisplay';
-import { ChainPopup } from './ChainPopup';
 
 interface ActBlockExpandedProps {
   act: Aspiration;
 }
 
 export function ActBlockExpanded({ act }: ActBlockExpandedProps) {
-  const [openChainIdx, setOpenChainIdx] = useState<number | null>(null);
-
   if (act.woops.length === 0) {
     return <p className="text-xs text-gray-400 px-3 pb-3">No woops yet.</p>;
   }
@@ -20,7 +16,6 @@ export function ActBlockExpanded({ act }: ActBlockExpandedProps) {
         <button
           key={i}
           type="button"
-          onClick={() => setOpenChainIdx(i)}
           className="w-full flex items-center gap-2 text-left px-2 py-1.5 rounded-lg bg-gray-50 dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600"
         >
           <IconDisplay iconKey={chain.icon} size={16} className="h-4 w-4 shrink-0 object-contain" alt="" />
@@ -40,14 +35,6 @@ export function ActBlockExpanded({ act }: ActBlockExpandedProps) {
           </span>
         </button>
       ))}
-      {openChainIdx !== null && act.woops[openChainIdx] !== undefined && (
-        <ChainPopup
-          chain={act.woops[openChainIdx]}
-          chainIndex={openChainIdx}
-          act={act}
-          onClose={() => setOpenChainIdx(null)}
-        />
-      )}
     </div>
   );
 }
