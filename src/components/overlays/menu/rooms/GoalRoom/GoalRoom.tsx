@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useProgressionStore } from '../../../../../stores/useProgressionStore';
 import { useScheduleStore } from '../../../../../stores/useScheduleStore';
 import { useUserStore } from '../../../../../stores/useUserStore';
+import { useBrainstormStore } from '../../../../../stores/useBrainstormStore';
 import { autoCompleteSystemTask } from '../../../../../engine/resourceEngine';
 import { fireInitialIntervalMarkers, generateSmarterMarkers } from '../../../../../engine/markerEngine';
 import { GoalCanvas } from './GoalCanvas';
@@ -12,6 +13,7 @@ import {
   createBlankSmarter,
 } from './goalEditorUtils';
 import type { Aspiration, NestedAct, Smarter, Woop } from '../../../../../types';
+import type { BrainstormEntry } from '../../../../../types/brainstorm';
 import type { LogInputFields } from '../../../../../types/taskTemplate';
 
 interface GoalRoomProps {
@@ -19,12 +21,14 @@ interface GoalRoomProps {
 }
 
 export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
-  const [drawerView, setDrawerView] = useState<DrawerView>({ level: 'none' });
+  const [drawerView, setDrawerView] = useState<DrawerView>({ level: 'root' });
   const [drawerEditMode, setDrawerEditMode] = useState(false);
   const [aspirationDraft, setAspirationDraft] = useState<Aspiration | null>(null);
   const [woopDraft, setWoopDraft] = useState<{ aspirationId: string; woopIdx: number | null; woop: Woop } | null>(null);
   const [smarterDraft, setSmarterDraft] = useState<{ aspirationId: string; woopIdx: number; smarterIdx: number | null; smarter: Smarter } | null>(null);
   const [isActView, setIsActView] = useState(false);
+  const [navHidden, setNavHidden] = useState(false);
+  const [brainstormFocused, setBrainstormFocused] = useState(false);
   const clearCanvasFocusRef = useRef<((scope: 'planet' | 'all') => void) | null>(null);
   const selectAspirationFromDrawerRef = useRef<((id: string) => void) | null>(null);
   const setSelectedWoopRef = useRef<((idx: number | null) => void) | null>(null);
@@ -39,26 +43,69 @@ export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
   const aspirations = useProgressionStore((s) => s.aspirations);
   const setAspiration = useProgressionStore((s) => s.setAspiration);
   const removeAspiration = useProgressionStore((s) => s.removeAspiration);
-
-  drawerViewRef.current = drawerView;
-  drawerEditModeRef.current = drawerEditMode;
+  const storms = useBrainstormStore((s) => s.storms);
+  const selectedStormId = useBrainstormStore((s) => s.selectedStormId);
+  const selectedMainIdeaId = useBrainstormStore((s) => s.selectedMainIdeaId);
+  const selectedIdeaId = useBrainstormStore((s) => s.selectedIdeaId);
+  const {
+    addStorm,
+    addMainIdea,
+    addIdea,
+    addChildIdea,
+    addEntry,
+    addEntryToMainIdea,
+    setSelectedStorm,
+    setSelectedMainIdea,
+    setSelectedIdea,
+  } = useBrainstormStore();
+  const currentStorm = selectedStormId ? storms[selectedStormId] ?? null : null;
+  const mainIdeas = currentStorm?.mainIdeas ?? {};
+  const ideas = currentStorm?.ideas ?? {};
 
   useEffect(() => {
     autoCompleteSystemTask('task-sys-open-adventures');
   }, []);
 
   useEffect(() => {
+    drawerViewRef.current = drawerView;
+    drawerEditModeRef.current = drawerEditMode;
+  }, [drawerView, drawerEditMode]);
+
+  useEffect(() => {
     drawerViewLevelRef.current = drawerView.level;
+    let timer: number | null = null;
+
     if (drawerView.level !== 'smarter') {
-      setIsActView(false);
+      timer = window.setTimeout(() => {
+        setIsActView(false);
+      }, 0);
     }
+    if (drawerView.level !== 'brainstorm') {
+      const nextTimer = window.setTimeout(() => {
+        setBrainstormFocused(false);
+      }, 0);
+      if (timer !== null) {
+        return () => {
+          window.clearTimeout(timer);
+          window.clearTimeout(nextTimer);
+        };
+      }
+
+      return () => {
+        window.clearTimeout(nextTimer);
+      };
+    }
+
+    return () => {
+      if (timer !== null) {
+        window.clearTimeout(timer);
+      }
+    };
   }, [drawerView.level]);
 
   useEffect(() => {
-    onNavHiddenChange(true);
-    return () => onNavHiddenChange(false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    onNavHiddenChange(navHidden);
+  }, [navHidden, onNavHiddenChange]);
 
   const userAspirations = useMemo(
     () => Object.values(aspirations).filter((act) => act.owner !== 'coach'),
@@ -68,6 +115,42 @@ export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
   const systemAspirations = useMemo(() => {
     return Object.values(aspirations).filter((act) => act.owner === 'coach');
   }, [aspirations]);
+
+  function handleAddMainIdea(title: string) {
+    if (selectedStormId) {
+      addMainIdea(selectedStormId, title);
+    }
+  }
+
+  function handleAddIdea(mainIdeaId: string, title: string) {
+    if (selectedStormId) {
+      addIdea(selectedStormId, mainIdeaId, title);
+    }
+  }
+
+  function handleAddChildIdea(parentIdeaId: string, title: string) {
+    if (selectedStormId) {
+      addChildIdea(selectedStormId, parentIdeaId, title);
+    }
+  }
+
+  function handleAddEntry(
+    ideaId: string,
+    entry: Omit<BrainstormEntry, 'id' | 'entries'>,
+  ) {
+    if (selectedStormId) {
+      addEntry(selectedStormId, ideaId, entry);
+    }
+  }
+
+  function handleAddEntryToMainIdea(
+    mainIdeaId: string,
+    entry: Omit<BrainstormEntry, 'id' | 'entries'>,
+  ) {
+    if (selectedStormId) {
+      addEntryToMainIdea(selectedStormId, mainIdeaId, entry);
+    }
+  }
 
   function handleSaveAspiration(updated: Aspiration) {
     setAspiration(updated);
@@ -533,8 +616,9 @@ export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
     setSelectedSmarterRef.current?.(null);
     setSelectedWoopRef.current?.(null);
     if (orbit === null) {
-      setDrawerView({ level: 'none' });
+      setDrawerView({ level: 'root' });
     } else {
+      setBrainstormFocused(false);
       setDrawerView({ level: 'orbit', orbit });
     }
   }, []);
@@ -547,7 +631,43 @@ export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
     const orbit = aspiration.owner === 'coach' ? 'system' : 'user';
     setDrawerView({ level: 'aspiration', orbit, aspiration });
   }, []);
+
+  const handleSelectMainIdea = useCallback((id: string | null) => {
+    if (id === null) {
+      setSelectedIdea(null);
+      setSelectedMainIdea(null);
+      return;
+    }
+
+    if (selectedMainIdeaId !== id) {
+      setSelectedIdea(null);
+    }
+    setSelectedMainIdea(id);
+  }, [selectedMainIdeaId, setSelectedIdea, setSelectedMainIdea]);
+
   function handleDrawerBack() {
+    if (drawerView.level === 'brainstorm') {
+      const stormState = useBrainstormStore.getState();
+      const stormId = stormState.selectedStormId;
+      if (selectedIdeaId) {
+        const idea = stormId && selectedIdeaId
+          ? stormState.storms[stormId]?.ideas[selectedIdeaId]
+          : null;
+        if (idea?.parentIdeaId) {
+          setSelectedIdea(idea.parentIdeaId);
+        } else {
+          setSelectedIdea(null);
+        }
+      } else if (selectedMainIdeaId) {
+        handleSelectMainIdea(null);
+      } else if (selectedStormId) {
+        setSelectedStorm(null);
+      } else {
+        setDrawerView({ level: 'root' });
+      }
+      return;
+    }
+
     if (drawerView.level === 'act-edit') {
       setDrawerView({
         level: 'smarter-edit',
@@ -583,7 +703,7 @@ export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
       setDrawerView({ level: 'orbit', orbit: drawerView.orbit });
       clearCanvasFocusRef.current?.('planet');
     } else if (drawerView.level === 'orbit') {
-      setDrawerView({ level: 'none' });
+      setDrawerView({ level: 'root' });
       clearCanvasFocusRef.current?.('all');
     }
   }
@@ -593,11 +713,42 @@ export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
 
   return (
     <div className="relative w-full h-full bg-gray-950 overflow-hidden">
+      <button
+        type="button"
+        onClick={() => {
+          setNavHidden((prev) => !prev);
+          onNavHiddenChange(!navHidden);
+        }}
+        className="absolute top-3 right-3 z-50 flex h-9 w-9 items-center justify-center rounded-md border border-white/10 bg-gray-900/85 text-white/70 shadow-lg transition hover:bg-gray-800 hover:text-white"
+        aria-label={navHidden ? 'Show navigation' : 'Hide navigation'}
+      >
+        <svg
+          width="18"
+          height="18"
+          viewBox="0 0 18 18"
+          fill="none"
+          xmlns="http://www.w3.org/2000/svg"
+          aria-hidden="true"
+        >
+          {navHidden ? (
+            <>
+              <path d="M4 4L14 14" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+              <path d="M14 4L4 14" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+            </>
+          ) : (
+            <>
+              <path d="M4 6H14" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+              <path d="M4 12H14" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+            </>
+          )}
+        </svg>
+      </button>
       <div
         className="absolute top-0 left-0 right-0 transition-all duration-300 ease-out"
         style={{ height: `${canvasHeightPercent}%` }}
       >
         <GoalCanvas
+          selectedStormId={selectedStormId}
           userAspirations={userAspirations}
           adventureAspirations={systemAspirations}
           onFocusedOrbitChange={handleFocusedOrbitChange}
@@ -628,6 +779,17 @@ export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
               setSelectedSmarterRef.current?.(smarterIdx);
             }
           }}
+          onBrainstormSelect={() => {
+            setSelectedStorm(null);
+            setBrainstormFocused(true);
+            setDrawerView({ level: 'brainstorm' });
+          }}
+          onSelectStorm={setSelectedStorm}
+          brainstormFocused={brainstormFocused}
+          selectedMainIdeaId={selectedMainIdeaId}
+          selectedIdeaId={selectedIdeaId}
+          onSelectMainIdea={handleSelectMainIdea}
+          onSelectIdea={setSelectedIdea}
           onRegisterSetSelectedWoop={(fn) => { setSelectedWoopRef.current = fn; }}
           onRegisterSetSelectedSmarter={(fn) => { setSelectedSmarterRef.current = fn; }}
           aspirationDraft={aspirationDraft}
@@ -638,11 +800,32 @@ export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
         />
       </div>
       <GoalInspectorDrawer
+        selectedStormId={selectedStormId}
+        storms={storms}
         open={drawerOpen}
         view={drawerView}
         onBack={handleDrawerBack}
         userAspirations={userAspirations}
         adventureAspirations={systemAspirations}
+        mainIdeas={mainIdeas}
+        ideas={ideas}
+        selectedMainIdeaId={selectedMainIdeaId}
+        selectedIdeaId={selectedIdeaId}
+        onSelectStorm={(id) => {
+          setSelectedStorm(id);
+        }}
+        onAddStorm={(name, type) => {
+          addStorm(name, type);
+        }}
+        onSelectMainIdea={handleSelectMainIdea}
+        onSelectIdea={setSelectedIdea}
+        onAddMainIdea={handleAddMainIdea}
+        onAddIdea={handleAddIdea}
+        onAddChildIdea={handleAddChildIdea}
+        onAddEntry={(ideaId, content, state) => {
+          handleAddEntry(ideaId, { content, state, pointsTo: [] });
+        }}
+        onAddEntryToMainIdea={handleAddEntryToMainIdea}
         onSelectAspiration={(asp) => {
           const orbit = asp.owner === 'coach' ? 'system' : 'user';
           setDrawerView({ level: 'aspiration', orbit, aspiration: asp });
@@ -697,4 +880,3 @@ export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
     </div>
   );
 }
-

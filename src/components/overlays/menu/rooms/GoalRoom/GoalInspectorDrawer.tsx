@@ -1,6 +1,16 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Aspiration, NestedAct, Smarter, Woop } from '../../../../../types';
+import type {
+  BrainstormEntry,
+  BrainstormIdea,
+  EntryState,
+  MainIdea,
+  Storm,
+  StormState,
+  StormType,
+} from '../../../../../types/brainstorm';
 import { IconDisplay } from '../../../../shared/IconDisplay';
+import { PopupShell } from '../../../../shared/popups/PopupShell';
 import { GoalActEditor } from './GoalActEditor';
 import { GoalAspirationEditor } from './GoalAspirationEditor';
 import { GoalSmarterEditor } from './GoalSmarterEditor';
@@ -10,6 +20,8 @@ import { analyzeWoopText, BANK_COLORS, type WoopBankMatch } from './woopKeywordE
 
 export type DrawerView =
   | { level: 'none' }
+  | { level: 'root' }
+  | { level: 'brainstorm' }
   | { level: 'orbit'; orbit: 'user' | 'system' }
   | { level: 'aspiration'; orbit: 'user' | 'system'; aspiration: Aspiration }
   | { level: 'woop-edit'; orbit: 'user' | 'system'; aspiration: Aspiration; woopIdx: number | null }
@@ -19,11 +31,26 @@ export type DrawerView =
   | { level: 'act-edit'; orbit: 'user' | 'system'; aspiration: Aspiration; woopIdx: number; smarterIdx: number };
 
 interface GoalInspectorDrawerProps {
+  selectedStormId: string | null;
+  storms: Record<string, Storm>;
   open: boolean;
   view: DrawerView;
   onBack: () => void;
   userAspirations: Aspiration[];
   adventureAspirations: Aspiration[];
+  mainIdeas: Record<string, MainIdea>;
+  ideas: Record<string, BrainstormIdea>;
+  selectedMainIdeaId: string | null;
+  selectedIdeaId: string | null;
+  onSelectStorm: (id: string) => void;
+  onAddStorm: (name: string, type: StormType) => void;
+  onSelectMainIdea: (id: string | null) => void;
+  onSelectIdea: (id: string | null) => void;
+  onAddMainIdea: (title: string) => void;
+  onAddIdea: (mainIdeaId: string, title: string) => void;
+  onAddChildIdea: (parentIdeaId: string, title: string) => void;
+  onAddEntry: (ideaId: string, content: string, state: EntryState) => void;
+  onAddEntryToMainIdea: (mainIdeaId: string, entry: Omit<BrainstormEntry, 'id' | 'entries'>) => void;
   onSelectAspiration: (aspiration: Aspiration) => void;
   onAddAspiration: () => void;
   editMode: boolean;
@@ -53,6 +80,195 @@ interface GoalInspectorDrawerProps {
   onCancelSmarterEdit: () => void;
   onCancelEdit: () => void;
   onDeleteAspiration: (aspirationId: string) => void;
+}
+
+const ENTRY_STATES: EntryState[] = ['outcome', 'obstacle', 'question', 'solved', 'others'];
+const STORM_TYPES: StormType[] = ['exploration', 'problem', 'planning', 'reflection', 'project', 'others'];
+const STORM_STATE_CLASSES: Record<StormState, string> = {
+  active: 'bg-emerald-900/40 text-emerald-400',
+  incubating: 'bg-amber-900/40 text-amber-400',
+  archived: 'bg-slate-800/60 text-slate-400',
+  resolved: 'bg-indigo-900/40 text-indigo-400',
+};
+const STORM_TYPE_CLASSES: Record<StormType, string> = {
+  exploration: 'bg-sky-900/40 text-sky-300',
+  problem: 'bg-rose-900/40 text-rose-300',
+  planning: 'bg-cyan-900/40 text-cyan-300',
+  reflection: 'bg-violet-900/40 text-violet-300',
+  project: 'bg-fuchsia-900/40 text-fuchsia-300',
+  others: 'bg-slate-800/60 text-slate-300',
+};
+
+type BrainstormModalMode = 'mainIdea' | 'idea' | 'childIdea' | 'entry' | 'rename' | 'storm';
+
+function getEntryBadgeStyle(state: EntryState) {
+  const backgroundByState: Record<EntryState, string> = {
+    outcome: '#10b981',
+    obstacle: '#ef4444',
+    question: '#f59e0b',
+    solved: '#6366f1',
+    others: '#64748b',
+  };
+
+  return {
+    background: backgroundByState[state],
+    color: 'white',
+  };
+}
+
+function BrainstormNameModal({
+  title,
+  placeholder,
+  defaultValue,
+  defaultType,
+  includeTypeSelector,
+  onConfirm,
+  onClose,
+}: {
+  title: string;
+  placeholder: string;
+  defaultValue?: string;
+  defaultType?: StormType;
+  includeTypeSelector?: boolean;
+  onConfirm: (name: string, type?: StormType) => void;
+  onClose: () => void;
+}) {
+  const [name, setName] = useState(defaultValue ?? '');
+  const [stormType, setStormType] = useState<StormType>(defaultType ?? 'exploration');
+
+  function handleConfirm() {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    onConfirm(trimmed, includeTypeSelector ? stormType : undefined);
+  }
+
+  return (
+    <PopupShell title={title} onClose={onClose}>
+      <div className="space-y-3">
+        <input
+          type="text"
+          value={name}
+          onChange={(event) => setName(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') {
+              event.preventDefault();
+              handleConfirm();
+            }
+            if (event.key === 'Escape') {
+              event.preventDefault();
+              onClose();
+            }
+          }}
+          placeholder={placeholder}
+          autoFocus
+          className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
+        />
+        {includeTypeSelector ? (
+          <select
+            value={stormType}
+            onChange={(event) => setStormType(event.target.value as StormType)}
+            className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
+          >
+            {STORM_TYPES.map((type) => (
+              <option key={type} value={type}>
+                {type}
+              </option>
+            ))}
+          </select>
+        ) : null}
+        <div className="flex gap-2 pt-1">
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex-1 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={handleConfirm}
+            className="flex-1 rounded-lg bg-blue-500 px-4 py-2 text-sm font-medium text-white hover:bg-blue-600"
+          >
+            Create
+          </button>
+        </div>
+      </div>
+    </PopupShell>
+  );
+}
+
+function BrainstormEntryModal({
+  onConfirm,
+  onClose,
+}: {
+  onConfirm: (content: string, state: EntryState) => void;
+  onClose: () => void;
+}) {
+  const [entryContent, setEntryContent] = useState('');
+  const [entryState, setEntryState] = useState<EntryState>('outcome');
+
+  function handleConfirm() {
+    const content = entryContent.trim();
+    if (!content) return;
+    onConfirm(content, entryState);
+  }
+
+  return (
+    <PopupShell title="Add Entry" onClose={onClose}>
+      <div className="space-y-3">
+        <input
+          type="text"
+          value={entryContent}
+          onChange={(event) => setEntryContent(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') {
+              event.preventDefault();
+              handleConfirm();
+            }
+            if (event.key === 'Escape') {
+              event.preventDefault();
+              onClose();
+            }
+          }}
+          placeholder="Entry content..."
+          autoFocus
+          className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
+        />
+        <div className="flex flex-wrap gap-2">
+          {ENTRY_STATES.map((state) => {
+            const isActive = entryState === state;
+            return (
+              <button
+                key={state}
+                type="button"
+                onClick={() => setEntryState(state)}
+                className="rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors"
+                style={isActive ? getEntryBadgeStyle(state) : { background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.7)' }}
+              >
+                {state}
+              </button>
+            );
+          })}
+        </div>
+        <div className="flex gap-2 pt-1">
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex-1 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={handleConfirm}
+            className="flex-1 rounded-lg bg-blue-500 px-4 py-2 text-sm font-medium text-white hover:bg-blue-600"
+          >
+            Add
+          </button>
+        </div>
+      </div>
+    </PopupShell>
+  );
 }
 
 function AspirationActionsMenu({
@@ -339,11 +555,26 @@ function SmarterActionsMenu({
 }
 
 export function GoalInspectorDrawer({
+  selectedStormId,
+  storms,
   open,
   view,
   onBack,
   userAspirations,
   adventureAspirations,
+  mainIdeas,
+  ideas,
+  selectedMainIdeaId,
+  selectedIdeaId,
+  onSelectStorm,
+  onAddStorm,
+  onSelectMainIdea,
+  onSelectIdea,
+  onAddMainIdea,
+  onAddIdea,
+  onAddChildIdea,
+  onAddEntry,
+  onAddEntryToMainIdea,
   onSelectAspiration,
   onAddAspiration,
   editMode,
@@ -375,12 +606,64 @@ export function GoalInspectorDrawer({
   onDeleteAspiration,
 }: GoalInspectorDrawerProps) {
   const prevLevelRef = useRef(view.level);
+  const [modalMode, setModalMode] = useState<BrainstormModalMode | null>(null);
+  const [ideaActiveTab, setIdeaActiveTab] = useState<'ideas' | 'entries'>('entries');
+  const [actionMenuOpen, setActionMenuOpen] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const selectedMainIdea = selectedMainIdeaId ? mainIdeas[selectedMainIdeaId] ?? null : null;
+  const selectedIdea = selectedIdeaId ? ideas[selectedIdeaId] ?? null : null;
+  const currentEntryOwner = selectedIdea ?? selectedMainIdea;
+  const currentChildIdeas = currentEntryOwner?.ideas
+    .map((ideaId) => ideas[ideaId])
+    .filter((idea): idea is BrainstormIdea => Boolean(idea)) ?? [];
+  const currentEntries = currentEntryOwner?.entries ?? [];
+  const stormList = Object.values(storms);
+  const selectedStorm = selectedStormId ? storms[selectedStormId] ?? null : null;
+  const showStormOverview = view.level === 'brainstorm' && selectedStormId === null;
+
   useEffect(() => {
     if (prevLevelRef.current === 'aspiration' && view.level !== 'aspiration') {
       onEditModeChange(false);
     }
     prevLevelRef.current = view.level;
   }, [view.level, onEditModeChange]);
+
+  useEffect(() => {
+    if (view.level !== 'brainstorm') {
+      const timer = window.setTimeout(() => {
+        setModalMode(null);
+        setActionMenuOpen(false);
+        setConfirmDelete(false);
+      }, 0);
+
+      return () => window.clearTimeout(timer);
+    }
+  }, [view.level]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setActionMenuOpen(false);
+      setConfirmDelete(false);
+    }, 0);
+
+    return () => window.clearTimeout(timer);
+  }, [selectedMainIdeaId, selectedIdeaId, selectedStormId]);
+
+  function handleBrainstormModalConfirm(name: string, type?: StormType) {
+    if (modalMode === 'storm') {
+      onAddStorm(name, type ?? 'exploration');
+    } else if (modalMode === 'mainIdea') {
+      onAddMainIdea(name);
+    } else if (modalMode === 'idea' && selectedMainIdea) {
+      onAddIdea(selectedMainIdea.id, name);
+    } else if (modalMode === 'childIdea' && selectedIdea) {
+      onAddChildIdea(selectedIdea.id, name);
+    } else if (modalMode === 'rename') {
+      // TODO: Wire rename to a store action once brainstorm rename support exists.
+    }
+
+    setModalMode(null);
+  }
 
   const label = view.level === 'act-edit'
     ? 'Act'
@@ -394,6 +677,10 @@ export function GoalInspectorDrawer({
     ? view.aspiration.woops[view.woopIdx]?.name || 'WOOP'
     : view.level === 'aspiration'
       ? view.aspiration.name || 'Aspiration'
+      : view.level === 'root'
+        ? 'Goals'
+      : view.level === 'brainstorm'
+        ? 'Brainstorm Center'
       : view.level === 'orbit'
         ? view.orbit === 'user' ? 'Your Aspirations' : 'Adventures'
         : '';
@@ -414,21 +701,343 @@ export function GoalInspectorDrawer({
         flexDirection: 'column',
       }}
     >
-      <div className="flex items-center justify-between px-4 pt-4 pb-2">
-        <span className="text-white/80 text-sm font-medium">
-          {label}
-        </span>
-        <button
-          onClick={(event) => {
-            event.stopPropagation();
-            onBack();
-          }}
-          className="text-white/40 hover:text-white/80 text-xs px-2 py-1 flex items-center gap-1"
-        >
-          &larr; back
-        </button>
-      </div>
+      {view.level === 'brainstorm' ? (
+        selectedIdea || selectedMainIdea ? (
+          <div className="flex items-center justify-between px-4 pt-4 pb-2">
+            <span className="text-white/80 text-sm font-medium">
+              {selectedIdea?.title ?? selectedMainIdea?.title ?? 'Brainstorm'}
+            </span>
+            <button
+              type="button"
+              onClick={() => onBack()}
+              className="text-white/40 hover:text-white/80 text-xs px-2 py-1"
+            >
+              Back
+            </button>
+          </div>
+        ) : (
+          <div className="px-4 pt-4 pb-2">
+            <div className="flex items-center justify-between">
+              <span className="text-white/80 text-sm font-medium">
+                {showStormOverview ? 'Brainstorm' : (selectedStorm?.name ?? 'Brainstorm')}
+              </span>
+              <button
+                type="button"
+                onClick={() => onBack()}
+                className="text-white/40 hover:text-white/80 text-xs px-2 py-1"
+              >
+                Back
+              </button>
+            </div>
+            {showStormOverview ? (
+              <div className="pt-2">
+                <span className="text-xs font-medium text-white/35">Storm Room</span>
+              </div>
+            ) : selectedStorm ? (
+              <div className="flex items-center gap-2 pt-2">
+                <span className={`text-xs px-2 py-0.5 rounded-full capitalize ${STORM_STATE_CLASSES[selectedStorm.state]}`}>
+                  {selectedStorm.state}
+                </span>
+                <span className={`text-xs px-2 py-0.5 rounded-full capitalize ${STORM_TYPE_CLASSES[selectedStorm.type]}`}>
+                  {selectedStorm.type}
+                </span>
+              </div>
+            ) : (
+              <div className="flex items-center justify-between pt-2">
+                <span className="text-xs font-medium text-white/35">Brainstorm Center</span>
+                <button
+                  type="button"
+                  onClick={() => setModalMode('mainIdea')}
+                  className="text-xs text-white/55 hover:text-white/75"
+                >
+                  + New Main Idea
+                </button>
+              </div>
+            )}
+          </div>
+        )
+      ) : (
+        <div className="flex items-center justify-between px-4 pt-4 pb-2">
+          <span className="text-white/80 text-sm font-medium">
+            {label}
+          </span>
+          <button
+            onClick={(event) => {
+              event.stopPropagation();
+              onBack();
+            }}
+            className="text-white/40 hover:text-white/80 text-xs px-2 py-1 flex items-center gap-1"
+          >
+            Back
+          </button>
+        </div>
+      )}
       <div style={{ height: 1, background: 'rgba(255,255,255,0.06)', margin: '0 16px' }} />
+      {view.level === 'root' ? (
+        <div className="flex-1 overflow-y-auto px-4 py-2">
+          {/* TODO: Wire this to onFocusOrbit('user') when the drawer receives an orbit-focus callback. */}
+          <button
+            type="button"
+            className="w-full flex items-center gap-3 py-3 border-b border-white/5 text-left"
+          >
+            <span className="flex-1 text-white/80 text-sm truncate">My Goals</span>
+            <span className="text-xs px-2 py-0.5 rounded-full bg-white/5 text-white/30">
+              {userAspirations.length}
+            </span>
+          </button>
+          {/* TODO: Wire this to onFocusOrbit('system') when the drawer receives an orbit-focus callback. */}
+          <button
+            type="button"
+            className="w-full flex items-center gap-3 py-3 border-b border-white/5 text-left"
+          >
+            <span className="flex-1 text-white/80 text-sm truncate">Adventure Goals</span>
+            <span className="text-xs px-2 py-0.5 rounded-full bg-white/5 text-white/30">
+              {adventureAspirations.length}
+            </span>
+          </button>
+          <div className="w-full flex items-center gap-3 py-3 border-b border-white/5 text-left opacity-50">
+            <span className="flex-1 text-white/80 text-sm truncate">Brainstorm</span>
+            <span className="text-xs text-white/30">Coming soon</span>
+          </div>
+        </div>
+      ) : null}
+      {view.level === 'brainstorm' ? (
+        <div className="flex-1 overflow-y-auto px-4 py-2">
+          {showStormOverview ? (
+            <>
+              <div className="flex items-center justify-between py-2 border-b border-white/5">
+                <div className="text-xs font-medium uppercase tracking-wider text-white/30">
+                  Storms
+                </div>
+              </div>
+              {stormList.length > 0 ? (
+                stormList.map((storm) => (
+                  <button
+                    key={storm.id}
+                    type="button"
+                    onClick={() => onSelectStorm(storm.id)}
+                    className="w-full flex items-center gap-3 py-3 border-b border-white/5 text-left"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-white/80 text-sm">{storm.name}</div>
+                      <div className="pt-0.5 text-xs text-white/30 capitalize">
+                        {storm.type}
+                      </div>
+                    </div>
+                    <span className={`shrink-0 text-xs px-2 py-0.5 rounded-full capitalize ${STORM_STATE_CLASSES[storm.state]}`}>
+                      {storm.state}
+                    </span>
+                  </button>
+                ))
+              ) : (
+                <div className="w-full flex items-center gap-3 py-3 border-b border-white/5 text-left">
+                  <span className="flex-1 text-white/40 text-sm truncate">No storms yet</span>
+                </div>
+              )}
+              <div className="pt-4 pb-2">
+                <button
+                  type="button"
+                  onClick={() => setModalMode('storm')}
+                  className="w-full py-2 rounded-lg border border-white/10 text-white/50 text-xs hover:border-white/20 hover:text-white/70"
+                >
+                  + New Storm
+                </button>
+              </div>
+            </>
+          ) : selectedMainIdea === null ? (
+            <>
+              <div className="flex items-center justify-between py-2 border-b border-white/5">
+                <div className="text-xs font-medium uppercase tracking-wider text-white/30">
+                  Main Ideas
+                </div>
+              </div>
+              {Object.values(mainIdeas).length > 0 ? (
+                Object.values(mainIdeas).map((mainIdea) => (
+                  <button
+                    key={mainIdea.id}
+                    type="button"
+                    onClick={() => onSelectMainIdea(mainIdea.id)}
+                    className="w-full flex items-center gap-3 py-3 border-b border-white/5 text-left"
+                  >
+                    <span className="flex-1 text-white/80 text-sm truncate">{mainIdea.title}</span>
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-white/5 text-white/30">
+                      {mainIdea.ideas.length} idea{mainIdea.ideas.length === 1 ? '' : 's'}
+                    </span>
+                  </button>
+                ))
+              ) : (
+                <div className="w-full flex items-center gap-3 py-3 border-b border-white/5 text-left">
+                  <span className="flex-1 text-white/40 text-sm truncate">No ideas yet</span>
+                </div>
+              )}
+              <div className="pt-4 pb-2">
+                <button
+                  type="button"
+                  onClick={() => setModalMode('mainIdea')}
+                  className="w-full py-2 rounded-lg border border-white/10 text-white/50 text-xs hover:border-white/20 hover:text-white/70"
+                >
+                  + New Main Idea
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="flex items-center justify-between border-b border-white/5 pb-1 pt-2">
+                <div className="flex gap-4">
+                  {(['entries', 'ideas'] as const).map((tab) => (
+                    <button
+                      key={tab}
+                      type="button"
+                      onClick={() => setIdeaActiveTab(tab)}
+                      className={`border-b-2 pb-0.5 text-xs font-medium transition-colors ${
+                        ideaActiveTab === tab
+                          ? 'border-emerald-400 text-emerald-300'
+                          : 'border-transparent text-white/35 hover:text-white/60'
+                      }`}
+                    >
+                      {tab === 'entries' ? 'Entries' : 'Ideas'}
+                    </button>
+                  ))}
+                </div>
+                <div
+                  className="relative"
+                  tabIndex={0}
+                  onBlur={(event) => {
+                    if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+                      setActionMenuOpen(false);
+                      setConfirmDelete(false);
+                    }
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActionMenuOpen((open) => !open);
+                      setConfirmDelete(false);
+                    }}
+                    className="text-white/40 hover:text-white/80 px-2 py-1 text-xs"
+                  >
+                    ...
+                  </button>
+                  {actionMenuOpen ? (
+                    <div className="absolute right-0 top-8 z-50 min-w-[140px] overflow-hidden rounded-lg border border-white/10 bg-gray-900">
+                      {!confirmDelete ? (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setModalMode(selectedIdea ? 'childIdea' : 'idea');
+                              setActionMenuOpen(false);
+                            }}
+                            className="w-full px-4 py-2.5 text-left text-white/70 text-sm hover:bg-white/5"
+                          >
+                            Add Idea
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setModalMode('entry');
+                              setActionMenuOpen(false);
+                            }}
+                            className="w-full px-4 py-2.5 text-left text-white/70 text-sm hover:bg-white/5"
+                          >
+                            Add Entry
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setModalMode('rename');
+                              setActionMenuOpen(false);
+                            }}
+                            className="w-full px-4 py-2.5 text-left text-white/70 text-sm hover:bg-white/5"
+                          >
+                            Rename
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setConfirmDelete(true)}
+                            className="w-full px-4 py-2.5 text-left text-red-400/80 text-sm hover:bg-white/5"
+                          >
+                            Delete
+                          </button>
+                        </>
+                      ) : (
+                        <div className="px-4 py-3">
+                          <p className="pb-2 text-xs text-white/50">Confirm delete?</p>
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                // TODO: Wire brainstorm delete to a store action once supported.
+                                setConfirmDelete(false);
+                                setActionMenuOpen(false);
+                              }}
+                              className="flex-1 rounded border border-red-500/20 px-2 py-1.5 text-xs text-red-300 hover:bg-white/5"
+                            >
+                              Yes
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setConfirmDelete(false);
+                                setActionMenuOpen(false);
+                              }}
+                              className="flex-1 rounded border border-white/10 px-2 py-1.5 text-xs text-white/60 hover:bg-white/5"
+                            >
+                              No
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+              {ideaActiveTab === 'entries' ? (
+                <div className="pb-3 pt-2">
+                  {currentEntries.length > 0 ? (
+                    currentEntries.map((entry) => (
+                      <div key={entry.id} className="flex items-center gap-2 py-1.5">
+                        <span className="min-w-0 flex-1 truncate text-xs text-white/50">
+                          {entry.content.length > 60 ? `${entry.content.slice(0, 60)}...` : entry.content}
+                        </span>
+                        <span
+                          className="shrink-0 rounded px-1.5 py-0.5 text-[10px] uppercase"
+                          style={getEntryBadgeStyle(entry.state)}
+                        >
+                          {entry.state}
+                        </span>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="py-2 text-xs text-white/35">No entries yet</div>
+                  )}
+                </div>
+              ) : (
+                <div className="pb-3 pt-2">
+                  {currentChildIdeas.length > 0 ? (
+                    currentChildIdeas.map((idea) => (
+                      <button
+                        key={idea.id}
+                        type="button"
+                        onClick={() => onSelectIdea(idea.id)}
+                        className="flex w-full items-center gap-3 py-2 text-left"
+                      >
+                        <span className="flex-1 text-sm text-white/75">{idea.title}</span>
+                        <span className="text-xs text-white/35">
+                          {idea.entries.length} entr{idea.entries.length === 1 ? 'y' : 'ies'}
+                        </span>
+                      </button>
+                    ))
+                  ) : (
+                    <div className="py-2 text-xs text-white/35">No ideas yet</div>
+                  )}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      ) : null}
       {view.level === 'orbit' ? (
         <>
           <div className="flex-1 overflow-y-auto px-4 py-2">
@@ -633,6 +1242,30 @@ export function GoalInspectorDrawer({
           </div>
         );
       })() : null}
+      {modalMode === 'entry' ? (
+        <BrainstormEntryModal
+          onConfirm={(content, state) => {
+            if (selectedIdea) {
+              onAddEntry(selectedIdea.id, content, state);
+            } else if (selectedMainIdea) {
+              onAddEntryToMainIdea(selectedMainIdea.id, { content, state, pointsTo: [] });
+            }
+            setModalMode(null);
+          }}
+          onClose={() => setModalMode(null)}
+        />
+      ) : null}
+      {modalMode !== null && modalMode !== 'entry' ? (
+        <BrainstormNameModal
+          title={modalMode === 'storm' ? 'New Storm' : modalMode === 'mainIdea' ? 'New Main Idea' : modalMode === 'idea' ? 'New Idea' : modalMode === 'childIdea' ? 'New Sub-Idea' : 'Rename'}
+          placeholder={modalMode === 'rename' ? (selectedIdea?.title ?? selectedMainIdea?.title ?? 'Enter a title...') : modalMode === 'storm' ? 'Storm name...' : 'Enter a title...'}
+          defaultValue={modalMode === 'rename' ? (selectedIdea?.title ?? selectedMainIdea?.title ?? '') : ''}
+          defaultType="exploration"
+          includeTypeSelector={modalMode === 'storm'}
+          onConfirm={handleBrainstormModalConfirm}
+          onClose={() => setModalMode(null)}
+        />
+      ) : null}
     </div>
   );
 }

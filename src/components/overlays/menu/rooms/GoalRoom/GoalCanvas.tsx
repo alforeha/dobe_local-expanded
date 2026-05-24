@@ -1,6 +1,27 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useBrainstormStore } from '../../../../../stores/useBrainstormStore';
 import type { Aspiration, Smarter, Woop } from '../../../../../types';
+import type { Storm } from '../../../../../types/brainstorm';
 import { IconDisplay } from '../../../../shared/IconDisplay';
+import {
+  drawStormOrb,
+  drawBrainstormConstellation,
+  drawBrainstormIdeaSpokes,
+  drawBrainstormNode,
+  drawBrainstormPointerLines,
+  drawBrainstormPreview,
+  drawBrainstormWebBackground,
+  getBrainstormHitRadius,
+} from './brainstormDraw';
+import {
+  flattenIdeaTree,
+  fitScaleForBranches,
+  getIdeaLayoutTree,
+  getMainIdeaLayouts,
+  getPointerLines,
+} from './brainstormLayout';
+import type { IdeaLayout, IdeaLayoutNode, MainIdeaLayout } from './brainstormLayout';
+import { hitTestIdea, hitTestMainIdea } from './brainstormInteraction';
 
 const ORB_RADIUS = 48;
 const ORB_PERIOD_MS = 3000;
@@ -14,6 +35,7 @@ const ORBIT_LEVEL_MOON_RADIUS = 8;
 const ORBIT_LEVEL_MOON_ORBIT_RADIUS = 50;
 
 interface GoalCanvasProps {
+  selectedStormId: string | null;
   userAspirations: Aspiration[];
   adventureAspirations: Aspiration[];
   aspirationDraft: Aspiration | null;
@@ -27,6 +49,13 @@ interface GoalCanvasProps {
   onRegisterSelectAspiration?: (fn: (id: string) => void) => void;
   onMoonClick?: (woopIdx: number) => void;
   onSmarterClick?: (smarterIdx: number) => void;
+  onBrainstormSelect: () => void;
+  onSelectStorm: (id: string) => void;
+  brainstormFocused: boolean;
+  selectedMainIdeaId: string | null;
+  selectedIdeaId: string | null;
+  onSelectMainIdea: (id: string | null) => void;
+  onSelectIdea: (id: string | null) => void;
   onRegisterSetSelectedWoop?: (fn: (idx: number | null) => void) => void;
   onRegisterSetSelectedSmarter?: (fn: (idx: number | null) => void) => void;
 }
@@ -51,6 +80,13 @@ interface DraftPlanetPosition extends PlanetPosition {
 interface DraftSmarterPosition extends PlanetPosition {
   label: string;
   icon: string;
+}
+
+interface StormLayout {
+  id: string;
+  x: number;
+  y: number;
+  storm: Storm;
 }
 
 function drawOrb(
@@ -141,6 +177,7 @@ function worldToScreen(
 }
 
 export function GoalCanvas({
+  selectedStormId,
   userAspirations,
   adventureAspirations,
   aspirationDraft,
@@ -154,12 +191,32 @@ export function GoalCanvas({
   onRegisterSelectAspiration,
   onMoonClick,
   onSmarterClick,
+  onBrainstormSelect,
+  onSelectStorm,
+  brainstormFocused,
+  selectedMainIdeaId,
+  selectedIdeaId,
+  onSelectMainIdea,
+  onSelectIdea,
   onRegisterSetSelectedWoop,
   onRegisterSetSelectedSmarter,
 }: GoalCanvasProps) {
+  const storms = useBrainstormStore((s) => s.storms);
+  const activeStormId = selectedStormId;
+  const currentStorm = activeStormId ? storms[activeStormId] ?? null : null;
+  const mainIdeas = useMemo(
+    () => (activeStormId ? storms[activeStormId]?.mainIdeas ?? {} : {}),
+    [storms, activeStormId],
+  );
+  const ideas = useMemo(
+    () => (activeStormId ? storms[activeStormId]?.ideas ?? {} : {}),
+    [storms, activeStormId],
+  );
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const frameRef = useRef<number | null>(null);
   const startedAtRef = useRef<number | null>(null);
+  const brainstormAlphaRef = useRef(0.12);
+  const goalNodesAlphaRef = useRef(1);
   const planetPositionsRef = useRef<PlanetPosition[]>([]);
   const adventurePlanetPositionsRef = useRef<PlanetPosition[]>([]);
   const moonPositionsRef = useRef<PlanetPosition[]>([]);
@@ -174,6 +231,15 @@ export function GoalCanvas({
   const cameraTargetRef = useRef({ x: 0, y: 0, scale: 1 });
   const cameraSnapshotRef = useRef({ x: 0, y: 0, scale: 1 });
   const focusedOrbitRef = useRef<'user' | 'system' | null>(null);
+  const brainstormFocusedRef = useRef(brainstormFocused);
+  const selectedMainIdeaIdRef = useRef(selectedMainIdeaId);
+  const selectedIdeaIdRef = useRef(selectedIdeaId);
+  const highlightedIdeaIdsRef = useRef<Set<string>>(new Set());
+  const stormLayoutsRef = useRef<StormLayout[]>([]);
+  const mainIdeaLayoutsRef = useRef<MainIdeaLayout[]>([]);
+  const ideaLayoutsRef = useRef<IdeaLayoutNode[]>([]);
+  const allFlatIdeaLayoutsRef = useRef<IdeaLayoutNode[]>([]);
+  const flatIdeaLayoutsRef = useRef<IdeaLayout[]>([]);
   const selectedAspirationIdRef = useRef<string | null>(null);
   const selectedWoopIdxRef = useRef<number | null>(null);
   const selectedSmarterIdxRef = useRef<number | null>(null);
@@ -197,9 +263,13 @@ export function GoalCanvas({
   const [smarterPositions, setSmarterPositions] = useState<Array<{ id: string; x: number; y: number; radius: number }>>([]);
   const [selectedWoopIdx, setSelectedWoopIdx] = useState<number | null>(null);
   const [cameraSnapshot, setCameraSnapshot] = useState({ x: 0, y: 0, scale: 1 });
+  const [goalNodesAlpha, setGoalNodesAlpha] = useState(1);
   const [draftPlanetPosition, setDraftPlanetPosition] = useState<DraftPlanetPosition | null>(null);
   const [draftMoonPosition, setDraftMoonPosition] = useState<DraftMoonPosition | null>(null);
   const [draftSmarterPosition, setDraftSmarterPosition] = useState<DraftSmarterPosition | null>(null);
+  const [brainstormHovered, setBrainstormHovered] = useState(false);
+  const [hoveredMainIdeaId, setHoveredMainIdeaId] = useState<string | null>(null);
+  const [hoveredIdeaId, setHoveredIdeaId] = useState<string | null>(null);
 
   const selectedAspiration = useMemo(() => {
     if (!selectedAspirationId) return null;
@@ -270,6 +340,18 @@ export function GoalCanvas({
   }, [focusedOrbit]);
 
   useEffect(() => {
+    brainstormFocusedRef.current = brainstormFocused;
+  }, [brainstormFocused]);
+
+  useEffect(() => {
+    selectedMainIdeaIdRef.current = selectedMainIdeaId;
+  }, [selectedMainIdeaId]);
+
+  useEffect(() => {
+    selectedIdeaIdRef.current = selectedIdeaId;
+  }, [selectedIdeaId]);
+
+  useEffect(() => {
     selectedAspirationIdRef.current = selectedAspirationId;
   }, [selectedAspirationId]);
 
@@ -312,8 +394,25 @@ export function GoalCanvas({
       const uy = height * 0.53;
       const sx = width * 0.65;
       const sy = height * 0.63;
+      const bx = canvasCenterX + 20;
+      const by = canvasCenterY - 60;
+      const currentStormList = Object.values(storms);
+      const stormLayouts = currentStormList.map((storm, index) => {
+        const angle = ((2 * Math.PI * index) / Math.max(1, currentStormList.length)) - Math.PI / 2;
+        const r = currentStormList.length === 1 ? 0 : 180;
+        return {
+          id: storm.id,
+          x: bx + Math.cos(angle) * r,
+          y: by + Math.sin(angle) * r,
+          storm,
+        };
+      });
+      stormLayoutsRef.current = stormLayouts;
 
       const currentFocusedOrbit = focusedOrbitRef.current;
+      const currentBrainstormFocused = brainstormFocusedRef.current;
+      const currentSelectedMainIdeaId = selectedMainIdeaIdRef.current;
+      const currentSelectedIdeaId = selectedIdeaIdRef.current;
       const currentSelectedAspirationId = selectedAspirationIdRef.current;
       const currentSelectedWoopIdx = selectedWoopIdxRef.current;
       const currentSelectedSmarterIdx = selectedSmarterIdxRef.current;
@@ -323,6 +422,50 @@ export function GoalCanvas({
       const lockedPlanet = currentSelectedAspirationId
         ? [...planetPositionsRef.current, ...adventurePlanetPositionsRef.current].find((position) => position.id === currentSelectedAspirationId)
         : null;
+      const freshMainLayouts = currentBrainstormFocused && currentStorm
+        ? getMainIdeaLayouts(mainIdeas, bx, by)
+        : mainIdeaLayoutsRef.current;
+      const highlightedIds = new Set<string>();
+
+      if (currentSelectedIdeaId) {
+        highlightedIds.add(currentSelectedIdeaId);
+
+        const selectedIdeaData = ideas[currentSelectedIdeaId];
+        if (selectedIdeaData) {
+          selectedIdeaData.pointsTo.forEach((pointer) => {
+            highlightedIds.add(pointer.targetId);
+          });
+        }
+
+        const findAndAddDescendants = (nodes: IdeaLayoutNode[]) => {
+          nodes.forEach((node) => {
+            highlightedIds.add(node.id);
+            if (node.children.length > 0) {
+              findAndAddDescendants(node.children);
+            }
+          });
+        };
+
+        const findNode = (nodes: IdeaLayoutNode[], id: string): IdeaLayoutNode | null => {
+          for (const node of nodes) {
+            if (node.id === id) return node;
+            const found = findNode(node.children, id);
+            if (found) return found;
+          }
+          return null;
+        };
+
+        const selectedNode = findNode(ideaLayoutsRef.current, currentSelectedIdeaId);
+        if (selectedNode) {
+          findAndAddDescendants(selectedNode.children);
+        }
+      } else if (currentSelectedMainIdeaId) {
+        allFlatIdeaLayoutsRef.current
+          .filter((node) => node.mainIdeaId === currentSelectedMainIdeaId)
+          .forEach((node) => highlightedIds.add(node.id));
+      }
+
+      highlightedIdeaIdsRef.current = highlightedIds;
 
       if ((isActEditRef.current || isActViewRef.current) && actOrbitorPosRef.current) {
         cameraTargetRef.current = { x: actOrbitorPosRef.current.x, y: actOrbitorPosRef.current.y, scale: 3.8 };
@@ -358,6 +501,55 @@ export function GoalCanvas({
         if (target) {
           cameraTargetRef.current = { x: target.x, y: target.y, scale: 1.7 };
         }
+      } else if (currentBrainstormFocused && activeStormId !== null && (highlightedIds.size > 0 || currentSelectedMainIdeaId)) {
+        const highlightedPositions = allFlatIdeaLayoutsRef.current.filter((node) => highlightedIds.has(node.id));
+        const mainLayout = currentSelectedMainIdeaId
+          ? freshMainLayouts.find((layout) => layout.id === currentSelectedMainIdeaId)
+          : null;
+        const allX = highlightedPositions.map((node) => node.x);
+        const allY = highlightedPositions.map((node) => node.y);
+
+        if (highlightedIds.size === 0 && mainLayout) {
+          cameraTargetRef.current = { x: mainLayout.x, y: mainLayout.y, scale: 1.6 };
+        } else if (mainLayout && !currentSelectedIdeaId) {
+          allX.push(mainLayout.x);
+          allY.push(mainLayout.y);
+        }
+
+        if (highlightedIds.size > 0 && allX.length > 0) {
+          const minX = Math.min(...allX);
+          const maxX = Math.max(...allX);
+          const minY = Math.min(...allY);
+          const maxY = Math.max(...allY);
+          const centerX = (minX + maxX) / 2;
+          const centerY = (minY + maxY) / 2;
+          const spanX = maxX - minX + 80;
+          const spanY = maxY - minY + 80;
+          const scaleX = (width * 0.7) / spanX;
+          const scaleY = (height * 0.7) / spanY;
+          const scale = Math.min(2.5, Math.max(0.4, Math.min(scaleX, scaleY)));
+
+          cameraTargetRef.current = { x: centerX, y: centerY, scale };
+        }
+      } else if (currentBrainstormFocused && activeStormId !== null) {
+        const stormLayout = stormLayoutsRef.current.find((layout) => layout.id === activeStormId);
+        if (stormLayout) {
+          cameraTargetRef.current = { x: stormLayout.x, y: stormLayout.y, scale: 1.4 };
+        } else {
+          cameraTargetRef.current = { x: bx, y: by, scale: 1.3 };
+        }
+      } else if (currentBrainstormFocused) {
+        if (stormLayouts.length === 1) {
+          cameraTargetRef.current = { x: stormLayouts[0].x, y: stormLayouts[0].y, scale: 1.3 };
+        } else if (stormLayouts.length > 1) {
+          cameraTargetRef.current = {
+            x: bx,
+            y: by,
+            scale: fitScaleForBranches(180 + 60, width, height),
+          };
+        } else {
+          cameraTargetRef.current = { x: bx, y: by, scale: 1 };
+        }
       } else if (currentFocusedOrbit === 'user') {
         cameraTargetRef.current = { x: ux, y: uy, scale: 1.3 };
       } else if (currentFocusedOrbit === 'system') {
@@ -380,6 +572,18 @@ export function GoalCanvas({
       const phase = (elapsed / ORB_PERIOD_MS) * Math.PI * 2;
       const userScale = 1 + Math.sin(phase) * 0.08;
       const systemScale = 1 + Math.sin(phase + Math.PI) * 0.08;
+      const brainstormScale = 1 + Math.sin(phase) * 0.08;
+      brainstormAlphaRef.current = currentBrainstormFocused
+        ? Math.min(0.85, brainstormAlphaRef.current + 0.02)
+        : Math.max(0.12, brainstormAlphaRef.current - 0.02);
+      goalNodesAlphaRef.current = currentBrainstormFocused
+        ? Math.max(0, goalNodesAlphaRef.current - 0.04)
+        : Math.min(1, goalNodesAlphaRef.current + 0.04);
+      setGoalNodesAlpha((previous) => (
+        Math.abs(previous - goalNodesAlphaRef.current) > 0.001
+          ? goalNodesAlphaRef.current
+          : previous
+      ));
 
       ctx.clearRect(0, 0, width, height);
       ctx.save();
@@ -387,6 +591,94 @@ export function GoalCanvas({
       ctx.translate(canvasCenterX, canvasCenterY);
       ctx.scale(cam.scale, cam.scale);
       ctx.translate(-cam.x, -cam.y);
+      const currentGoalNodesAlpha = goalNodesAlphaRef.current;
+      const goalNodesVisible = currentGoalNodesAlpha > 0.001;
+      const applyGoalNodesAlpha = (alpha = 1) => {
+        ctx.globalAlpha = currentGoalNodesAlpha * alpha;
+      };
+
+      const webAlpha = currentBrainstormFocused ? 0.6 : 0.25;
+
+      if (currentFocusedOrbit === null) {
+        drawBrainstormWebBackground(ctx, bx, by, timestamp, webAlpha);
+      }
+      if (currentFocusedOrbit === null && !currentBrainstormFocused) {
+        drawBrainstormPreview(ctx, bx, by, mainIdeas, ideas, brainstormAlphaRef.current, timestamp);
+      }
+      if (currentBrainstormFocused) {
+        if (activeStormId === null) {
+          mainIdeaLayoutsRef.current = [];
+          ideaLayoutsRef.current = [];
+          flatIdeaLayoutsRef.current = [];
+          allFlatIdeaLayoutsRef.current = [];
+
+          stormLayouts.forEach((layout, index) => {
+            drawStormOrb(ctx, layout.x, layout.y, 22, layout.storm.name, 1, timestamp, index);
+          });
+        } else {
+          stormLayouts.forEach((layout, index) => {
+            if (layout.id === activeStormId) return;
+            drawStormOrb(ctx, layout.x, layout.y, 16, '', 0.15, timestamp, index);
+          });
+
+          const mainLayouts = getMainIdeaLayouts(mainIdeas, bx, by);
+          mainIdeaLayoutsRef.current = mainLayouts;
+          const constellationLayouts = mainLayouts.map((layout) => ({
+            ...layout,
+            ...mainIdeas[layout.id],
+          }));
+
+          drawBrainstormConstellation(
+            ctx,
+            constellationLayouts,
+            currentSelectedMainIdeaId,
+            hoveredMainIdeaId,
+            highlightedIdeaIdsRef.current,
+            currentSelectedIdeaId,
+            timestamp,
+          );
+
+          const allFlatIdeas: IdeaLayoutNode[] = [];
+          Object.values(mainIdeas).forEach((mainIdea) => {
+            const mainLayout = mainIdeaLayoutsRef.current.find(
+              (layout) => layout.id === mainIdea.id,
+            );
+            if (!mainLayout) return;
+
+            const cx = mainLayout.x;
+            const cy = mainLayout.y;
+
+            const ideaTree = getIdeaLayoutTree(mainIdea, ideas, cx, cy, undefined, bx, by);
+            const flatIdeas = flattenIdeaTree(ideaTree);
+            allFlatIdeas.push(...flatIdeas);
+
+            if (mainIdea.id === currentSelectedMainIdeaId) {
+              ideaLayoutsRef.current = ideaTree;
+              flatIdeaLayoutsRef.current = flatIdeas;
+            }
+
+            const pointerLines = getPointerLines(flatIdeas, ideas);
+            drawBrainstormPointerLines(ctx, pointerLines);
+            drawBrainstormIdeaSpokes(
+              ctx,
+              ideaTree,
+              ideas,
+              highlightedIdeaIdsRef.current,
+              currentSelectedIdeaId,
+              mainIdea.id === currentSelectedMainIdeaId ? hoveredIdeaId : null,
+              cx,
+              cy,
+              timestamp,
+            );
+          });
+          allFlatIdeaLayoutsRef.current = allFlatIdeas;
+
+          if (!currentSelectedMainIdeaId) {
+            ideaLayoutsRef.current = [];
+            flatIdeaLayoutsRef.current = [];
+          }
+        }
+      }
 
       userOrbRef.current = {
         ...worldToScreen(ux, uy, nextCameraSnapshot, canvasCenterX, canvasCenterY),
@@ -397,7 +689,8 @@ export function GoalCanvas({
         radius: ORB_RADIUS * nextCameraSnapshot.scale,
       };
 
-      if (currentFocusedOrbit === null || currentFocusedOrbit === 'user') {
+      if (goalNodesVisible && (currentFocusedOrbit === null || currentFocusedOrbit === 'user')) {
+        applyGoalNodesAlpha();
         drawOrb(
           ctx,
           ux,
@@ -407,6 +700,7 @@ export function GoalCanvas({
           'Your Aspirations',
         );
         if (currentFocusedOrbit === 'user') {
+          applyGoalNodesAlpha();
           ctx.strokeStyle = 'rgba(255,255,255,0.25)';
           ctx.lineWidth = 2;
           ctx.beginPath();
@@ -415,7 +709,8 @@ export function GoalCanvas({
         }
       }
 
-      if (currentFocusedOrbit === null || currentFocusedOrbit === 'system') {
+      if (goalNodesVisible && (currentFocusedOrbit === null || currentFocusedOrbit === 'system')) {
+        applyGoalNodesAlpha();
         drawOrb(
           ctx,
           sx,
@@ -425,6 +720,7 @@ export function GoalCanvas({
           'Adventures',
         );
         if (currentFocusedOrbit === 'system') {
+          applyGoalNodesAlpha();
           ctx.strokeStyle = 'rgba(255,255,255,0.25)';
           ctx.lineWidth = 2;
           ctx.beginPath();
@@ -433,7 +729,8 @@ export function GoalCanvas({
         }
       }
 
-      if ((currentFocusedOrbit === null || currentFocusedOrbit === 'user') && userAspirations.length > 0) {
+      if (goalNodesVisible && (currentFocusedOrbit === null || currentFocusedOrbit === 'user') && userAspirations.length > 0) {
+        applyGoalNodesAlpha();
         ctx.strokeStyle = 'rgba(255,255,255,0.06)';
         ctx.lineWidth = 1;
         ctx.beginPath();
@@ -449,7 +746,7 @@ export function GoalCanvas({
           const x = ux + Math.cos(angle) * PLANET_ORBIT_RADIUS;
           const y = uy + Math.sin(angle) * PLANET_ORBIT_RADIUS;
 
-          ctx.globalAlpha = currentSelectedAspirationId && currentSelectedAspirationId !== aspiration.id ? 0.35 : 1;
+          applyGoalNodesAlpha(currentSelectedAspirationId && currentSelectedAspirationId !== aspiration.id ? 0.35 : 1);
           drawPlanet(ctx, x, y, PLANET_RADIUS);
           ctx.globalAlpha = 1;
 
@@ -482,7 +779,8 @@ export function GoalCanvas({
       }
 
       if (
-        currentFocusedOrbit === 'user'
+        goalNodesVisible
+        && currentFocusedOrbit === 'user'
         && currentAspirationDraft
         && !userAspirations.some((aspiration) => aspiration.id === currentAspirationDraft.id)
       ) {
@@ -495,7 +793,7 @@ export function GoalCanvas({
         aspirationDraftPosRef.current = { x: px, y: py };
 
         ctx.save();
-        ctx.globalAlpha = 0.5;
+        applyGoalNodesAlpha(0.5);
         drawPlanet(ctx, px, py, PLANET_RADIUS, 'rgba(139, 92, 246, 0.75)');
         ctx.setLineDash([4, 4]);
         ctx.strokeStyle = 'rgba(255,255,255,0.45)';
@@ -533,7 +831,8 @@ export function GoalCanvas({
         aspirationDraftPosRef.current = null;
       }
 
-      if ((currentFocusedOrbit === null || currentFocusedOrbit === 'system') && adventureAspirations.length > 0) {
+      if (goalNodesVisible && (currentFocusedOrbit === null || currentFocusedOrbit === 'system') && adventureAspirations.length > 0) {
+        applyGoalNodesAlpha();
         ctx.strokeStyle = 'rgba(255,255,255,0.06)';
         ctx.lineWidth = 1;
         ctx.beginPath();
@@ -546,7 +845,7 @@ export function GoalCanvas({
           const x = sx + Math.cos(angle) * PLANET_ORBIT_RADIUS;
           const y = sy + Math.sin(angle) * PLANET_ORBIT_RADIUS;
 
-          ctx.globalAlpha = currentSelectedAspirationId && currentSelectedAspirationId !== aspiration.id ? 0.35 : 1;
+          applyGoalNodesAlpha(currentSelectedAspirationId && currentSelectedAspirationId !== aspiration.id ? 0.35 : 1);
           drawPlanet(ctx, x, y, PLANET_RADIUS, 'rgba(245, 158, 11, 0.72)');
           ctx.globalAlpha = 1;
 
@@ -578,7 +877,8 @@ export function GoalCanvas({
         setAdventurePlanetPositions([]);
       }
 
-      if (lockedPlanet) {
+      if (goalNodesVisible && lockedPlanet) {
+        applyGoalNodesAlpha();
         ctx.strokeStyle = 'rgba(255,255,255,0.35)';
         ctx.lineWidth = 1.5;
         ctx.beginPath();
@@ -586,7 +886,8 @@ export function GoalCanvas({
         ctx.stroke();
       }
 
-      if (lockedPlanet && selectedWoops.length > 0) {
+      if (goalNodesVisible && lockedPlanet && selectedWoops.length > 0) {
+        applyGoalNodesAlpha();
         ctx.strokeStyle = 'rgba(255,255,255,0.08)';
         ctx.lineWidth = 1;
         ctx.beginPath();
@@ -605,6 +906,7 @@ export function GoalCanvas({
           const x = lockedPlanet.x + Math.cos(angle) * MOON_ORBIT_RADIUS;
           const y = lockedPlanet.y + Math.sin(angle) * MOON_ORBIT_RADIUS;
 
+          applyGoalNodesAlpha();
           drawPlanet(ctx, x, y, MOON_RADIUS, 'rgba(167, 139, 250, 0.70)');
 
           return {
@@ -652,6 +954,7 @@ export function GoalCanvas({
           if (totalSmartersForSpacing === 0) return;
 
           if (currentSelectedWoopIdx !== null) {
+            applyGoalNodesAlpha();
             ctx.strokeStyle = 'rgba(255,255,255,0.06)';
             ctx.lineWidth = 1;
             ctx.beginPath();
@@ -665,6 +968,7 @@ export function GoalCanvas({
             const x = moon.x + Math.cos(angle) * smarterOrbitRadius;
             const y = moon.y + Math.sin(angle) * smarterOrbitRadius;
 
+            applyGoalNodesAlpha();
             drawPlanet(ctx, x, y, smarterRadius, smarterColor);
 
             const smarter = woop.smarters[smarterIdx];
@@ -679,7 +983,7 @@ export function GoalCanvas({
               if (smarterIdx === currentSelectedSmarterIdx) {
                 actOrbitorPosRef.current = { x: ax, y: ay };
               }
-              ctx.globalAlpha = 0.8;
+              applyGoalNodesAlpha(0.8);
               drawPlanet(ctx, ax, ay, actRadius, 'rgba(245, 158, 11, 0.85)');
               ctx.globalAlpha = 1;
             }
@@ -703,7 +1007,7 @@ export function GoalCanvas({
             smarterDraftPosRef.current = { x, y };
 
             ctx.save();
-            ctx.globalAlpha = 0.5;
+            applyGoalNodesAlpha(0.5);
             drawPlanet(ctx, x, y, smarterRadius, 'rgba(196, 181, 253, 0.70)');
             ctx.globalAlpha = 1;
             ctx.setLineDash([3, 3]);
@@ -801,7 +1105,7 @@ export function GoalCanvas({
           setDraftSmarterPosition(null);
         }
 
-        if (currentFocusedOrbit && !currentSelectedAspirationId) {
+        if (goalNodesVisible && currentFocusedOrbit && !currentSelectedAspirationId) {
           const focusedPlanetPositions = currentFocusedOrbit === 'user'
             ? planetPositionsRef.current
             : adventurePlanetPositionsRef.current;
@@ -813,6 +1117,7 @@ export function GoalCanvas({
             const aspiration = focusedAspirations.find((item) => item.id === planet.id);
             if (!aspiration || aspiration.woops.length === 0) return;
 
+            applyGoalNodesAlpha();
             ctx.strokeStyle = 'rgba(255,255,255,0.06)';
             ctx.lineWidth = 1;
             ctx.beginPath();
@@ -825,6 +1130,7 @@ export function GoalCanvas({
               const x = planet.x + Math.cos(angle) * ORBIT_LEVEL_MOON_ORBIT_RADIUS;
               const y = planet.y + Math.sin(angle) * ORBIT_LEVEL_MOON_ORBIT_RADIUS;
 
+              applyGoalNodesAlpha();
               drawPlanet(ctx, x, y, ORBIT_LEVEL_MOON_RADIUS, 'rgba(167, 139, 250, 0.50)');
             });
           });
@@ -846,7 +1152,8 @@ export function GoalCanvas({
       // Seed draft planet position if not yet in planet position refs.
       let draftPlanetSeed: PlanetPosition | null = null;
       if (
-        currentDraft
+        goalNodesVisible
+        && currentDraft
         && !planetPositionsRef.current.find((position) => position.id === currentDraft.aspirationId)
         && !adventurePlanetPositionsRef.current.find((position) => position.id === currentDraft.aspirationId)
       ) {
@@ -881,7 +1188,7 @@ export function GoalCanvas({
           : null
       );
 
-      if (currentDraft && currentDraft.woopIdx === null && draftOrbitCenter) {
+      if (goalNodesVisible && currentDraft && currentDraft.woopIdx === null && draftOrbitCenter) {
         const draftAspiration = [...userAspirations, ...adventureAspirations].find((aspiration) => aspiration.id === currentDraft.aspirationId);
         const label = currentDraft.woop.name || currentDraft.woop.wish || 'New WOOP';
         let draftWorldPosition: PlanetPosition | null = null;
@@ -895,7 +1202,7 @@ export function GoalCanvas({
           woopDraftPosRef.current = { x, y };
 
           ctx.save();
-          ctx.globalAlpha = 0.5;
+          applyGoalNodesAlpha(0.5);
           drawPlanet(ctx, x, y, MOON_RADIUS, 'rgba(167, 139, 250, 0.70)');
           ctx.globalAlpha = 1;
           ctx.setLineDash([4, 4]);
@@ -958,7 +1265,20 @@ export function GoalCanvas({
         woopDraftPosRef.current = null;
       }
 
+      if (currentFocusedOrbit === null || currentBrainstormFocused) {
+        drawBrainstormNode(
+          ctx,
+          bx,
+          by,
+          28,
+          brainstormScale,
+          brainstormHovered,
+          currentBrainstormFocused,
+        );
+      }
+
       ctx.restore();
+
       frameRef.current = requestAnimationFrame(drawFrame);
     }
 
@@ -973,7 +1293,21 @@ export function GoalCanvas({
         cancelAnimationFrame(frameRef.current);
       }
     };
-  }, [userAspirations, adventureAspirations, selectedAspirationId, selectedWoops, focusedOrbit]);
+  }, [
+    userAspirations,
+    adventureAspirations,
+    selectedAspirationId,
+    selectedWoops,
+    focusedOrbit,
+    mainIdeas,
+    ideas,
+    hoveredMainIdeaId,
+    hoveredIdeaId,
+    activeStormId,
+    brainstormHovered,
+    currentStorm,
+    storms,
+  ]);
 
   return (
     <div
@@ -983,6 +1317,7 @@ export function GoalCanvas({
         const rect = event.currentTarget.getBoundingClientRect();
         const clickX = event.clientX - rect.left;
         const clickY = event.clientY - rect.top;
+        const canvasEl = canvasRef.current;
 
         if (selectedAspirationIdRef.current !== null) {
           if (selectedWoopIdxRef.current !== null) {
@@ -1020,15 +1355,76 @@ export function GoalCanvas({
         }
 
         const currentFocusedOrbit = focusedOrbitRef.current;
+        const currentBrainstormFocused = brainstormFocusedRef.current;
 
         const userOrb = userOrbRef.current;
         const systemOrb = systemOrbRef.current;
+
+        if (currentBrainstormFocused) {
+          if (!canvasEl) return;
+
+          const dpr = window.devicePixelRatio || 1;
+          const canvasCenterX = (canvasEl.width / dpr) * 0.5;
+          const canvasCenterY = (canvasEl.height / dpr) * 0.50;
+          const toScreen = (wx: number, wy: number) => worldToScreen(
+            wx,
+            wy,
+            cameraRef.current,
+            canvasCenterX,
+            canvasCenterY,
+          );
+          if (selectedStormId === null) {
+            const hitStorm = stormLayoutsRef.current.find((layout) => {
+              const screen = toScreen(layout.x, layout.y);
+              const dx = clickX - screen.x;
+              const dy = clickY - screen.y;
+              return Math.sqrt(dx * dx + dy * dy) <= 30;
+            });
+
+            if (hitStorm) {
+              onSelectStorm(hitStorm.id);
+            }
+            return;
+          }
+
+          const hitMainId = hitTestMainIdea(
+            clickX,
+            clickY,
+            mainIdeaLayoutsRef.current,
+            toScreen,
+          );
+          if (hitMainId) {
+            onSelectMainIdea(hitMainId);
+            return;
+          }
+
+          const hitIdeaId = hitTestIdea(
+            clickX,
+            clickY,
+            allFlatIdeaLayoutsRef.current,
+            toScreen,
+          );
+          if (hitIdeaId) {
+            const ownerMainId = allFlatIdeaLayoutsRef.current.find((layout) => layout.id === hitIdeaId)?.mainIdeaId;
+            if (ownerMainId) {
+              onSelectMainIdea(ownerMainId);
+            }
+            onSelectIdea(hitIdeaId);
+            return;
+          }
+
+          if (selectedMainIdeaIdRef.current) {
+            onSelectMainIdea(null);
+            onSelectIdea(null);
+          }
+          return;
+        }
 
         if (currentFocusedOrbit === null) {
           if (userOrb) {
             const dx = clickX - userOrb.x;
             const dy = clickY - userOrb.y;
-            if (Math.sqrt(dx * dx + dy * dy) <= userOrb.radius + 12) {
+            if (!brainstormFocused && Math.sqrt(dx * dx + dy * dy) <= userOrb.radius + 12) {
               setFocusedOrbit('user');
               setSelectedAspirationId(null);
               return;
@@ -1038,9 +1434,32 @@ export function GoalCanvas({
           if (systemOrb) {
             const dx = clickX - systemOrb.x;
             const dy = clickY - systemOrb.y;
-            if (Math.sqrt(dx * dx + dy * dy) <= systemOrb.radius + 12) {
+            if (!brainstormFocused && Math.sqrt(dx * dx + dy * dy) <= systemOrb.radius + 12) {
               setFocusedOrbit('system');
               setSelectedAspirationId(null);
+              return;
+            }
+          }
+
+          if (canvasEl && !brainstormFocused) {
+            const dpr = window.devicePixelRatio || 1;
+            const canvasCenterX = (canvasEl.width / dpr) * 0.5;
+            const canvasCenterY = (canvasEl.height / dpr) * 0.50;
+            const bx = canvasCenterX;
+            const by = canvasCenterY - 80;
+            const { x: bsx, y: bsy } = worldToScreen(
+              bx,
+              by,
+              cameraRef.current,
+              canvasCenterX,
+              canvasCenterY,
+            );
+            const bdx = clickX - bsx;
+            const bdy = clickY - bsy;
+            const brainstormHit = Math.sqrt(bdx * bdx + bdy * bdy) <= getBrainstormHitRadius();
+            if (brainstormHit) {
+              onBrainstormSelect();
+              brainstormFocusedRef.current = true;
             }
           }
 
@@ -1061,14 +1480,85 @@ export function GoalCanvas({
           setSelectedAspirationId(hit.id);
         }
       }}
+      onMouseMove={(event) => {
+        const canvasEl = canvasRef.current;
+        if (!canvasEl) return;
+
+        const rect = event.currentTarget.getBoundingClientRect();
+        const clickX = event.clientX - rect.left;
+        const clickY = event.clientY - rect.top;
+        const dpr = window.devicePixelRatio || 1;
+        const canvasCenterX = (canvasEl.width / dpr) * 0.5;
+        const canvasCenterY = (canvasEl.height / dpr) * 0.50;
+        const bx = canvasCenterX;
+        const by = canvasCenterY - 80;
+        const { x: bsx, y: bsy } = worldToScreen(
+          bx,
+          by,
+          cameraRef.current,
+          canvasCenterX,
+          canvasCenterY,
+        );
+        const bdx = clickX - bsx;
+        const bdy = clickY - bsy;
+        const currentFocusedOrbit = focusedOrbitRef.current;
+        const currentBrainstormFocused = brainstormFocusedRef.current;
+        const toScreen = (wx: number, wy: number) => worldToScreen(
+          wx,
+          wy,
+          cameraRef.current,
+          canvasCenterX,
+          canvasCenterY,
+        );
+
+        if (currentBrainstormFocused) {
+          if (selectedStormId === null) {
+            setHoveredMainIdeaId(null);
+            setHoveredIdeaId(null);
+          } else {
+            const hitMainId = hitTestMainIdea(
+              clickX,
+              clickY,
+              mainIdeaLayoutsRef.current,
+              toScreen,
+            );
+            const hitIdeaId = hitTestIdea(
+              clickX,
+              clickY,
+              allFlatIdeaLayoutsRef.current,
+              toScreen,
+            );
+
+            setHoveredMainIdeaId(hitMainId);
+            setHoveredIdeaId(hitIdeaId);
+          }
+        } else {
+          setHoveredMainIdeaId(null);
+          setHoveredIdeaId(null);
+        }
+
+        setBrainstormHovered(
+          Math.sqrt(bdx * bdx + bdy * bdy) <= getBrainstormHitRadius() + 8
+            && currentFocusedOrbit === null
+            && !currentBrainstormFocused,
+        );
+      }}
+      onMouseLeave={() => {
+        setBrainstormHovered(false);
+        setHoveredMainIdeaId(null);
+        setHoveredIdeaId(null);
+      }}
     >
       <canvas
         ref={canvasRef}
         className="absolute inset-0 w-full h-full"
         style={{ pointerEvents: 'none' }}
       />
-      {(focusedOrbit === null || focusedOrbit === 'user') && (userAspirations.length > 0 || draftPlanetPosition) ? (
-        <div className="absolute inset-0 pointer-events-none">
+      {goalNodesAlpha > 0.001 && (focusedOrbit === null || focusedOrbit === 'user') && (userAspirations.length > 0 || draftPlanetPosition) ? (
+        <div
+          className="absolute inset-0 pointer-events-none"
+          style={{ opacity: goalNodesAlpha, pointerEvents: goalNodesAlpha <= 0.001 ? 'none' : undefined }}
+        >
           {planetPositions.map((position) => {
             const aspiration = userAspirations.find((item) => item.id === position.id);
             if (!aspiration) return null;
@@ -1128,8 +1618,11 @@ export function GoalCanvas({
           ) : null}
         </div>
       ) : null}
-      {(focusedOrbit === null || focusedOrbit === 'system') && adventureAspirations.length > 0 ? (
-        <div className="absolute inset-0 pointer-events-none">
+      {goalNodesAlpha > 0.001 && (focusedOrbit === null || focusedOrbit === 'system') && adventureAspirations.length > 0 ? (
+        <div
+          className="absolute inset-0 pointer-events-none"
+          style={{ opacity: goalNodesAlpha, pointerEvents: goalNodesAlpha <= 0.001 ? 'none' : undefined }}
+        >
           {adventurePlanetPositions.map((position) => {
             const aspiration = adventureAspirations.find((item) => item.id === position.id);
             if (!aspiration) return null;
@@ -1163,7 +1656,10 @@ export function GoalCanvas({
           })}
         </div>
       ) : null}
-      <div className="absolute inset-0 pointer-events-none">
+      {goalNodesAlpha > 0.001 ? <div
+        className="absolute inset-0 pointer-events-none"
+        style={{ opacity: goalNodesAlpha, pointerEvents: goalNodesAlpha <= 0.001 ? 'none' : undefined }}
+      >
         {moonPositions.map((moon, index) => {
           const draftForMoon = woopDraft?.aspirationId === selectedAspirationId && woopDraft.woopIdx === index
             ? woopDraft.woop
@@ -1288,7 +1784,7 @@ export function GoalCanvas({
             </span>
           </div>
         ) : null}
-      </div>
+      </div> : null}
     </div>
   );
 }
