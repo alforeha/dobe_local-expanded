@@ -36,6 +36,9 @@ interface GoalInspectorDrawerProps {
   open: boolean;
   view: DrawerView;
   onBack: () => void;
+  onFocusUserOrbit: () => void;
+  onFocusAdventureOrbit: () => void;
+  onFocusBrainstorm: () => void;
   userAspirations: Aspiration[];
   adventureAspirations: Aspiration[];
   mainIdeas: Record<string, MainIdea>;
@@ -560,6 +563,9 @@ export function GoalInspectorDrawer({
   open,
   view,
   onBack,
+  onFocusUserOrbit,
+  onFocusAdventureOrbit,
+  onFocusBrainstorm,
   userAspirations,
   adventureAspirations,
   mainIdeas,
@@ -756,6 +762,12 @@ export function GoalInspectorDrawer({
             )}
           </div>
         )
+      ) : view.level === 'root' ? (
+        <div className="px-4 pt-4 pb-2">
+          <span className="block w-full text-center text-white/80 text-sm font-medium">
+            Cranium Constructions
+          </span>
+        </div>
       ) : (
         <div className="flex items-center justify-between px-4 pt-4 pb-2">
           <span className="text-white/80 text-sm font-medium">
@@ -775,30 +787,42 @@ export function GoalInspectorDrawer({
       <div style={{ height: 1, background: 'rgba(255,255,255,0.06)', margin: '0 16px' }} />
       {view.level === 'root' ? (
         <div className="flex-1 overflow-y-auto px-4 py-2">
-          {/* TODO: Wire this to onFocusOrbit('user') when the drawer receives an orbit-focus callback. */}
           <button
             type="button"
-            className="w-full flex items-center gap-3 py-3 border-b border-white/5 text-left"
+            onClick={onFocusUserOrbit}
+            className="w-full flex items-center gap-4 rounded-xl border border-white/5 bg-white/[0.03] px-4 py-3.5 text-left transition hover:bg-white/[0.05]"
           >
-            <span className="flex-1 text-white/80 text-sm truncate">My Goals</span>
-            <span className="text-xs px-2 py-0.5 rounded-full bg-white/5 text-white/30">
+            <IconDisplay iconKey="goal-user" size={26} className="shrink-0 opacity-90" />
+            <span className="flex-1 min-w-0 text-white text-base font-semibold truncate">
+              User Aspirations
+            </span>
+            <span className="shrink-0 text-xs px-2 py-0.5 rounded-full bg-white/5 text-white/30">
               {userAspirations.length}
             </span>
           </button>
-          {/* TODO: Wire this to onFocusOrbit('system') when the drawer receives an orbit-focus callback. */}
           <button
             type="button"
-            className="w-full flex items-center gap-3 py-3 border-b border-white/5 text-left"
+            onClick={onFocusAdventureOrbit}
+            className="mt-3 w-full flex items-center gap-4 rounded-xl border border-white/5 bg-white/[0.03] px-4 py-3.5 text-left transition hover:bg-white/[0.05]"
           >
-            <span className="flex-1 text-white/80 text-sm truncate">Adventure Goals</span>
-            <span className="text-xs px-2 py-0.5 rounded-full bg-white/5 text-white/30">
+            <IconDisplay iconKey="goal-adventure" size={26} className="shrink-0 opacity-90" />
+            <span className="flex-1 min-w-0 text-white text-base font-semibold truncate">
+              System Adventures
+            </span>
+            <span className="shrink-0 text-xs px-2 py-0.5 rounded-full bg-white/5 text-white/30">
               {adventureAspirations.length}
             </span>
           </button>
-          <div className="w-full flex items-center gap-3 py-3 border-b border-white/5 text-left opacity-50">
-            <span className="flex-1 text-white/80 text-sm truncate">Brainstorm</span>
-            <span className="text-xs text-white/30">Coming soon</span>
-          </div>
+          <button
+            type="button"
+            onClick={onFocusBrainstorm}
+            className="mt-3 w-full flex items-center gap-4 rounded-xl border border-white/5 bg-white/[0.03] px-4 py-3.5 text-left transition hover:bg-white/[0.05]"
+          >
+            <IconDisplay iconKey="goal-brainstorm" size={26} className="shrink-0 opacity-90" />
+            <span className="flex-1 min-w-0 text-white text-base font-semibold truncate">
+              Brainstorm Alley
+            </span>
+          </button>
         </div>
       ) : null}
       {view.level === 'brainstorm' ? (

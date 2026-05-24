@@ -151,6 +151,10 @@ export const ICON_MAP: Record<string, string> = {
   'task-tab-user': '✏️',
   'task-tab-library': '📚',
   'task-tab-favorites': '⭐',
+  // goal room roots
+  'goal-user': '🎯',
+  'goal-adventure': '⚔️',
+  'goal-brainstorm': '🌀',
   // SCHEDULE ROOM TABS
   'schedule-tab-routines': '🔄',
   'schedule-tab-events': '📌',

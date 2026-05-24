@@ -44,6 +44,7 @@ interface GoalCanvasProps {
   isActView?: boolean;
   isActEdit?: boolean;
   onFocusedOrbitChange?: (orbit: 'user' | 'system' | null) => void;
+  onRegisterFocusOrbit?: (fn: (orbit: 'user' | 'system' | null) => void) => void;
   onSelectedAspirationChange?: (aspiration: Aspiration | null) => void;
   onRegisterClearFocus?: (fn: (scope: 'planet' | 'all') => void) => void;
   onRegisterSelectAspiration?: (fn: (id: string) => void) => void;
@@ -186,6 +187,7 @@ export function GoalCanvas({
   isActView,
   isActEdit,
   onFocusedOrbitChange,
+  onRegisterFocusOrbit,
   onSelectedAspirationChange,
   onRegisterClearFocus,
   onRegisterSelectAspiration,
@@ -297,6 +299,13 @@ export function GoalCanvas({
   useEffect(() => {
     isActEditRef.current = isActEdit ?? false;
   }, [isActEdit]);
+
+  useEffect(() => {
+    onRegisterFocusOrbit?.((orbit: 'user' | 'system' | null) => {
+      setFocusedOrbit(orbit);
+      setSelectedAspirationId(null);
+    });
+  }, [onRegisterFocusOrbit]);
 
   useEffect(() => {
     onRegisterClearFocus?.((scope: 'planet' | 'all') => {
@@ -697,7 +706,7 @@ export function GoalCanvas({
           uy,
           ORB_RADIUS * userScale,
           'rgba(99, 102, 241, 0.85)',
-          'Your Aspirations',
+          '',
         );
         if (currentFocusedOrbit === 'user') {
           applyGoalNodesAlpha();
@@ -717,7 +726,7 @@ export function GoalCanvas({
           sy,
           ORB_RADIUS * systemScale,
           'rgba(245, 158, 11, 0.85)',
-          'Adventures',
+          '',
         );
         if (currentFocusedOrbit === 'system') {
           applyGoalNodesAlpha();
@@ -1271,6 +1280,7 @@ export function GoalCanvas({
           bx,
           by,
           28,
+          '',
           brainstormScale,
           brainstormHovered,
           currentBrainstormFocused,

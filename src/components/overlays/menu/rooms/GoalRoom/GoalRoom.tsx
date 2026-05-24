@@ -1,3 +1,4 @@
+//import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useProgressionStore } from '../../../../../stores/useProgressionStore';
 import { useScheduleStore } from '../../../../../stores/useScheduleStore';
@@ -27,8 +28,9 @@ export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
   const [woopDraft, setWoopDraft] = useState<{ aspirationId: string; woopIdx: number | null; woop: Woop } | null>(null);
   const [smarterDraft, setSmarterDraft] = useState<{ aspirationId: string; woopIdx: number; smarterIdx: number | null; smarter: Smarter } | null>(null);
   const [isActView, setIsActView] = useState(false);
-  const [navHidden, setNavHidden] = useState(false);
+  const [navHidden, setNavHidden] = useState(true);
   const [brainstormFocused, setBrainstormFocused] = useState(false);
+  const focusOrbitRef = useRef<((orbit: 'user' | 'system' | null) => void) | null>(null);
   const clearCanvasFocusRef = useRef<((scope: 'planet' | 'all') => void) | null>(null);
   const selectAspirationFromDrawerRef = useRef<((id: string) => void) | null>(null);
   const setSelectedWoopRef = useRef<((idx: number | null) => void) | null>(null);
@@ -622,6 +624,19 @@ export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
       setDrawerView({ level: 'orbit', orbit });
     }
   }, []);
+  const handleFocusUserOrbit = useCallback(() => {
+    focusOrbitRef.current?.('user');
+    handleFocusedOrbitChange('user');
+  }, [handleFocusedOrbitChange]);
+  const handleFocusAdventureOrbit = useCallback(() => {
+    focusOrbitRef.current?.('system');
+    handleFocusedOrbitChange('system');
+  }, [handleFocusedOrbitChange]);
+  const handleFocusBrainstorm = useCallback(() => {
+    setSelectedStorm(null);
+    setBrainstormFocused(true);
+    setDrawerView({ level: 'brainstorm' });
+  }, [setSelectedStorm]);
   const handleSelectedAspirationChange = useCallback((aspiration: Aspiration | null) => {
     const level = drawerViewLevelRef.current;
     if (level === 'woop-edit' || level === 'smarter-edit' || level === 'act-edit') return;
@@ -752,6 +767,7 @@ export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
           userAspirations={userAspirations}
           adventureAspirations={systemAspirations}
           onFocusedOrbitChange={handleFocusedOrbitChange}
+          onRegisterFocusOrbit={(fn) => { focusOrbitRef.current = fn; }}
           onSelectedAspirationChange={handleSelectedAspirationChange}
           onRegisterClearFocus={(fn) => { clearCanvasFocusRef.current = fn; }}
           onRegisterSelectAspiration={(fn) => { selectAspirationFromDrawerRef.current = fn; }}
@@ -779,11 +795,7 @@ export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
               setSelectedSmarterRef.current?.(smarterIdx);
             }
           }}
-          onBrainstormSelect={() => {
-            setSelectedStorm(null);
-            setBrainstormFocused(true);
-            setDrawerView({ level: 'brainstorm' });
-          }}
+          onBrainstormSelect={handleFocusBrainstorm}
           onSelectStorm={setSelectedStorm}
           brainstormFocused={brainstormFocused}
           selectedMainIdeaId={selectedMainIdeaId}
@@ -805,6 +817,9 @@ export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
         open={drawerOpen}
         view={drawerView}
         onBack={handleDrawerBack}
+        onFocusUserOrbit={handleFocusUserOrbit}
+        onFocusAdventureOrbit={handleFocusAdventureOrbit}
+        onFocusBrainstorm={handleFocusBrainstorm}
         userAspirations={userAspirations}
         adventureAspirations={systemAspirations}
         mainIdeas={mainIdeas}

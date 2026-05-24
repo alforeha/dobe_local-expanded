@@ -56,6 +56,7 @@ export function drawBrainstormNode(
   x: number,
   y: number,
   radius: number,
+  label: string,
   scale: number,
   hovered: boolean,
   focused: boolean,
@@ -95,11 +96,13 @@ export function drawBrainstormNode(
   ctx.arc(x, y, glowRadius, 0, Math.PI * 2);
   ctx.fill();
 
-  ctx.fillStyle = 'rgba(255,255,255,0.6)';
-  ctx.font = '13px sans-serif';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText('Brainstorm', x, y + 72);
+  if (label) {
+    ctx.fillStyle = 'rgba(255,255,255,0.6)';
+    ctx.font = '13px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(label, x, y + 72);
+  }
 }
 
 export function drawStormOrb(
