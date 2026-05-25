@@ -8,12 +8,13 @@ import type {
   BrainstormState,
   MainIdea,
   Storm,
+  StormCategory,
   StormState,
   StormType,
 } from '../types/brainstorm';
 
 interface BrainstormActions {
-  addStorm: (name: string, type: StormType, state?: StormState) => string;
+  addStorm: (name: string, type: StormType, state?: StormState, category?: StormCategory) => string;
   addMainIdea: (stormId: string, title: string) => void;
   addIdea: (stormId: string, mainIdeaId: string, title: string) => void;
   addChildIdea: (stormId: string, parentIdeaId: string, title: string) => void;
@@ -24,6 +25,7 @@ interface BrainstormActions {
   deleteMainIdea: (stormId: string, mainIdeaId: string) => void;
   deleteIdea: (stormId: string, ideaId: string) => void;
   renameStorm: (stormId: string, name: string) => void;
+  setStormCategory: (stormId: string, category: StormCategory) => void;
   setStormState: (stormId: string, state: StormState) => void;
   renameMainIdea: (stormId: string, mainIdeaId: string, name: string) => void;
   renameIdea: (stormId: string, ideaId: string, name: string) => void;
@@ -133,13 +135,14 @@ export const useBrainstormStore = create<BrainstormState & BrainstormActions>()(
     (set, get) => ({
       ...initialState,
 
-      addStorm: (name, type, stormState) => {
+      addStorm: (name, type, stormState, category) => {
         const id = crypto.randomUUID();
         const storm: Storm = {
           id,
           name,
           state: stormState ?? 'active',
           type,
+          category: category ?? { name: 'Thought Train', color: '#7c3aed' },
           brainWidthPoints: 1000,
           brainWidthCap: 1000,
           brainWidthStaked: 0,
@@ -469,6 +472,23 @@ export const useBrainstormStore = create<BrainstormState & BrainstormActions>()(
         });
       },
 
+      setStormCategory: (stormId, category) => {
+        set((state) => {
+          const storm = state.storms[stormId];
+          if (!storm) return state;
+
+          return {
+            storms: {
+              ...state.storms,
+              [stormId]: {
+                ...storm,
+                category,
+              },
+            },
+          };
+        });
+      },
+
       setStormState: (stormId, nextState) => {
         set((state) => {
           const storm = state.storms[stormId];
@@ -653,7 +673,7 @@ export const useBrainstormStore = create<BrainstormState & BrainstormActions>()(
     }),
     {
       name: 'cdb-brainstorm',
-      version: 1,
+      version: 2,
       partialize: (state) => ({
         storms: state.storms,
       }),

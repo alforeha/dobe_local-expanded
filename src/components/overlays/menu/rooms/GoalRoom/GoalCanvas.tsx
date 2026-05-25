@@ -15,7 +15,6 @@ import {
   drawBrainstormPreview,
   drawBrainstormWebBackground,
   getBrainstormHitRadius,
-  STORM_STATE_COLORS,
 } from './brainstormDraw';
 import {
   flattenIdeaTree,
@@ -333,6 +332,7 @@ export function GoalCanvas({
       if (scope === 'planet') {
         setSelectedAspirationId(null);
       } else {
+        selectedAspirationIdRef.current = null;
         setFocusedOrbit(null);
         setSelectedAspirationId(null);
       }
@@ -464,6 +464,7 @@ export function GoalCanvas({
         x: number;
         y: number;
       }> = [];
+      const stormLayoutWorldEntries: StormLayout[] = [];
       let carryOutgoingDraw: {
         storm: Storm;
         alpha: number;
@@ -535,8 +536,7 @@ export function GoalCanvas({
             slot,
             storm,
           });
-
-          stormLayoutsRef.current.push({
+          stormLayoutWorldEntries.push({
             id: storm.id,
             x: sxStorm,
             y: syStorm,
@@ -564,8 +564,7 @@ export function GoalCanvas({
               x: ix,
               y: iy,
             };
-
-            stormLayoutsRef.current.push({
+            stormLayoutWorldEntries.push({
               id: incomingStorm.id,
               x: ix,
               y: iy,
@@ -699,7 +698,7 @@ export function GoalCanvas({
           cameraTargetRef.current = { x: centerX, y: centerY, scale };
         }
       } else if (currentBrainstormFocused && activeStormId !== null) {
-        const stormLayout = stormLayoutsRef.current.find((layout) => layout.id === activeStormId);
+        const stormLayout = stormLayoutWorldEntries.find((layout) => layout.id === activeStormId);
         if (stormLayout) {
           cameraTargetRef.current = { x: stormLayout.x, y: stormLayout.y, scale: 1.4 };
         } else {
@@ -735,6 +734,20 @@ export function GoalCanvas({
         cameraSnapshotRef.current = nextCameraSnapshot;
         setCameraSnapshot(nextCameraSnapshot);
       }
+      stormLayoutsRef.current = stormLayoutWorldEntries.map((layout) => {
+        const screenPos = worldToScreen(
+          layout.x,
+          layout.y,
+          nextCameraSnapshot,
+          canvasCenterX,
+          canvasCenterY,
+        );
+        return {
+          ...layout,
+          x: screenPos.x,
+          y: screenPos.y,
+        };
+      });
 
       const phase = (elapsed / ORB_PERIOD_MS) * Math.PI * 2;
       const userScale = 1 + Math.sin(phase) * 0.08;
@@ -754,6 +767,7 @@ export function GoalCanvas({
 
       ctx.clearRect(0, 0, width, height);
       if (currentBrainstormFocused || brainstormAlphaRef.current > 0) {
+        const dpr = window.devicePixelRatio || 1;
         const screenBx = (bx - cameraRef.current.x) * cameraRef.current.scale + width / 2;
         const screenBy = (by - cameraRef.current.y) * cameraRef.current.scale + height / 2;
         drawBrainstormCenterGlow(
@@ -768,42 +782,24 @@ export function GoalCanvas({
         if (currentBrainstormFocused && currentFocusedOrbit === null) {
           const beamLayouts = [
             ...stormLayouts,
-            ...stormLayoutsRef.current.filter((layout) => layout.slot === PAGE),
+            ...stormLayoutWorldEntries.filter((layout) => layout.slot === PAGE),
           ];
           beamLayouts.forEach((layout) => {
             const screenSx = (layout.x - cameraRef.current.x) * cameraRef.current.scale + width / 2;
             const screenSy = (layout.y - cameraRef.current.y) * cameraRef.current.scale + height / 2;
-            const beamDx = screenSx - screenBx;
-            const beamDy = screenSy - screenBy;
-            const beamLen = Math.sqrt(beamDx * beamDx + beamDy * beamDy);
+            const orbAngle = Math.atan2(screenSy - screenBy, screenSx - screenBx);
+            const beamColor = layout.storm.category.color;
 
-            if (beamLen < 1) {
-              return;
-            }
-
-            const beamNx = beamDx / beamLen;
-            const beamNy = beamDy / beamLen;
-            const tX = beamNx > 0
-              ? (width - screenSx) / beamNx
-              : beamNx < 0
-                ? -screenSx / beamNx
-                : Infinity;
-            const tY = beamNy > 0
-              ? (height - screenSy) / beamNy
-              : beamNy < 0
-                ? -screenSy / beamNy
-                : Infinity;
-            const t = Math.min(tX, tY);
-
-            if (!Number.isFinite(t) || t <= 0) {
-              return;
-            }
-
-            const edgeX = screenSx + beamNx * t;
-            const edgeY = screenSy + beamNy * t;
-            const beamColor = STORM_STATE_COLORS[layout.storm.state] ?? STORM_STATE_COLORS.active;
-
-            drawStormBeam(ctx, screenSx, screenSy, edgeX, edgeY, beamColor, layout.alpha);
+            drawStormBeam(
+              ctx,
+              screenSx,
+              screenSy,
+              orbAngle,
+              beamColor,
+              layout.alpha,
+              canvas.width / dpr,
+              canvas.height / dpr,
+            );
           });
         }
       }
@@ -844,7 +840,7 @@ export function GoalCanvas({
               carryOutgoingDraw.alpha,
               timestamp,
               -1,
-              carryOutgoingDraw.storm.state,
+              carryOutgoingDraw.storm.category.color,
             );
           }
 
@@ -854,13 +850,13 @@ export function GoalCanvas({
               ctx,
               entry.x,
               entry.y,
-              57,
+              133,
               iconEmoji,
               '',
               entry.alpha,
               timestamp,
               entry.idx,
-              entry.storm.state,
+              entry.storm.category.color,
             );
           });
 
@@ -870,13 +866,13 @@ export function GoalCanvas({
               ctx,
               incomingDraw.x,
               incomingDraw.y,
-              22,
+              133,
               iconEmoji,
               '',
               incomingDraw.alpha,
               timestamp,
               PAGE,
-              incomingDraw.storm.state,
+              incomingDraw.storm.category.color,
             );
           }
         } else {
@@ -892,7 +888,7 @@ export function GoalCanvas({
               carryOutgoingDraw.alpha,
               timestamp,
               -1,
-              carryOutgoingDraw.storm.state,
+              carryOutgoingDraw.storm.category.color,
             );
           }
 
@@ -909,7 +905,7 @@ export function GoalCanvas({
               entry.alpha,
               timestamp,
               entry.idx,
-              entry.storm.state,
+              entry.storm.category.color,
             );
           });
 
@@ -925,7 +921,7 @@ export function GoalCanvas({
               incomingDraw.alpha,
               timestamp,
               PAGE,
-              incomingDraw.storm.state,
+              incomingDraw.storm.category.color,
             );
           }
 
@@ -1628,7 +1624,8 @@ export function GoalCanvas({
         onStormWheelScroll?.(event.deltaY);
       }}
       onClick={(event) => {
-        const rect = event.currentTarget.getBoundingClientRect();
+        const rect = canvasRef.current?.getBoundingClientRect();
+        if (!rect) return;
         const clickX = event.clientX - rect.left;
         const clickY = event.clientY - rect.top;
         const canvasEl = canvasRef.current;
@@ -1689,10 +1686,9 @@ export function GoalCanvas({
           );
           if (selectedStormId === null) {
             const hitStorm = stormLayoutsRef.current.find((layout) => {
-              const screen = toScreen(layout.x, layout.y);
-              const dx = clickX - screen.x;
-              const dy = clickY - screen.y;
-              return Math.sqrt(dx * dx + dy * dy) <= 30;
+              const dx = clickX - layout.x;
+              const dy = clickY - layout.y;
+              return Math.sqrt(dx * dx + dy * dy) <= layout.radius + 12;
             });
 
             if (hitStorm) {

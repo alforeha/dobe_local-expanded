@@ -59,6 +59,30 @@ function drawGlowOrb(
   ctx.fill();
 }
 
+function withAlpha(color: string, alpha: number) {
+  const normalized = color.trim();
+  const hexMatch = normalized.match(/^#([0-9a-f]{6}|[0-9a-f]{3})$/i);
+  if (hexMatch) {
+    let hex = hexMatch[1];
+    if (hex.length === 3) {
+      hex = hex.split('').map((char) => char + char).join('');
+    }
+
+    const r = parseInt(hex.slice(0, 2), 16);
+    const g = parseInt(hex.slice(2, 4), 16);
+    const b = parseInt(hex.slice(4, 6), 16);
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  }
+
+  const rgbMatch = normalized.match(/^rgba?\(([^)]+)\)$/i);
+  if (rgbMatch) {
+    const [r = '255', g = '255', b = '255'] = rgbMatch[1].split(',').map((part) => part.trim());
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  }
+
+  return normalized;
+}
+
 export function drawBrainstormNode(
   ctx: CanvasRenderingContext2D,
   x: number,
@@ -153,7 +177,7 @@ export function drawStormOrb(
   alpha: number,
   timestamp: number,
   index: number,
-  stormState: StormState,
+  orbColor: string,
 ) {
   if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(radius) || radius <= 0) {
     return;
@@ -162,20 +186,27 @@ export function drawStormOrb(
   const floatY = Math.sin(timestamp / 1200 + index * 0.9) * 3;
   const orbX = x;
   const orbY = y + floatY;
-  const glowRadius = radius * 2;
-  const coreColor = STORM_STATE_COLORS[stormState] ?? STORM_STATE_COLORS.active;
+  const glowRadius = radius * 1.8;
+  const coreColor = orbColor || STORM_STATE_COLORS.active;
 
   ctx.save();
   ctx.globalAlpha = alpha;
 
   const gradient = ctx.createRadialGradient(orbX, orbY, 0, orbX, orbY, glowRadius);
-  gradient.addColorStop(0, coreColor);
-  gradient.addColorStop(0.45, coreColor.replace('0.85', '0.38'));
-  gradient.addColorStop(1, coreColor.replace('0.85', '0'));
+  gradient.addColorStop(0, 'rgba(255, 255, 255, 0.7)');
+  gradient.addColorStop(0.15, coreColor);
+  gradient.addColorStop(0.45, withAlpha(coreColor, 0.3));
+  gradient.addColorStop(1, withAlpha(coreColor, 0));
 
   ctx.fillStyle = gradient;
   ctx.beginPath();
   ctx.arc(orbX, orbY, glowRadius, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+  ctx.beginPath();
+  ctx.arc(orbX, orbY, radius * 0.4, 0, Math.PI * 2);
   ctx.fill();
 
   if (iconEmoji) {
@@ -197,59 +228,69 @@ export function drawStormOrb(
 
 export function drawStormBeam(
   ctx: CanvasRenderingContext2D,
-  fromX: number,
-  fromY: number,
-  toX: number,
-  toY: number,
+  orbX: number,
+  orbY: number,
+  orbAngle: number,
   color: string,
   alpha: number,
+  canvasWidth: number,
+  canvasHeight: number,
 ) {
-  const dx = toX - fromX;
-  const dy = toY - fromY;
-  const len = Math.sqrt(dx * dx + dy * dy);
-
-  if (len < 1) {
-    return;
-  }
-
-  const nx = dx / len;
-  const ny = dy / len;
-  const perpX = -ny;
-  const perpY = nx;
+  const outerRadius = Math.hypot(canvasWidth, canvasHeight);
+  const wideSpan = Math.PI / 1.2;
+  const wideStartAngle = orbAngle - wideSpan / 2;
+  const wideEndAngle = orbAngle + wideSpan / 2;
+  const wideGradient = ctx.createRadialGradient(
+    orbX,
+    orbY,
+    0,
+    orbX,
+    orbY,
+    outerRadius,
+  );
+  wideGradient.addColorStop(0, withAlpha(color, alpha * 0.15));
+  wideGradient.addColorStop(0.4, withAlpha(color, alpha * 0.08));
+  wideGradient.addColorStop(1, withAlpha(color, 0));
 
   ctx.save();
-
-  const sprayWidth = 125;
-  const halfWidth = sprayWidth+100;
-  ctx.globalAlpha = alpha * 0.18;
-  const sprayGrad = ctx.createLinearGradient(fromX, fromY, toX, toY);
-  sprayGrad.addColorStop(0, color);
-  sprayGrad.addColorStop(1, color);
-  sprayGrad.addColorStop(1, 'rgba(0,0,0,0)');
-  ctx.fillStyle = sprayGrad;
-  ctx.beginPath();
-  ctx.moveTo(fromX + perpX * halfWidth, fromY + perpY * halfWidth);
-  ctx.lineTo(toX + perpX * halfWidth, toY + perpY * halfWidth);
-  ctx.lineTo(toX - perpX * halfWidth, toY - perpY * halfWidth);
-  ctx.lineTo(fromX - perpX * halfWidth, fromY - perpY * halfWidth);
-  ctx.closePath();
-  ctx.fill();
-
-  const lineWidth = 100;
-  ctx.globalAlpha = alpha * 0.7;
-  const lineGrad = ctx.createLinearGradient(fromX, fromY, toX, toY);
-  lineGrad.addColorStop(0, 'rgba(255,255,255,0.9)');
-  lineGrad.addColorStop(0.3, color);
-  lineGrad.addColorStop(1, 'rgba(0,0,0,0)');
-  ctx.strokeStyle = lineGrad;
-  ctx.lineWidth = lineWidth;
-  ctx.beginPath();
-  ctx.moveTo(fromX, fromY);
-  ctx.lineTo(toX, toY);
-  ctx.stroke();
-
-  ctx.restore();
   ctx.globalAlpha = 1;
+  ctx.beginPath();
+  ctx.moveTo(orbX, orbY);
+  ctx.arc(orbX, orbY, outerRadius, wideStartAngle, wideEndAngle);
+  ctx.closePath();
+  ctx.fillStyle = wideGradient;
+  ctx.fill();
+  ctx.restore();
+
+
+  const gradient = ctx.createRadialGradient(
+    orbX,
+    orbY,
+    0,
+    orbX,
+    orbY,
+    outerRadius,
+  );
+gradient.addColorStop(0, withAlpha(color, alpha * 0.6));
+gradient.addColorStop(0.5, withAlpha(color, alpha * 0.4));
+gradient.addColorStop(1, withAlpha(color, 0));
+
+const span = Math.PI / 3;
+const startAngle = orbAngle - span ;
+const endAngle = orbAngle + span ;
+const innerRadius = 33;  // cuts off the pointy tip — increase to widen the start
+
+ctx.save();
+ctx.globalAlpha = 1;
+ctx.beginPath();
+// outer arc
+ctx.arc(orbX, orbY, outerRadius, startAngle, endAngle);
+// inner arc drawn backwards to close the annular slice
+ctx.arc(orbX, orbY, innerRadius, endAngle, startAngle, true);
+ctx.closePath();
+ctx.fillStyle = gradient;
+ctx.fill();
+ctx.restore();
 }
 
 export function drawGateMarker(

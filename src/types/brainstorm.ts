@@ -1,5 +1,9 @@
 export type StormState = 'active' | 'incubating' | 'archived' | 'resolved' | 'folding';
 export type StormType = 'exploration' | 'problem' | 'planning' | 'reflection' | 'project' | 'projection' | 'general' | 'others';
+export type StormCategory = {
+  name: string;
+  color: string;
+};
 export type IdeaState = 'open' | 'in-progress' | 'resolved' | 'parked' | 'others';
 export type IdeaType = 'insight' | 'question' | 'hypothesis' | 'blocker' | 'action' | 'others';
 export type EntryState = 'outcome' | 'obstacle' | 'question' | 'solved' | 'others';
@@ -62,6 +66,7 @@ export interface Storm {
   name: string;
   state: StormState;
   type: StormType;
+  category: StormCategory;
   brainWidthPoints: number;
   brainWidthCap: number;
   brainWidthStaked: number;

@@ -14,7 +14,7 @@ import {
   createBlankSmarter,
 } from './goalEditorUtils';
 import type { Aspiration, NestedAct, Smarter, Woop } from '../../../../../types';
-import type { BrainstormEntry } from '../../../../../types/brainstorm';
+import type { BrainstormEntry, StormCategory } from '../../../../../types/brainstorm';
 import type { LogInputFields } from '../../../../../types/taskTemplate';
 
 interface GoalRoomProps {
@@ -651,6 +651,7 @@ export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
   const handleFocusBrainstorm = useCallback(() => {
     setSelectedStorm(null);
     setBrainstormFocused(true);
+    clearCanvasFocusRef.current?.('all');
     setDrawerView({ level: 'brainstorm' });
   }, [setSelectedStorm]);
   const handleSelectedAspirationChange = useCallback((aspiration: Aspiration | null) => {
@@ -853,8 +854,8 @@ export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
         onSelectStorm={(id) => {
           setSelectedStorm(id);
         }}
-        onAddStorm={(name, type, state) => {
-          addStorm(name, type, state);
+        onAddStorm={(name, type, state, category?: StormCategory) => {
+          addStorm(name, type, state, category);
         }}
         onSelectMainIdea={handleSelectMainIdea}
         onSelectIdea={setSelectedIdea}

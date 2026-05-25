@@ -6,10 +6,12 @@ import type {
   EntryState,
   MainIdea,
   Storm,
+  StormCategory,
   StormState,
   StormType,
 } from '../../../../../types/brainstorm';
 import { STORM_STATE_META, STORM_TYPE_META } from '../../../../../types/brainstorm';
+import { ColorPicker } from '../../../../shared/ColorPicker';
 import { IconDisplay } from '../../../../shared/IconDisplay';
 import { PopupShell } from '../../../../shared/popups/PopupShell';
 import { GoalActEditor } from './GoalActEditor';
@@ -49,7 +51,7 @@ interface GoalInspectorDrawerProps {
   onSelectStorm: (id: string) => void;
   onStormScrollProgress?: (ratio: number) => void;
   stormScrollContainerRef?: React.RefObject<HTMLDivElement | null>;
-  onAddStorm: (name: string, type: StormType, state?: StormState) => void;
+  onAddStorm: (name: string, type: StormType, state?: StormState, category?: StormCategory) => void;
   onSelectMainIdea: (id: string | null) => void;
   onSelectIdea: (id: string | null) => void;
   onAddMainIdea: (title: string) => void;
@@ -103,6 +105,13 @@ const STORM_STATE_CLASSES: Record<StormState, string> = {
   archived: 'bg-slate-800/60 text-slate-400',
   resolved: 'bg-indigo-900/40 text-indigo-400',
   folding: 'bg-cyan-900/40 text-cyan-300',
+};
+const STORM_STATE_ROW_BG: Record<StormState, string> = {
+  active: 'bg-blue-900/30',
+  incubating: 'bg-yellow-900/20',
+  archived: 'bg-neutral-800/30',
+  resolved: 'bg-green-900/20',
+  folding: 'bg-neutral-700/10',
 };
 const STORM_TYPE_CLASSES: Record<StormType, string> = {
   general: 'bg-teal-900/40 text-teal-300',
@@ -637,6 +646,9 @@ export function GoalInspectorDrawer({
   const [newStormName, setNewStormName] = useState('');
   const [newStormType, setNewStormType] = useState<StormType>('general');
   const [newStormState, setNewStormState] = useState<StormState>('active');
+  const [newStormCategory, setNewStormCategory] = useState<StormCategory>({ name: 'Thought Train', color: '#7c3aed' });
+  const [categoryInput, setCategoryInput] = useState('');
+  const [categoryPickerOpen, setCategoryPickerOpen] = useState(false);
   const [typePickerOpen, setTypePickerOpen] = useState(false);
   const [statePickerOpen, setStatePickerOpen] = useState(false);
   const [modalMode, setModalMode] = useState<BrainstormModalMode | null>(null);
@@ -645,6 +657,7 @@ export function GoalInspectorDrawer({
   const [confirmDelete, setConfirmDelete] = useState(false);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const stormScrollRef = stormScrollContainerRef ?? scrollRef;
+  const stormScrollRatioRef = useRef(0);
   const [rowHeight, setRowHeight] = useState(48);
   const selectedMainIdea = selectedMainIdeaId ? mainIdeas[selectedMainIdeaId] ?? null : null;
   const selectedIdea = selectedIdeaId ? ideas[selectedIdeaId] ?? null : null;
@@ -656,12 +669,20 @@ export function GoalInspectorDrawer({
   const stormList = Object.values(storms);
   const selectedStorm = selectedStormId ? storms[selectedStormId] ?? null : null;
   const showStormOverview = view.level === 'brainstorm' && selectedStormId === null;
+  const existingStormCategories = Array.from(
+    new Map(
+      Object.values(storms).map((storm) => [storm.category.name, storm.category]),
+    ).values(),
+  );
 
   function resetAddStormState() {
     setAddingStorm(false);
     setNewStormName('');
     setNewStormType('general');
     setNewStormState('active');
+    setNewStormCategory({ name: 'Thought Train', color: '#7c3aed' });
+    setCategoryInput('');
+    setCategoryPickerOpen(false);
     setTypePickerOpen(false);
     setStatePickerOpen(false);
   }
@@ -695,12 +716,6 @@ export function GoalInspectorDrawer({
   }, [selectedMainIdeaId, selectedIdeaId, selectedStormId]);
 
   useEffect(() => {
-    if (!showStormOverview) {
-      onStormScrollProgress?.(0);
-    }
-  }, [showStormOverview, onStormScrollProgress]);
-
-  useEffect(() => {
     if (!stormScrollRef.current) return;
 
     const measure = () => {
@@ -719,8 +734,11 @@ export function GoalInspectorDrawer({
 
   useEffect(() => {
     if (showStormOverview && stormScrollRef.current) {
-      stormScrollRef.current.scrollTop = 0;
-      onStormScrollProgress?.(0);
+      const el = stormScrollRef.current;
+      el.scrollTop = stormScrollRatioRef.current * Math.max(1, el.scrollHeight - el.clientHeight);
+      const ratio = el.scrollTop / Math.max(1, el.scrollHeight - el.clientHeight);
+      stormScrollRatioRef.current = ratio;
+      onStormScrollProgress?.(ratio);
     }
   }, [showStormOverview, onStormScrollProgress, stormScrollRef]);
 
@@ -751,6 +769,9 @@ export function GoalInspectorDrawer({
     setNewStormName('');
     setNewStormType('general');
     setNewStormState('active');
+    setNewStormCategory({ name: 'Thought Train', color: '#7c3aed' });
+    setCategoryInput('');
+    setCategoryPickerOpen(false);
     setTypePickerOpen(false);
     setStatePickerOpen(false);
   }
@@ -758,13 +779,14 @@ export function GoalInspectorDrawer({
   function handleAddStormConfirm() {
     const trimmed = newStormName.trim();
     if (!trimmed) return;
-    onAddStorm(trimmed, newStormType, newStormState);
+    onAddStorm(trimmed, newStormType, newStormState, newStormCategory);
     resetAddStormState();
   }
 
   function handleStormScroll(event: UIEvent<HTMLDivElement>) {
     const el = event.currentTarget;
     const scrollRatio = el.scrollTop / Math.max(1, el.scrollHeight - el.clientHeight);
+    stormScrollRatioRef.current = scrollRatio;
     onStormScrollProgress?.(scrollRatio);
   }
 
@@ -937,89 +959,179 @@ export function GoalInspectorDrawer({
         addingStorm ? (
           <div className="flex-1 overflow-y-auto px-4 py-4">
             <div className="space-y-4">
-              <input
-                type="text"
-                value={newStormName}
-                onChange={(event) => setNewStormName(event.target.value)}
-                placeholder="Storm name..."
-                className="w-full rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-white/20"
-              />
-              <div className="relative">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setTypePickerOpen((open) => !open);
-                    setStatePickerOpen(false);
-                  }}
-                  className="flex w-full items-center justify-between gap-3 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-left text-sm text-white hover:bg-white/[0.05]"
-                >
-                  <span className="flex items-center gap-3">
-                    <IconDisplay iconKey={`storm-${newStormType}`} size={18} className="shrink-0 opacity-90" />
-                    <span>{STORM_TYPE_META[newStormType].displayName}</span>
-                  </span>
-                  <span className="text-white/40 text-xs">Type</span>
-                </button>
-                {typePickerOpen ? (
-                  <div className="absolute left-0 right-0 top-full z-10 mt-2 overflow-hidden rounded-lg border border-white/10 bg-[#161624] shadow-xl">
-                    {STORM_TYPES.map((type) => (
+              {!categoryPickerOpen && !typePickerOpen && !statePickerOpen ? (
+                <input
+                  type="text"
+                  value={newStormName}
+                  onChange={(event) => setNewStormName(event.target.value)}
+                  placeholder="Storm name..."
+                  className="w-full rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-white/20"
+                />
+              ) : null}
+              {!typePickerOpen && !statePickerOpen ? (
+                <div className="space-y-2">
+                  <label className="block text-xs font-medium uppercase tracking-[0.12em] text-white/40">
+                    Category
+                  </label>
+                  {categoryPickerOpen ? (
+                    <div className="space-y-4 rounded-xl border border-white/10 bg-white/[0.03] p-3">
+                      <input
+                        type="text"
+                        value={categoryInput}
+                        onChange={(event) => setCategoryInput(event.target.value)}
+                        placeholder="Category name..."
+                        className="w-full rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-sm text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-white/20"
+                      />
+                      <div className="flex justify-start">
+                        <ColorPicker
+                          value={newStormCategory.color}
+                          onChange={(hex) => setNewStormCategory((prev) => ({ ...prev, color: hex }))}
+                          align="left"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        {existingStormCategories.map((category) => (
+                          <button
+                            key={`${category.name}-${category.color}`}
+                            type="button"
+                            onClick={() => {
+                              setNewStormCategory(category);
+                              setCategoryInput(category.name);
+                              setCategoryPickerOpen(false);
+                            }}
+                            className="flex w-full items-center gap-2 rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-left text-sm text-white/70 transition hover:bg-white/[0.05] hover:text-white"
+                          >
+                            <span
+                              className="inline-block h-2 w-2 rounded-full shrink-0"
+                              style={{ backgroundColor: category.color }}
+                            />
+                            <span className="truncate">{category.name}</span>
+                          </button>
+                        ))}
+                      </div>
                       <button
-                        key={type}
                         type="button"
                         onClick={() => {
-                          setNewStormType(type);
-                          setTypePickerOpen(false);
+                          setNewStormCategory({
+                            name: categoryInput.trim() || 'Thought Train',
+                            color: newStormCategory.color,
+                          });
+                          setCategoryPickerOpen(false);
                         }}
-                        className="flex w-full items-center gap-3 px-3 py-2 text-left text-sm text-white hover:bg-white/[0.05]"
+                        className="w-full rounded-lg border border-white/10 px-3 py-2 text-sm text-white transition hover:border-white/20 hover:bg-white/[0.05]"
                       >
-                        <IconDisplay iconKey={`storm-${type}`} size={18} className="shrink-0 opacity-90" />
-                        <span>{STORM_TYPE_META[type].displayName}</span>
+                        Set Category
                       </button>
-                    ))}
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCategoryInput(newStormCategory.name);
+                        setCategoryPickerOpen(true);
+                        setTypePickerOpen(false);
+                        setStatePickerOpen(false);
+                      }}
+                      className="flex w-full items-center justify-between gap-3 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-left text-sm text-white hover:bg-white/[0.05]"
+                    >
+                      <span className="flex min-w-0 items-center gap-2">
+                        <span
+                          className="inline-block h-2 w-2 rounded-full shrink-0"
+                          style={{ backgroundColor: newStormCategory.color }}
+                        />
+                        <span className="truncate">{newStormCategory.name}</span>
+                      </span>
+                      <span className="text-white/40 text-xs">&gt;</span>
+                    </button>
+                  )}
+                </div>
+              ) : null}
+              {!categoryPickerOpen && !statePickerOpen ? (
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTypePickerOpen((open) => !open);
+                      setStatePickerOpen(false);
+                      setCategoryPickerOpen(false);
+                    }}
+                    className="flex w-full items-center justify-between gap-3 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-left text-sm text-white hover:bg-white/[0.05]"
+                  >
+                    <span className="flex items-center gap-3">
+                      <IconDisplay iconKey={`storm-${newStormType}`} size={18} className="shrink-0 opacity-90" />
+                      <span>{STORM_TYPE_META[newStormType].displayName}</span>
+                    </span>
+                    <span className="text-white/40 text-xs">Type</span>
+                  </button>
+                  {typePickerOpen ? (
+                    <div className="absolute left-0 right-0 top-full z-10 mt-2 overflow-hidden rounded-lg border border-white/10 bg-[#161624] shadow-xl">
+                      {STORM_TYPES.map((type) => (
+                        <button
+                          key={type}
+                          type="button"
+                          onClick={() => {
+                            setNewStormType(type);
+                            setTypePickerOpen(false);
+                          }}
+                          className="flex w-full items-center gap-3 px-3 py-2 text-left text-sm text-white hover:bg-white/[0.05]"
+                        >
+                          <IconDisplay iconKey={`storm-${type}`} size={18} className="shrink-0 opacity-90" />
+                          <span>{STORM_TYPE_META[type].displayName}</span>
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+              {!categoryPickerOpen && !typePickerOpen ? (
+                <>
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setStatePickerOpen((open) => !open);
+                        setTypePickerOpen(false);
+                        setCategoryPickerOpen(false);
+                      }}
+                      className="flex w-full items-center justify-between gap-3 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-left text-sm text-white hover:bg-white/[0.05]"
+                    >
+                      <span className="flex items-center gap-3">
+                        <IconDisplay iconKey={STORM_STATE_META[newStormState].iconKey} size={18} className="shrink-0 opacity-90" />
+                        <span>{STORM_STATE_META[newStormState].displayName}</span>
+                      </span>
+                      <span className="text-white/40 text-xs">State</span>
+                    </button>
+                    {statePickerOpen ? (
+                      <div className="absolute left-0 right-0 top-full z-10 mt-2 overflow-hidden rounded-lg border border-white/10 bg-[#161624] shadow-xl">
+                        {STORM_STATES.map((state) => (
+                          <button
+                            key={state}
+                            type="button"
+                            onClick={() => {
+                              setNewStormState(state);
+                              setStatePickerOpen(false);
+                            }}
+                            className="flex w-full items-center gap-3 px-3 py-2 text-left text-sm text-white hover:bg-white/[0.05]"
+                          >
+                            <IconDisplay iconKey={STORM_STATE_META[state].iconKey} size={18} className="shrink-0 opacity-90" />
+                            <span>{STORM_STATE_META[state].displayName}</span>
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
                   </div>
-                ) : null}
-              </div>
-              <div className="relative">
+                </>
+              ) : null}
+              {!categoryPickerOpen && !typePickerOpen && !statePickerOpen ? (
                 <button
                   type="button"
-                  onClick={() => {
-                    setStatePickerOpen((open) => !open);
-                    setTypePickerOpen(false);
-                  }}
-                  className="flex w-full items-center justify-between gap-3 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-left text-sm text-white hover:bg-white/[0.05]"
+                  disabled={newStormName.trim() === ''}
+                  onClick={handleAddStormConfirm}
+                  className="w-full rounded-lg border border-white/10 px-3 py-2 text-sm text-white transition enabled:hover:border-white/20 enabled:hover:bg-white/[0.05] disabled:cursor-not-allowed disabled:text-white/30"
                 >
-                  <span className="flex items-center gap-3">
-                    <IconDisplay iconKey={STORM_STATE_META[newStormState].iconKey} size={18} className="shrink-0 opacity-90" />
-                    <span>{STORM_STATE_META[newStormState].displayName}</span>
-                  </span>
-                  <span className="text-white/40 text-xs">State</span>
+                  Add Storm
                 </button>
-                {statePickerOpen ? (
-                  <div className="absolute left-0 right-0 top-full z-10 mt-2 overflow-hidden rounded-lg border border-white/10 bg-[#161624] shadow-xl">
-                    {STORM_STATES.map((state) => (
-                      <button
-                        key={state}
-                        type="button"
-                        onClick={() => {
-                          setNewStormState(state);
-                          setStatePickerOpen(false);
-                        }}
-                        className="flex w-full items-center gap-3 px-3 py-2 text-left text-sm text-white hover:bg-white/[0.05]"
-                      >
-                        <IconDisplay iconKey={STORM_STATE_META[state].iconKey} size={18} className="shrink-0 opacity-90" />
-                        <span>{STORM_STATE_META[state].displayName}</span>
-                      </button>
-                    ))}
-                  </div>
-                ) : null}
-              </div>
-              <button
-                type="button"
-                disabled={newStormName.trim() === ''}
-                onClick={handleAddStormConfirm}
-                className="w-full rounded-lg border border-white/10 px-3 py-2 text-sm text-white transition enabled:hover:border-white/20 enabled:hover:bg-white/[0.05] disabled:cursor-not-allowed disabled:text-white/30"
-              >
-                Add Storm
-              </button>
+              ) : null}
             </div>
           </div>
         ) : (
@@ -1037,14 +1149,49 @@ export function GoalInspectorDrawer({
                       key={storm.id}
                       type="button"
                       onClick={() => onSelectStorm(storm.id)}
-                      className="flex shrink-0 items-center gap-3 px-4 border-b border-white/5 text-left w-full"
+                      className={`flex shrink-0 flex-row items-stretch gap-3 px-4 border-b border-white/5 text-left w-full ${STORM_STATE_ROW_BG[storm.state]}`}
                       style={{ height: rowHeight }}
                     >
-                      <IconDisplay iconKey={`storm-${storm.type}`} size={20} className="opacity-80 shrink-0" />
-                      <span className="flex-1 text-white/80 text-sm truncate">{storm.name}</span>
-                      <span className={`shrink-0 text-xs px-2 py-0.5 rounded-full capitalize ${STORM_STATE_CLASSES[storm.state]}`}>
-                        {storm.state}
-                      </span>
+                      <div className="flex items-center justify-center w-4 shrink-0">
+                        <div
+                          className="w-3 h-3 rounded-full"
+                          style={{ backgroundColor: storm.category.color }}
+                        />
+                      </div>
+                      <div className="flex flex-col justify-center flex-1 gap-1 py-2 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <IconDisplay iconKey={`storm-${storm.type}`} size={20} className="opacity-80 shrink-0" />
+                          <span className="block text-white/80 text-sm truncate">{storm.name}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <IconDisplay iconKey={`storm-brain-${storm.state}`} size={18} className="opacity-80 shrink-0" />
+                          <div className="relative flex-1">
+                            <div className="flex h-5 w-full overflow-hidden rounded-full bg-white/5">
+                              {storm.brainWidthCap > 0 ? (
+                                <>
+                                  <div
+                                    className="h-full bg-white/20"
+                                    style={{ width: `${Math.max(0, Math.min(100, (storm.brainWidthStaked / storm.brainWidthCap) * 100))}%` }}
+                                  />
+                                  <div
+                                    className="h-full bg-blue-400/70"
+                                    style={{ width: `${Math.max(0, Math.min(100, ((storm.brainWidthPoints - storm.brainWidthStaked) / storm.brainWidthCap) * 100))}%` }}
+                                  />
+                                  <div
+                                    className="h-full bg-white/5"
+                                    style={{ width: `${Math.max(0, Math.min(100, ((storm.brainWidthCap - storm.brainWidthPoints) / storm.brainWidthCap) * 100))}%` }}
+                                  />
+                                </>
+                              ) : (
+                                <div className="h-full w-full bg-white/5" />
+                              )}
+                            </div>
+                            <div className="absolute inset-0 flex items-center justify-center text-xs text-white/70">
+                              {storm.brainWidthPoints.toString()}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
                     </button>
                   ))}
                   <div style={{ height: rowHeight * 3 }} aria-hidden="true" />

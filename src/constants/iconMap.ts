@@ -171,7 +171,11 @@ export const ICON_MAP: Record<string, string> = {
           'storm-state-folding': '🌀',
 
 
-
+'storm-brain-active':     '🧠⚡',
+'storm-brain-incubating': '🧠🥚',
+'storm-brain-archived':   '🧠📦',
+'storm-brain-resolved':   '🧠✅',
+'storm-brain-folding':    '🧠🌀',
 
 
 
