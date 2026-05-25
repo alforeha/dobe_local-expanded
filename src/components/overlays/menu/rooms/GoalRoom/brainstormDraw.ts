@@ -1,15 +1,22 @@
-import type { BrainstormIdea, MainIdea } from '../../../../../types/brainstorm';
+import type { BrainstormIdea, MainIdea, StormState } from '../../../../../types/brainstorm';
 import { flattenIdeaTree, type IdeaLayoutNode, type MainIdeaLayout, type PointerLine } from './brainstormLayout';
 
-function hexagonPoints(cx: number, cy: number, radius: number) {
+function hexagonPoints(cx: number, cy: number, radius: number, rotationOffset: number = 0) {
   return Array.from({ length: 6 }, (_, index) => {
-    const angle = (Math.PI * 2 * index) / 6 - Math.PI / 2;
+    const angle = (Math.PI * 2 * index) / 6 - Math.PI / 2 + rotationOffset;
     return {
       x: cx + Math.cos(angle) * radius,
       y: cy + Math.sin(angle) * radius,
     };
   });
 }
+
+export const STORM_STATE_COLORS: Record<StormState, string> = {
+  active: 'rgba(16, 185, 129, 0.85)',
+  incubating: 'rgba(245, 158, 11, 0.85)',
+  archived: 'rgba(100, 116, 139, 0.85)',
+  resolved: 'rgba(99, 102, 241, 0.85)',
+};
 
 function drawCircle(ctx: CanvasRenderingContext2D, x: number, y: number, radius: number, fillStyle: string) {
   ctx.fillStyle = fillStyle;
@@ -60,6 +67,7 @@ export function drawBrainstormNode(
   scale: number,
   hovered: boolean,
   focused: boolean,
+  alpha = 1,
 ) {
   void hovered;
 
@@ -71,6 +79,7 @@ export function drawBrainstormNode(
     const pulse = Math.max(0.9, scale);
 
     ctx.save();
+    ctx.globalAlpha = alpha;
     ctx.fillStyle = 'rgba(16, 185, 129, 0.3)';
     ctx.shadowColor = '#10b981';
     ctx.shadowBlur = 40 * pulse;
@@ -91,6 +100,8 @@ export function drawBrainstormNode(
   gradient.addColorStop(0.45, 'rgba(16, 185, 129, 0.38)');
   gradient.addColorStop(1, 'rgba(16, 185, 129, 0)');
 
+  ctx.save();
+  ctx.globalAlpha = alpha;
   ctx.fillStyle = gradient;
   ctx.beginPath();
   ctx.arc(x, y, glowRadius, 0, Math.PI * 2);
@@ -103,6 +114,32 @@ export function drawBrainstormNode(
     ctx.textBaseline = 'middle';
     ctx.fillText(label, x, y + 72);
   }
+  ctx.restore();
+}
+
+export function drawBrainstormCenterGlow(
+  ctx: CanvasRenderingContext2D,
+  screenCx: number,
+  screenCy: number,
+  canvasWidth: number,
+  canvasHeight: number,
+  alpha: number,
+) {
+  const glowRadius = Math.max(canvasWidth, canvasHeight) * 0.7;
+  const gradient = ctx.createRadialGradient(
+    screenCx,
+    screenCy,
+    0,
+    screenCx,
+    screenCy,
+    glowRadius,
+  );
+  gradient.addColorStop(0, `rgba(16, 185, 129, ${alpha * 0.9})`);
+  gradient.addColorStop(0.35, `rgba(16, 185, 129, ${alpha * 0.07})`);
+  gradient.addColorStop(1, 'rgba(16, 185, 129, 0)');
+
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, canvasWidth, canvasHeight);
 }
 
 export function drawStormOrb(
@@ -110,10 +147,12 @@ export function drawStormOrb(
   x: number,
   y: number,
   radius: number,
+  iconEmoji: string,
   label: string,
   alpha: number,
   timestamp: number,
   index: number,
+  stormState: StormState,
 ) {
   if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(radius) || radius <= 0) {
     return;
@@ -123,25 +162,166 @@ export function drawStormOrb(
   const orbX = x;
   const orbY = y + floatY;
   const glowRadius = radius * 2;
+  const coreColor = STORM_STATE_COLORS[stormState] ?? STORM_STATE_COLORS.active;
 
   ctx.save();
   ctx.globalAlpha = alpha;
 
   const gradient = ctx.createRadialGradient(orbX, orbY, 0, orbX, orbY, glowRadius);
-  gradient.addColorStop(0, 'rgba(124, 58, 237, 0.85)');
-  gradient.addColorStop(0.45, 'rgba(124, 58, 237, 0.38)');
-  gradient.addColorStop(1, 'rgba(124, 58, 237, 0)');
+  gradient.addColorStop(0, coreColor);
+  gradient.addColorStop(0.45, coreColor.replace('0.85', '0.38'));
+  gradient.addColorStop(1, coreColor.replace('0.85', '0'));
 
   ctx.fillStyle = gradient;
   ctx.beginPath();
   ctx.arc(orbX, orbY, glowRadius, 0, Math.PI * 2);
   ctx.fill();
 
+  if (iconEmoji) {
+    ctx.globalAlpha = alpha * 0.9;
+    ctx.font = '57px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(iconEmoji, orbX, orbY - 1);
+    ctx.globalAlpha = 1;
+  }
+
   ctx.fillStyle = 'rgba(255,255,255,0.72)';
   ctx.font = '12px sans-serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText(label, orbX, orbY + radius + 18);
+  ctx.restore();
+}
+
+export function drawStormBeam(
+  ctx: CanvasRenderingContext2D,
+  fromX: number,
+  fromY: number,
+  toX: number,
+  toY: number,
+  color: string,
+  alpha: number,
+) {
+  const dx = toX - fromX;
+  const dy = toY - fromY;
+  const len = Math.sqrt(dx * dx + dy * dy);
+
+  if (len < 1) {
+    return;
+  }
+
+  const nx = dx / len;
+  const ny = dy / len;
+  const perpX = -ny;
+  const perpY = nx;
+
+  ctx.save();
+
+  const sprayWidth = 125;
+  const halfWidth = sprayWidth+100;
+  ctx.globalAlpha = alpha * 0.18;
+  const sprayGrad = ctx.createLinearGradient(fromX, fromY, toX, toY);
+  sprayGrad.addColorStop(0, color);
+  sprayGrad.addColorStop(1, color);
+  sprayGrad.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = sprayGrad;
+  ctx.beginPath();
+  ctx.moveTo(fromX + perpX * halfWidth, fromY + perpY * halfWidth);
+  ctx.lineTo(toX + perpX * halfWidth, toY + perpY * halfWidth);
+  ctx.lineTo(toX - perpX * halfWidth, toY - perpY * halfWidth);
+  ctx.lineTo(fromX - perpX * halfWidth, fromY - perpY * halfWidth);
+  ctx.closePath();
+  ctx.fill();
+
+  const lineWidth = 33;
+  ctx.globalAlpha = alpha * 0.7;
+  const lineGrad = ctx.createLinearGradient(fromX, fromY, toX, toY);
+  lineGrad.addColorStop(0, 'rgba(255,255,255,0.9)');
+  lineGrad.addColorStop(0.3, color);
+  lineGrad.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.strokeStyle = lineGrad;
+  ctx.lineWidth = lineWidth;
+  ctx.beginPath();
+  ctx.moveTo(fromX, fromY);
+  ctx.lineTo(toX, toY);
+  ctx.stroke();
+
+  ctx.restore();
+  ctx.globalAlpha = 1;
+}
+
+export function drawGateMarker(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  timestamp: number,
+) {
+  const pulseAlpha = Math.sin(timestamp / 800) * 0.1 + 0.3;
+
+  ctx.save();
+  ctx.globalAlpha = pulseAlpha;
+  ctx.beginPath();
+  ctx.arc(x, y, 14, 0, Math.PI * 2);
+  ctx.strokeStyle = 'rgba(124, 58, 237, 1)';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([3, 4]);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.globalAlpha = 1;
+  ctx.restore();
+}
+
+export function drawMoreStormsIndicator(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  timestamp: number,
+) {
+  const pulse = 1 + Math.sin(timestamp / 700) * 0.08;
+  const radius = 10 * pulse;
+
+  ctx.save();
+  ctx.strokeStyle = 'rgba(124, 58, 237, 0.4)';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.arc(x, y, radius, 0, Math.PI * 2);
+  ctx.stroke();
+
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+  [-4, 0, 4].forEach((offsetY) => {
+    ctx.beginPath();
+    ctx.arc(x, y + offsetY, 1.6, 0, Math.PI * 2);
+    ctx.fill();
+  });
+  ctx.restore();
+}
+
+export function drawStormPageIndicator(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  pageCount: number,
+  activePage: number,
+) {
+  if (pageCount <= 1) {
+    return;
+  }
+
+  const clampedActivePage = Math.max(0, Math.min(activePage, pageCount - 1));
+  const radius = 214;
+  const startX = cx - ((pageCount - 1) * 8) / 2;
+  const y = cy + radius;
+
+  ctx.save();
+  for (let index = 0; index < pageCount; index += 1) {
+    ctx.beginPath();
+    ctx.fillStyle = index === clampedActivePage
+      ? 'rgba(255,255,255,0.72)'
+      : 'rgba(255,255,255,0.22)';
+    ctx.arc(startX + index * 8, y, index === clampedActivePage ? 2.6 : 2, 0, Math.PI * 2);
+    ctx.fill();
+  }
   ctx.restore();
 }
 
@@ -386,6 +566,7 @@ export function drawBrainstormWebBackground(
   cy: number,
   timestamp: number,
   baseAlpha: number,
+  rotationOffset: number = 0,
 ) {
   const alpha = baseAlpha + Math.sin(timestamp / 2000) * 0.04;
   const rings = [80, 150, 220, 300, 390, 490, 600];
@@ -397,7 +578,7 @@ export function drawBrainstormWebBackground(
   rings.forEach((radius, index) => {
     const outerAlpha = Math.max(0.02, alpha * (1 - index * 0.1));
     ctx.globalAlpha = outerAlpha;
-    const points = hexagonPoints(cx, cy, radius);
+    const points = hexagonPoints(cx, cy, radius, rotationOffset);
     ctx.beginPath();
     points.forEach((point, index) => {
       if (index === 0) {
@@ -411,7 +592,7 @@ export function drawBrainstormWebBackground(
   });
 
   ctx.globalAlpha = alpha;
-  hexagonPoints(cx, cy, 600).forEach((point) => {
+  hexagonPoints(cx, cy, 600, rotationOffset).forEach((point) => {
     ctx.beginPath();
     ctx.moveTo(cx, cy);
     ctx.lineTo(point.x, point.y);

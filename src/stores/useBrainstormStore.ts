@@ -344,9 +344,10 @@ export const useBrainstormStore = create<BrainstormState & BrainstormActions>()(
             };
           }
 
-          const parentIdea = idea.parentIdeaId ? nextIdeas[idea.parentIdeaId] : null;
-          if (parentIdea) {
-            nextIdeas[idea.parentIdeaId] = {
+          const parentIdeaId = idea.parentIdeaId;
+          const parentIdea = parentIdeaId ? nextIdeas[parentIdeaId] : null;
+          if (parentIdea && parentIdeaId) {
+            nextIdeas[parentIdeaId] = {
               ...parentIdea,
               ideas: parentIdea.ideas.filter((id) => id !== ideaId),
             };

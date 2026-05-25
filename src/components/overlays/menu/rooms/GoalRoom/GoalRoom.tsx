@@ -35,6 +35,8 @@ export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
   const selectAspirationFromDrawerRef = useRef<((id: string) => void) | null>(null);
   const setSelectedWoopRef = useRef<((idx: number | null) => void) | null>(null);
   const setSelectedSmarterRef = useRef<((idx: number | null) => void) | null>(null);
+  const stormScrollRef = useRef<((ratio: number) => void) | null>(null);
+  const drawerStormScrollRef = useRef<HTMLDivElement>(null);
   const editSnapshotRef = useRef<Aspiration | null>(null);
   const woopSnapshotRef = useRef<Woop | null>(null);
   const woopInsertIndexRef = useRef<number | null>(null);
@@ -117,6 +119,14 @@ export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
   const systemAspirations = useMemo(() => {
     return Object.values(aspirations).filter((act) => act.owner === 'coach');
   }, [aspirations]);
+
+  const handleRegisterStormScroll = useCallback((fn: (ratio: number) => void) => {
+    stormScrollRef.current = fn;
+  }, []);
+
+  const handleStormScrollProgress = useCallback((ratio: number) => {
+    stormScrollRef.current?.(ratio);
+  }, []);
 
   function handleAddMainIdea(title: string) {
     if (selectedStormId) {
@@ -804,6 +814,12 @@ export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
           onSelectIdea={setSelectedIdea}
           onRegisterSetSelectedWoop={(fn) => { setSelectedWoopRef.current = fn; }}
           onRegisterSetSelectedSmarter={(fn) => { setSelectedSmarterRef.current = fn; }}
+          onRegisterStormScroll={handleRegisterStormScroll}
+          onStormWheelScroll={(delta) => {
+            if (drawerStormScrollRef.current) {
+              drawerStormScrollRef.current.scrollTop += delta * 0.3;
+            }
+          }}
           aspirationDraft={aspirationDraft}
           woopDraft={woopDraft}
           smarterDraft={smarterDraft}
@@ -826,6 +842,8 @@ export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
         ideas={ideas}
         selectedMainIdeaId={selectedMainIdeaId}
         selectedIdeaId={selectedIdeaId}
+        onStormScrollProgress={handleStormScrollProgress}
+        stormScrollContainerRef={drawerStormScrollRef}
         onSelectStorm={(id) => {
           setSelectedStorm(id);
         }}

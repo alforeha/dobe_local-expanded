@@ -2,16 +2,20 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useBrainstormStore } from '../../../../../stores/useBrainstormStore';
 import type { Aspiration, Smarter, Woop } from '../../../../../types';
 import type { Storm } from '../../../../../types/brainstorm';
+import { ICON_MAP } from '../../../../../constants/iconMap';
 import { IconDisplay } from '../../../../shared/IconDisplay';
 import {
   drawStormOrb,
+  drawStormBeam,
   drawBrainstormConstellation,
+  drawBrainstormCenterGlow,
   drawBrainstormIdeaSpokes,
   drawBrainstormNode,
   drawBrainstormPointerLines,
   drawBrainstormPreview,
   drawBrainstormWebBackground,
   getBrainstormHitRadius,
+  STORM_STATE_COLORS,
 } from './brainstormDraw';
 import {
   flattenIdeaTree,
@@ -33,6 +37,7 @@ const MOON_ORBIT_RADIUS = 80;
 const MOON_ORBIT_PERIOD_MS = 15000;
 const ORBIT_LEVEL_MOON_RADIUS = 8;
 const ORBIT_LEVEL_MOON_ORBIT_RADIUS = 50;
+const STORM_PAGE_SIZE = 6;
 
 interface GoalCanvasProps {
   selectedStormId: string | null;
@@ -59,6 +64,8 @@ interface GoalCanvasProps {
   onSelectIdea: (id: string | null) => void;
   onRegisterSetSelectedWoop?: (fn: (idx: number | null) => void) => void;
   onRegisterSetSelectedSmarter?: (fn: (idx: number | null) => void) => void;
+  onRegisterStormScroll?: (fn: (ratio: number) => void) => void;
+  onStormWheelScroll?: (delta: number) => void;
 }
 
 interface PlanetPosition {
@@ -87,8 +94,16 @@ interface StormLayout {
   id: string;
   x: number;
   y: number;
+  alpha: number;
+  radius: number;
+  order: number;
+  slot: number;
   storm: Storm;
 }
+
+// function getStormIconEmoji(storm: Storm): string {
+//   return ICON_MAP[`storm-${storm.type}`] ?? '';
+// }
 
 function drawOrb(
   ctx: CanvasRenderingContext2D,
@@ -202,6 +217,8 @@ export function GoalCanvas({
   onSelectIdea,
   onRegisterSetSelectedWoop,
   onRegisterSetSelectedSmarter,
+  onRegisterStormScroll,
+  onStormWheelScroll,
 }: GoalCanvasProps) {
   const storms = useBrainstormStore((s) => s.storms);
   const activeStormId = selectedStormId;
@@ -238,6 +255,7 @@ export function GoalCanvas({
   const selectedIdeaIdRef = useRef(selectedIdeaId);
   const highlightedIdeaIdsRef = useRef<Set<string>>(new Set());
   const stormLayoutsRef = useRef<StormLayout[]>([]);
+  const stormScrollProgress = useRef(0);
   const mainIdeaLayoutsRef = useRef<MainIdeaLayout[]>([]);
   const ideaLayoutsRef = useRef<IdeaLayoutNode[]>([]);
   const allFlatIdeaLayoutsRef = useRef<IdeaLayoutNode[]>([]);
@@ -345,6 +363,12 @@ export function GoalCanvas({
   }, [onRegisterSetSelectedSmarter]);
 
   useEffect(() => {
+    onRegisterStormScroll?.((ratio: number) => {
+      stormScrollProgress.current = ratio;
+    });
+  }, [onRegisterStormScroll]);
+
+  useEffect(() => {
     focusedOrbitRef.current = focusedOrbit;
   }, [focusedOrbit]);
 
@@ -405,21 +429,155 @@ export function GoalCanvas({
       const sy = height * 0.63;
       const bx = canvasCenterX + 20;
       const by = canvasCenterY - 60;
-      const currentStormList = Object.values(storms);
-      const stormLayouts = currentStormList.map((storm, index) => {
-        const angle = ((2 * Math.PI * index) / Math.max(1, currentStormList.length)) - Math.PI / 2;
-        const r = currentStormList.length === 1 ? 0 : 180;
-        return {
-          id: storm.id,
-          x: bx + Math.cos(angle) * r,
-          y: by + Math.sin(angle) * r,
-          storm,
-        };
-      });
-      stormLayoutsRef.current = stormLayouts;
-
+      const stormList = Object.values(storms);
+      const totalStorms = stormList.length;
+      const PAGE = STORM_PAGE_SIZE;
+      const r = 180;
+      const slotStep = (2 * Math.PI) / PAGE;
+      const transitionAngle = -Math.PI / 2;
+      const hasMore = totalStorms > PAGE;
+      const maxHead = Math.max(0, totalStorms - PAGE);
+      const scrollOffset = stormScrollProgress.current * maxHead;
+      const head = Math.min(Math.floor(scrollOffset), maxHead);
+      const scrollPhase = scrollOffset - head;
+      const ringRotation = -scrollOffset * slotStep;
+      const smoothstep = (edge0: number, edge1: number, x: number) => {
+        const v = Math.max(0, Math.min(1, (x - edge0) / (edge1 - edge0)));
+        return v * v * (3 - 2 * v);
+      };
+      const lerp = (a: number, b: number, factor: number) => a + (b - a) * factor;
+      const getStormAt = (offset: number) => {
+        if (totalStorms === 0) return null;
+        return stormList[((head + offset) % totalStorms + totalStorms) % totalStorms] ?? null;
+      };
+      const getRingAngle = (slot: number) => (
+        transitionAngle + (slot - (PAGE - 1) - scrollPhase) * slotStep
+      );
+      const incomingT = smoothstep(0, 1, scrollPhase);
       const currentFocusedOrbit = focusedOrbitRef.current;
       const currentBrainstormFocused = brainstormFocusedRef.current;
+      const stormLayouts: StormLayout[] = [];
+      const stormDraws: Array<{
+        storm: Storm;
+        alpha: number;
+        idx: number;
+        x: number;
+        y: number;
+      }> = [];
+      let carryOutgoingDraw: {
+        storm: Storm;
+        alpha: number;
+        x: number;
+        y: number;
+      } | null = null;
+      let incomingDraw: {
+        storm: Storm;
+        alpha: number;
+        x: number;
+        y: number;
+      } | null = null;
+      stormLayoutsRef.current = [];
+
+      if (totalStorms > 0) {
+        if (hasMore && head > 0) {
+          const prevStorm = stormList[(head - 1 + totalStorms) % totalStorms];
+          if (prevStorm) {
+            const carryT = smoothstep(0, 1, scrollPhase);
+            const carryAlpha = lerp(0.25, 0, carryT);
+            const carryR = lerp(r - 80, r - 140, carryT);
+            const carryAngle = getRingAngle(-1);
+            const cox = bx + Math.cos(carryAngle) * carryR;
+            const coy = by + Math.sin(carryAngle) * carryR;
+
+            if (carryAlpha > 0.02) {
+              carryOutgoingDraw = {
+                storm: prevStorm,
+                alpha: carryAlpha,
+                x: cox,
+                y: coy,
+              };
+            }
+          }
+        }
+
+        for (let slot = 0; slot < Math.min(PAGE, totalStorms); slot += 1) {
+          const stormIndex = (head + slot) % totalStorms;
+          const storm = getStormAt(slot);
+          if (!storm) continue;
+
+          const angle = getRingAngle(slot);
+          let slotRadius = r;
+          let alpha = 1;
+
+          if (hasMore && slot === 0) {
+            const outT = smoothstep(0, 1, scrollPhase);
+            alpha = lerp(1, 0.25, outT);
+            slotRadius = lerp(r, r - 80, outT);
+          }
+
+          const sxStorm = bx + Math.cos(angle) * slotRadius;
+          const syStorm = by + Math.sin(angle) * slotRadius;
+
+          stormDraws.push({
+            storm,
+            alpha,
+            idx: slot,
+            x: sxStorm,
+            y: syStorm,
+          });
+          stormLayouts.push({
+            id: storm.id,
+            x: sxStorm,
+            y: syStorm,
+            alpha,
+            radius: 22,
+            order: stormIndex,
+            slot,
+            storm,
+          });
+
+          stormLayoutsRef.current.push({
+            id: storm.id,
+            x: sxStorm,
+            y: syStorm,
+            alpha,
+            radius: 22,
+            order: stormIndex,
+            slot,
+            storm,
+          });
+        }
+
+        if (hasMore && head + PAGE < totalStorms) {
+          const incomingIndex = (head + PAGE) % totalStorms;
+          const incomingStorm = getStormAt(PAGE);
+          if (incomingStorm) {
+            const inAngle = getRingAngle(0);
+            const incomingR = lerp(r + 140, r, incomingT);
+            const ix = bx + Math.cos(inAngle) * incomingR;
+            const iy = by + Math.sin(inAngle) * incomingR;
+            const inAlpha = lerp(0.2, 0.8, incomingT);
+
+            incomingDraw = {
+              storm: incomingStorm,
+              alpha: inAlpha,
+              x: ix,
+              y: iy,
+            };
+
+            stormLayoutsRef.current.push({
+              id: incomingStorm.id,
+              x: ix,
+              y: iy,
+              alpha: inAlpha,
+              radius: 22,
+              order: incomingIndex,
+              slot: PAGE,
+              storm: incomingStorm,
+            });
+          }
+        }
+      }
       const currentSelectedMainIdeaId = selectedMainIdeaIdRef.current;
       const currentSelectedIdeaId = selectedIdeaIdRef.current;
       const currentSelectedAspirationId = selectedAspirationIdRef.current;
@@ -595,6 +753,60 @@ export function GoalCanvas({
       ));
 
       ctx.clearRect(0, 0, width, height);
+      if (currentBrainstormFocused || brainstormAlphaRef.current > 0) {
+        const screenBx = (bx - cameraRef.current.x) * cameraRef.current.scale + width / 2;
+        const screenBy = (by - cameraRef.current.y) * cameraRef.current.scale + height / 2;
+        drawBrainstormCenterGlow(
+          ctx,
+          screenBx,
+          screenBy,
+          width,
+          height,
+          brainstormAlphaRef.current,
+        );
+
+        if (currentBrainstormFocused && currentFocusedOrbit === null) {
+          const beamLayouts = [
+            ...stormLayouts,
+            ...stormLayoutsRef.current.filter((layout) => layout.slot === PAGE),
+          ];
+          beamLayouts.forEach((layout) => {
+            const screenSx = (layout.x - cameraRef.current.x) * cameraRef.current.scale + width / 2;
+            const screenSy = (layout.y - cameraRef.current.y) * cameraRef.current.scale + height / 2;
+            const beamDx = screenSx - screenBx;
+            const beamDy = screenSy - screenBy;
+            const beamLen = Math.sqrt(beamDx * beamDx + beamDy * beamDy);
+
+            if (beamLen < 1) {
+              return;
+            }
+
+            const beamNx = beamDx / beamLen;
+            const beamNy = beamDy / beamLen;
+            const tX = beamNx > 0
+              ? (width - screenSx) / beamNx
+              : beamNx < 0
+                ? -screenSx / beamNx
+                : Infinity;
+            const tY = beamNy > 0
+              ? (height - screenSy) / beamNy
+              : beamNy < 0
+                ? -screenSy / beamNy
+                : Infinity;
+            const t = Math.min(tX, tY);
+
+            if (!Number.isFinite(t) || t <= 0) {
+              return;
+            }
+
+            const edgeX = screenSx + beamNx * t;
+            const edgeY = screenSy + beamNy * t;
+            const beamColor = STORM_STATE_COLORS[layout.storm.state] ?? STORM_STATE_COLORS.active;
+
+            drawStormBeam(ctx, screenSx, screenSy, edgeX, edgeY, beamColor, layout.alpha);
+          });
+        }
+      }
       ctx.save();
       const cam = cameraRef.current;
       ctx.translate(canvasCenterX, canvasCenterY);
@@ -607,9 +819,8 @@ export function GoalCanvas({
       };
 
       const webAlpha = currentBrainstormFocused ? 0.6 : 0.25;
-
       if (currentFocusedOrbit === null) {
-        drawBrainstormWebBackground(ctx, bx, by, timestamp, webAlpha);
+        drawBrainstormWebBackground(ctx, bx, by, timestamp, webAlpha, ringRotation);
       }
       if (currentFocusedOrbit === null && !currentBrainstormFocused) {
         drawBrainstormPreview(ctx, bx, by, mainIdeas, ideas, brainstormAlphaRef.current, timestamp);
@@ -621,14 +832,102 @@ export function GoalCanvas({
           flatIdeaLayoutsRef.current = [];
           allFlatIdeaLayoutsRef.current = [];
 
-          stormLayouts.forEach((layout, index) => {
-            drawStormOrb(ctx, layout.x, layout.y, 22, layout.storm.name, 1, timestamp, index);
+          if (carryOutgoingDraw) {
+            const iconEmoji = ICON_MAP[`storm-${carryOutgoingDraw.storm.type}`] ?? '💭';
+            drawStormOrb(
+              ctx,
+              carryOutgoingDraw.x,
+              carryOutgoingDraw.y,
+              16,
+              iconEmoji,
+              '',
+              carryOutgoingDraw.alpha,
+              timestamp,
+              -1,
+              carryOutgoingDraw.storm.state,
+            );
+          }
+
+          stormDraws.forEach((entry) => {
+            const iconEmoji = ICON_MAP[`storm-${entry.storm.type}`] ?? '💭';
+            drawStormOrb(
+              ctx,
+              entry.x,
+              entry.y,
+              57,
+              iconEmoji,
+              '',
+              entry.alpha,
+              timestamp,
+              entry.idx,
+              entry.storm.state,
+            );
           });
+
+          if (incomingDraw) {
+            const iconEmoji = ICON_MAP[`storm-${incomingDraw.storm.type}`] ?? '💭';
+            drawStormOrb(
+              ctx,
+              incomingDraw.x,
+              incomingDraw.y,
+              22,
+              iconEmoji,
+              '',
+              incomingDraw.alpha,
+              timestamp,
+              PAGE,
+              incomingDraw.storm.state,
+            );
+          }
         } else {
-          stormLayouts.forEach((layout, index) => {
-            if (layout.id === activeStormId) return;
-            drawStormOrb(ctx, layout.x, layout.y, 16, '', 0.15, timestamp, index);
+          if (carryOutgoingDraw && carryOutgoingDraw.storm.id !== activeStormId) {
+            const iconEmoji = ICON_MAP[`storm-${carryOutgoingDraw.storm.type}`] ?? '💭';
+            drawStormOrb(
+              ctx,
+              carryOutgoingDraw.x,
+              carryOutgoingDraw.y,
+              16,
+              iconEmoji,
+              '',
+              carryOutgoingDraw.alpha,
+              timestamp,
+              -1,
+              carryOutgoingDraw.storm.state,
+            );
+          }
+
+          stormDraws.forEach((entry) => {
+            if (entry.storm.id === activeStormId) return;
+            const iconEmoji = ICON_MAP[`storm-${entry.storm.type}`] ?? '💭';
+            drawStormOrb(
+              ctx,
+              entry.x,
+              entry.y,
+              22,
+              iconEmoji,
+              '',
+              entry.alpha,
+              timestamp,
+              entry.idx,
+              entry.storm.state,
+            );
           });
+
+          if (incomingDraw && incomingDraw.storm.id !== activeStormId) {
+            const iconEmoji = ICON_MAP[`storm-${incomingDraw.storm.type}`] ?? '💭';
+            drawStormOrb(
+              ctx,
+              incomingDraw.x,
+              incomingDraw.y,
+              22,
+              iconEmoji,
+              '',
+              incomingDraw.alpha,
+              timestamp,
+              PAGE,
+              incomingDraw.storm.state,
+            );
+          }
 
           const mainLayouts = getMainIdeaLayouts(mainIdeas, bx, by);
           mainIdeaLayoutsRef.current = mainLayouts;
@@ -1284,6 +1583,7 @@ export function GoalCanvas({
           brainstormScale,
           brainstormHovered,
           currentBrainstormFocused,
+          currentBrainstormFocused ? 0 : 1,
         );
       }
 
@@ -1323,6 +1623,10 @@ export function GoalCanvas({
     <div
       className="absolute inset-0"
       data-camera-scale={cameraSnapshot.scale.toFixed(3)}
+      onWheel={(event) => {
+        if (!brainstormFocusedRef.current || selectedStormId) return;
+        onStormWheelScroll?.(event.deltaY);
+      }}
       onClick={(event) => {
         const rect = event.currentTarget.getBoundingClientRect();
         const clickX = event.clientX - rect.left;
@@ -1393,6 +1697,7 @@ export function GoalCanvas({
 
             if (hitStorm) {
               onSelectStorm(hitStorm.id);
+              // TODO: Wire stormIndex back to the drawer scroll position from GoalRoom.
             }
             return;
           }

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type UIEvent } from 'react';
 import type { Aspiration, NestedAct, Smarter, Woop } from '../../../../../types';
 import type {
   BrainstormEntry,
@@ -46,6 +46,8 @@ interface GoalInspectorDrawerProps {
   selectedMainIdeaId: string | null;
   selectedIdeaId: string | null;
   onSelectStorm: (id: string) => void;
+  onStormScrollProgress?: (ratio: number) => void;
+  stormScrollContainerRef?: React.RefObject<HTMLDivElement | null>;
   onAddStorm: (name: string, type: StormType) => void;
   onSelectMainIdea: (id: string | null) => void;
   onSelectIdea: (id: string | null) => void;
@@ -573,6 +575,8 @@ export function GoalInspectorDrawer({
   selectedMainIdeaId,
   selectedIdeaId,
   onSelectStorm,
+  onStormScrollProgress,
+  stormScrollContainerRef,
   onAddStorm,
   onSelectMainIdea,
   onSelectIdea,
@@ -616,6 +620,9 @@ export function GoalInspectorDrawer({
   const [ideaActiveTab, setIdeaActiveTab] = useState<'ideas' | 'entries'>('entries');
   const [actionMenuOpen, setActionMenuOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const stormScrollRef = stormScrollContainerRef ?? scrollRef;
+  const [rowHeight, setRowHeight] = useState(48);
   const selectedMainIdea = selectedMainIdeaId ? mainIdeas[selectedMainIdeaId] ?? null : null;
   const selectedIdea = selectedIdeaId ? ideas[selectedIdeaId] ?? null : null;
   const currentEntryOwner = selectedIdea ?? selectedMainIdea;
@@ -655,6 +662,36 @@ export function GoalInspectorDrawer({
     return () => window.clearTimeout(timer);
   }, [selectedMainIdeaId, selectedIdeaId, selectedStormId]);
 
+  useEffect(() => {
+    if (!showStormOverview) {
+      onStormScrollProgress?.(0);
+    }
+  }, [showStormOverview, onStormScrollProgress]);
+
+  useEffect(() => {
+    if (!stormScrollRef.current) return;
+
+    const measure = () => {
+      const h = stormScrollRef.current?.clientHeight ?? 0;
+      if (h > 0) {
+        setRowHeight(Math.floor(h / 6));
+      }
+    };
+
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(stormScrollRef.current);
+
+    return () => ro.disconnect();
+  }, [showStormOverview, stormScrollRef]);
+
+  useEffect(() => {
+    if (showStormOverview && stormScrollRef.current) {
+      stormScrollRef.current.scrollTop = 0;
+      onStormScrollProgress?.(0);
+    }
+  }, [showStormOverview, onStormScrollProgress, stormScrollRef]);
+
   function handleBrainstormModalConfirm(name: string, type?: StormType) {
     if (modalMode === 'storm') {
       onAddStorm(name, type ?? 'exploration');
@@ -669,6 +706,12 @@ export function GoalInspectorDrawer({
     }
 
     setModalMode(null);
+  }
+
+  function handleStormScroll(event: UIEvent<HTMLDivElement>) {
+    const el = event.currentTarget;
+    const scrollRatio = el.scrollTop / Math.max(1, el.scrollHeight - el.clientHeight);
+    onStormScrollProgress?.(scrollRatio);
   }
 
   const label = view.level === 'act-edit'
@@ -686,7 +729,7 @@ export function GoalInspectorDrawer({
       : view.level === 'root'
         ? 'Goals'
       : view.level === 'brainstorm'
-        ? 'Brainstorm Center'
+        ? 'Brainstorm Alley'
       : view.level === 'orbit'
         ? view.orbit === 'user' ? 'Your Aspirations' : 'Adventures'
         : '';
@@ -724,8 +767,9 @@ export function GoalInspectorDrawer({
         ) : (
           <div className="px-4 pt-4 pb-2">
             <div className="flex items-center justify-between">
-              <span className="text-white/80 text-sm font-medium">
-                {showStormOverview ? 'Brainstorm' : (selectedStorm?.name ?? 'Brainstorm')}
+              <span className="flex items-center gap-2 text-white/80 text-sm font-medium">
+                <IconDisplay iconKey="goal-brainstorm" size={16} className="shrink-0 opacity-90" />
+                <span>{showStormOverview ? 'Brainstorm Alley' : (selectedStorm?.name ?? 'Brainstorm Alley')}</span>
               </span>
               <button
                 type="button"
@@ -735,11 +779,7 @@ export function GoalInspectorDrawer({
                 Back
               </button>
             </div>
-            {showStormOverview ? (
-              <div className="pt-2">
-                <span className="text-xs font-medium text-white/35">Storm Room</span>
-              </div>
-            ) : selectedStorm ? (
+            {selectedStorm ? (
               <div className="flex items-center gap-2 pt-2">
                 <span className={`text-xs px-2 py-0.5 rounded-full capitalize ${STORM_STATE_CLASSES[selectedStorm.state]}`}>
                   {selectedStorm.state}
@@ -748,9 +788,8 @@ export function GoalInspectorDrawer({
                   {selectedStorm.type}
                 </span>
               </div>
-            ) : (
+            ) : !showStormOverview ? (
               <div className="flex items-center justify-between pt-2">
-                <span className="text-xs font-medium text-white/35">Brainstorm Center</span>
                 <button
                   type="button"
                   onClick={() => setModalMode('mainIdea')}
@@ -759,7 +798,7 @@ export function GoalInspectorDrawer({
                   + New Main Idea
                 </button>
               </div>
-            )}
+            ) : null}
           </div>
         )
       ) : view.level === 'root' ? (
@@ -826,50 +865,52 @@ export function GoalInspectorDrawer({
         </div>
       ) : null}
       {view.level === 'brainstorm' ? (
-        <div className="flex-1 overflow-y-auto px-4 py-2">
-          {showStormOverview ? (
-            <>
-              <div className="flex items-center justify-between py-2 border-b border-white/5">
-                <div className="text-xs font-medium uppercase tracking-wider text-white/30">
-                  Storms
-                </div>
-              </div>
+        showStormOverview ? (
+          <>
+            <div
+              ref={stormScrollRef}
+              className="flex-1 overflow-y-auto flex flex-col"
+              onScroll={handleStormScroll}
+            >
               {stormList.length > 0 ? (
-                stormList.map((storm) => (
-                  <button
-                    key={storm.id}
-                    type="button"
-                    onClick={() => onSelectStorm(storm.id)}
-                    className="w-full flex items-center gap-3 py-3 border-b border-white/5 text-left"
-                  >
-                    <div className="min-w-0 flex-1">
-                      <div className="truncate text-white/80 text-sm">{storm.name}</div>
-                      <div className="pt-0.5 text-xs text-white/30 capitalize">
-                        {storm.type}
-                      </div>
-                    </div>
-                    <span className={`shrink-0 text-xs px-2 py-0.5 rounded-full capitalize ${STORM_STATE_CLASSES[storm.state]}`}>
-                      {storm.state}
-                    </span>
-                  </button>
-                ))
+                <>
+                  {stormList.map((storm) => (
+                    <button
+                      key={storm.id}
+                      type="button"
+                      onClick={() => onSelectStorm(storm.id)}
+                      className="flex shrink-0 items-center gap-3 px-4 border-b border-white/5 text-left w-full"
+                      style={{ height: rowHeight }}
+                    >
+                      <IconDisplay iconKey={`storm-${storm.type}`} size={20} className="opacity-80 shrink-0" />
+                      <span className="flex-1 text-white/80 text-sm truncate">{storm.name}</span>
+                      <span className={`shrink-0 text-xs px-2 py-0.5 rounded-full capitalize ${STORM_STATE_CLASSES[storm.state]}`}>
+                        {storm.state}
+                      </span>
+                    </button>
+                  ))}
+                  <div style={{ height: rowHeight * 3 }} aria-hidden="true" />
+                </>
               ) : (
-                <div className="w-full flex items-center gap-3 py-3 border-b border-white/5 text-left">
+                <div className="flex shrink-0 items-center gap-3 px-4 border-b border-white/5 text-left w-full" style={{ height: rowHeight }}>
                   <span className="flex-1 text-white/40 text-sm truncate">No storms yet</span>
                 </div>
               )}
-              <div className="pt-4 pb-2">
-                <button
-                  type="button"
-                  onClick={() => setModalMode('storm')}
-                  className="w-full py-2 rounded-lg border border-white/10 text-white/50 text-xs hover:border-white/20 hover:text-white/70"
-                >
-                  + New Storm
-                </button>
+            </div>
+            <div className="px-4 pb-4 pt-2">
+              <div className="flex items-center justify-end">
+              <button
+                type="button"
+                onClick={() => setModalMode('storm')}
+                className="w-full py-2 rounded-lg border border-white/10 text-white/50 text-xs hover:border-white/20 hover:text-white/70"
+              >
+                + New Storm
+              </button>
               </div>
-            </>
-          ) : selectedMainIdea === null ? (
-            <>
+            </div>
+          </>
+        ) : selectedMainIdea === null ? (
+            <div className="flex-1 overflow-y-auto px-4 py-2">
               <div className="flex items-center justify-between py-2 border-b border-white/5">
                 <div className="text-xs font-medium uppercase tracking-wider text-white/30">
                   Main Ideas
@@ -903,9 +944,9 @@ export function GoalInspectorDrawer({
                   + New Main Idea
                 </button>
               </div>
-            </>
+            </div>
           ) : (
-            <>
+            <div className="flex-1 overflow-y-auto px-4 py-2">
               <div className="flex items-center justify-between border-b border-white/5 pb-1 pt-2">
                 <div className="flex gap-4">
                   {(['entries', 'ideas'] as const).map((tab) => (
@@ -1058,9 +1099,8 @@ export function GoalInspectorDrawer({
                   )}
                 </div>
               )}
-            </>
-          )}
-        </div>
+            </div>
+          )
       ) : null}
       {view.level === 'orbit' ? (
         <>
