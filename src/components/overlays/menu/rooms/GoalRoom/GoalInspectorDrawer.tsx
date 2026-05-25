@@ -1243,6 +1243,13 @@ export function GoalInspectorDrawer({
               <div className="pt-4 pb-2">
                 <button
                   type="button"
+                  onClick={() => { console.log('enter storm'); }}
+                  className="mb-3 w-full py-2 rounded-lg border border-white/10 text-white/50 text-xs hover:border-white/20 hover:text-white/70"
+                >
+                  Enter Storm
+                </button>
+                <button
+                  type="button"
                   onClick={() => setModalMode('mainIdea')}
                   className="w-full py-2 rounded-lg border border-white/10 text-white/50 text-xs hover:border-white/20 hover:text-white/70"
                 >

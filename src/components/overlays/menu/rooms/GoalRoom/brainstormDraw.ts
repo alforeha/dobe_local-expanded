@@ -59,7 +59,7 @@ function drawGlowOrb(
   ctx.fill();
 }
 
-function withAlpha(color: string, alpha: number) {
+export function withAlpha(color: string, alpha: number) {
   const normalized = color.trim();
   const hexMatch = normalized.match(/^#([0-9a-f]{6}|[0-9a-f]{3})$/i);
   if (hexMatch) {
@@ -235,6 +235,7 @@ export function drawStormBeam(
   alpha: number,
   canvasWidth: number,
   canvasHeight: number,
+  profile: 'alley' | 'selected' = 'alley',
 ) {
   const outerRadius = Math.hypot(canvasWidth, canvasHeight);
   const wideSpan = Math.PI / 1.2;
@@ -248,8 +249,13 @@ export function drawStormBeam(
     orbY,
     outerRadius,
   );
-  wideGradient.addColorStop(0, withAlpha(color, alpha * 0.15));
-  wideGradient.addColorStop(0.4, withAlpha(color, alpha * 0.08));
+  if (profile === 'selected') {
+    wideGradient.addColorStop(0, withAlpha(color, alpha * 0.3));
+    wideGradient.addColorStop(0.4, withAlpha(color, alpha * 0.15));
+  } else {
+    wideGradient.addColorStop(0, withAlpha(color, alpha * 0.15));
+    wideGradient.addColorStop(0.4, withAlpha(color, alpha * 0.08));
+  }
   wideGradient.addColorStop(1, withAlpha(color, 0));
 
   ctx.save();
@@ -271,9 +277,14 @@ export function drawStormBeam(
     orbY,
     outerRadius,
   );
-gradient.addColorStop(0, withAlpha(color, alpha * 0.6));
-gradient.addColorStop(0.5, withAlpha(color, alpha * 0.4));
-gradient.addColorStop(1, withAlpha(color, 0));
+  if (profile === 'selected') {
+    gradient.addColorStop(0, withAlpha(color, alpha * 0.7));
+    gradient.addColorStop(0.1, withAlpha(color, alpha * 0.8));
+  } else {
+    gradient.addColorStop(0, withAlpha(color, alpha * 0.6));
+  }
+  gradient.addColorStop(0.5, withAlpha(color, alpha * 0.4));
+  gradient.addColorStop(1, withAlpha(color, 0));
 
 const span = Math.PI / 3;
 const startAngle = orbAngle - span ;
