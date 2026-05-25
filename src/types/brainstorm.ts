@@ -62,6 +62,10 @@ export interface Storm {
   name: string;
   state: StormState;
   type: StormType;
+  brainWidthPoints: number;
+  brainWidthCap: number;
+  brainWidthStaked: number;
+  lastRegenAt: number;
   mainIdeas: Record<string, MainIdea>;
   ideas: Record<string, BrainstormIdea>;
 }

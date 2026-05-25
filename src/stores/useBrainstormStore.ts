@@ -1,5 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { awardStat, awardXP } from '../engine/awardPipeline';
+import { useUserStore } from './useUserStore';
 import type {
   BrainstormEntry,
   BrainstormIdea,
@@ -25,6 +27,11 @@ interface BrainstormActions {
   setStormState: (stormId: string, state: StormState) => void;
   renameMainIdea: (stormId: string, mainIdeaId: string, name: string) => void;
   renameIdea: (stormId: string, ideaId: string, name: string) => void;
+  spendBrainWidth: (stormId: string, amount: number) => boolean;
+  raiseBrainWidthCap: (stormId: string, amount: number) => void;
+  regenBrainWidth: (stormId: string) => void;
+  stakeBrainWidth: (stormId: string, amount: number) => boolean;
+  unstakeBrainWidth: (stormId: string, amount: number, won: boolean) => void;
   setSelectedStorm: (id: string | null) => void;
   setSelectedMainIdea: (id: string | null) => void;
   setSelectedIdea: (id: string | null) => void;
@@ -113,9 +120,17 @@ function fixStormsRecord(storms: Record<string, Storm>): Record<string, Storm> {
   ) as Record<string, Storm>;
 }
 
+function awardBrainstormWisdomXP(): void {
+  const userId = useUserStore.getState().user?.system?.id;
+  if (!userId) return;
+
+  awardXP(userId, 1, { statGroup: 'wisdom', source: 'brainstorm.add' });
+  awardStat(userId, 'wisdom', 1, 'brainstorm.add');
+}
+
 export const useBrainstormStore = create<BrainstormState & BrainstormActions>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       ...initialState,
 
       addStorm: (name, type, stormState) => {
@@ -125,6 +140,10 @@ export const useBrainstormStore = create<BrainstormState & BrainstormActions>()(
           name,
           state: stormState ?? 'active',
           type,
+          brainWidthPoints: 1000,
+          brainWidthCap: 1000,
+          brainWidthStaked: 0,
+          lastRegenAt: Date.now(),
           mainIdeas: {},
           ideas: {},
         };
@@ -167,6 +186,10 @@ export const useBrainstormStore = create<BrainstormState & BrainstormActions>()(
             },
           };
         });
+
+        get().spendBrainWidth(stormId, 10);
+        get().raiseBrainWidthCap(stormId, 1);
+        awardBrainstormWisdomXP();
       },
 
       addIdea: (stormId, mainIdeaId, title) => {
@@ -208,6 +231,10 @@ export const useBrainstormStore = create<BrainstormState & BrainstormActions>()(
             },
           };
         });
+
+        get().spendBrainWidth(stormId, 10);
+        get().raiseBrainWidthCap(stormId, 1);
+        awardBrainstormWisdomXP();
       },
 
       addChildIdea: (stormId, parentIdeaId, title) => {
@@ -246,6 +273,10 @@ export const useBrainstormStore = create<BrainstormState & BrainstormActions>()(
             },
           };
         });
+
+        get().spendBrainWidth(stormId, 10);
+        get().raiseBrainWidthCap(stormId, 1);
+        awardBrainstormWisdomXP();
       },
 
       addEntry: (stormId, ideaId, entry) => {
@@ -272,6 +303,10 @@ export const useBrainstormStore = create<BrainstormState & BrainstormActions>()(
             },
           };
         });
+
+        get().spendBrainWidth(stormId, 10);
+        get().raiseBrainWidthCap(stormId, 1);
+        awardBrainstormWisdomXP();
       },
 
       addEntryToMainIdea: (stormId, mainIdeaId, entry) => {
@@ -298,6 +333,10 @@ export const useBrainstormStore = create<BrainstormState & BrainstormActions>()(
             },
           };
         });
+
+        get().spendBrainWidth(stormId, 10);
+        get().raiseBrainWidthCap(stormId, 1);
+        awardBrainstormWisdomXP();
       },
 
       addNestedEntry: (stormId, ideaId, parentEntryId, entry) => {
@@ -495,6 +534,111 @@ export const useBrainstormStore = create<BrainstormState & BrainstormActions>()(
         });
       },
 
+      spendBrainWidth: (stormId, amount) => {
+        let spent = false;
+
+        set((state) => {
+          const storm = state.storms[stormId];
+          if (!storm || storm.brainWidthPoints - storm.brainWidthStaked < amount) {
+            return state;
+          }
+
+          spent = true;
+          return {
+            storms: {
+              ...state.storms,
+              [stormId]: {
+                ...storm,
+                brainWidthPoints: storm.brainWidthPoints - amount,
+              },
+            },
+          };
+        });
+
+        return spent;
+      },
+
+      raiseBrainWidthCap: (stormId, amount) => {
+        set((state) => {
+          const storm = state.storms[stormId];
+          if (!storm) return state;
+
+          return {
+            storms: {
+              ...state.storms,
+              [stormId]: {
+                ...storm,
+                brainWidthCap: storm.brainWidthCap + amount,
+                brainWidthPoints: storm.brainWidthPoints + amount,
+              },
+            },
+          };
+        });
+      },
+
+      regenBrainWidth: (stormId) => {
+        set((state) => {
+          const storm = state.storms[stormId];
+          const now = Date.now();
+          if (!storm || now - storm.lastRegenAt < 86400000) return state;
+
+          return {
+            storms: {
+              ...state.storms,
+              [stormId]: {
+                ...storm,
+                brainWidthPoints: Math.min(storm.brainWidthPoints + 100, storm.brainWidthCap),
+                lastRegenAt: now,
+              },
+            },
+          };
+        });
+      },
+
+      stakeBrainWidth: (stormId, amount) => {
+        let staked = false;
+
+        set((state) => {
+          const storm = state.storms[stormId];
+          if (!storm || storm.brainWidthPoints - storm.brainWidthStaked < amount) {
+            return state;
+          }
+
+          staked = true;
+          return {
+            storms: {
+              ...state.storms,
+              [stormId]: {
+                ...storm,
+                brainWidthStaked: storm.brainWidthStaked + amount,
+              },
+            },
+          };
+        });
+
+        return staked;
+      },
+
+      unstakeBrainWidth: (stormId, amount, won) => {
+        set((state) => {
+          const storm = state.storms[stormId];
+          if (!storm) return state;
+
+          const nextStaked = Math.max(0, storm.brainWidthStaked - amount);
+          return {
+            storms: {
+              ...state.storms,
+              [stormId]: {
+                ...storm,
+                brainWidthStaked: nextStaked,
+                brainWidthCap: won ? storm.brainWidthCap + amount : storm.brainWidthCap,
+                brainWidthPoints: won ? storm.brainWidthPoints + amount : storm.brainWidthPoints,
+              },
+            },
+          };
+        });
+      },
+
       setSelectedStorm: (id) => {
         set({ selectedStormId: id });
       },
@@ -509,6 +653,7 @@ export const useBrainstormStore = create<BrainstormState & BrainstormActions>()(
     }),
     {
       name: 'cdb-brainstorm',
+      version: 1,
       partialize: (state) => ({
         storms: state.storms,
       }),
