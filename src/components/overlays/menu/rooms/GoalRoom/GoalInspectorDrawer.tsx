@@ -56,6 +56,12 @@ interface GoalInspectorDrawerProps {
   onAddChildIdea: (parentIdeaId: string, title: string) => void;
   onAddEntry: (ideaId: string, content: string, state: EntryState) => void;
   onAddEntryToMainIdea: (mainIdeaId: string, entry: Omit<BrainstormEntry, 'id' | 'entries'>) => void;
+  onDeleteStorm: () => void;
+  onDeleteMainIdea: () => void;
+  onDeleteIdea: () => void;
+  onRenameStorm: (name: string) => void;
+  onRenameMainIdea: (name: string) => void;
+  onRenameIdea: (name: string) => void;
   onSelectAspiration: (aspiration: Aspiration) => void;
   onAddAspiration: () => void;
   editMode: boolean;
@@ -585,6 +591,12 @@ export function GoalInspectorDrawer({
   onAddChildIdea,
   onAddEntry,
   onAddEntryToMainIdea,
+  onDeleteStorm,
+  onDeleteMainIdea,
+  onDeleteIdea,
+  onRenameStorm,
+  onRenameMainIdea,
+  onRenameIdea,
   onSelectAspiration,
   onAddAspiration,
   editMode,
@@ -702,7 +714,13 @@ export function GoalInspectorDrawer({
     } else if (modalMode === 'childIdea' && selectedIdea) {
       onAddChildIdea(selectedIdea.id, name);
     } else if (modalMode === 'rename') {
-      // TODO: Wire rename to a store action once brainstorm rename support exists.
+      if (selectedIdeaId !== null) {
+        onRenameIdea(name);
+      } else if (selectedMainIdeaId !== null) {
+        onRenameMainIdea(name);
+      } else {
+        onRenameStorm(name);
+      }
     }
 
     setModalMode(null);
@@ -1033,7 +1051,13 @@ export function GoalInspectorDrawer({
                             <button
                               type="button"
                               onClick={() => {
-                                // TODO: Wire brainstorm delete to a store action once supported.
+                                if (selectedIdeaId !== null) {
+                                  onDeleteIdea();
+                                } else if (selectedMainIdeaId !== null) {
+                                  onDeleteMainIdea();
+                                } else if (selectedStormId !== null) {
+                                  onDeleteStorm();
+                                }
                                 setConfirmDelete(false);
                                 setActionMenuOpen(false);
                               }}

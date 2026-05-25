@@ -17,7 +17,12 @@ interface BrainstormActions {
   addEntry: (stormId: string, ideaId: string, entry: Omit<BrainstormEntry, 'id' | 'entries'>) => void;
   addEntryToMainIdea: (stormId: string, mainIdeaId: string, entry: Omit<BrainstormEntry, 'id' | 'entries'>) => void;
   addNestedEntry: (stormId: string, ideaId: string, parentEntryId: string, entry: Omit<BrainstormEntry, 'id' | 'entries'>) => void;
+  deleteStorm: (stormId: string) => void;
+  deleteMainIdea: (stormId: string, mainIdeaId: string) => void;
   deleteIdea: (stormId: string, ideaId: string) => void;
+  renameStorm: (stormId: string, name: string) => void;
+  renameMainIdea: (stormId: string, mainIdeaId: string, name: string) => void;
+  renameIdea: (stormId: string, ideaId: string, name: string) => void;
   setSelectedStorm: (id: string | null) => void;
   setSelectedMainIdea: (id: string | null) => void;
   setSelectedIdea: (id: string | null) => void;
@@ -322,6 +327,46 @@ export const useBrainstormStore = create<BrainstormState & BrainstormActions>()(
         });
       },
 
+      deleteStorm: (stormId) => {
+        set((state) => {
+          const storm = state.storms[stormId];
+          if (!storm) return state;
+
+          const nextStorms = { ...state.storms };
+          delete nextStorms[stormId];
+
+          return {
+            storms: nextStorms,
+          };
+        });
+      },
+
+      deleteMainIdea: (stormId, mainIdeaId) => {
+        set((state) => {
+          const storm = state.storms[stormId];
+          const mainIdea = storm?.mainIdeas[mainIdeaId];
+          if (!storm || !mainIdea) return state;
+
+          const nextMainIdeas = { ...storm.mainIdeas };
+          delete nextMainIdeas[mainIdeaId];
+
+          const nextIdeas = Object.fromEntries(
+            Object.entries(storm.ideas).filter(([, idea]) => idea.mainIdeaId !== mainIdeaId),
+          ) as Record<string, BrainstormIdea>;
+
+          return {
+            storms: {
+              ...state.storms,
+              [stormId]: {
+                ...storm,
+                mainIdeas: nextMainIdeas,
+                ideas: nextIdeas,
+              },
+            },
+          };
+        });
+      },
+
       deleteIdea: (stormId, ideaId) => {
         set((state) => {
           const storm = state.storms[stormId];
@@ -360,6 +405,71 @@ export const useBrainstormStore = create<BrainstormState & BrainstormActions>()(
                 ...storm,
                 mainIdeas: nextMainIdeas,
                 ideas: nextIdeas,
+              },
+            },
+          };
+        });
+      },
+
+      renameStorm: (stormId, name) => {
+        set((state) => {
+          const storm = state.storms[stormId];
+          if (!storm) return state;
+
+          return {
+            storms: {
+              ...state.storms,
+              [stormId]: {
+                ...storm,
+                name,
+              },
+            },
+          };
+        });
+      },
+
+      renameMainIdea: (stormId, mainIdeaId, name) => {
+        set((state) => {
+          const storm = state.storms[stormId];
+          const mainIdea = storm?.mainIdeas[mainIdeaId];
+          if (!storm || !mainIdea) return state;
+
+          return {
+            storms: {
+              ...state.storms,
+              [stormId]: {
+                ...storm,
+                mainIdeas: {
+                  ...storm.mainIdeas,
+                  [mainIdeaId]: {
+                    ...mainIdea,
+                    title: name,
+                  },
+                },
+              },
+            },
+          };
+        });
+      },
+
+      renameIdea: (stormId, ideaId, name) => {
+        set((state) => {
+          const storm = state.storms[stormId];
+          const idea = storm?.ideas[ideaId];
+          if (!storm || !idea) return state;
+
+          return {
+            storms: {
+              ...state.storms,
+              [stormId]: {
+                ...storm,
+                ideas: {
+                  ...storm.ideas,
+                  [ideaId]: {
+                    ...idea,
+                    title: name,
+                  },
+                },
               },
             },
           };

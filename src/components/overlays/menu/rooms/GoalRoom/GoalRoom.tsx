@@ -58,6 +58,12 @@ export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
     addChildIdea,
     addEntry,
     addEntryToMainIdea,
+    deleteStorm,
+    deleteMainIdea,
+    deleteIdea,
+    renameStorm,
+    renameMainIdea,
+    renameIdea,
     setSelectedStorm,
     setSelectedMainIdea,
     setSelectedIdea,
@@ -859,6 +865,40 @@ export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
           handleAddEntry(ideaId, { content, state, pointsTo: [] });
         }}
         onAddEntryToMainIdea={handleAddEntryToMainIdea}
+        onDeleteStorm={() => {
+          if (selectedStormId) {
+            deleteStorm(selectedStormId);
+            setSelectedStorm(null);
+          }
+        }}
+        onDeleteMainIdea={() => {
+          if (selectedStormId && selectedMainIdeaId) {
+            deleteMainIdea(selectedStormId, selectedMainIdeaId);
+            setSelectedMainIdea(null);
+            setSelectedIdea(null);
+          }
+        }}
+        onDeleteIdea={() => {
+          if (selectedStormId && selectedIdeaId) {
+            deleteIdea(selectedStormId, selectedIdeaId);
+            setSelectedIdea(null);
+          }
+        }}
+        onRenameStorm={(name) => {
+          if (selectedStormId) {
+            renameStorm(selectedStormId, name);
+          }
+        }}
+        onRenameMainIdea={(name) => {
+          if (selectedStormId && selectedMainIdeaId) {
+            renameMainIdea(selectedStormId, selectedMainIdeaId, name);
+          }
+        }}
+        onRenameIdea={(name) => {
+          if (selectedStormId && selectedIdeaId) {
+            renameIdea(selectedStormId, selectedIdeaId, name);
+          }
+        }}
         onSelectAspiration={(asp) => {
           const orbit = asp.owner === 'coach' ? 'system' : 'user';
           setDrawerView({ level: 'aspiration', orbit, aspiration: asp });
