@@ -16,6 +16,7 @@ export const STORM_STATE_COLORS: Record<StormState, string> = {
   incubating: 'rgba(245, 158, 11, 0.85)',
   archived: 'rgba(100, 116, 139, 0.85)',
   resolved: 'rgba(99, 102, 241, 0.85)',
+  folding: 'rgba(34, 211, 238, 0.85)',
 };
 
 function drawCircle(ctx: CanvasRenderingContext2D, x: number, y: number, radius: number, fillStyle: string) {
@@ -234,7 +235,7 @@ export function drawStormBeam(
   ctx.closePath();
   ctx.fill();
 
-  const lineWidth = 33;
+  const lineWidth = 100;
   ctx.globalAlpha = alpha * 0.7;
   const lineGrad = ctx.createLinearGradient(fromX, fromY, toX, toY);
   lineGrad.addColorStop(0, 'rgba(255,255,255,0.9)');

@@ -853,8 +853,8 @@ export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
         onSelectStorm={(id) => {
           setSelectedStorm(id);
         }}
-        onAddStorm={(name, type) => {
-          addStorm(name, type);
+        onAddStorm={(name, type, state) => {
+          addStorm(name, type, state);
         }}
         onSelectMainIdea={handleSelectMainIdea}
         onSelectIdea={setSelectedIdea}

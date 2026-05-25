@@ -6,11 +6,12 @@ import type {
   BrainstormState,
   MainIdea,
   Storm,
+  StormState,
   StormType,
 } from '../types/brainstorm';
 
 interface BrainstormActions {
-  addStorm: (name: string, type: StormType) => string;
+  addStorm: (name: string, type: StormType, state?: StormState) => string;
   addMainIdea: (stormId: string, title: string) => void;
   addIdea: (stormId: string, mainIdeaId: string, title: string) => void;
   addChildIdea: (stormId: string, parentIdeaId: string, title: string) => void;
@@ -21,6 +22,7 @@ interface BrainstormActions {
   deleteMainIdea: (stormId: string, mainIdeaId: string) => void;
   deleteIdea: (stormId: string, ideaId: string) => void;
   renameStorm: (stormId: string, name: string) => void;
+  setStormState: (stormId: string, state: StormState) => void;
   renameMainIdea: (stormId: string, mainIdeaId: string, name: string) => void;
   renameIdea: (stormId: string, ideaId: string, name: string) => void;
   setSelectedStorm: (id: string | null) => void;
@@ -116,12 +118,12 @@ export const useBrainstormStore = create<BrainstormState & BrainstormActions>()(
     (set) => ({
       ...initialState,
 
-      addStorm: (name, type) => {
+      addStorm: (name, type, stormState) => {
         const id = crypto.randomUUID();
         const storm: Storm = {
           id,
           name,
-          state: 'active',
+          state: stormState ?? 'active',
           type,
           mainIdeas: {},
           ideas: {},
@@ -422,6 +424,23 @@ export const useBrainstormStore = create<BrainstormState & BrainstormActions>()(
               [stormId]: {
                 ...storm,
                 name,
+              },
+            },
+          };
+        });
+      },
+
+      setStormState: (stormId, nextState) => {
+        set((state) => {
+          const storm = state.storms[stormId];
+          if (!storm) return state;
+
+          return {
+            storms: {
+              ...state.storms,
+              [stormId]: {
+                ...storm,
+                state: nextState,
               },
             },
           };

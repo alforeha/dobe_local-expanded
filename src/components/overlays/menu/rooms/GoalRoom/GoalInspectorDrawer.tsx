@@ -9,6 +9,7 @@ import type {
   StormState,
   StormType,
 } from '../../../../../types/brainstorm';
+import { STORM_STATE_META, STORM_TYPE_META } from '../../../../../types/brainstorm';
 import { IconDisplay } from '../../../../shared/IconDisplay';
 import { PopupShell } from '../../../../shared/popups/PopupShell';
 import { GoalActEditor } from './GoalActEditor';
@@ -48,7 +49,7 @@ interface GoalInspectorDrawerProps {
   onSelectStorm: (id: string) => void;
   onStormScrollProgress?: (ratio: number) => void;
   stormScrollContainerRef?: React.RefObject<HTMLDivElement | null>;
-  onAddStorm: (name: string, type: StormType) => void;
+  onAddStorm: (name: string, type: StormType, state?: StormState) => void;
   onSelectMainIdea: (id: string | null) => void;
   onSelectIdea: (id: string | null) => void;
   onAddMainIdea: (title: string) => void;
@@ -94,19 +95,23 @@ interface GoalInspectorDrawerProps {
 }
 
 const ENTRY_STATES: EntryState[] = ['outcome', 'obstacle', 'question', 'solved', 'others'];
-const STORM_TYPES: StormType[] = ['exploration', 'problem', 'planning', 'reflection', 'project', 'others'];
+const STORM_TYPES: StormType[] = ['general', 'exploration', 'problem', 'planning', 'reflection', 'project', 'projection', 'others'];
+const STORM_STATES: StormState[] = ['active', 'incubating', 'archived', 'resolved', 'folding'];
 const STORM_STATE_CLASSES: Record<StormState, string> = {
   active: 'bg-emerald-900/40 text-emerald-400',
   incubating: 'bg-amber-900/40 text-amber-400',
   archived: 'bg-slate-800/60 text-slate-400',
   resolved: 'bg-indigo-900/40 text-indigo-400',
+  folding: 'bg-cyan-900/40 text-cyan-300',
 };
 const STORM_TYPE_CLASSES: Record<StormType, string> = {
+  general: 'bg-teal-900/40 text-teal-300',
   exploration: 'bg-sky-900/40 text-sky-300',
   problem: 'bg-rose-900/40 text-rose-300',
   planning: 'bg-cyan-900/40 text-cyan-300',
   reflection: 'bg-violet-900/40 text-violet-300',
   project: 'bg-fuchsia-900/40 text-fuchsia-300',
+  projection: 'bg-lime-900/40 text-lime-300',
   others: 'bg-slate-800/60 text-slate-300',
 };
 
@@ -628,6 +633,12 @@ export function GoalInspectorDrawer({
   onDeleteAspiration,
 }: GoalInspectorDrawerProps) {
   const prevLevelRef = useRef(view.level);
+  const [addingStorm, setAddingStorm] = useState(false);
+  const [newStormName, setNewStormName] = useState('');
+  const [newStormType, setNewStormType] = useState<StormType>('general');
+  const [newStormState, setNewStormState] = useState<StormState>('active');
+  const [typePickerOpen, setTypePickerOpen] = useState(false);
+  const [statePickerOpen, setStatePickerOpen] = useState(false);
   const [modalMode, setModalMode] = useState<BrainstormModalMode | null>(null);
   const [ideaActiveTab, setIdeaActiveTab] = useState<'ideas' | 'entries'>('entries');
   const [actionMenuOpen, setActionMenuOpen] = useState(false);
@@ -645,6 +656,15 @@ export function GoalInspectorDrawer({
   const stormList = Object.values(storms);
   const selectedStorm = selectedStormId ? storms[selectedStormId] ?? null : null;
   const showStormOverview = view.level === 'brainstorm' && selectedStormId === null;
+
+  function resetAddStormState() {
+    setAddingStorm(false);
+    setNewStormName('');
+    setNewStormType('general');
+    setNewStormState('active');
+    setTypePickerOpen(false);
+    setStatePickerOpen(false);
+  }
 
   useEffect(() => {
     if (prevLevelRef.current === 'aspiration' && view.level !== 'aspiration') {
@@ -726,6 +746,22 @@ export function GoalInspectorDrawer({
     setModalMode(null);
   }
 
+  function handleAddStormOpen() {
+    setAddingStorm(true);
+    setNewStormName('');
+    setNewStormType('general');
+    setNewStormState('active');
+    setTypePickerOpen(false);
+    setStatePickerOpen(false);
+  }
+
+  function handleAddStormConfirm() {
+    const trimmed = newStormName.trim();
+    if (!trimmed) return;
+    onAddStorm(trimmed, newStormType, newStormState);
+    resetAddStormState();
+  }
+
   function handleStormScroll(event: UIEvent<HTMLDivElement>) {
     const el = event.currentTarget;
     const scrollRatio = el.scrollTop / Math.max(1, el.scrollHeight - el.clientHeight);
@@ -781,6 +817,21 @@ export function GoalInspectorDrawer({
             >
               Back
             </button>
+          </div>
+        ) : addingStorm ? (
+          <div className="px-4 pt-4 pb-2">
+            <div className="flex items-center justify-between">
+              <span className="text-white/80 text-sm font-medium">
+                ADD STORM
+              </span>
+              <button
+                type="button"
+                onClick={resetAddStormState}
+                className="text-white/40 hover:text-white/80 text-xs px-2 py-1"
+              >
+                Back
+              </button>
+            </div>
           </div>
         ) : (
           <div className="px-4 pt-4 pb-2">
@@ -883,6 +934,95 @@ export function GoalInspectorDrawer({
         </div>
       ) : null}
       {view.level === 'brainstorm' ? (
+        addingStorm ? (
+          <div className="flex-1 overflow-y-auto px-4 py-4">
+            <div className="space-y-4">
+              <input
+                type="text"
+                value={newStormName}
+                onChange={(event) => setNewStormName(event.target.value)}
+                placeholder="Storm name..."
+                className="w-full rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-white/20"
+              />
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTypePickerOpen((open) => !open);
+                    setStatePickerOpen(false);
+                  }}
+                  className="flex w-full items-center justify-between gap-3 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-left text-sm text-white hover:bg-white/[0.05]"
+                >
+                  <span className="flex items-center gap-3">
+                    <IconDisplay iconKey={`storm-${newStormType}`} size={18} className="shrink-0 opacity-90" />
+                    <span>{STORM_TYPE_META[newStormType].displayName}</span>
+                  </span>
+                  <span className="text-white/40 text-xs">Type</span>
+                </button>
+                {typePickerOpen ? (
+                  <div className="absolute left-0 right-0 top-full z-10 mt-2 overflow-hidden rounded-lg border border-white/10 bg-[#161624] shadow-xl">
+                    {STORM_TYPES.map((type) => (
+                      <button
+                        key={type}
+                        type="button"
+                        onClick={() => {
+                          setNewStormType(type);
+                          setTypePickerOpen(false);
+                        }}
+                        className="flex w-full items-center gap-3 px-3 py-2 text-left text-sm text-white hover:bg-white/[0.05]"
+                      >
+                        <IconDisplay iconKey={`storm-${type}`} size={18} className="shrink-0 opacity-90" />
+                        <span>{STORM_TYPE_META[type].displayName}</span>
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setStatePickerOpen((open) => !open);
+                    setTypePickerOpen(false);
+                  }}
+                  className="flex w-full items-center justify-between gap-3 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-left text-sm text-white hover:bg-white/[0.05]"
+                >
+                  <span className="flex items-center gap-3">
+                    <IconDisplay iconKey={STORM_STATE_META[newStormState].iconKey} size={18} className="shrink-0 opacity-90" />
+                    <span>{STORM_STATE_META[newStormState].displayName}</span>
+                  </span>
+                  <span className="text-white/40 text-xs">State</span>
+                </button>
+                {statePickerOpen ? (
+                  <div className="absolute left-0 right-0 top-full z-10 mt-2 overflow-hidden rounded-lg border border-white/10 bg-[#161624] shadow-xl">
+                    {STORM_STATES.map((state) => (
+                      <button
+                        key={state}
+                        type="button"
+                        onClick={() => {
+                          setNewStormState(state);
+                          setStatePickerOpen(false);
+                        }}
+                        className="flex w-full items-center gap-3 px-3 py-2 text-left text-sm text-white hover:bg-white/[0.05]"
+                      >
+                        <IconDisplay iconKey={STORM_STATE_META[state].iconKey} size={18} className="shrink-0 opacity-90" />
+                        <span>{STORM_STATE_META[state].displayName}</span>
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+              <button
+                type="button"
+                disabled={newStormName.trim() === ''}
+                onClick={handleAddStormConfirm}
+                className="w-full rounded-lg border border-white/10 px-3 py-2 text-sm text-white transition enabled:hover:border-white/20 enabled:hover:bg-white/[0.05] disabled:cursor-not-allowed disabled:text-white/30"
+              >
+                Add Storm
+              </button>
+            </div>
+          </div>
+        ) : (
         showStormOverview ? (
           <>
             <div
@@ -919,7 +1059,7 @@ export function GoalInspectorDrawer({
               <div className="flex items-center justify-end">
               <button
                 type="button"
-                onClick={() => setModalMode('storm')}
+                onClick={handleAddStormOpen}
                 className="w-full py-2 rounded-lg border border-white/10 text-white/50 text-xs hover:border-white/20 hover:text-white/70"
               >
                 + New Storm
@@ -1124,7 +1264,7 @@ export function GoalInspectorDrawer({
                 </div>
               )}
             </div>
-          )
+        ))
       ) : null}
       {view.level === 'orbit' ? (
         <>
