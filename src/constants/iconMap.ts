@@ -177,6 +177,13 @@ export const ICON_MAP: Record<string, string> = {
 'storm-brain-resolved':   '🧠✅',
 'storm-brain-folding':    '🧠🌀',
 
+'idea-insight':    '💡',
+'idea-question':   '❓',
+'idea-hypothesis': '🔬',
+'idea-blocker':    '🚧',
+'idea-action':     '⚡',
+'idea-others':     '💭',
+
 
 
   // SCHEDULE ROOM TABS

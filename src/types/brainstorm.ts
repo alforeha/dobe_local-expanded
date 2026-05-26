@@ -4,6 +4,10 @@ export type StormCategory = {
   name: string;
   color: string;
 };
+export type StormDraft = {
+  type: StormType;
+  category: StormCategory;
+};
 export type IdeaState = 'open' | 'in-progress' | 'resolved' | 'parked' | 'others';
 export type IdeaType = 'insight' | 'question' | 'hypothesis' | 'blocker' | 'action' | 'others';
 export type EntryState = 'outcome' | 'obstacle' | 'question' | 'solved' | 'others';

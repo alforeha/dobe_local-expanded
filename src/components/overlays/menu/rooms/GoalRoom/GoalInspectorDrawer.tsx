@@ -19,6 +19,7 @@ import { GoalActEditor } from './GoalActEditor';
 import { GoalAspirationEditor } from './GoalAspirationEditor';
 import { GoalSmarterEditor } from './GoalSmarterEditor';
 import { GoalWoopEditor } from './GoalWoopEditor';
+import { brainstormDraftRef } from './brainstormDraftRef';
 import { createBlankSmarter, createBlankWoop } from './goalEditorUtils';
 import { analyzeWoopText, BANK_COLORS, type WoopBankMatch } from './woopKeywordEngine';
 
@@ -104,6 +105,16 @@ interface GoalInspectorDrawerProps {
 
 const ENTRY_STATES: EntryState[] = ['outcome', 'obstacle', 'question', 'solved', 'others'];
 const STORM_TYPES: StormType[] = ['general', 'exploration', 'problem', 'planning', 'reflection', 'project', 'projection', 'others'];
+const MAIN_IDEA_SECTION_TITLE: Record<StormType, string> = {
+  general: 'General Ideas',
+  exploration: 'Exploration Ideas',
+  problem: 'Problem Ideas',
+  planning: 'Planning Ideas',
+  reflection: 'Reflection Ideas',
+  project: 'Project Ideas',
+  projection: 'Projection Ideas',
+  others: 'Ideas',
+};
 const STORM_STATES: StormState[] = ['active', 'incubating', 'archived', 'resolved', 'folding'];
 const STORM_STATE_ROW_BG: Record<StormState, string> = {
   active: 'bg-blue-900/30',
@@ -687,6 +698,7 @@ export function GoalInspectorDrawer({
     setCategoryPickerOpen(false);
     setTypePickerOpen(false);
     setStatePickerOpen(false);
+    brainstormDraftRef.current = null;
   }
 
   useEffect(() => {
@@ -733,6 +745,7 @@ export function GoalInspectorDrawer({
   useEffect(() => {
     if (selectedStormId === null) {
       setEditingStorm(false);
+      brainstormDraftRef.current = null;
     }
   }, [selectedStormId]);
 
@@ -786,12 +799,14 @@ export function GoalInspectorDrawer({
   }
 
   function handleAddStormOpen() {
+    const draft = { type: 'general' as StormType, category: { name: 'Thought Train', color: '#7c3aed' } };
     setAddingStorm(true);
+    brainstormDraftRef.current = draft;
     setEditingStorm(false);
     setNewStormName('');
-    setNewStormType('general');
+    setNewStormType(draft.type);
     setNewStormState('active');
-    setNewStormCategory({ name: 'Thought Train', color: '#7c3aed' });
+    setNewStormCategory(draft.category);
     setCategoryInput('');
     setCategoryPickerOpen(false);
     setTypePickerOpen(false);
@@ -819,6 +834,7 @@ export function GoalInspectorDrawer({
       }
       setEditingStorm(false);
       setAddingStorm(false);
+      brainstormDraftRef.current = null;
       return;
     }
 
@@ -896,6 +912,7 @@ export function GoalInspectorDrawer({
                   if (editingStorm) {
                     setEditingStorm(false);
                     setAddingStorm(false);
+                    brainstormDraftRef.current = null;
                   } else {
                     resetAddStormState();
                   }
@@ -1067,7 +1084,11 @@ export function GoalInspectorDrawer({
                       <div className="flex justify-start">
                         <ColorPicker
                           value={newStormCategory.color}
-                          onChange={(hex) => setNewStormCategory((prev) => ({ ...prev, color: hex }))}
+                          onChange={(hex) => {
+                            const category = { ...newStormCategory, color: hex };
+                            setNewStormCategory(category);
+                            brainstormDraftRef.current = { type: newStormType, category };
+                          }}
                           align="left"
                         />
                       </div>
@@ -1078,6 +1099,7 @@ export function GoalInspectorDrawer({
                             type="button"
                             onClick={() => {
                               setNewStormCategory(category);
+                              brainstormDraftRef.current = { type: newStormType, category };
                               setCategoryInput(category.name);
                               setCategoryPickerOpen(false);
                             }}
@@ -1094,10 +1116,12 @@ export function GoalInspectorDrawer({
                       <button
                         type="button"
                         onClick={() => {
-                          setNewStormCategory({
+                          const newCategory = {
                             name: categoryInput.trim() || 'Thought Train',
                             color: newStormCategory.color,
-                          });
+                          };
+                          setNewStormCategory(newCategory);
+                          brainstormDraftRef.current = { type: newStormType, category: newCategory };
                           setCategoryPickerOpen(false);
                         }}
                         className="w-full rounded-lg border border-white/10 px-3 py-2 text-sm text-white transition hover:border-white/20 hover:bg-white/[0.05]"
@@ -1153,6 +1177,7 @@ export function GoalInspectorDrawer({
                           type="button"
                           onClick={() => {
                             setNewStormType(type);
+                            brainstormDraftRef.current = { type, category: newStormCategory };
                             setTypePickerOpen(false);
                           }}
                           className="flex w-full items-center gap-3 px-3 py-2 text-left text-sm text-white hover:bg-white/[0.05]"
@@ -1341,6 +1366,11 @@ export function GoalInspectorDrawer({
                           <button
                             type="button"
                             onClick={() => {
+                              if (!selectedStorm) return;
+                              brainstormDraftRef.current = {
+                                type: selectedStorm.type,
+                                category: selectedStorm.category,
+                              };
                               setEditingStorm(true);
                               setAddingStorm(true);
                               setActionMenuOpen(false);
@@ -1387,6 +1417,9 @@ export function GoalInspectorDrawer({
                 </div>
               </div>
               <div className="flex-1 overflow-y-auto">
+                <div className="px-4 pt-3 pb-1 text-xs text-white/40 uppercase tracking-wider">
+                  {MAIN_IDEA_SECTION_TITLE[selectedStorm?.type ?? 'others'] ?? 'Ideas'}
+                </div>
                 {selectedStormMainIdeas.length > 0 ? (
                   selectedStormMainIdeas.map((mainIdea) => {
                     const totalEntryCount = mainIdea.entries.length + mainIdea.ideas.reduce((count, ideaId) => {

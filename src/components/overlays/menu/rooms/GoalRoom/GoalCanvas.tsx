@@ -26,6 +26,7 @@ import {
 } from './brainstormLayout';
 import type { IdeaLayout, IdeaLayoutNode, MainIdeaLayout } from './brainstormLayout';
 import { hitTestIdea, hitTestMainIdea } from './brainstormInteraction';
+import { brainstormDraftRef } from './brainstormDraftRef';
 
 const ORB_RADIUS = 48;
 const ORB_PERIOD_MS = 3000;
@@ -744,7 +745,8 @@ export function GoalCanvas({
         cameraTargetRef.current = { x: canvasCenterX, y: canvasCenterY, scale: 1 };
       }
 
-      const transitionTarget = activeStormId !== null ? 0 : 1;
+      const draft = brainstormDraftRef.current;
+      const transitionTarget = activeStormId !== null || draft !== null ? 0 : 1;
       stormTransitionAlphaRef.current += (
         transitionTarget - stormTransitionAlphaRef.current
       ) * 0.035;
@@ -830,7 +832,39 @@ export function GoalCanvas({
             );
           });
 
-          if (activeStormId !== null && currentStorm) {
+if (draft !== null) {
+  const baseAngle = -Math.PI / 2;
+  const beamAngles = [
+    baseAngle,
+    baseAngle + (Math.PI * 2) / 3,
+    baseAngle + (Math.PI * 4) / 3,
+  ];
+  const dpr = window.devicePixelRatio || 1;
+  const canvasWidth = canvas.width / dpr;
+  const canvasHeight = canvas.height / dpr;
+  beamAngles.forEach((angle) => {
+    drawStormBeam(
+      ctx,
+      canvasCenterX,
+      canvasCenterY,
+      angle,
+      draft.category.color,
+      1,
+      canvasWidth,
+      canvasHeight,
+      'selected',
+    );
+  });
+  drawGeneralStormBackground(
+    ctx,
+    canvasCenterX,
+    canvasCenterY,
+    draft.category.color,
+    1,
+    timestamp,
+  );
+  // TODO: storm type background — pending type canvas build for non-general draft previews.
+} else if (activeStormId !== null && currentStorm) {
             const selectedStormWorldPos = selectedStormWorldPosRef.current;
             if (selectedStormWorldPos) {
               const selectedScreen = worldToScreen(
