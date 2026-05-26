@@ -11,6 +11,7 @@ const MAIN_IDEA_STATE_COLORS = {
 } as const;
 
 const ideaIconImageCache = new Map<string, HTMLImageElement>();
+void drawGlowOrb;
 
 function hexagonPoints(cx: number, cy: number, radius: number, rotationOffset: number = 0) {
   return Array.from({ length: 6 }, (_, index) => {
@@ -621,18 +622,36 @@ export function drawBrainstormIdeaSpokes(
     const safeDepth = layout.depth ?? 0;
     void safeDepth;
     const depthFade = 1;
-    const nodeRadius = 16;
+    const nodeRadius = 28;
     const opacity = hasHighlights && !isHighlighted ? 0.25 : depthFade;
+    const customStateColor =
+      idea?.state === 'others'
+        ? idea.customProperties?.stateColor
+        : undefined;
+    const baseColor = customStateColor
+      ?? MAIN_IDEA_STATE_COLORS[idea?.state ?? 'others'];
+    const glowAlpha = isSelected ? 0.6 : 0.35;
+    const glowRadius = nodeRadius * 2;
+    const iconValue = idea?.type
+      ? ICON_MAP[`idea-${idea.type}`] ?? ICON_MAP[idea.type]
+      : undefined;
 
     ctx.save();
     ctx.globalAlpha = opacity;
 
-    if (hasHighlights && !isHighlighted) {
-      drawCircle(ctx, x, y, nodeRadius, 'rgba(16, 185, 129, 0.85)');
-    } else {
-      const glowScale = isSelected ? 3 : isHighlighted ? 2.5 : isHovered ? 2.2 : 2;
-      drawGlowOrb(ctx, x, y, nodeRadius, glowScale, 'rgba(16, 185, 129, 0.85)');
+    if (!(hasHighlights && !isHighlighted)) {
+      const gradient = ctx.createRadialGradient(x, y, 0, x, y, glowRadius);
+      gradient.addColorStop(0, withAlpha(baseColor, glowAlpha));
+      gradient.addColorStop(1, withAlpha(baseColor, 0));
+      ctx.fillStyle = gradient;
+      ctx.beginPath();
+      ctx.arc(x, y, glowRadius, 0, Math.PI * 2);
+      ctx.fill();
     }
+
+    void isHovered;
+    void isHighlighted;
+    drawCircle(ctx, x, y, nodeRadius, withAlpha(baseColor, 0.85));
 
     if (isSelected) {
       ctx.strokeStyle = '#10b981';
@@ -642,11 +661,15 @@ export function drawBrainstormIdeaSpokes(
       ctx.stroke();
     }
 
-    ctx.fillStyle = 'white';
-    ctx.font = '10px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(idea?.title ?? layout.id, x, y + 34);
+    if (idea?.type === 'others') {
+      ctx.fillStyle = idea.customProperties?.typeColor ?? '#ffffff';
+      ctx.beginPath();
+      ctx.arc(x, y, nodeRadius * 0.35, 0, Math.PI * 2);
+      ctx.fill();
+    } else {
+      drawMainIdeaIcon(ctx, iconValue, x, y, nodeRadius);
+    }
+
     ctx.restore();
   });
 }

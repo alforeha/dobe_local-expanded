@@ -40,6 +40,11 @@ export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
   const [draftMainIdeaType, setDraftMainIdeaType] = useState<IdeaType>('insight');
   const [draftCustomStateColor, setDraftCustomStateColor] = useState('#ffffff');
   const [draftCustomColor, setDraftCustomColor] = useState('#ffffff');
+  const [addingChildIdea, setAddingChildIdea] = useState(false);
+  const [draftChildIdeaState, setDraftChildIdeaState] = useState<IdeaState>('open');
+  const [draftChildIdeaType, setDraftChildIdeaType] = useState<IdeaType>('insight');
+  const [draftChildIdeaCustomColor, setDraftChildIdeaCustomColor] = useState('#ffffff');
+  const [draftChildIdeaCustomStateColor, setDraftChildIdeaCustomStateColor] = useState('#ffffff');
   const focusOrbitRef = useRef<((orbit: 'user' | 'system' | null) => void) | null>(null);
   const clearCanvasFocusRef = useRef<((scope: 'planet' | 'all') => void) | null>(null);
   const selectAspirationFromDrawerRef = useRef<((id: string) => void) | null>(null);
@@ -894,6 +899,11 @@ export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
             draftMainIdeaType={draftMainIdeaType}
             draftCustomStateColor={draftCustomStateColor}
             draftCustomColor={draftCustomColor}
+            addingChildIdea={addingChildIdea}
+            draftChildIdeaState={draftChildIdeaState}
+            draftChildIdeaType={draftChildIdeaType}
+            draftChildIdeaCustomColor={draftChildIdeaCustomColor}
+            draftChildIdeaCustomStateColor={draftChildIdeaCustomStateColor}
           />
         ) : null}
       </div>
@@ -954,6 +964,11 @@ export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
         onDraftMainIdeaTypeChange={setDraftMainIdeaType}
         onDraftCustomStateColorChange={setDraftCustomStateColor}
         onDraftCustomColorChange={setDraftCustomColor}
+        onAddingChildIdeaChange={setAddingChildIdea}
+        onDraftChildIdeaStateChange={setDraftChildIdeaState}
+        onDraftChildIdeaTypeChange={setDraftChildIdeaType}
+        onDraftChildIdeaCustomColorChange={setDraftChildIdeaCustomColor}
+        onDraftChildIdeaCustomStateColorChange={setDraftChildIdeaCustomStateColor}
         onDeleteStorm={() => {
           if (selectedStormId) {
             deleteStorm(selectedStormId);

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { isImageIcon, resolveIcon } from '../../../../../constants/iconMap';
 import { useBrainstormStore } from '../../../../../stores/useBrainstormStore';
-import type { IdeaState, IdeaType, MainIdea } from '../../../../../types/brainstorm';
+import type { BrainstormIdea, IdeaState, IdeaType, MainIdea } from '../../../../../types/brainstorm';
 import {
   drawBrainstormCenterGlow,
   drawBrainstormConstellation,
@@ -12,8 +12,8 @@ import {
 } from './brainstormDraw';
 import { drawGeneralStormBackground } from './generalStormBackground';
 import {
+  BRAINSTORM_FIT_PADDING,
   flattenIdeaTree,
-  fitScaleForBranches,
   getIdeaLayoutTree,
   getMainIdeaLayouts,
   type IdeaLayoutNode,
@@ -33,6 +33,11 @@ interface GeneralStormCanvasProps {
   draftMainIdeaType?: IdeaType;
   draftCustomStateColor?: string;
   draftCustomColor?: string;
+  addingChildIdea?: boolean;
+  draftChildIdeaState?: IdeaState;
+  draftChildIdeaType?: IdeaType;
+  draftChildIdeaCustomColor?: string;
+  draftChildIdeaCustomStateColor?: string;
 }
 
 type Camera = {
@@ -98,6 +103,23 @@ function collectBounds(nodes: BoundsNode[]) {
   };
 }
 
+function collectSubtreeIds(flatIdeas: IdeaLayoutNode[], rootId: string) {
+  const ids = new Set<string>([rootId]);
+  let added = true;
+
+  while (added) {
+    added = false;
+    flatIdeas.forEach((node) => {
+      if (node.parentId && ids.has(node.parentId) && !ids.has(node.id)) {
+        ids.add(node.id);
+        added = true;
+      }
+    });
+  }
+
+  return ids;
+}
+
 function buildHighlightIds(flatIdeas: IdeaLayoutNode[], selectedIdeaId: string | null) {
   if (!selectedIdeaId) {
     return new Set<string>();
@@ -109,10 +131,7 @@ function buildHighlightIds(flatIdeas: IdeaLayoutNode[], selectedIdeaId: string |
     return new Set<string>();
   }
 
-  const ids = new Set<string>([selectedNode.id]);
-  selectedNode.children.forEach((child) => {
-    ids.add(child.id);
-  });
+  const ids = collectSubtreeIds(flatIdeas, selectedNode.id);
 
   let currentParentId = selectedNode.parentId;
   while (currentParentId) {
@@ -135,6 +154,11 @@ export function GeneralStormCanvas({
   draftMainIdeaType = 'insight',
   draftCustomStateColor = '#ffffff',
   draftCustomColor = '#ffffff',
+  addingChildIdea = false,
+  draftChildIdeaState = 'open',
+  draftChildIdeaType = 'insight',
+  draftChildIdeaCustomColor = '#ffffff',
+  draftChildIdeaCustomStateColor = '#ffffff',
 }: GeneralStormCanvasProps) {
   const storms = useBrainstormStore((state) => state.storms);
   const storm = storms[selectedStormId] ?? null;
@@ -146,16 +170,22 @@ export function GeneralStormCanvas({
   const cameraTargetRef = useRef<Camera>({ x: 0, y: 0, scale: 1 });
   const mainIdeaLayoutsRef = useRef<MainIdeaLayout[]>([]);
   const draftMainIdeaLayoutRef = useRef<MainIdeaLayout | null>(null);
+  const draftChildIdeaLayoutRef = useRef<IdeaLayoutNode | null>(null);
   const ideaTreesRef = useRef<Record<string, IdeaLayoutNode[]>>({});
   const allFlatIdeaLayoutsRef = useRef<IdeaLayoutNode[]>([]);
   const selectedMainIdeaIdRef = useRef<string | null>(selectedMainIdeaId);
   const selectedIdeaIdRef = useRef<string | null>(selectedIdeaId);
   const addingMainIdeaRef = useRef(addingMainIdea);
+  const addingChildIdeaRef = useRef(addingChildIdea);
   const draftMainIdeaTitleRef = useRef(draftMainIdeaTitle);
   const draftMainIdeaStateRef = useRef(draftMainIdeaState);
   const draftMainIdeaTypeRef = useRef(draftMainIdeaType);
   const draftCustomStateColorRef = useRef(draftCustomStateColor);
   const draftCustomColorRef = useRef(draftCustomColor);
+  const draftChildIdeaStateRef = useRef(draftChildIdeaState);
+  const draftChildIdeaTypeRef = useRef(draftChildIdeaType);
+  const draftChildIdeaCustomColorRef = useRef(draftChildIdeaCustomColor);
+  const draftChildIdeaCustomStateColorRef = useRef(draftChildIdeaCustomStateColor);
   const [visible, setVisible] = useState(false);
   const [pillBlurbOpen, setPillBlurbOpen] = useState(false);
   const [ideaPillBlurbOpen, setIdeaPillBlurbOpen] = useState(false);
@@ -202,6 +232,10 @@ export function GeneralStormCanvas({
   }, [addingMainIdea]);
 
   useEffect(() => {
+    addingChildIdeaRef.current = addingChildIdea;
+  }, [addingChildIdea]);
+
+  useEffect(() => {
     draftMainIdeaTitleRef.current = draftMainIdeaTitle;
   }, [draftMainIdeaTitle]);
 
@@ -220,6 +254,22 @@ export function GeneralStormCanvas({
   useEffect(() => {
     draftCustomColorRef.current = draftCustomColor;
   }, [draftCustomColor]);
+
+  useEffect(() => {
+    draftChildIdeaStateRef.current = draftChildIdeaState;
+  }, [draftChildIdeaState]);
+
+  useEffect(() => {
+    draftChildIdeaTypeRef.current = draftChildIdeaType;
+  }, [draftChildIdeaType]);
+
+  useEffect(() => {
+    draftChildIdeaCustomColorRef.current = draftChildIdeaCustomColor;
+  }, [draftChildIdeaCustomColor]);
+
+  useEffect(() => {
+    draftChildIdeaCustomStateColorRef.current = draftChildIdeaCustomStateColor;
+  }, [draftChildIdeaCustomStateColor]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => setVisible(true), 0);
@@ -264,7 +314,12 @@ export function GeneralStormCanvas({
       context.setTransform(dpr, 0, 0, dpr, 0, 0);
     }
 
-    function updateCameraTarget(width: number, height: number, renderMainIdeas: Record<string, MainIdea>) {
+    function updateCameraTarget(
+      width: number,
+      height: number,
+      renderMainIdeas: Record<string, MainIdea>,
+      renderIdeas: Record<string, BrainstormIdea>,
+    ) {
       const mainLayouts = getMainIdeaLayouts(renderMainIdeas, 0, 0);
       const ideaTreesByMainId: Record<string, IdeaLayoutNode[]> = {};
       const allFlatIdeas: IdeaLayoutNode[] = [];
@@ -276,12 +331,13 @@ export function GeneralStormCanvas({
           return;
         }
 
-        const tree = getIdeaLayoutTree(mainIdea, ideas, layout.x, layout.y, undefined, 0, 0);
+        const tree = getIdeaLayoutTree(mainIdea, renderIdeas, layout.x, layout.y, undefined, 0, 0);
         ideaTreesByMainId[layout.id] = tree;
         allFlatIdeas.push(...flattenIdeaTree(tree));
       });
 
       draftMainIdeaLayoutRef.current = mainLayouts.find((layout) => layout.id === draftMainIdeaId) ?? null;
+      draftChildIdeaLayoutRef.current = allFlatIdeas.find((layout) => layout.id === '__draft_child__') ?? null;
       mainIdeaLayoutsRef.current = mainLayouts.filter((layout) => layout.id !== draftMainIdeaId);
       ideaTreesRef.current = ideaTreesByMainId;
       allFlatIdeaLayoutsRef.current = allFlatIdeas;
@@ -294,7 +350,8 @@ export function GeneralStormCanvas({
       let focusNodes: BoundsNode[] = [];
 
       if (selectedNode) {
-        focusNodes = [selectedNode, ...selectedNode.children];
+        const subtreeIds = collectSubtreeIds(allFlatIdeas, selectedNode.id);
+        focusNodes = allFlatIdeas.filter((node) => subtreeIds.has(node.id));
       } else if (currentSelectedMainIdeaId) {
         const selectedMainLayout = mainLayouts.find((layout) => layout.id === currentSelectedMainIdeaId) ?? null;
         const selectedTree = ideaTreesByMainId[currentSelectedMainIdeaId] ?? [];
@@ -307,16 +364,29 @@ export function GeneralStormCanvas({
       }
 
       const bounds = collectBounds(focusNodes);
-      const branchRadius = Math.max(
-        (bounds.maxX - bounds.minX) * 0.5,
-        (bounds.maxY - bounds.minY) * 0.5,
-        180,
-      );
+      const padding = BRAINSTORM_FIT_PADDING ?? 0.8;
+      let targetScale = 1;
+
+      if (focusNodes.length === 1) {
+        const fitScale = Math.min(
+          (width * padding) / 240,
+          (height * padding) / 240,
+          2.5,
+        );
+        targetScale = Math.max(0.15, fitScale);
+      } else {
+        const boundsWidth = bounds.maxX - bounds.minX;
+        const boundsHeight = bounds.maxY - bounds.minY;
+        const scaleX = (width * padding) / Math.max(1, boundsWidth);
+        const scaleY = (height * padding) / Math.max(1, boundsHeight);
+        const fitScale = Math.min(scaleX, scaleY, 2.5);
+        targetScale = Math.max(0.15, fitScale);
+      }
 
       cameraTargetRef.current = {
         x: bounds.centroidX,
         y: bounds.centroidY,
-        scale: fitScaleForBranches(branchRadius, width, height),
+        scale: targetScale,
       };
 
       if (startedAtRef.current === null) {
@@ -338,6 +408,8 @@ export function GeneralStormCanvas({
       const canvasCenterY = height * 0.5;
       const elapsed = timestamp - startedAtRef.current;
       void elapsed;
+      const currentSelectedIdeaId = selectedIdeaIdRef.current;
+      const currentSelectedMainIdeaId = selectedMainIdeaIdRef.current;
 
       const phantom = addingMainIdeaRef.current ? {
         id: draftMainIdeaId,
@@ -357,8 +429,51 @@ export function GeneralStormCanvas({
             [draftMainIdeaId]: phantom,
           }
         : mainIdeas;
+      const draftChildIdeaId = '__draft_child__';
+      let renderIdeas: Record<string, BrainstormIdea> = ideas;
+      let nextRenderMainIdeas = renderMainIdeas;
 
-      updateCameraTarget(width, height, renderMainIdeas);
+      if (addingChildIdeaRef.current && (currentSelectedMainIdeaId || currentSelectedIdeaId)) {
+        const selectedIdea = currentSelectedIdeaId ? ideas[currentSelectedIdeaId] ?? null : null;
+        const ownerMainIdeaId = selectedIdea?.mainIdeaId ?? currentSelectedMainIdeaId ?? '';
+        const phantomChildIdea: BrainstormIdea = {
+          id: draftChildIdeaId,
+          title: '',
+          state: draftChildIdeaStateRef.current,
+          type: draftChildIdeaTypeRef.current,
+          customProperties: {
+            typeColor: draftChildIdeaCustomColorRef.current,
+            stateColor: draftChildIdeaCustomStateColorRef.current,
+          },
+          entries: [],
+          ideas: [],
+          pointsTo: [],
+          parentIdeaId: currentSelectedIdeaId ?? null,
+          mainIdeaId: ownerMainIdeaId,
+        };
+
+        renderIdeas = {
+          ...ideas,
+          [draftChildIdeaId]: phantomChildIdea,
+        };
+
+        if (currentSelectedIdeaId && selectedIdea) {
+          renderIdeas[currentSelectedIdeaId] = {
+            ...selectedIdea,
+            ideas: [...selectedIdea.ideas, draftChildIdeaId],
+          };
+        } else if (currentSelectedMainIdeaId && nextRenderMainIdeas[currentSelectedMainIdeaId]) {
+          nextRenderMainIdeas = {
+            ...nextRenderMainIdeas,
+            [currentSelectedMainIdeaId]: {
+              ...nextRenderMainIdeas[currentSelectedMainIdeaId],
+              ideas: [...nextRenderMainIdeas[currentSelectedMainIdeaId].ideas, draftChildIdeaId],
+            },
+          };
+        }
+      }
+
+      updateCameraTarget(width, height, nextRenderMainIdeas, renderIdeas);
 
       cameraRef.current = {
         x: cameraRef.current.x + (cameraTargetRef.current.x - cameraRef.current.x) * CAMERA_LERP,
@@ -408,8 +523,6 @@ export function GeneralStormCanvas({
       drawBrainstormWebBackground(context, 0, 0, timestamp, 0.4);
       drawBrainstormNode(context, 0, 0, 28, '', 1, false, true, 1);
 
-      const currentSelectedIdeaId = selectedIdeaIdRef.current;
-      const currentSelectedMainIdeaId = selectedMainIdeaIdRef.current;
       const effectiveSelectedMainIdeaId = currentSelectedIdeaId
         ? allFlatIdeaLayoutsRef.current.find((node) => node.id === currentSelectedIdeaId)?.mainIdeaId
           ?? currentSelectedMainIdeaId
@@ -422,7 +535,7 @@ export function GeneralStormCanvas({
           : []),
       ].map((layout) => ({
         ...layout,
-        ...renderMainIdeas[layout.id],
+        ...nextRenderMainIdeas[layout.id],
       }));
 
       drawBrainstormConstellation(
@@ -433,7 +546,7 @@ export function GeneralStormCanvas({
         highlightedIds,
         currentSelectedIdeaId,
         timestamp,
-        renderMainIdeas,
+        nextRenderMainIdeas,
       );
 
       if (addingMainIdeaRef.current && draftMainIdeaLayoutRef.current) {
@@ -461,7 +574,7 @@ export function GeneralStormCanvas({
         drawBrainstormIdeaSpokes(
           context,
           tree,
-          ideas,
+          renderIdeas,
           highlightedIds,
           currentSelectedIdeaId,
           null,
@@ -470,6 +583,26 @@ export function GeneralStormCanvas({
           timestamp,
         );
       });
+
+      if (addingChildIdeaRef.current && draftChildIdeaLayoutRef.current) {
+        const phantomLayout = draftChildIdeaLayoutRef.current;
+
+        context.save();
+        context.setLineDash([4, 4]);
+        context.strokeStyle = '#ffffff';
+        context.globalAlpha = 0.6;
+        context.lineWidth = 1.5 / cameraRef.current.scale;
+        context.beginPath();
+        context.arc(
+          phantomLayout.x,
+          phantomLayout.y,
+          phantomLayout.radius,
+          0,
+          Math.PI * 2,
+        );
+        context.stroke();
+        context.restore();
+      }
 
       context.restore();
 
@@ -535,7 +668,7 @@ export function GeneralStormCanvas({
         const hitIdeaId = hitTestIdea(
           screenX,
           screenY,
-          allFlatIdeaLayoutsRef.current,
+          allFlatIdeaLayoutsRef.current.filter((layout) => layout.id !== '__draft_child__'),
           toScreen,
         );
         if (hitIdeaId) {

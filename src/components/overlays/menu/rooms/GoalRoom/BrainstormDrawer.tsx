@@ -239,6 +239,11 @@ export interface BrainstormDrawerProps {
   onDraftMainIdeaTypeChange: (type: IdeaType) => void;
   onDraftCustomStateColorChange?: (color: string) => void;
   onDraftCustomColorChange?: (color: string) => void;
+  onAddingChildIdeaChange: (adding: boolean) => void;
+  onDraftChildIdeaStateChange: (state: IdeaState) => void;
+  onDraftChildIdeaTypeChange: (type: IdeaType) => void;
+  onDraftChildIdeaCustomColorChange?: (color: string) => void;
+  onDraftChildIdeaCustomStateColorChange?: (color: string) => void;
   setAddingStorm: (adding: boolean) => void;
   setEditingStorm: Dispatch<SetStateAction<boolean>>;
   setNewStormName: Dispatch<SetStateAction<string>>;
@@ -307,6 +312,11 @@ export function BrainstormDrawer({
   onDraftMainIdeaTypeChange,
   onDraftCustomStateColorChange,
   onDraftCustomColorChange,
+  onAddingChildIdeaChange,
+  onDraftChildIdeaStateChange,
+  onDraftChildIdeaTypeChange,
+  onDraftChildIdeaCustomColorChange,
+  onDraftChildIdeaCustomStateColorChange,
   setAddingStorm,
   setEditingStorm,
   setNewStormName,
@@ -387,6 +397,11 @@ export function BrainstormDrawer({
     setNewChildIdeaCustomStateColor('#ffffff');
     setChildIdeaTypePickerOpen(false);
     setChildIdeaStatePickerOpen(false);
+    onAddingChildIdeaChange(false);
+    onDraftChildIdeaStateChange('open');
+    onDraftChildIdeaTypeChange('insight');
+    onDraftChildIdeaCustomColorChange?.('#ffffff');
+    onDraftChildIdeaCustomStateColorChange?.('#ffffff');
   }
 
   function resetEntryForm() {
@@ -1404,6 +1419,7 @@ export function BrainstormDrawer({
                               value={newChildIdeaCustomColor}
                               onChange={(color) => {
                                 setNewChildIdeaCustomColor(color);
+                                onDraftChildIdeaCustomColorChange?.(color);
                               }}
                               align="left"
                             />
@@ -1416,6 +1432,7 @@ export function BrainstormDrawer({
                           type="button"
                           onClick={() => {
                             setNewChildIdeaType(type);
+                            onDraftChildIdeaTypeChange(type);
                             setChildIdeaTypePickerOpen(false);
                           }}
                           className="flex w-full items-center gap-3 px-3 py-2 text-left text-sm text-white hover:bg-white/[0.05]"
@@ -1461,6 +1478,7 @@ export function BrainstormDrawer({
                               value={newChildIdeaCustomStateColor}
                               onChange={(color) => {
                                 setNewChildIdeaCustomStateColor(color);
+                                onDraftChildIdeaCustomStateColorChange?.(color);
                               }}
                               align="left"
                             />
@@ -1473,6 +1491,7 @@ export function BrainstormDrawer({
                           type="button"
                           onClick={() => {
                             setNewChildIdeaState(state);
+                            onDraftChildIdeaStateChange(state);
                             setChildIdeaStatePickerOpen(false);
                           }}
                           className="flex w-full items-center gap-3 px-3 py-2 text-left text-sm text-white hover:bg-white/[0.05]"
@@ -1577,6 +1596,11 @@ export function BrainstormDrawer({
                   resetEntryForm();
                   resetChildIdeaForm();
                   setAddingChildIdea(true);
+                  onAddingChildIdeaChange(true);
+                  onDraftChildIdeaStateChange('open');
+                  onDraftChildIdeaTypeChange('insight');
+                  onDraftChildIdeaCustomColorChange?.('#ffffff');
+                  onDraftChildIdeaCustomStateColorChange?.('#ffffff');
                 }}
                 className="w-full rounded-lg border border-white/10 py-2 text-xs text-white/50 hover:border-white/20 hover:text-white/70"
               >

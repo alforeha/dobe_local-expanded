@@ -73,6 +73,11 @@ interface GoalInspectorDrawerProps {
   onDraftMainIdeaTypeChange: (type: IdeaType) => void;
   onDraftCustomStateColorChange?: (color: string) => void;
   onDraftCustomColorChange?: (color: string) => void;
+  onAddingChildIdeaChange: (adding: boolean) => void;
+  onDraftChildIdeaStateChange: (state: IdeaState) => void;
+  onDraftChildIdeaTypeChange: (type: IdeaType) => void;
+  onDraftChildIdeaCustomColorChange?: (color: string) => void;
+  onDraftChildIdeaCustomStateColorChange?: (color: string) => void;
   onDeleteStorm: () => void;
   onDeleteMainIdea: () => void;
   onDeleteIdea: () => void;
@@ -434,6 +439,11 @@ export function GoalInspectorDrawer({
   onDraftMainIdeaTypeChange,
   onDraftCustomStateColorChange,
   onDraftCustomColorChange,
+  onAddingChildIdeaChange,
+  onDraftChildIdeaStateChange,
+  onDraftChildIdeaTypeChange,
+  onDraftChildIdeaCustomColorChange,
+  onDraftChildIdeaCustomStateColorChange,
   onDeleteStorm,
   onDeleteMainIdea,
   onDeleteIdea,
@@ -753,13 +763,18 @@ export function GoalInspectorDrawer({
           onHandleStormScroll={handleStormScroll}
           onResetAddStormState={resetAddStormState}
           onHandleBrainstormModalConfirm={handleBrainstormModalConfirm}
-          onAddingMainIdeaChange={onAddingMainIdeaChange}
-          onDraftMainIdeaTitleChange={onDraftMainIdeaTitleChange}
-          onDraftMainIdeaStateChange={onDraftMainIdeaStateChange}
-          onDraftMainIdeaTypeChange={onDraftMainIdeaTypeChange}
-          onDraftCustomStateColorChange={onDraftCustomStateColorChange}
-          onDraftCustomColorChange={onDraftCustomColorChange}
-          setAddingStorm={setAddingStorm}
+        onAddingMainIdeaChange={onAddingMainIdeaChange}
+        onDraftMainIdeaTitleChange={onDraftMainIdeaTitleChange}
+        onDraftMainIdeaStateChange={onDraftMainIdeaStateChange}
+        onDraftMainIdeaTypeChange={onDraftMainIdeaTypeChange}
+        onDraftCustomStateColorChange={onDraftCustomStateColorChange}
+        onDraftCustomColorChange={onDraftCustomColorChange}
+        onAddingChildIdeaChange={onAddingChildIdeaChange}
+        onDraftChildIdeaStateChange={onDraftChildIdeaStateChange}
+        onDraftChildIdeaTypeChange={onDraftChildIdeaTypeChange}
+        onDraftChildIdeaCustomColorChange={onDraftChildIdeaCustomColorChange}
+        onDraftChildIdeaCustomStateColorChange={onDraftChildIdeaCustomStateColorChange}
+        setAddingStorm={setAddingStorm}
           setEditingStorm={setEditingStorm}
           setNewStormName={setNewStormName}
           setNewStormType={setNewStormType}
