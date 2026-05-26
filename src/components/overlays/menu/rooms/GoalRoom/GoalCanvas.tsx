@@ -41,6 +41,7 @@ const STORM_PAGE_SIZE = 6;
 
 interface GoalCanvasProps {
   selectedStormId: string | null;
+  addingStorm: boolean;
   userAspirations: Aspiration[];
   adventureAspirations: Aspiration[];
   aspirationDraft: Aspiration | null;
@@ -194,6 +195,7 @@ function worldToScreen(
 
 export function GoalCanvas({
   selectedStormId,
+  addingStorm,
   userAspirations,
   adventureAspirations,
   aspirationDraft,
@@ -221,6 +223,7 @@ export function GoalCanvas({
   onStormWheelScroll,
 }: GoalCanvasProps) {
   const storms = useBrainstormStore((s) => s.storms);
+  void addingStorm;
   const activeStormId = selectedStormId;
   const currentStorm = activeStormId ? storms[activeStormId] ?? null : null;
   const mainIdeas = useMemo(
@@ -383,6 +386,12 @@ export function GoalCanvas({
   useEffect(() => {
     if (selectedStormId === null) {
       selectedStormWorldPosRef.current = null;
+    } else {
+      const layout = stormLayoutWorldEntriesRef.current
+        .find((l) => l.id === selectedStormId);
+      if (layout) {
+        selectedStormWorldPosRef.current = { x: layout.x, y: layout.y };
+      }
     }
   }, [selectedStormId]);
 

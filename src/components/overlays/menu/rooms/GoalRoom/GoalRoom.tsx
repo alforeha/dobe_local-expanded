@@ -30,6 +30,7 @@ export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
   const [isActView, setIsActView] = useState(false);
   const [navHidden, setNavHidden] = useState(true);
   const [brainstormFocused, setBrainstormFocused] = useState(false);
+  const [addingStorm, setAddingStorm] = useState(false);
   const focusOrbitRef = useRef<((orbit: 'user' | 'system' | null) => void) | null>(null);
   const clearCanvasFocusRef = useRef<((scope: 'planet' | 'all') => void) | null>(null);
   const selectAspirationFromDrawerRef = useRef<((id: string) => void) | null>(null);
@@ -62,6 +63,9 @@ export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
     deleteMainIdea,
     deleteIdea,
     renameStorm,
+    setStormType,
+    setStormState,
+    setStormCategory,
     renameMainIdea,
     renameIdea,
     setSelectedStorm,
@@ -781,6 +785,7 @@ export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
       >
         <GoalCanvas
           selectedStormId={selectedStormId}
+          addingStorm={addingStorm}
           userAspirations={userAspirations}
           adventureAspirations={systemAspirations}
           onFocusedOrbitChange={handleFocusedOrbitChange}
@@ -851,11 +856,28 @@ export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
         selectedIdeaId={selectedIdeaId}
         onStormScrollProgress={handleStormScrollProgress}
         stormScrollContainerRef={drawerStormScrollRef}
+        addingStorm={addingStorm}
+        setAddingStorm={setAddingStorm}
         onSelectStorm={(id) => {
           setSelectedStorm(id);
         }}
         onAddStorm={(name, type, state, category?: StormCategory) => {
           addStorm(name, type, state, category);
+        }}
+        onSetStormType={(type) => {
+          if (selectedStormId) {
+            setStormType(selectedStormId, type);
+          }
+        }}
+        onSetStormState={(state) => {
+          if (selectedStormId) {
+            setStormState(selectedStormId, state);
+          }
+        }}
+        onSetStormCategory={(category) => {
+          if (selectedStormId) {
+            setStormCategory(selectedStormId, category);
+          }
         }}
         onSelectMainIdea={handleSelectMainIdea}
         onSelectIdea={setSelectedIdea}

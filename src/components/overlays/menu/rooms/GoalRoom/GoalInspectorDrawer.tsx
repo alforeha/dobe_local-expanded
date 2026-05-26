@@ -4,6 +4,7 @@ import type {
   BrainstormEntry,
   BrainstormIdea,
   EntryState,
+  IdeaState,
   MainIdea,
   Storm,
   StormCategory,
@@ -48,10 +49,15 @@ interface GoalInspectorDrawerProps {
   ideas: Record<string, BrainstormIdea>;
   selectedMainIdeaId: string | null;
   selectedIdeaId: string | null;
-  onSelectStorm: (id: string) => void;
+  onSelectStorm: (id: string | null) => void;
   onStormScrollProgress?: (ratio: number) => void;
   stormScrollContainerRef?: React.RefObject<HTMLDivElement | null>;
+  addingStorm: boolean;
+  setAddingStorm: (adding: boolean) => void;
   onAddStorm: (name: string, type: StormType, state?: StormState, category?: StormCategory) => void;
+  onSetStormType: (type: StormType) => void;
+  onSetStormState: (state: StormState) => void;
+  onSetStormCategory: (category: StormCategory) => void;
   onSelectMainIdea: (id: string | null) => void;
   onSelectIdea: (id: string | null) => void;
   onAddMainIdea: (title: string) => void;
@@ -99,13 +105,6 @@ interface GoalInspectorDrawerProps {
 const ENTRY_STATES: EntryState[] = ['outcome', 'obstacle', 'question', 'solved', 'others'];
 const STORM_TYPES: StormType[] = ['general', 'exploration', 'problem', 'planning', 'reflection', 'project', 'projection', 'others'];
 const STORM_STATES: StormState[] = ['active', 'incubating', 'archived', 'resolved', 'folding'];
-const STORM_STATE_CLASSES: Record<StormState, string> = {
-  active: 'bg-emerald-900/40 text-emerald-400',
-  incubating: 'bg-amber-900/40 text-amber-400',
-  archived: 'bg-slate-800/60 text-slate-400',
-  resolved: 'bg-indigo-900/40 text-indigo-400',
-  folding: 'bg-cyan-900/40 text-cyan-300',
-};
 const STORM_STATE_ROW_BG: Record<StormState, string> = {
   active: 'bg-blue-900/30',
   incubating: 'bg-yellow-900/20',
@@ -113,15 +112,12 @@ const STORM_STATE_ROW_BG: Record<StormState, string> = {
   resolved: 'bg-green-900/20',
   folding: 'bg-neutral-700/10',
 };
-const STORM_TYPE_CLASSES: Record<StormType, string> = {
-  general: 'bg-teal-900/40 text-teal-300',
-  exploration: 'bg-sky-900/40 text-sky-300',
-  problem: 'bg-rose-900/40 text-rose-300',
-  planning: 'bg-cyan-900/40 text-cyan-300',
-  reflection: 'bg-violet-900/40 text-violet-300',
-  project: 'bg-fuchsia-900/40 text-fuchsia-300',
-  projection: 'bg-lime-900/40 text-lime-300',
-  others: 'bg-slate-800/60 text-slate-300',
+const IDEA_STATE_ROW_BG: Record<IdeaState, string> = {
+  open: 'bg-sky-900/20',
+  'in-progress': 'bg-amber-900/20',
+  resolved: 'bg-emerald-900/20',
+  parked: 'bg-slate-800/30',
+  others: 'bg-neutral-800/25',
 };
 
 type BrainstormModalMode = 'mainIdea' | 'idea' | 'childIdea' | 'entry' | 'rename' | 'storm';
@@ -597,7 +593,12 @@ export function GoalInspectorDrawer({
   onSelectStorm,
   onStormScrollProgress,
   stormScrollContainerRef,
+  addingStorm,
+  setAddingStorm,
   onAddStorm,
+  onSetStormType,
+  onSetStormState,
+  onSetStormCategory,
   onSelectMainIdea,
   onSelectIdea,
   onAddMainIdea,
@@ -642,7 +643,7 @@ export function GoalInspectorDrawer({
   onDeleteAspiration,
 }: GoalInspectorDrawerProps) {
   const prevLevelRef = useRef(view.level);
-  const [addingStorm, setAddingStorm] = useState(false);
+  const [editingStorm, setEditingStorm] = useState(false);
   const [newStormName, setNewStormName] = useState('');
   const [newStormType, setNewStormType] = useState<StormType>('general');
   const [newStormState, setNewStormState] = useState<StormState>('active');
@@ -677,6 +678,7 @@ export function GoalInspectorDrawer({
 
   function resetAddStormState() {
     setAddingStorm(false);
+    setEditingStorm(false);
     setNewStormName('');
     setNewStormType('general');
     setNewStormState('active');
@@ -714,6 +716,25 @@ export function GoalInspectorDrawer({
 
     return () => window.clearTimeout(timer);
   }, [selectedMainIdeaId, selectedIdeaId, selectedStormId]);
+
+  useEffect(() => {
+    if (!editingStorm || !selectedStorm) return;
+
+    setNewStormName(selectedStorm.name);
+    setNewStormType(selectedStorm.type);
+    setNewStormState(selectedStorm.state);
+    setNewStormCategory(selectedStorm.category);
+    setCategoryInput(selectedStorm.category.name);
+    setCategoryPickerOpen(false);
+    setTypePickerOpen(false);
+    setStatePickerOpen(false);
+  }, [editingStorm, selectedStorm]);
+
+  useEffect(() => {
+    if (selectedStormId === null) {
+      setEditingStorm(false);
+    }
+  }, [selectedStormId]);
 
   useEffect(() => {
     if (!stormScrollRef.current) return;
@@ -766,6 +787,7 @@ export function GoalInspectorDrawer({
 
   function handleAddStormOpen() {
     setAddingStorm(true);
+    setEditingStorm(false);
     setNewStormName('');
     setNewStormType('general');
     setNewStormState('active');
@@ -779,6 +801,27 @@ export function GoalInspectorDrawer({
   function handleAddStormConfirm() {
     const trimmed = newStormName.trim();
     if (!trimmed) return;
+    if (editingStorm && selectedStorm) {
+      if (trimmed !== selectedStorm.name) {
+        onRenameStorm(trimmed);
+      }
+      if (newStormType !== selectedStorm.type) {
+        onSetStormType(newStormType);
+      }
+      if (newStormState !== selectedStorm.state) {
+        onSetStormState(newStormState);
+      }
+      if (
+        newStormCategory.name !== selectedStorm.category.name
+        || newStormCategory.color !== selectedStorm.category.color
+      ) {
+        onSetStormCategory(newStormCategory);
+      }
+      setEditingStorm(false);
+      setAddingStorm(false);
+      return;
+    }
+
     onAddStorm(trimmed, newStormType, newStormState, newStormCategory);
     resetAddStormState();
   }
@@ -812,6 +855,7 @@ export function GoalInspectorDrawer({
   const orbitList = view.level === 'orbit'
     ? view.orbit === 'user' ? userAspirations : adventureAspirations
     : [];
+  const selectedStormMainIdeas = selectedStorm ? Object.values(selectedStorm.mainIdeas) : [];
 
   return (
     <div
@@ -828,7 +872,7 @@ export function GoalInspectorDrawer({
     >
       {view.level === 'brainstorm' ? (
         selectedIdea || selectedMainIdea ? (
-          <div className="flex items-center justify-between px-4 pt-4 pb-2">
+          <div className="flex items-center justify-between px-4 py-4">
             <span className="text-white/80 text-sm font-medium">
               {selectedIdea?.title ?? selectedMainIdea?.title ?? 'Brainstorm'}
             </span>
@@ -837,49 +881,87 @@ export function GoalInspectorDrawer({
               onClick={() => onBack()}
               className="text-white/40 hover:text-white/80 text-xs px-2 py-1"
             >
-              Back
+              BACK
             </button>
           </div>
-        ) : addingStorm ? (
-          <div className="px-4 pt-4 pb-2">
+        ) : addingStorm || editingStorm ? (
+          <div className="px-4 py-4">
             <div className="flex items-center justify-between">
               <span className="text-white/80 text-sm font-medium">
-                ADD STORM
+                {editingStorm ? 'EDIT STORM' : 'ADD STORM'}
               </span>
               <button
                 type="button"
-                onClick={resetAddStormState}
+                onClick={() => {
+                  if (editingStorm) {
+                    setEditingStorm(false);
+                    setAddingStorm(false);
+                  } else {
+                    resetAddStormState();
+                  }
+                }}
                 className="text-white/40 hover:text-white/80 text-xs px-2 py-1"
               >
-                Back
+                BACK
+              </button>
+            </div>
+          </div>
+        ) : selectedStorm ? (
+          <div className="px-4 py-4">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex min-w-0 flex-1 items-center">
+                <IconDisplay iconKey={`storm-brain-${selectedStorm.state}`} size={18} className="-mr-1 shrink-0 opacity-90" />
+                <div className="relative flex-1">
+                  <div className="flex h-4 w-full overflow-hidden rounded-full bg-white/5">
+                    {selectedStorm.brainWidthCap > 0 ? (
+                      <>
+                        <div
+                          className="h-full bg-white/20"
+                          style={{ width: `${Math.max(0, Math.min(100, (selectedStorm.brainWidthStaked / selectedStorm.brainWidthCap) * 100))}%` }}
+                        />
+                        <div
+                          className="h-full bg-blue-400/70"
+                          style={{ width: `${Math.max(0, Math.min(100, ((selectedStorm.brainWidthPoints - selectedStorm.brainWidthStaked) / selectedStorm.brainWidthCap) * 100))}%` }}
+                        />
+                        <div
+                          className="h-full bg-white/5"
+                          style={{ width: `${Math.max(0, Math.min(100, ((selectedStorm.brainWidthCap - selectedStorm.brainWidthPoints) / selectedStorm.brainWidthCap) * 100))}%` }}
+                        />
+                      </>
+                    ) : (
+                      <div className="h-full w-full bg-white/5" />
+                    )}
+                  </div>
+                  <div className="absolute inset-y-0 right-1 flex items-center text-[10px] text-white/70">
+                    {selectedStorm.brainWidthPoints} / {selectedStorm.brainWidthCap}
+                  </div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => onSelectStorm(null)}
+                className="text-white/40 hover:text-white/80 text-xs px-2 py-1"
+              >
+                BACK
               </button>
             </div>
           </div>
         ) : (
-          <div className="px-4 pt-4 pb-2">
+          <div className="px-4 py-4">
             <div className="flex items-center justify-between">
               <span className="flex items-center gap-2 text-white/80 text-sm font-medium">
                 <IconDisplay iconKey="goal-brainstorm" size={16} className="shrink-0 opacity-90" />
-                <span>{showStormOverview ? 'Brainstorm Alley' : (selectedStorm?.name ?? 'Brainstorm Alley')}</span>
+                <span>Brainstorm Alley</span>
               </span>
               <button
                 type="button"
                 onClick={() => onBack()}
                 className="text-white/40 hover:text-white/80 text-xs px-2 py-1"
               >
-                Back
+                BACK
               </button>
             </div>
-            {selectedStorm ? (
-              <div className="flex items-center gap-2 pt-2">
-                <span className={`text-xs px-2 py-0.5 rounded-full capitalize ${STORM_STATE_CLASSES[selectedStorm.state]}`}>
-                  {selectedStorm.state}
-                </span>
-                <span className={`text-xs px-2 py-0.5 rounded-full capitalize ${STORM_TYPE_CLASSES[selectedStorm.type]}`}>
-                  {selectedStorm.type}
-                </span>
-              </div>
-            ) : !showStormOverview ? (
+            {!showStormOverview ? (
               <div className="flex items-center justify-between pt-2">
                 <button
                   type="button"
@@ -893,13 +975,13 @@ export function GoalInspectorDrawer({
           </div>
         )
       ) : view.level === 'root' ? (
-        <div className="px-4 pt-4 pb-2">
+        <div className="px-4 py-4">
           <span className="block w-full text-center text-white/80 text-sm font-medium">
             Cranium Constructions
           </span>
         </div>
       ) : (
-        <div className="flex items-center justify-between px-4 pt-4 pb-2">
+        <div className="flex items-center justify-between px-4 py-4">
           <span className="text-white/80 text-sm font-medium">
             {label}
           </span>
@@ -910,7 +992,7 @@ export function GoalInspectorDrawer({
             }}
             className="text-white/40 hover:text-white/80 text-xs px-2 py-1 flex items-center gap-1"
           >
-            Back
+            BACK
           </button>
         </div>
       )}
@@ -956,7 +1038,7 @@ export function GoalInspectorDrawer({
         </div>
       ) : null}
       {view.level === 'brainstorm' ? (
-        addingStorm ? (
+        addingStorm || editingStorm ? (
           <div className="flex-1 overflow-y-auto px-4 py-4">
             <div className="space-y-4">
               {!categoryPickerOpen && !typePickerOpen && !statePickerOpen ? (
@@ -1129,7 +1211,7 @@ export function GoalInspectorDrawer({
                   onClick={handleAddStormConfirm}
                   className="w-full rounded-lg border border-white/10 px-3 py-2 text-sm text-white transition enabled:hover:border-white/20 enabled:hover:bg-white/[0.05] disabled:cursor-not-allowed disabled:text-white/30"
                 >
-                  Add Storm
+                  {editingStorm ? 'Save Storm' : 'Add Storm'}
                 </button>
               ) : null}
             </div>
@@ -1215,43 +1297,148 @@ export function GoalInspectorDrawer({
             </div>
           </>
         ) : selectedMainIdea === null ? (
-            <div className="flex-1 overflow-y-auto px-4 py-2">
-              <div className="flex items-center justify-between py-2 border-b border-white/5">
-                <div className="text-xs font-medium uppercase tracking-wider text-white/30">
-                  Main Ideas
+            <div className="flex flex-1 flex-col overflow-hidden">
+              <div className="flex items-start justify-between border-b border-white/10 px-4 py-3">
+                <div className="flex min-w-0 flex-1 items-start gap-3">
+                  <IconDisplay iconKey={`storm-${selectedStorm?.type ?? 'general'}`} size={24} className="shrink-0 opacity-90" />
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span
+                        className="h-2 w-2 rounded-full"
+                        style={{ backgroundColor: selectedStorm?.category.color ?? '#7c3aed' }}
+                      />
+                      <span className="text-xs text-white/50">{selectedStorm?.category.name}</span>
+                    </div>
+                    <div className="truncate text-base font-medium text-white">
+                      {selectedStorm?.name}
+                    </div>
+                  </div>
+                </div>
+                <div
+                  className="relative"
+                  tabIndex={0}
+                  onBlur={(event) => {
+                    if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+                      setActionMenuOpen(false);
+                      setConfirmDelete(false);
+                    }
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActionMenuOpen((open) => !open);
+                      setConfirmDelete(false);
+                    }}
+                    className="px-2 py-1 text-xs text-white/40 hover:text-white/80"
+                  >
+                    ...
+                  </button>
+                  {actionMenuOpen ? (
+                    <div className="absolute right-0 top-8 z-50 min-w-[140px] overflow-hidden rounded-lg border border-white/10 bg-gray-900">
+                      {!confirmDelete ? (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingStorm(true);
+                              setAddingStorm(true);
+                              setActionMenuOpen(false);
+                            }}
+                            className="w-full px-4 py-2.5 text-left text-sm text-white/70 hover:bg-white/5"
+                          >
+                            Edit Storm
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setConfirmDelete(true)}
+                            className="w-full px-4 py-2.5 text-left text-sm text-red-400/80 hover:bg-white/5"
+                          >
+                            Delete
+                          </button>
+                        </>
+                      ) : (
+                        <div className="px-4 py-3">
+                          <p className="pb-2 text-xs text-white/50">Confirm delete?</p>
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                onDeleteStorm();
+                                setActionMenuOpen(false);
+                                setConfirmDelete(false);
+                              }}
+                              className="flex-1 rounded-md bg-red-500/80 px-3 py-1.5 text-xs text-white hover:bg-red-500"
+                            >
+                              Delete
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setConfirmDelete(false)}
+                              className="flex-1 rounded-md border border-white/10 px-3 py-1.5 text-xs text-white/60 hover:bg-white/5"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ) : null}
                 </div>
               </div>
-              {Object.values(mainIdeas).length > 0 ? (
-                Object.values(mainIdeas).map((mainIdea) => (
-                  <button
-                    key={mainIdea.id}
-                    type="button"
-                    onClick={() => onSelectMainIdea(mainIdea.id)}
-                    className="w-full flex items-center gap-3 py-3 border-b border-white/5 text-left"
-                  >
-                    <span className="flex-1 text-white/80 text-sm truncate">{mainIdea.title}</span>
-                    <span className="text-xs px-2 py-0.5 rounded-full bg-white/5 text-white/30">
-                      {mainIdea.ideas.length} idea{mainIdea.ideas.length === 1 ? '' : 's'}
-                    </span>
-                  </button>
-                ))
-              ) : (
-                <div className="w-full flex items-center gap-3 py-3 border-b border-white/5 text-left">
-                  <span className="flex-1 text-white/40 text-sm truncate">No ideas yet</span>
-                </div>
-              )}
-              <div className="pt-4 pb-2">
+              <div className="flex-1 overflow-y-auto">
+                {selectedStormMainIdeas.length > 0 ? (
+                  selectedStormMainIdeas.map((mainIdea) => {
+                    const totalEntryCount = mainIdea.entries.length + mainIdea.ideas.reduce((count, ideaId) => {
+                      const idea = selectedStorm?.ideas[ideaId];
+                      return count + (idea?.entries.length ?? 0);
+                    }, 0);
+
+                    return (
+                      <button
+                        key={mainIdea.id}
+                        type="button"
+                        onClick={() => onSelectMainIdea(mainIdea.id)}
+                        className={`flex w-full items-center justify-between gap-3 border-b border-white/5 px-4 py-2 text-left ${IDEA_STATE_ROW_BG[mainIdea.state]}`}
+                      >
+                        <div className="flex min-w-0 flex-1 items-center gap-3">
+                          <IconDisplay iconKey={`idea-${mainIdea.type || 'others'}`} size={22} className="shrink-0 opacity-90" />
+                          <div className="min-w-0">
+                            <div className="truncate text-sm text-white/80">{mainIdea.title}</div>
+                            <div className="text-[11px] uppercase tracking-[0.08em] text-white/35">
+                              {mainIdea.state}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex shrink-0 items-center gap-2">
+                          <span className="rounded-full bg-white/10 px-2 py-0.5 text-xs text-white/60">
+                            {mainIdea.ideas.length} ideas
+                          </span>
+                          <span className="rounded-full bg-white/10 px-2 py-0.5 text-xs text-white/60">
+                            {totalEntryCount} entries
+                          </span>
+                        </div>
+                      </button>
+                    );
+                  })
+                ) : (
+                  <div className="flex h-full items-center justify-center px-4 text-center text-sm text-white/30">
+                    No ideas yet
+                  </div>
+                )}
+              </div>
+              <div className="border-t border-white/10 px-4 pb-4 pt-3">
                 <button
                   type="button"
                   onClick={() => { console.log('enter storm'); }}
-                  className="mb-3 w-full py-2 rounded-lg border border-white/10 text-white/50 text-xs hover:border-white/20 hover:text-white/70"
+                  className="mb-3 w-full rounded-lg border border-white/10 py-2 text-xs text-white/50 hover:border-white/20 hover:text-white/70"
                 >
                   Enter Storm
                 </button>
                 <button
                   type="button"
                   onClick={() => setModalMode('mainIdea')}
-                  className="w-full py-2 rounded-lg border border-white/10 text-white/50 text-xs hover:border-white/20 hover:text-white/70"
+                  className="w-full rounded-lg border border-white/10 py-2 text-xs text-white/50 hover:border-white/20 hover:text-white/70"
                 >
                   + New Main Idea
                 </button>

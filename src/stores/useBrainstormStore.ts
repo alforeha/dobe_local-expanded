@@ -25,6 +25,7 @@ interface BrainstormActions {
   deleteMainIdea: (stormId: string, mainIdeaId: string) => void;
   deleteIdea: (stormId: string, ideaId: string) => void;
   renameStorm: (stormId: string, name: string) => void;
+  setStormType: (stormId: string, type: StormType) => void;
   setStormCategory: (stormId: string, category: StormCategory) => void;
   setStormState: (stormId: string, state: StormState) => void;
   renameMainIdea: (stormId: string, mainIdeaId: string, name: string) => void;
@@ -466,6 +467,23 @@ export const useBrainstormStore = create<BrainstormState & BrainstormActions>()(
               [stormId]: {
                 ...storm,
                 name,
+              },
+            },
+          };
+        });
+      },
+
+      setStormType: (stormId, type) => {
+        set((state) => {
+          const storm = state.storms[stormId];
+          if (!storm) return state;
+
+          return {
+            storms: {
+              ...state.storms,
+              [stormId]: {
+                ...storm,
+                type,
               },
             },
           };
