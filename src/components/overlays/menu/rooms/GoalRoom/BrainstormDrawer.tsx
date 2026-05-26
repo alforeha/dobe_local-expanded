@@ -71,6 +71,13 @@ const IDEA_STATE_SWATCH: Record<IdeaState, string> = {
   parked: '#9ca3af',
   others: '#ffffff',
 };
+const ENTRY_STATE_SWATCH: Record<EntryState, string> = {
+  outcome: '#10b981',
+  obstacle: '#ef4444',
+  question: '#f59e0b',
+  solved: '#6366f1',
+  others: '#64748b',
+};
 
 function formatIdeaStateLabel(state: IdeaState) {
   return state.replace(/-/g, ' ');
@@ -78,6 +85,10 @@ function formatIdeaStateLabel(state: IdeaState) {
 
 function formatIdeaTypeLabel(type: IdeaType) {
   return type === 'others' ? 'Color Code' : type;
+}
+
+function formatEntryStateLabel(state: EntryState) {
+  return state.replace(/-/g, ' ');
 }
 
 function getEntryBadgeStyle(state: EntryState) {
@@ -169,80 +180,6 @@ function BrainstormNameModal({
             className="flex-1 rounded-lg bg-blue-500 px-4 py-2 text-sm font-medium text-white hover:bg-blue-600"
           >
             Create
-          </button>
-        </div>
-      </div>
-    </PopupShell>
-  );
-}
-
-function BrainstormEntryModal({
-  onConfirm,
-  onClose,
-}: {
-  onConfirm: (content: string, state: EntryState) => void;
-  onClose: () => void;
-}) {
-  const [entryContent, setEntryContent] = useState('');
-  const [entryState, setEntryState] = useState<EntryState>('outcome');
-
-  function handleConfirm() {
-    const content = entryContent.trim();
-    if (!content) return;
-    onConfirm(content, entryState);
-  }
-
-  return (
-    <PopupShell title="Add Entry" onClose={onClose}>
-      <div className="space-y-3">
-        <input
-          type="text"
-          value={entryContent}
-          onChange={(event) => setEntryContent(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter') {
-              event.preventDefault();
-              handleConfirm();
-            }
-            if (event.key === 'Escape') {
-              event.preventDefault();
-              onClose();
-            }
-          }}
-          placeholder="Entry content..."
-          autoFocus
-          className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
-        />
-        <div className="flex flex-wrap gap-2">
-          {ENTRY_STATES.map((state) => {
-            const isActive = entryState === state;
-            return (
-              <button
-                key={state}
-                type="button"
-                onClick={() => setEntryState(state)}
-                className="rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors"
-                style={isActive ? getEntryBadgeStyle(state) : { background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.7)' }}
-              >
-                {state}
-              </button>
-            );
-          })}
-        </div>
-        <div className="flex gap-2 pt-1">
-          <button
-            type="button"
-            onClick={onClose}
-            className="flex-1 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={handleConfirm}
-            className="flex-1 rounded-lg bg-blue-500 px-4 py-2 text-sm font-medium text-white hover:bg-blue-600"
-          >
-            Add
           </button>
         </div>
       </div>
@@ -386,6 +323,8 @@ export function BrainstormDrawer({
   setConfirmDelete,
 }: BrainstormDrawerProps) {
   const addMainIdea = useBrainstormStore((state) => state.addMainIdea);
+  const addIdea = useBrainstormStore((state) => state.addIdea);
+  const addChildIdea = useBrainstormStore((state) => state.addChildIdea);
   const [addingMainIdea, setAddingMainIdea] = useState(false);
   const [newMainIdeaTitle, setNewMainIdeaTitle] = useState('');
   const [newMainIdeaState, setNewMainIdeaState] = useState<IdeaState>('open');
@@ -394,6 +333,17 @@ export function BrainstormDrawer({
   const [ideaTypePickerOpen, setIdeaTypePickerOpen] = useState(false);
   const [draftCustomStateColor, setDraftCustomStateColor] = useState('#ffffff');
   const [draftCustomColor, setDraftCustomColor] = useState('#ffffff');
+  const [addingChildIdea, setAddingChildIdea] = useState(false);
+  const [newChildIdeaTitle, setNewChildIdeaTitle] = useState('');
+  const [newChildIdeaState, setNewChildIdeaState] = useState<IdeaState>('open');
+  const [newChildIdeaType, setNewChildIdeaType] = useState<IdeaType>('insight');
+  const [newChildIdeaCustomColor, setNewChildIdeaCustomColor] = useState('#ffffff');
+  const [newChildIdeaCustomStateColor, setNewChildIdeaCustomStateColor] = useState('#ffffff');
+  const [childIdeaTypePickerOpen, setChildIdeaTypePickerOpen] = useState(false);
+  const [childIdeaStatePickerOpen, setChildIdeaStatePickerOpen] = useState(false);
+  const [addingEntry, setAddingEntry] = useState(false);
+  const [newEntryContent, setNewEntryContent] = useState('');
+  const [newEntryState, setNewEntryState] = useState<EntryState>('outcome');
 
   function resetMainIdeaForm() {
     setAddingMainIdea(false);
@@ -428,9 +378,87 @@ export function BrainstormDrawer({
     resetMainIdeaForm();
   }
 
+  function resetChildIdeaForm() {
+    setAddingChildIdea(false);
+    setNewChildIdeaTitle('');
+    setNewChildIdeaState('open');
+    setNewChildIdeaType('insight');
+    setNewChildIdeaCustomColor('#ffffff');
+    setNewChildIdeaCustomStateColor('#ffffff');
+    setChildIdeaTypePickerOpen(false);
+    setChildIdeaStatePickerOpen(false);
+  }
+
+  function resetEntryForm() {
+    setAddingEntry(false);
+    setNewEntryContent('');
+    setNewEntryState('outcome');
+    setChildIdeaStatePickerOpen(false);
+  }
+
+  function handleSaveChildIdea() {
+    const trimmedTitle = newChildIdeaTitle.trim();
+    if (!selectedStormId || !selectedMainIdeaId || !trimmedTitle) return;
+
+    const customProps: Record<string, string> = {};
+    if (newChildIdeaState === 'others') {
+      customProps.stateColor = newChildIdeaCustomStateColor;
+    }
+    if (newChildIdeaType === 'others') {
+      customProps.typeColor = newChildIdeaCustomColor;
+    }
+
+    const nextCustomProps = Object.keys(customProps).length > 0 ? customProps : undefined;
+
+    if (selectedIdeaId) {
+      addChildIdea(
+        selectedStormId,
+        selectedIdeaId,
+        trimmedTitle,
+        newChildIdeaState,
+        newChildIdeaType,
+        nextCustomProps,
+      );
+    } else {
+      addIdea(
+        selectedStormId,
+        selectedMainIdeaId,
+        trimmedTitle,
+        newChildIdeaState,
+        newChildIdeaType,
+        nextCustomProps,
+      );
+    }
+
+    resetChildIdeaForm();
+  }
+
+  function handleSaveEntry() {
+    const trimmedContent = newEntryContent.trim();
+    if (!selectedMainIdeaId || !trimmedContent) return;
+
+    if (selectedIdeaId) {
+      onAddEntry(selectedIdeaId, trimmedContent, newEntryState);
+    } else {
+      onAddEntryToMainIdea(selectedMainIdeaId, {
+        content: trimmedContent,
+        state: newEntryState,
+        pointsTo: [],
+      });
+    }
+
+    resetEntryForm();
+  }
+
   useEffect(() => {
     onAddingMainIdeaChange?.(addingMainIdea);
   }, [addingMainIdea, onAddingMainIdeaChange]);
+
+  useEffect(() => {
+    if (addingMainIdea && (selectedMainIdeaId !== null || selectedIdeaId !== null)) {
+      resetMainIdeaForm();
+    }
+  }, [addingMainIdea, selectedMainIdeaId, selectedIdeaId]);
 
   useEffect(() => {
     onDraftMainIdeaTitleChange?.(newMainIdeaTitle);
@@ -445,21 +473,65 @@ export function BrainstormDrawer({
   }, [newMainIdeaType, onDraftMainIdeaTypeChange]);
 
   const anyMainIdeaPickerOpen = ideaStatePickerOpen || ideaTypePickerOpen;
+  const anyChildIdeaPickerOpen = childIdeaStatePickerOpen || childIdeaTypePickerOpen;
+  const isInlineIdeaFormOpen = addingChildIdea || addingEntry;
 
   return (
     <>
       {selectedIdea || selectedMainIdea ? (
-        <div className="flex items-center justify-between px-4 py-4">
-          <span className="text-white/80 text-sm font-medium">
-            {selectedIdea?.title ?? selectedMainIdea?.title ?? 'Brainstorm'}
-          </span>
-          <button
-            type="button"
-            onClick={() => onBack()}
-            className="text-white/40 hover:text-white/80 text-xs px-2 py-1"
-          >
-            BACK
-          </button>
+        <div className="px-4 py-4">
+          {selectedStorm ? (
+            <div className="flex items-center justify-between gap-3">
+
+              <div className="flex min-w-0 flex-1 items-center">
+                <IconDisplay iconKey={`storm-brain-${selectedStorm.state}`} size={18} className="-mr-1 shrink-0 opacity-90" />
+                <div className="relative flex-1">
+                  <div className="flex h-4 w-full overflow-hidden rounded-full bg-white/5">
+                    {selectedStorm.brainWidthCap > 0 ? (
+                      <>
+                        <div
+                          className="h-full bg-white/20"
+                          style={{ width: `${Math.max(0, Math.min(100, (selectedStorm.brainWidthStaked / selectedStorm.brainWidthCap) * 100))}%` }}
+                        />
+                        <div
+                          className="h-full bg-blue-400/70"
+                          style={{ width: `${Math.max(0, Math.min(100, ((selectedStorm.brainWidthPoints - selectedStorm.brainWidthStaked) / selectedStorm.brainWidthCap) * 100))}%` }}
+                        />
+                        <div
+                          className="h-full bg-white/5"
+                          style={{ width: `${Math.max(0, Math.min(100, ((selectedStorm.brainWidthCap - selectedStorm.brainWidthPoints) / selectedStorm.brainWidthCap) * 100))}%` }}
+                        />
+                      </>
+                    ) : (
+                      <div className="h-full w-full bg-white/5" />
+                    )}
+                  </div>
+                  <div className="absolute inset-y-0 right-1 flex items-center text-[10px] text-white/70">
+                    {selectedStorm.brainWidthPoints} / {selectedStorm.brainWidthCap}
+                  </div>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  if (addingChildIdea) {
+                    resetChildIdeaForm();
+                    return;
+                  }
+                  if (addingEntry) {
+                    resetEntryForm();
+                    return;
+                  }
+                  onBack();
+                }}
+                className="text-white/40 hover:text-white/80 text-xs px-2 py-1"
+              >
+                BACK
+              </button>
+
+            </div>
+          ) : null}
         </div>
       ) : addingStorm || editingStorm ? (
         <div className="px-4 py-4">
@@ -524,6 +596,7 @@ export function BrainstormDrawer({
                 }
                 if (stormCanvasOpen) {
                   onExitStorm();
+                  return;
                 }
                 onSelectStorm(null);
               }}
@@ -814,101 +887,103 @@ export function BrainstormDrawer({
             </div>
           </div>
         </>
-      ) : selectedMainIdea === null ? (
+      ) : selectedMainIdea === null  ? (
         <div className="flex flex-1 flex-col overflow-hidden">
-          <div className="flex items-start justify-between border-b border-white/10 px-4 py-3">
-            <div className="flex min-w-0 flex-1 items-start gap-3">
-              <IconDisplay iconKey={`storm-${selectedStorm?.type ?? 'general'}`} size={24} className="shrink-0 opacity-90" />
-              <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  <span
-                    className="h-2 w-2 rounded-full"
-                    style={{ backgroundColor: selectedStorm?.category.color ?? '#7c3aed' }}
-                  />
-                  <span className="text-xs text-white/50">{selectedStorm?.category.name}</span>
-                </div>
-                <div className="truncate text-base font-medium text-white">
-                  {selectedStorm?.name}
+          {!stormCanvasOpen ? (
+            <div className="flex items-start justify-between border-b border-white/10 px-4 py-3">
+              <div className="flex min-w-0 flex-1 items-start gap-3">
+                <IconDisplay iconKey={`storm-${selectedStorm?.type ?? 'general'}`} size={24} className="shrink-0 opacity-90" />
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span
+                      className="h-2 w-2 rounded-full"
+                      style={{ backgroundColor: selectedStorm?.category.color ?? '#7c3aed' }}
+                    />
+                    <span className="text-xs text-white/50">{selectedStorm?.category.name}</span>
+                  </div>
+                  <div className="truncate text-base font-medium text-white">
+                    {selectedStorm?.name}
+                  </div>
                 </div>
               </div>
-            </div>
-            <div
-              className="relative"
-              tabIndex={0}
-              onBlur={(event) => {
-                if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
-                  setActionMenuOpen(false);
-                  setConfirmDelete(false);
-                }
-              }}
-            >
-              <button
-                type="button"
-                onClick={() => {
-                  setActionMenuOpen((open) => !open);
-                  setConfirmDelete(false);
+              <div
+                className="relative"
+                tabIndex={0}
+                onBlur={(event) => {
+                  if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+                    setActionMenuOpen(false);
+                    setConfirmDelete(false);
+                  }
                 }}
-                className="px-2 py-1 text-xs text-white/40 hover:text-white/80"
               >
-                ...
-              </button>
-              {actionMenuOpen ? (
-                <div className="absolute right-0 top-8 z-50 min-w-[140px] overflow-hidden rounded-lg border border-white/10 bg-gray-900">
-                  {!confirmDelete ? (
-                    <>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (!selectedStorm) return;
-                          brainstormDraftRef.current = {
-                            type: selectedStorm.type,
-                            category: selectedStorm.category,
-                          };
-                          setEditingStorm(true);
-                          setAddingStorm(true);
-                          setActionMenuOpen(false);
-                        }}
-                        className="w-full px-4 py-2.5 text-left text-sm text-white/70 hover:bg-white/5"
-                      >
-                        Edit Storm
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setConfirmDelete(true)}
-                        className="w-full px-4 py-2.5 text-left text-sm text-red-400/80 hover:bg-white/5"
-                      >
-                        Delete
-                      </button>
-                    </>
-                  ) : (
-                    <div className="px-4 py-3">
-                      <p className="pb-2 text-xs text-white/50">Confirm delete?</p>
-                      <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActionMenuOpen((open) => !open);
+                    setConfirmDelete(false);
+                  }}
+                  className="px-2 py-1 text-xs text-white/40 hover:text-white/80"
+                >
+                  ...
+                </button>
+                {actionMenuOpen ? (
+                  <div className="absolute right-0 top-8 z-50 min-w-[140px] overflow-hidden rounded-lg border border-white/10 bg-gray-900">
+                    {!confirmDelete ? (
+                      <>
                         <button
                           type="button"
                           onClick={() => {
-                            onDeleteStorm();
+                            if (!selectedStorm) return;
+                            brainstormDraftRef.current = {
+                              type: selectedStorm.type,
+                              category: selectedStorm.category,
+                            };
+                            setEditingStorm(true);
+                            setAddingStorm(true);
                             setActionMenuOpen(false);
-                            setConfirmDelete(false);
                           }}
-                          className="flex-1 rounded-md bg-red-500/80 px-3 py-1.5 text-xs text-white hover:bg-red-500"
+                          className="w-full px-4 py-2.5 text-left text-sm text-white/70 hover:bg-white/5"
                         >
-                          Delete
+                          Edit Storm
                         </button>
                         <button
                           type="button"
-                          onClick={() => setConfirmDelete(false)}
-                          className="flex-1 rounded-md border border-white/10 px-3 py-1.5 text-xs text-white/60 hover:bg-white/5"
+                          onClick={() => setConfirmDelete(true)}
+                          className="w-full px-4 py-2.5 text-left text-sm text-red-400/80 hover:bg-white/5"
                         >
-                          Cancel
+                          Delete
                         </button>
+                      </>
+                    ) : (
+                      <div className="px-4 py-3">
+                        <p className="pb-2 text-xs text-white/50">Confirm delete?</p>
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              onDeleteStorm();
+                              setActionMenuOpen(false);
+                              setConfirmDelete(false);
+                            }}
+                            className="flex-1 rounded-md bg-red-500/80 px-3 py-1.5 text-xs text-white hover:bg-red-500"
+                          >
+                            Delete
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setConfirmDelete(false)}
+                            className="flex-1 rounded-md border border-white/10 px-3 py-1.5 text-xs text-white/60 hover:bg-white/5"
+                          >
+                            Cancel
+                          </button>
+                        </div>
                       </div>
-                    </div>
-                  )}
-                </div>
-              ) : null}
+                    )}
+                  </div>
+                ) : null}
+              </div>
             </div>
-          </div>
+          ) : null}
           <div className="flex-1 overflow-y-auto">
             {addingMainIdea ? (
               <div className="space-y-4 px-4 py-4">
@@ -1136,197 +1211,404 @@ export function BrainstormDrawer({
         </div>
       ) : (
         <div className="flex-1 overflow-y-auto px-4 py-2">
-          <div className="flex items-center justify-between border-b border-white/5 pb-1 pt-2">
-            <div className="flex gap-4">
-              {(['entries', 'ideas'] as const).map((tab) => (
-                <button
-                  key={tab}
-                  type="button"
-                  onClick={() => setIdeaActiveTab(tab)}
-                  className={`border-b-2 pb-0.5 text-xs font-medium transition-colors ${
-                    ideaActiveTab === tab
-                      ? 'border-emerald-400 text-emerald-300'
-                      : 'border-transparent text-white/35 hover:text-white/60'
-                  }`}
+          {!isInlineIdeaFormOpen ? (
+            <>
+              <div className="flex items-center justify-between border-b border-white/5 pb-1 pt-2">
+                <div className="flex gap-4">
+                  {(['entries', 'ideas'] as const).map((tab) => (
+                    <button
+                      key={tab}
+                      type="button"
+                      onClick={() => setIdeaActiveTab(tab)}
+                      className={`border-b-2 pb-0.5 text-xs font-medium transition-colors ${
+                        ideaActiveTab === tab
+                          ? 'border-emerald-400 text-emerald-300'
+                          : 'border-transparent text-white/35 hover:text-white/60'
+                      }`}
+                    >
+                      {tab === 'entries' ? 'Entries' : 'Ideas'}
+                    </button>
+                  ))}
+                </div>
+                <div
+                  className="relative"
+                  tabIndex={0}
+                  onBlur={(event) => {
+                    if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+                      setActionMenuOpen(false);
+                      setConfirmDelete(false);
+                    }
+                  }}
                 >
-                  {tab === 'entries' ? 'Entries' : 'Ideas'}
-                </button>
-              ))}
-            </div>
-            <div
-              className="relative"
-              tabIndex={0}
-              onBlur={(event) => {
-                if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
-                  setActionMenuOpen(false);
-                  setConfirmDelete(false);
-                }
-              }}
-            >
-              <button
-                type="button"
-                onClick={() => {
-                  setActionMenuOpen((open) => !open);
-                  setConfirmDelete(false);
-                }}
-                className="text-white/40 hover:text-white/80 px-2 py-1 text-xs"
-              >
-                ...
-              </button>
-              {actionMenuOpen ? (
-                <div className="absolute right-0 top-8 z-50 min-w-[140px] overflow-hidden rounded-lg border border-white/10 bg-gray-900">
-                  {!confirmDelete ? (
-                    <>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setModalMode(selectedIdea ? 'childIdea' : 'idea');
-                          setActionMenuOpen(false);
-                        }}
-                        className="w-full px-4 py-2.5 text-left text-white/70 text-sm hover:bg-white/5"
-                      >
-                        Add Idea
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setModalMode('entry');
-                          setActionMenuOpen(false);
-                        }}
-                        className="w-full px-4 py-2.5 text-left text-white/70 text-sm hover:bg-white/5"
-                      >
-                        Add Entry
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setModalMode('rename');
-                          setActionMenuOpen(false);
-                        }}
-                        className="w-full px-4 py-2.5 text-left text-white/70 text-sm hover:bg-white/5"
-                      >
-                        Rename
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setConfirmDelete(true)}
-                        className="w-full px-4 py-2.5 text-left text-red-400/80 text-sm hover:bg-white/5"
-                      >
-                        Delete
-                      </button>
-                    </>
-                  ) : (
-                    <div className="px-4 py-3">
-                      <p className="pb-2 text-xs text-white/50">Confirm delete?</p>
-                      <div className="flex gap-2">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (selectedIdeaId !== null) {
-                              onDeleteIdea();
-                            } else if (selectedMainIdeaId !== null) {
-                              onDeleteMainIdea();
-                            } else if (selectedStormId !== null) {
-                              onDeleteStorm();
-                            }
-                            setConfirmDelete(false);
-                            setActionMenuOpen(false);
-                          }}
-                          className="flex-1 rounded border border-red-500/20 px-2 py-1.5 text-xs text-red-300 hover:bg-white/5"
-                        >
-                          Yes
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setConfirmDelete(false);
-                            setActionMenuOpen(false);
-                          }}
-                          className="flex-1 rounded border border-white/10 px-2 py-1.5 text-xs text-white/60 hover:bg-white/5"
-                        >
-                          No
-                        </button>
-                      </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActionMenuOpen((open) => !open);
+                      setConfirmDelete(false);
+                    }}
+                    className="px-2 py-1 text-xs text-white/40 hover:text-white/80"
+                  >
+                    ...
+                  </button>
+                  {actionMenuOpen ? (
+                    <div className="absolute right-0 top-8 z-50 min-w-[140px] overflow-hidden rounded-lg border border-white/10 bg-gray-900">
+                      {!confirmDelete ? (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              console.log('Enter Idea');
+                              setActionMenuOpen(false);
+                            }}
+                            className="w-full px-4 py-2.5 text-left text-sm text-white/70 hover:bg-white/5"
+                          >
+                            Enter Idea
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              console.log('Edit');
+                              setActionMenuOpen(false);
+                            }}
+                            className="w-full px-4 py-2.5 text-left text-sm text-white/70 hover:bg-white/5"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setConfirmDelete(true)}
+                            className="w-full px-4 py-2.5 text-left text-sm text-red-400/80 hover:bg-white/5"
+                          >
+                            Delete
+                          </button>
+                        </>
+                      ) : (
+                        <div className="px-4 py-3">
+                          <p className="pb-2 text-xs text-white/50">Confirm delete?</p>
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (selectedIdeaId !== null) {
+                                  onDeleteIdea();
+                                } else if (selectedMainIdeaId !== null) {
+                                  onDeleteMainIdea();
+                                } else if (selectedStormId !== null) {
+                                  onDeleteStorm();
+                                }
+                                setConfirmDelete(false);
+                                setActionMenuOpen(false);
+                              }}
+                              className="flex-1 rounded border border-red-500/20 px-2 py-1.5 text-xs text-red-300 hover:bg-white/5"
+                            >
+                              Yes
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setConfirmDelete(false);
+                                setActionMenuOpen(false);
+                              }}
+                              className="flex-1 rounded border border-white/10 px-2 py-1.5 text-xs text-white/60 hover:bg-white/5"
+                            >
+                              No
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     </div>
+                  ) : null}
+                </div>
+              </div>
+              {ideaActiveTab === 'entries' ? (
+                <div className="pb-3 pt-2">
+                  {currentEntries.length > 0 ? (
+                    currentEntries.map((entry) => (
+                      <div key={entry.id} className="flex items-center gap-2 py-1.5">
+                        <span className="min-w-0 flex-1 truncate text-xs text-white/50">
+                          {entry.content.length > 60 ? `${entry.content.slice(0, 60)}...` : entry.content}
+                        </span>
+                        <span
+                          className="shrink-0 rounded px-1.5 py-0.5 text-[10px] uppercase"
+                          style={getEntryBadgeStyle(entry.state)}
+                        >
+                          {entry.state}
+                        </span>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="py-2 text-xs text-white/35">No entries yet</div>
                   )}
+                </div>
+              ) : (
+                <div className="pb-3 pt-2">
+                  {currentChildIdeas.length > 0 ? (
+                    currentChildIdeas.map((idea) => (
+                      <button
+                        key={idea.id}
+                        type="button"
+                        onClick={() => onSelectIdea(idea.id)}
+                        className="flex w-full items-center gap-3 py-2 text-left"
+                      >
+                        <span className="flex-1 text-sm text-white/75">{idea.title}</span>
+                        <span className="text-xs text-white/35">
+                          {idea.entries.length} entr{idea.entries.length === 1 ? 'y' : 'ies'}
+                        </span>
+                      </button>
+                    ))
+                  ) : (
+                    <div className="py-2 text-xs text-white/35">No ideas yet</div>
+                  )}
+                </div>
+              )}
+            </>
+          ) : null}
+          {addingChildIdea ? (
+            <div className="space-y-4 pb-3 pt-2">
+              {!anyChildIdeaPickerOpen ? (
+                <input
+                  type="text"
+                  value={newChildIdeaTitle}
+                  onChange={(event) => setNewChildIdeaTitle(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') {
+                      event.preventDefault();
+                      handleSaveChildIdea();
+                    }
+                    if (event.key === 'Escape') {
+                      event.preventDefault();
+                      resetChildIdeaForm();
+                    }
+                  }}
+                  placeholder="Idea title..."
+                  autoFocus
+                  className="w-full rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-white/20"
+                />
+              ) : null}
+              {!childIdeaStatePickerOpen ? (
+                <div className="relative space-y-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setChildIdeaTypePickerOpen((open) => !open);
+                      setChildIdeaStatePickerOpen(false);
+                    }}
+                    className="flex w-full items-center justify-between gap-3 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-left text-sm text-white hover:bg-white/[0.05]"
+                  >
+                    <span className="flex min-w-0 items-center gap-3">
+                      <span className="shrink-0 text-base leading-none">{resolveIcon(`idea-${newChildIdeaType}`)}</span>
+                      <span className="truncate">{formatIdeaTypeLabel(newChildIdeaType)}</span>
+                    </span>
+                    <span className="text-xs text-white/40">Type</span>
+                  </button>
+                  {childIdeaTypePickerOpen ? (
+                    <div className="absolute left-0 right-0 top-full z-10 mt-2 overflow-hidden rounded-lg border border-white/10 bg-[#161624] shadow-xl">
+                      {newChildIdeaType === 'others' ? (
+                        <div className="border-b border-white/10 p-3">
+                          <div className="flex justify-start">
+                            <ColorPicker
+                              value={newChildIdeaCustomColor}
+                              onChange={(color) => {
+                                setNewChildIdeaCustomColor(color);
+                              }}
+                              align="left"
+                            />
+                          </div>
+                        </div>
+                      ) : null}
+                      {IDEA_TYPES.map((type) => (
+                        <button
+                          key={type}
+                          type="button"
+                          onClick={() => {
+                            setNewChildIdeaType(type);
+                            setChildIdeaTypePickerOpen(false);
+                          }}
+                          className="flex w-full items-center gap-3 px-3 py-2 text-left text-sm text-white hover:bg-white/[0.05]"
+                        >
+                          <span className="shrink-0 text-base leading-none">{resolveIcon(`idea-${type}`)}</span>
+                          <span>{formatIdeaTypeLabel(type)}</span>
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+              {!childIdeaTypePickerOpen ? (
+                <div className="relative space-y-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setChildIdeaStatePickerOpen((open) => !open);
+                      setChildIdeaTypePickerOpen(false);
+                    }}
+                    className="flex w-full items-center justify-between gap-3 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-left text-sm text-white hover:bg-white/[0.05]"
+                  >
+                    <span className="flex min-w-0 items-center gap-3">
+                      <span
+                        className="inline-block h-3 w-3 shrink-0 rounded-full"
+                        style={{
+                          backgroundColor:
+                            newChildIdeaState === 'others'
+                              ? newChildIdeaCustomStateColor
+                              : IDEA_STATE_SWATCH[newChildIdeaState],
+                        }}
+                      />
+                      <span className="truncate">{formatIdeaStateLabel(newChildIdeaState)}</span>
+                    </span>
+                    <span className="text-xs text-white/40">State</span>
+                  </button>
+                  {childIdeaStatePickerOpen ? (
+                    <div className="absolute left-0 right-0 top-full z-10 mt-2 overflow-hidden rounded-lg border border-white/10 bg-[#161624] shadow-xl">
+                      {newChildIdeaState === 'others' ? (
+                        <div className="border-b border-white/10 p-3">
+                          <div className="flex justify-start">
+                            <ColorPicker
+                              value={newChildIdeaCustomStateColor}
+                              onChange={(color) => {
+                                setNewChildIdeaCustomStateColor(color);
+                              }}
+                              align="left"
+                            />
+                          </div>
+                        </div>
+                      ) : null}
+                      {IDEA_STATES.map((state) => (
+                        <button
+                          key={state}
+                          type="button"
+                          onClick={() => {
+                            setNewChildIdeaState(state);
+                            setChildIdeaStatePickerOpen(false);
+                          }}
+                          className="flex w-full items-center gap-3 px-3 py-2 text-left text-sm text-white hover:bg-white/[0.05]"
+                        >
+                          <span
+                            className="inline-block h-3 w-3 shrink-0 rounded-full"
+                            style={{
+                              backgroundColor:
+                                state === 'others'
+                                  ? newChildIdeaCustomStateColor
+                                  : IDEA_STATE_SWATCH[state],
+                            }}
+                          />
+                          <span>{formatIdeaStateLabel(state)}</span>
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
                 </div>
               ) : null}
             </div>
-          </div>
-          {ideaActiveTab === 'entries' ? (
-            <div className="pb-3 pt-2">
-              {currentEntries.length > 0 ? (
-                currentEntries.map((entry) => (
-                  <div key={entry.id} className="flex items-center gap-2 py-1.5">
-                    <span className="min-w-0 flex-1 truncate text-xs text-white/50">
-                      {entry.content.length > 60 ? `${entry.content.slice(0, 60)}...` : entry.content}
-                    </span>
+          ) : null}
+          {addingEntry ? (
+            <div className="space-y-4 pb-3 pt-2">
+              <textarea
+                value={newEntryContent}
+                onChange={(event) => setNewEntryContent(event.target.value)}
+                onKeyDown={(event) => {
+                  if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+                    event.preventDefault();
+                    handleSaveEntry();
+                  }
+                  if (event.key === 'Escape') {
+                    event.preventDefault();
+                    resetEntryForm();
+                  }
+                }}
+                placeholder="Entry content..."
+                autoFocus
+                rows={4}
+                className="w-full resize-none rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-white/20"
+              />
+              <div className="relative space-y-2">
+                <button
+                  type="button"
+                  onClick={() => setChildIdeaStatePickerOpen((open) => !open)}
+                  className="flex w-full items-center justify-between gap-3 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-left text-sm text-white hover:bg-white/[0.05]"
+                >
+                  <span className="flex min-w-0 items-center gap-3">
                     <span
-                      className="shrink-0 rounded px-1.5 py-0.5 text-[10px] uppercase"
-                      style={getEntryBadgeStyle(entry.state)}
-                    >
-                      {entry.state}
-                    </span>
+                      className="inline-block h-3 w-3 shrink-0 rounded-full"
+                      style={{ backgroundColor: ENTRY_STATE_SWATCH[newEntryState] }}
+                    />
+                    <span className="truncate">{formatEntryStateLabel(newEntryState)}</span>
+                  </span>
+                  <span className="text-xs text-white/40">State</span>
+                </button>
+                {childIdeaStatePickerOpen ? (
+                  <div className="absolute left-0 right-0 top-full z-10 mt-2 overflow-hidden rounded-lg border border-white/10 bg-[#161624] shadow-xl">
+                    {ENTRY_STATES.map((state) => (
+                      <button
+                        key={state}
+                        type="button"
+                        onClick={() => {
+                          setNewEntryState(state);
+                          setChildIdeaStatePickerOpen(false);
+                        }}
+                        className="flex w-full items-center gap-3 px-3 py-2 text-left text-sm text-white hover:bg-white/[0.05]"
+                      >
+                        <span
+                          className="inline-block h-3 w-3 shrink-0 rounded-full"
+                          style={{ backgroundColor: ENTRY_STATE_SWATCH[state] }}
+                        />
+                        <span>{formatEntryStateLabel(state)}</span>
+                      </button>
+                    ))}
                   </div>
-                ))
-              ) : (
-                <div className="py-2 text-xs text-white/35">No entries yet</div>
-              )}
+                ) : null}
+              </div>
             </div>
-          ) : (
-            <div className="pb-3 pt-2">
-              {currentChildIdeas.length > 0 ? (
-                currentChildIdeas.map((idea) => (
-                  <button
-                    key={idea.id}
-                    type="button"
-                    onClick={() => onSelectIdea(idea.id)}
-                    className="flex w-full items-center gap-3 py-2 text-left"
-                  >
-                    <span className="flex-1 text-sm text-white/75">{idea.title}</span>
-                    <span className="text-xs text-white/35">
-                      {idea.entries.length} entr{idea.entries.length === 1 ? 'y' : 'ies'}
-                    </span>
-                  </button>
-                ))
-              ) : (
-                <div className="py-2 text-xs text-white/35">No ideas yet</div>
-              )}
-            </div>
-          )}
-          {selectedIdeaId && stormCanvasOpen ? (
-            <div className="border-t border-white/10 pb-3 pt-3">
+          ) : null}
+          <div className="border-t border-white/10 pb-3 pt-3">
+            {isInlineIdeaFormOpen ? (
+              <div>
+                <button
+                  type="button"
+                  onClick={addingChildIdea ? handleSaveChildIdea : handleSaveEntry}
+                  disabled={addingChildIdea ? !newChildIdeaTitle.trim() : !newEntryContent.trim()}
+                  className={`w-full rounded-lg py-2 text-xs ${
+                    (addingChildIdea ? newChildIdeaTitle.trim() : newEntryContent.trim())
+                      ? 'border border-white/10 text-white/70 hover:border-white/20 hover:text-white'
+                      : 'cursor-not-allowed border border-white/5 text-white/25'
+                  }`}
+                >
+                  Save
+                </button>
+              </div>
+            ) : ideaActiveTab === 'ideas' ? (
               <button
                 type="button"
                 onClick={() => {
-                  console.log('Enter Idea');
+                  resetEntryForm();
+                  resetChildIdeaForm();
+                  setAddingChildIdea(true);
                 }}
                 className="w-full rounded-lg border border-white/10 py-2 text-xs text-white/50 hover:border-white/20 hover:text-white/70"
               >
-                Enter Idea
+                Add Idea
               </button>
-            </div>
-          ) : null}
+            ) : (
+              <button
+                type="button"
+                onClick={() => {
+                  resetChildIdeaForm();
+                  resetEntryForm();
+                  setAddingEntry(true);
+                }}
+                className="w-full rounded-lg border border-white/10 py-2 text-xs text-white/50 hover:border-white/20 hover:text-white/70"
+              >
+                Add Entry
+              </button>
+            )}
+          </div>
         </div>
       )}
-      {modalMode === 'entry' ? (
-        <BrainstormEntryModal
-          onConfirm={(content, state) => {
-            if (selectedIdea) {
-              onAddEntry(selectedIdea.id, content, state);
-            } else if (selectedMainIdea) {
-              onAddEntryToMainIdea(selectedMainIdea.id, { content, state, pointsTo: [] });
-            }
-            setModalMode(null);
-          }}
-          onClose={() => setModalMode(null)}
-        />
-      ) : null}
-      {modalMode !== null && modalMode !== 'entry' && modalMode !== 'mainIdea' ? (
+      {modalMode === 'storm' || modalMode === 'mainIdea' ? (
         <BrainstormNameModal
-          title={modalMode === 'storm' ? 'New Storm' : modalMode === 'idea' ? 'New Idea' : modalMode === 'childIdea' ? 'New Sub-Idea' : 'Rename'}
-          placeholder={modalMode === 'rename' ? (selectedIdea?.title ?? selectedMainIdea?.title ?? 'Enter a title...') : modalMode === 'storm' ? 'Storm name...' : 'Enter a title...'}
-          defaultValue={modalMode === 'rename' ? (selectedIdea?.title ?? selectedMainIdea?.title ?? '') : ''}
+          title={modalMode === 'storm' ? 'New Storm' : 'New Idea'}
+          placeholder={modalMode === 'storm' ? 'Storm name...' : 'Enter a title...'}
+          defaultValue=""
           defaultType="exploration"
           includeTypeSelector={modalMode === 'storm'}
           onConfirm={onHandleBrainstormModalConfirm}

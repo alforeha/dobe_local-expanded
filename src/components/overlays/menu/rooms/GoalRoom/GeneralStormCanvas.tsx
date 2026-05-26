@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { isImageIcon, resolveIcon } from '../../../../../constants/iconMap';
 import { useBrainstormStore } from '../../../../../stores/useBrainstormStore';
 import type { IdeaState, IdeaType, MainIdea } from '../../../../../types/brainstorm';
 import {
@@ -47,6 +48,13 @@ type BoundsNode = {
 };
 
 const CAMERA_LERP = 0.2;
+const IDEA_STATE_COLORS = {
+  open: '#4ade80',
+  'in-progress': '#60a5fa',
+  resolved: '#2dd4bf',
+  parked: '#9ca3af',
+  others: '#ffffff',
+} as const;
 
 function worldToScreen(
   wx: number,
@@ -149,9 +157,37 @@ export function GeneralStormCanvas({
   const draftCustomStateColorRef = useRef(draftCustomStateColor);
   const draftCustomColorRef = useRef(draftCustomColor);
   const [visible, setVisible] = useState(false);
+  const [pillBlurbOpen, setPillBlurbOpen] = useState(false);
+  const [ideaPillBlurbOpen, setIdeaPillBlurbOpen] = useState(false);
 
   const mainIdeas = useMemo(() => storm?.mainIdeas ?? {}, [storm]);
   const ideas = useMemo(() => storm?.ideas ?? {}, [storm]);
+  const stormTypeIcon = useMemo(() => resolveIcon(`storm-${storm?.type ?? 'others'}`), [storm?.type]);
+  const selectedPillIdea = useMemo(
+    () => (selectedIdeaId ? ideas[selectedIdeaId] ?? null : selectedMainIdeaId ? mainIdeas[selectedMainIdeaId] ?? null : null),
+    [ideas, mainIdeas, selectedIdeaId, selectedMainIdeaId],
+  );
+  const selectedPillIcon = useMemo(
+    () => (selectedPillIdea ? resolveIcon(`idea-${selectedPillIdea.type}`) : ''),
+    [selectedPillIdea],
+  );
+  const selectedPillBorderColor = useMemo(
+    () => selectedPillIdea?.customProperties?.stateColor ?? IDEA_STATE_COLORS[selectedPillIdea?.state ?? 'others'] ?? 'rgba(255,255,255,0.1)',
+    [selectedPillIdea],
+  );
+  const selectedPillMainIdea = useMemo(() => {
+    if (selectedIdeaId) {
+      return Object.values(mainIdeas).find((mainIdea) => mainIdea.ideas.includes(selectedIdeaId)) ?? null;
+    }
+    if (selectedMainIdeaId) {
+      return mainIdeas[selectedMainIdeaId] ?? null;
+    }
+    return null;
+  }, [mainIdeas, selectedIdeaId, selectedMainIdeaId]);
+  const selectedPillMainIdeaIcon = useMemo(
+    () => (selectedPillMainIdea ? resolveIcon(`idea-${selectedPillMainIdea.type}`) : ''),
+    [selectedPillMainIdea],
+  );
 
   useEffect(() => {
     selectedMainIdeaIdRef.current = selectedMainIdeaId;
@@ -189,6 +225,14 @@ export function GeneralStormCanvas({
     const timer = window.setTimeout(() => setVisible(true), 0);
     return () => window.clearTimeout(timer);
   }, []);
+
+  useEffect(() => {
+    setPillBlurbOpen(false);
+  }, [selectedStormId]);
+
+  useEffect(() => {
+    setIdeaPillBlurbOpen(false);
+  }, [selectedMainIdeaId, selectedIdeaId]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -394,33 +438,22 @@ export function GeneralStormCanvas({
 
       if (addingMainIdeaRef.current && draftMainIdeaLayoutRef.current) {
         const phantomLayout = draftMainIdeaLayoutRef.current;
-        const phantomScreen = phantomLayout
-          ? worldToScreen(
-              phantomLayout.x,
-              phantomLayout.y,
-              cameraRef.current,
-              canvasCenterX,
-              canvasCenterY,
-            )
-          : null;
 
-        if (addingMainIdeaRef.current && phantomLayout && phantomScreen) {
-          context.save();
-          context.setLineDash([4, 4]);
-          context.strokeStyle = '#ffffff';
-          context.globalAlpha = 0.6;
-          context.lineWidth = 1.5;
-          context.beginPath();
-          context.arc(
-            phantomScreen.x,
-            phantomScreen.y,
-            phantomLayout.radius * cameraRef.current.scale,
-            0,
-            Math.PI * 2,
-          );
-          context.stroke();
-          context.restore();
-        }
+        context.save();
+        context.setLineDash([4, 4]);
+        context.strokeStyle = '#ffffff';
+        context.globalAlpha = 0.6;
+        context.lineWidth = 1.5 / cameraRef.current.scale;
+        context.beginPath();
+        context.arc(
+          phantomLayout.x,
+          phantomLayout.y,
+          phantomLayout.radius,
+          0,
+          Math.PI * 2,
+        );
+        context.stroke();
+        context.restore();
       }
 
       mainIdeaLayoutsRef.current.forEach((layout) => {
@@ -464,6 +497,10 @@ export function GeneralStormCanvas({
     <div
       className="absolute inset-0 z-20 transition-opacity duration-300 ease-out"
       style={{ opacity: visible ? 1 : 0 }}
+      onClick={() => {
+        setPillBlurbOpen(false);
+        setIdeaPillBlurbOpen(false);
+      }}
       onPointerDown={(event) => {
         const canvas = canvasRef.current;
         if (!canvas) {
@@ -517,8 +554,128 @@ export function GeneralStormCanvas({
         className="absolute inset-0 h-full w-full"
       />
       <div className="absolute left-4 right-4 top-4 flex items-center justify-between pointer-events-none">
-        <div className="rounded-full border border-white/10 bg-black/35 px-3 py-1 text-xs text-white/55 backdrop-blur-sm">
-          {storm.name || 'General Storm'}
+        <div className="pointer-events-auto">
+          {selectedIdeaId || selectedMainIdeaId ? (
+            selectedPillIdea ? (
+              <>
+                <button
+                  type="button"
+                  onPointerDown={(event) => {
+                    event.stopPropagation();
+                  }}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    setIdeaPillBlurbOpen((open) => !open);
+                  }}
+                  className="flex items-center gap-2 rounded-full bg-black/35 px-3 py-1 text-xs text-white/55 backdrop-blur-sm"
+                  style={{ border: `1.5px solid ${selectedPillBorderColor}` }}
+                >
+                  {isImageIcon(selectedPillIcon) ? (
+                    <img
+                      src={selectedPillIcon}
+                      alt=""
+                      className="h-3.5 w-3.5 shrink-0 object-contain"
+                    />
+                  ) : (
+                    <span className="text-xs leading-none">{selectedPillIcon}</span>
+                  )}
+                  <span>{selectedPillIdea.title}</span>
+                </button>
+                {ideaPillBlurbOpen ? (
+                  <div
+                    className="mt-2 flex flex-col gap-2 rounded-lg px-3 py-2 text-xs text-white/70 backdrop-blur-sm"
+                    style={{
+                      backgroundColor: `${storm.category.color}26`,
+                      border: `1px solid ${storm.category.color}`,
+                      maxHeight: '40vh',
+                      overflowY: 'auto',
+                    }}
+                    onPointerDown={(event) => {
+                      event.stopPropagation();
+                    }}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                    }}
+                  >
+                    {selectedIdeaId && selectedPillMainIdea ? (
+                      <div className="flex items-center gap-2">
+                        {isImageIcon(selectedPillMainIdeaIcon) ? (
+                          <img
+                            src={selectedPillMainIdeaIcon}
+                            alt=""
+                            className="h-3.5 w-3.5 shrink-0 object-contain"
+                          />
+                        ) : (
+                          <span className="text-xs leading-none">{selectedPillMainIdeaIcon}</span>
+                        )}
+                        <span>{selectedPillMainIdea.title}</span>
+                      </div>
+                    ) : null}
+                    <div className="flex items-center gap-2">
+                      {isImageIcon(stormTypeIcon) ? (
+                        <img
+                          src={stormTypeIcon}
+                          alt=""
+                          className="h-3.5 w-3.5 shrink-0 object-contain"
+                        />
+                      ) : (
+                        <span className="text-xs leading-none">{stormTypeIcon}</span>
+                      )}
+                      <span>{storm.name || 'General Storm'}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span
+                        className="inline-block h-2.5 w-2.5 rounded-full"
+                        style={{ backgroundColor: storm.category.color }}
+                      />
+                      <span>{storm.category.name}</span>
+                    </div>
+                  </div>
+                ) : null}
+              </>
+            ) : null
+          ) : (
+            <>
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setPillBlurbOpen((open) => !open);
+                }}
+                className="flex items-center gap-2 rounded-full bg-black/35 px-3 py-1 text-xs text-white/55 backdrop-blur-sm"
+                style={{ border: `1.5px solid ${storm.category.color}` }}
+              >
+                {isImageIcon(stormTypeIcon) ? (
+                  <img
+                    src={stormTypeIcon}
+                    alt=""
+                    className="h-3.5 w-3.5 shrink-0 object-contain"
+                  />
+                ) : (
+                  <span className="text-xs leading-none">{stormTypeIcon}</span>
+                )}
+                <span>{storm.name || 'General Storm'}</span>
+              </button>
+              {pillBlurbOpen ? (
+                <div
+                  className="mt-2 flex items-center gap-2 rounded-lg px-3 py-2 text-xs text-white/70 backdrop-blur-sm"
+                  style={{
+                    backgroundColor: `${storm.category.color}26`,
+                    border: `1px solid ${storm.category.color}`,
+                  }}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                  }}
+                >
+                  <span
+                    className="inline-block h-2.5 w-2.5 rounded-full"
+                    style={{ backgroundColor: storm.category.color }}
+                  />
+                  <span>{storm.category.name}</span>
+                </div>
+              ) : null}
+            </>
+          )}
         </div>
       </div>
     </div>

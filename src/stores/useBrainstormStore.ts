@@ -29,8 +29,22 @@ interface BrainstormActions {
     type?: IdeaType,
     customProperties?: Record<string, string>,
   ) => void;
-  addIdea: (stormId: string, mainIdeaId: string, title: string) => void;
-  addChildIdea: (stormId: string, parentIdeaId: string, title: string) => void;
+  addIdea: (
+    stormId: string,
+    mainIdeaId: string,
+    title: string,
+    state?: IdeaState,
+    type?: IdeaType,
+    customProperties?: Record<string, string>,
+  ) => void;
+  addChildIdea: (
+    stormId: string,
+    parentIdeaId: string,
+    title: string,
+    state?: IdeaState,
+    type?: IdeaType,
+    customProperties?: Record<string, string>,
+  ) => void;
   addEntry: (stormId: string, ideaId: string, entry: BrainstormEntryDraft, entryType?: EntryType) => void;
   addEntryToMainIdea: (stormId: string, mainIdeaId: string, entry: BrainstormEntryDraft, entryType?: EntryType) => void;
   addNestedEntry: (stormId: string, ideaId: string, parentEntryId: string, entry: BrainstormEntryDraft) => void;
@@ -211,13 +225,14 @@ export const useBrainstormStore = create<BrainstormState & BrainstormActions>()(
         awardBrainstormWisdomXP();
       },
 
-      addIdea: (stormId, mainIdeaId, title) => {
+      addIdea: (stormId, mainIdeaId, title, ideaState, ideaType, customProperties) => {
         const id = crypto.randomUUID();
         const idea: BrainstormIdea = {
           id,
           title,
-          state: 'open',
-          type: 'insight',
+          state: ideaState ?? 'open',
+          type: ideaType ?? 'insight',
+          customProperties: customProperties ?? {},
           entries: [],
           ideas: [],
           pointsTo: [],
@@ -256,7 +271,7 @@ export const useBrainstormStore = create<BrainstormState & BrainstormActions>()(
         awardBrainstormWisdomXP();
       },
 
-      addChildIdea: (stormId, parentIdeaId, title) => {
+      addChildIdea: (stormId, parentIdeaId, title, ideaState, ideaType, customProperties) => {
         set((state) => {
           const storm = state.storms[stormId];
           const parentIdea = storm?.ideas[parentIdeaId];
@@ -266,8 +281,9 @@ export const useBrainstormStore = create<BrainstormState & BrainstormActions>()(
           const idea: BrainstormIdea = {
             id,
             title,
-            state: 'open',
-            type: 'insight',
+            state: ideaState ?? 'open',
+            type: ideaType ?? 'insight',
+            customProperties: customProperties ?? {},
             entries: [],
             ideas: [],
             pointsTo: [],
