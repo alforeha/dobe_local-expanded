@@ -1,5 +1,15 @@
 import { withAlpha } from './brainstormDraw';
 
+function hexagonPoints(cx: number, cy: number, radius: number, rotationOffset: number = 0) {
+  return Array.from({ length: 6 }, (_, index) => {
+    const angle = (Math.PI * 2 * index) / 6 - Math.PI / 2 + rotationOffset;
+    return {
+      x: cx + Math.cos(angle) * radius,
+      y: cy + Math.sin(angle) * radius,
+    };
+  });
+}
+
 export function drawGeneralStormBackground(
   ctx: CanvasRenderingContext2D,
   cx: number,
@@ -43,5 +53,60 @@ const voidRadius = Math.hypot(cx, cy) * 0.8;
   ctx.strokeStyle = withAlpha(color, ringAlpha);
   ctx.lineWidth = 1.5;
   ctx.stroke();
+  ctx.restore();
+}
+
+export function drawGeneralVoidBackground(
+  ctx: CanvasRenderingContext2D,
+  canvasWidth: number,
+  canvasHeight: number,
+  alpha: number,
+): void {
+  const dpr = ctx.canvas.width / canvasWidth;
+  const cameraScale = ctx.getTransform().a / dpr;
+  const viewportWorldHalfWidth = canvasWidth / 2 / cameraScale;
+  const viewportWorldHalfHeight = canvasHeight / 2 / cameraScale;
+  const maxWorldReach = Math.sqrt(
+    viewportWorldHalfWidth * viewportWorldHalfWidth +
+    viewportWorldHalfHeight * viewportWorldHalfHeight,
+  );
+  const rotationOffset = Math.PI / 6;
+
+  ctx.save();
+  ctx.strokeStyle = `rgba(255, 255, 255, ${alpha * 0.08})`;
+  ctx.lineWidth = 0.5 / cameraScale;
+
+  let worldR = 80;
+  while (worldR <= maxWorldReach + 80) {
+    const hexPoints = hexagonPoints(0, 0, worldR, rotationOffset);
+
+    ctx.beginPath();
+    hexPoints.forEach((point, index) => {
+      if (index === 0) {
+        ctx.moveTo(point.x, point.y);
+      } else {
+        ctx.lineTo(point.x, point.y);
+      }
+    });
+    ctx.closePath();
+    ctx.stroke();
+
+    worldR += 80;
+  }
+
+  ctx.strokeStyle = `rgba(255, 255, 255, ${alpha * 0.06})`;
+  ctx.lineWidth = 0.5 / cameraScale;
+
+  for (let spokeIndex = 0; spokeIndex < 6; spokeIndex += 1) {
+    const angle = (Math.PI / 3) * spokeIndex;
+    const endX = Math.cos(angle) * (maxWorldReach + 80);
+    const endY = Math.sin(angle) * (maxWorldReach + 80);
+
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo(endX, endY);
+    ctx.stroke();
+  }
+
   ctx.restore();
 }

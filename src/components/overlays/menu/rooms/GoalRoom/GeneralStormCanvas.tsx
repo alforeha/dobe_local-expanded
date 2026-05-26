@@ -7,10 +7,9 @@ import {
   drawBrainstormConstellation,
   drawBrainstormIdeaSpokes,
   drawBrainstormNode,
-  drawBrainstormWebBackground,
   drawStormBeam,
 } from './brainstormDraw';
-import { drawGeneralStormBackground } from './generalStormBackground';
+import { drawGeneralStormBackground, drawGeneralVoidBackground } from './generalStormBackground';
 import {
   BRAINSTORM_FIT_PADDING,
   flattenIdeaTree,
@@ -520,7 +519,16 @@ export function GeneralStormCanvas({
       context.scale(cameraRef.current.scale, cameraRef.current.scale);
       context.translate(-cameraRef.current.x, -cameraRef.current.y);
 
-      drawBrainstormWebBackground(context, 0, 0, timestamp, 0.4);
+      if (!canvas) {
+        return;
+      }
+
+      drawGeneralVoidBackground(
+        context,
+        canvas.width / dpr,
+        canvas.height / dpr,
+        0.4,
+      );
       drawBrainstormNode(context, 0, 0, 28, '', 1, false, true, 1);
 
       const effectiveSelectedMainIdeaId = currentSelectedIdeaId
