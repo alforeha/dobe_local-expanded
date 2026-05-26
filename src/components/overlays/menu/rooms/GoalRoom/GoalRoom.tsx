@@ -34,6 +34,7 @@ export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
   const [addingStorm, setAddingStorm] = useState(false);
   const [stormCanvasOpen, setStormCanvasOpen] = useState(false);
   const [addingMainIdea, setAddingMainIdea] = useState(false);
+  const [brainstormDrawerResetKey, setBrainstormDrawerResetKey] = useState(0);
   const [draftMainIdeaTitle, setDraftMainIdeaTitle] = useState('');
   const [draftMainIdeaState, setDraftMainIdeaState] = useState<IdeaState>('open');
   const [draftMainIdeaType, setDraftMainIdeaType] = useState<IdeaType>('insight');
@@ -683,6 +684,10 @@ export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
   }, []);
 
   const handleSelectMainIdea = useCallback((id: string | null) => {
+    if (id !== null && addingMainIdea) {
+      setBrainstormDrawerResetKey((prev) => prev + 1);
+    }
+
     if (id === null) {
       setSelectedIdea(null);
       setSelectedMainIdea(null);
@@ -693,7 +698,14 @@ export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
       setSelectedIdea(null);
     }
     setSelectedMainIdea(id);
-  }, [selectedMainIdeaId, setSelectedIdea, setSelectedMainIdea]);
+  }, [addingMainIdea, selectedMainIdeaId, setSelectedIdea, setSelectedMainIdea]);
+
+  const handleSelectIdea = useCallback((id: string | null) => {
+    if (id !== null && addingMainIdea) {
+      setBrainstormDrawerResetKey((prev) => prev + 1);
+    }
+    setSelectedIdea(id);
+  }, [addingMainIdea, setSelectedIdea]);
 
   const handleEnterStorm = useCallback(() => {
     if (!selectedStormId) return;
@@ -853,7 +865,7 @@ export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
             selectedMainIdeaId={selectedMainIdeaId}
             selectedIdeaId={selectedIdeaId}
             onSelectMainIdea={handleSelectMainIdea}
-            onSelectIdea={setSelectedIdea}
+            onSelectIdea={handleSelectIdea}
             onRegisterSetSelectedWoop={(fn) => { setSelectedWoopRef.current = fn; }}
             onRegisterSetSelectedSmarter={(fn) => { setSelectedSmarterRef.current = fn; }}
             onRegisterStormScroll={handleRegisterStormScroll}
@@ -875,7 +887,7 @@ export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
             selectedMainIdeaId={selectedMainIdeaId}
             selectedIdeaId={selectedIdeaId}
             onSelectMainIdea={handleSelectMainIdea}
-            onSelectIdea={setSelectedIdea}
+            onSelectIdea={handleSelectIdea}
             addingMainIdea={addingMainIdea}
             draftMainIdeaTitle={draftMainIdeaTitle}
             draftMainIdeaState={draftMainIdeaState}
@@ -928,7 +940,7 @@ export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
           }
         }}
         onSelectMainIdea={handleSelectMainIdea}
-        onSelectIdea={setSelectedIdea}
+        onSelectIdea={handleSelectIdea}
         onAddMainIdea={handleAddMainIdea}
         onAddIdea={handleAddIdea}
         onAddChildIdea={handleAddChildIdea}
@@ -1027,6 +1039,7 @@ export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
         onCancelSmarterEdit={handleCancelSmarterEdit}
         onCancelEdit={handleCancelEdit}
         onDeleteAspiration={handleDeleteAspiration}
+        brainstormDrawerResetKey={brainstormDrawerResetKey}
       />
     </div>
   );

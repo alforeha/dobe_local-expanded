@@ -109,6 +109,7 @@ interface GoalInspectorDrawerProps {
   onCancelSmarterEdit: () => void;
   onCancelEdit: () => void;
   onDeleteAspiration: (aspirationId: string) => void;
+  brainstormDrawerResetKey: number;
 }
 
 function AspirationActionsMenu({
@@ -469,6 +470,7 @@ export function GoalInspectorDrawer({
   onCancelSmarterEdit,
   onCancelEdit,
   onDeleteAspiration,
+  brainstormDrawerResetKey,
 }: GoalInspectorDrawerProps) {
   const prevLevelRef = useRef(view.level);
   const [editingStorm, setEditingStorm] = useState(false);
@@ -705,6 +707,7 @@ export function GoalInspectorDrawer({
     >
       {view.level === 'brainstorm' ? (
         <BrainstormDrawer
+          key={brainstormDrawerResetKey}
           selectedStormId={selectedStormId}
           selectedStorm={selectedStorm}
           selectedMainIdeaId={selectedMainIdeaId}

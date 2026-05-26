@@ -455,12 +455,6 @@ export function BrainstormDrawer({
   }, [addingMainIdea, onAddingMainIdeaChange]);
 
   useEffect(() => {
-    if (addingMainIdea && (selectedMainIdeaId !== null || selectedIdeaId !== null)) {
-      resetMainIdeaForm();
-    }
-  }, [addingMainIdea, selectedMainIdeaId, selectedIdeaId]);
-
-  useEffect(() => {
     onDraftMainIdeaTitleChange?.(newMainIdeaTitle);
   }, [newMainIdeaTitle, onDraftMainIdeaTitleChange]);
 
