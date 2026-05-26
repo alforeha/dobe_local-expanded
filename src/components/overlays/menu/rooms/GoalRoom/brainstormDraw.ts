@@ -1,5 +1,16 @@
+import { ICON_MAP, isImageIcon } from '../../../../../constants/iconMap';
 import type { BrainstormIdea, MainIdea, StormState } from '../../../../../types/brainstorm';
 import { flattenIdeaTree, type IdeaLayoutNode, type MainIdeaLayout, type PointerLine } from './brainstormLayout';
+
+const MAIN_IDEA_STATE_COLORS = {
+  open: '#4ade80',
+  'in-progress': '#60a5fa',
+  resolved: '#2dd4bf',
+  parked: '#9ca3af',
+  others: '#ffffff',
+} as const;
+
+const ideaIconImageCache = new Map<string, HTMLImageElement>();
 
 function hexagonPoints(cx: number, cy: number, radius: number, rotationOffset: number = 0) {
   return Array.from({ length: 6 }, (_, index) => {
@@ -57,6 +68,53 @@ function drawGlowOrb(
   ctx.beginPath();
   ctx.arc(x, y, radius, 0, Math.PI * 2);
   ctx.fill();
+}
+
+function getMainIdeaById(mainIdeas: Record<string, MainIdea> | MainIdea[], id: string): MainIdea | null {
+  if (Array.isArray(mainIdeas)) {
+    return mainIdeas.find((mainIdea) => mainIdea.id === id) ?? null;
+  }
+
+  return mainIdeas[id] ?? null;
+}
+
+function drawMainIdeaIcon(
+  ctx: CanvasRenderingContext2D,
+  iconValue: string | undefined,
+  x: number,
+  y: number,
+  radius: number,
+) {
+  if (!iconValue) {
+    return;
+  }
+
+  if (isImageIcon(iconValue)) {
+    let image = ideaIconImageCache.get(iconValue);
+
+    if (!image) {
+      image = new Image();
+      image.src = iconValue;
+      ideaIconImageCache.set(iconValue, image);
+    }
+
+    if (!image.complete || image.naturalWidth === 0 || image.naturalHeight === 0) {
+      return;
+    }
+
+    const maxSize = radius * 1.4;
+    const scale = Math.min(maxSize / image.naturalWidth, maxSize / image.naturalHeight);
+    const width = image.naturalWidth * scale;
+    const height = image.naturalHeight * scale;
+    ctx.drawImage(image, x - width / 2, y - height / 2, width, height);
+    return;
+  }
+
+  ctx.fillStyle = '#0f172a';
+  ctx.font = `${Math.max(16, Math.round(radius * 1.1))}px sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(iconValue, x, y + 1);
 }
 
 export function withAlpha(color: string, alpha: number) {
@@ -463,22 +521,43 @@ export function drawBrainstormConstellation(
   highlightedIds: Set<string>,
   selectedIdeaId: string | null,
   timestamp: number,
+  mainIdeas: Record<string, MainIdea> | MainIdea[],
+  customColors?: { stateColor?: string; typeColor?: string },
 ) {
   mainIdeaLayouts.forEach((layout, index) => {
-    const enriched = layout as MainIdeaLayout & Partial<MainIdea>;
     const floatY = Math.sin(timestamp / 1200 + index * 1.1) * 3;
     const x = layout.x;
     const y = layout.y + floatY;
+    const mainIdea = getMainIdeaById(mainIdeas, layout.id);
     const isSelected = selectedMainIdeaId === layout.id;
-    const isHovered = hoveredMainIdeaId === layout.id;
+    void hoveredMainIdeaId;
     const isDimmed = selectedMainIdeaId !== null && !isSelected;
     const shouldDim = selectedIdeaId !== null && highlightedIds.size > 0;
     const alpha = shouldDim ? 0.25 : isDimmed ? 0.35 : 1;
-    const glowScale = isSelected ? 2.8 : isHovered ? 2.4 : 2;
+    const customStateColor =
+      mainIdea?.state === 'others'
+        ? (customColors?.stateColor ?? mainIdea?.customProperties?.stateColor)
+        : undefined;
+    const baseColor = customStateColor
+      ?? MAIN_IDEA_STATE_COLORS[mainIdea?.state ?? 'others'];
+    const glowAlpha = isSelected ? 0.6 : 0.35;
+    const glowRadius = layout.radius * 2;
+    const iconValue = mainIdea?.type
+      ? ICON_MAP[`idea-${mainIdea.type}`] ?? ICON_MAP[mainIdea.type]
+      : undefined;
+    const nodeRadius = layout.radius;
 
     ctx.save();
     ctx.globalAlpha = alpha;
-    drawGlowOrb(ctx, x, y, layout.radius, glowScale, 'rgba(16, 185, 129, 0.85)');
+    const gradient = ctx.createRadialGradient(x, y, 0, x, y, glowRadius);
+    gradient.addColorStop(0, withAlpha(baseColor, glowAlpha));
+    gradient.addColorStop(1, withAlpha(baseColor, 0));
+    ctx.fillStyle = gradient;
+    ctx.beginPath();
+    ctx.arc(x, y, glowRadius, 0, Math.PI * 2);
+    ctx.fill();
+
+    drawCircle(ctx, x, y, nodeRadius, baseColor);
 
     if (isSelected) {
       ctx.strokeStyle = '#10b981';
@@ -488,22 +567,14 @@ export function drawBrainstormConstellation(
       ctx.stroke();
     }
 
-    const ideaCount = enriched.ideas?.length ?? 0;
-    Array.from({ length: Math.min(4, ideaCount) }).forEach((_, satelliteIndex, satellites) => {
-      const satelliteAngle = (Math.PI * 2 * satelliteIndex) / Math.max(1, satellites.length) - Math.PI / 2;
-      const satelliteX = x + Math.cos(satelliteAngle) * 38;
-      const satelliteY = y + Math.sin(satelliteAngle) * 38;
-
-      ctx.globalAlpha = alpha * 0.5;
-      drawCircle(ctx, satelliteX, satelliteY, 4, '#a78bfa');
-      ctx.globalAlpha = alpha;
-    });
-
-    ctx.fillStyle = 'white';
-    ctx.font = '11px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(enriched.title ?? layout.id, x, y + layout.radius + 18);
+    if (mainIdea?.type === 'others') {
+      ctx.fillStyle = customColors?.typeColor ?? mainIdea?.customProperties?.typeColor ?? '#ffffff';
+      ctx.beginPath();
+      ctx.arc(x, y, nodeRadius * 0.35, 0, Math.PI * 2);
+      ctx.fill();
+    } else {
+      drawMainIdeaIcon(ctx, iconValue, x, y, nodeRadius);
+    }
     ctx.globalAlpha = 1;
     ctx.restore();
   });

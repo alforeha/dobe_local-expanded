@@ -55,6 +55,7 @@ export interface BrainstormEntry {
   content: string;
   state: EntryState;
   entryType?: EntryType;
+  customProperties?: Record<string, string>;
   entries: BrainstormEntry[];
   pointsTo: Array<{
     targetId: string;
@@ -68,6 +69,7 @@ export interface BrainstormIdea {
   title: string;
   state: IdeaState;
   type: IdeaType;
+  customProperties?: Record<string, string>;
   entries: BrainstormEntry[];
   ideas: string[];
   pointsTo: Array<{ targetId: string; pointerType: PointerType }>;
@@ -80,6 +82,7 @@ export interface MainIdea {
   title: string;
   state: IdeaState;
   type: IdeaType;
+  customProperties?: Record<string, string>;
   entries: BrainstormEntry[];
   ideas: string[];
 }

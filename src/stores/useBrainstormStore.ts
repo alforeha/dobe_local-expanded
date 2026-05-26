@@ -7,6 +7,8 @@ import type {
   BrainstormIdea,
   BrainstormState,
   EntryType,
+  IdeaState,
+  IdeaType,
   MainIdea,
   Storm,
   StormCategory,
@@ -20,7 +22,13 @@ type BrainstormEntryDraft = Omit<BrainstormEntry, 'id' | 'entries' | 'entryType'
 
 interface BrainstormActions {
   addStorm: (name: string, type: StormType, state?: StormState, category?: StormCategory) => string;
-  addMainIdea: (stormId: string, title: string) => void;
+  addMainIdea: (
+    stormId: string,
+    title: string,
+    state?: IdeaState,
+    type?: IdeaType,
+    customProperties?: Record<string, string>,
+  ) => void;
   addIdea: (stormId: string, mainIdeaId: string, title: string) => void;
   addChildIdea: (stormId: string, parentIdeaId: string, title: string) => void;
   addEntry: (stormId: string, ideaId: string, entry: BrainstormEntryDraft, entryType?: EntryType) => void;
@@ -168,13 +176,14 @@ export const useBrainstormStore = create<BrainstormState & BrainstormActions>()(
         return id;
       },
 
-      addMainIdea: (stormId, title) => {
+      addMainIdea: (stormId, title, ideaState, ideaType, customProperties) => {
         const id = crypto.randomUUID();
         const mainIdea: MainIdea = {
           id,
           title,
-          state: 'open',
-          type: 'insight',
+          state: ideaState ?? 'open',
+          type: ideaType ?? 'insight',
+          customProperties: customProperties ?? {},
           entries: [],
           ideas: [],
         };

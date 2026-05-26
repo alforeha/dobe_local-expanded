@@ -7,6 +7,7 @@ import { useBrainstormStore } from '../../../../../stores/useBrainstormStore';
 import { autoCompleteSystemTask } from '../../../../../engine/resourceEngine';
 import { fireInitialIntervalMarkers, generateSmarterMarkers } from '../../../../../engine/markerEngine';
 import { GoalCanvas } from './GoalCanvas';
+import { GeneralStormCanvas } from './GeneralStormCanvas';
 import { GoalInspectorDrawer } from './GoalInspectorDrawer';
 import type { DrawerView } from './GoalInspectorDrawer';
 import {
@@ -14,7 +15,7 @@ import {
   createBlankSmarter,
 } from './goalEditorUtils';
 import type { Aspiration, NestedAct, Smarter, Woop } from '../../../../../types';
-import type { BrainstormEntry, StormCategory } from '../../../../../types/brainstorm';
+import type { BrainstormEntry, IdeaState, IdeaType, StormCategory } from '../../../../../types/brainstorm';
 import type { LogInputFields } from '../../../../../types/taskTemplate';
 
 interface GoalRoomProps {
@@ -31,6 +32,13 @@ export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
   const [navHidden, setNavHidden] = useState(true);
   const [brainstormFocused, setBrainstormFocused] = useState(false);
   const [addingStorm, setAddingStorm] = useState(false);
+  const [stormCanvasOpen, setStormCanvasOpen] = useState(false);
+  const [addingMainIdea, setAddingMainIdea] = useState(false);
+  const [draftMainIdeaTitle, setDraftMainIdeaTitle] = useState('');
+  const [draftMainIdeaState, setDraftMainIdeaState] = useState<IdeaState>('open');
+  const [draftMainIdeaType, setDraftMainIdeaType] = useState<IdeaType>('insight');
+  const [draftCustomStateColor, setDraftCustomStateColor] = useState('#ffffff');
+  const [draftCustomColor, setDraftCustomColor] = useState('#ffffff');
   const focusOrbitRef = useRef<((orbit: 'user' | 'system' | null) => void) | null>(null);
   const clearCanvasFocusRef = useRef<((scope: 'planet' | 'all') => void) | null>(null);
   const selectAspirationFromDrawerRef = useRef<((id: string) => void) | null>(null);
@@ -84,6 +92,12 @@ export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
     drawerViewRef.current = drawerView;
     drawerEditModeRef.current = drawerEditMode;
   }, [drawerView, drawerEditMode]);
+
+  useEffect(() => {
+    if (selectedStormId === null) {
+      setStormCanvasOpen(false);
+    }
+  }, [selectedStormId]);
 
   useEffect(() => {
     drawerViewLevelRef.current = drawerView.level;
@@ -681,6 +695,15 @@ export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
     setSelectedMainIdea(id);
   }, [selectedMainIdeaId, setSelectedIdea, setSelectedMainIdea]);
 
+  const handleEnterStorm = useCallback(() => {
+    if (!selectedStormId) return;
+    setStormCanvasOpen(true);
+  }, [selectedStormId]);
+
+  const handleExitStorm = useCallback(() => {
+    setStormCanvasOpen(false);
+  }, []);
+
   function handleDrawerBack() {
     if (drawerView.level === 'brainstorm') {
       const stormState = useBrainstormStore.getState();
@@ -783,61 +806,84 @@ export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
         className="absolute top-0 left-0 right-0 transition-all duration-300 ease-out"
         style={{ height: `${canvasHeightPercent}%` }}
       >
-        <GoalCanvas
-          selectedStormId={selectedStormId}
-          addingStorm={addingStorm}
-          userAspirations={userAspirations}
-          adventureAspirations={systemAspirations}
-          onFocusedOrbitChange={handleFocusedOrbitChange}
-          onRegisterFocusOrbit={(fn) => { focusOrbitRef.current = fn; }}
-          onSelectedAspirationChange={handleSelectedAspirationChange}
-          onRegisterClearFocus={(fn) => { clearCanvasFocusRef.current = fn; }}
-          onRegisterSelectAspiration={(fn) => { selectAspirationFromDrawerRef.current = fn; }}
-          onMoonClick={(woopIdx) => {
-            if (drawerView.level === 'aspiration') {
-              setDrawerView({
-                level: 'woop',
-                orbit: drawerView.orbit,
-                aspiration: drawerView.aspiration,
-                woopIdx,
-              });
-              setSelectedSmarterRef.current?.(null);
-              setSelectedWoopRef.current?.(woopIdx);
-            }
+        <div
+          className="absolute inset-0 transition-opacity duration-300 ease-out"
+          style={{
+            opacity: stormCanvasOpen ? 0 : 1,
+            pointerEvents: stormCanvasOpen ? 'none' : undefined,
           }}
-          onSmarterClick={(smarterIdx) => {
-            if (drawerView.level === 'woop') {
-              setDrawerView({
-                level: 'smarter',
-                orbit: drawerView.orbit,
-                aspiration: drawerView.aspiration,
-                woopIdx: drawerView.woopIdx,
-                smarterIdx,
-              });
-              setSelectedSmarterRef.current?.(smarterIdx);
-            }
-          }}
-          onBrainstormSelect={handleFocusBrainstorm}
-          onSelectStorm={setSelectedStorm}
-          brainstormFocused={brainstormFocused}
-          selectedMainIdeaId={selectedMainIdeaId}
-          selectedIdeaId={selectedIdeaId}
-          onSelectMainIdea={handleSelectMainIdea}
-          onSelectIdea={setSelectedIdea}
-          onRegisterSetSelectedWoop={(fn) => { setSelectedWoopRef.current = fn; }}
-          onRegisterSetSelectedSmarter={(fn) => { setSelectedSmarterRef.current = fn; }}
-          onRegisterStormScroll={handleRegisterStormScroll}
-          onStormWheelScroll={(delta) => {
-            if (drawerStormScrollRef.current) {
-              drawerStormScrollRef.current.scrollTop += delta * 0.3;
-            }
-          }}
-          aspirationDraft={aspirationDraft}
-          woopDraft={woopDraft}
-          smarterDraft={smarterDraft}
-          isActView={isActView || drawerView.level === 'act-edit'}
-          isActEdit={drawerView.level === 'act-edit'}
-        />
+        >
+          <GoalCanvas
+            selectedStormId={selectedStormId}
+            addingStorm={addingStorm}
+            userAspirations={userAspirations}
+            adventureAspirations={systemAspirations}
+            onFocusedOrbitChange={handleFocusedOrbitChange}
+            onRegisterFocusOrbit={(fn) => { focusOrbitRef.current = fn; }}
+            onSelectedAspirationChange={handleSelectedAspirationChange}
+            onRegisterClearFocus={(fn) => { clearCanvasFocusRef.current = fn; }}
+            onRegisterSelectAspiration={(fn) => { selectAspirationFromDrawerRef.current = fn; }}
+            onMoonClick={(woopIdx) => {
+              if (drawerView.level === 'aspiration') {
+                setDrawerView({
+                  level: 'woop',
+                  orbit: drawerView.orbit,
+                  aspiration: drawerView.aspiration,
+                  woopIdx,
+                });
+                setSelectedSmarterRef.current?.(null);
+                setSelectedWoopRef.current?.(woopIdx);
+              }
+            }}
+            onSmarterClick={(smarterIdx) => {
+              if (drawerView.level === 'woop') {
+                setDrawerView({
+                  level: 'smarter',
+                  orbit: drawerView.orbit,
+                  aspiration: drawerView.aspiration,
+                  woopIdx: drawerView.woopIdx,
+                  smarterIdx,
+                });
+                setSelectedSmarterRef.current?.(smarterIdx);
+              }
+            }}
+            onBrainstormSelect={handleFocusBrainstorm}
+            onSelectStorm={setSelectedStorm}
+            brainstormFocused={brainstormFocused}
+            selectedMainIdeaId={selectedMainIdeaId}
+            selectedIdeaId={selectedIdeaId}
+            onSelectMainIdea={handleSelectMainIdea}
+            onSelectIdea={setSelectedIdea}
+            onRegisterSetSelectedWoop={(fn) => { setSelectedWoopRef.current = fn; }}
+            onRegisterSetSelectedSmarter={(fn) => { setSelectedSmarterRef.current = fn; }}
+            onRegisterStormScroll={handleRegisterStormScroll}
+            onStormWheelScroll={(delta) => {
+              if (drawerStormScrollRef.current) {
+                drawerStormScrollRef.current.scrollTop += delta * 0.3;
+              }
+            }}
+            aspirationDraft={aspirationDraft}
+            woopDraft={woopDraft}
+            smarterDraft={smarterDraft}
+            isActView={isActView || drawerView.level === 'act-edit'}
+            isActEdit={drawerView.level === 'act-edit'}
+          />
+        </div>
+        {stormCanvasOpen && selectedStormId ? (
+          <GeneralStormCanvas
+            selectedStormId={selectedStormId}
+            selectedMainIdeaId={selectedMainIdeaId}
+            selectedIdeaId={selectedIdeaId}
+            onSelectMainIdea={handleSelectMainIdea}
+            onSelectIdea={setSelectedIdea}
+            addingMainIdea={addingMainIdea}
+            draftMainIdeaTitle={draftMainIdeaTitle}
+            draftMainIdeaState={draftMainIdeaState}
+            draftMainIdeaType={draftMainIdeaType}
+            draftCustomStateColor={draftCustomStateColor}
+            draftCustomColor={draftCustomColor}
+          />
+        ) : null}
       </div>
       <GoalInspectorDrawer
         selectedStormId={selectedStormId}
@@ -854,6 +900,8 @@ export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
         ideas={ideas}
         selectedMainIdeaId={selectedMainIdeaId}
         selectedIdeaId={selectedIdeaId}
+        stormCanvasOpen={stormCanvasOpen}
+        onExitStorm={handleExitStorm}
         onStormScrollProgress={handleStormScrollProgress}
         stormScrollContainerRef={drawerStormScrollRef}
         addingStorm={addingStorm}
@@ -888,12 +936,19 @@ export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
           handleAddEntry(ideaId, { content, state, pointsTo: [] });
         }}
         onAddEntryToMainIdea={handleAddEntryToMainIdea}
+        onAddingMainIdeaChange={setAddingMainIdea}
+        onDraftMainIdeaTitleChange={setDraftMainIdeaTitle}
+        onDraftMainIdeaStateChange={setDraftMainIdeaState}
+        onDraftMainIdeaTypeChange={setDraftMainIdeaType}
+        onDraftCustomStateColorChange={setDraftCustomStateColor}
+        onDraftCustomColorChange={setDraftCustomColor}
         onDeleteStorm={() => {
           if (selectedStormId) {
             deleteStorm(selectedStormId);
             setSelectedStorm(null);
           }
         }}
+        onEnterStorm={handleEnterStorm}
         onDeleteMainIdea={() => {
           if (selectedStormId && selectedMainIdeaId) {
             deleteMainIdea(selectedStormId, selectedMainIdeaId);

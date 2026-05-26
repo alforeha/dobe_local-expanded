@@ -1051,6 +1051,7 @@ if (draft !== null) {
             highlightedIdeaIdsRef.current,
             currentSelectedIdeaId,
             timestamp,
+            mainIdeas,
           );
 
           const allFlatIdeas: IdeaLayoutNode[] = [];
