@@ -186,6 +186,25 @@ export const ICON_MAP: Record<string, string> = {
 
 
 
+'idea-node':        '⚫',
+'idea-spark':       '✨',
+'idea-blip':        '📡',
+'idea-box':         '📦',
+'idea-data':        '📊',
+'idea-peak':        '⛰️',
+'idea-prop':        '🎯',
+'entry-general':    '💬',
+'entry-observation':'👁️',
+'entry-question':   '❓',
+'entry-research':   '🔍',
+'entry-hypothesis': '🔬',
+'entry-test':       '⚗️',
+'entry-review':     '📋',
+'entry-result':     '✅',
+'entry-bet':        '🎲',
+
+
+
   // SCHEDULE ROOM TABS
   'schedule-tab-routines': '🔄',
   'schedule-tab-events': '📌',

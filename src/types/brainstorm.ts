@@ -9,8 +9,14 @@ export type StormDraft = {
   category: StormCategory;
 };
 export type IdeaState = 'open' | 'in-progress' | 'resolved' | 'parked' | 'others';
-export type IdeaType = 'insight' | 'question' | 'hypothesis' | 'blocker' | 'action' | 'others';
+export type IdeaType =
+  'insight' | 'question' | 'hypothesis' | 'blocker' | 'action' |
+  'node' | 'spark' | 'blip' | 'box' | 'data' | 'peak' | 'prop' |
+  'others';
 export type EntryState = 'outcome' | 'obstacle' | 'question' | 'solved' | 'others';
+export type EntryType =
+  'general' | 'observation' | 'question' | 'research' | 'hypothesis' |
+  'test' | 'review' | 'result' | 'bet';
 export type PointerType = 'solution' | 'choice' | 'others';
 
 export const STORM_TYPE_META: Record<StormType, { displayName: string; mainIdeaTerm: string; addLabel: string }> = {
@@ -32,10 +38,23 @@ export const STORM_STATE_META: Record<StormState, { displayName: string; iconKey
   folding: { displayName: 'Folding', iconKey: 'storm-state-folding' },
 };
 
+export const ENTRY_TYPE_META: Record<EntryType, { displayName: string }> = {
+  general: { displayName: 'General' },
+  observation: { displayName: 'Observation' },
+  question: { displayName: 'Question' },
+  research: { displayName: 'Research' },
+  hypothesis: { displayName: 'Hypothesis' },
+  test: { displayName: 'Test' },
+  review: { displayName: 'Review' },
+  result: { displayName: 'Result' },
+  bet: { displayName: 'Bet' },
+};
+
 export interface BrainstormEntry {
   id: string;
   content: string;
   state: EntryState;
+  entryType?: EntryType;
   entries: BrainstormEntry[];
   pointsTo: Array<{
     targetId: string;

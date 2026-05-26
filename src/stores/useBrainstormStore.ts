@@ -6,6 +6,7 @@ import type {
   BrainstormEntry,
   BrainstormIdea,
   BrainstormState,
+  EntryType,
   MainIdea,
   Storm,
   StormCategory,
@@ -13,14 +14,18 @@ import type {
   StormType,
 } from '../types/brainstorm';
 
+type BrainstormEntryDraft = Omit<BrainstormEntry, 'id' | 'entries' | 'entryType'> & {
+  entryType?: EntryType;
+};
+
 interface BrainstormActions {
   addStorm: (name: string, type: StormType, state?: StormState, category?: StormCategory) => string;
   addMainIdea: (stormId: string, title: string) => void;
   addIdea: (stormId: string, mainIdeaId: string, title: string) => void;
   addChildIdea: (stormId: string, parentIdeaId: string, title: string) => void;
-  addEntry: (stormId: string, ideaId: string, entry: Omit<BrainstormEntry, 'id' | 'entries'>) => void;
-  addEntryToMainIdea: (stormId: string, mainIdeaId: string, entry: Omit<BrainstormEntry, 'id' | 'entries'>) => void;
-  addNestedEntry: (stormId: string, ideaId: string, parentEntryId: string, entry: Omit<BrainstormEntry, 'id' | 'entries'>) => void;
+  addEntry: (stormId: string, ideaId: string, entry: BrainstormEntryDraft, entryType?: EntryType) => void;
+  addEntryToMainIdea: (stormId: string, mainIdeaId: string, entry: BrainstormEntryDraft, entryType?: EntryType) => void;
+  addNestedEntry: (stormId: string, ideaId: string, parentEntryId: string, entry: BrainstormEntryDraft) => void;
   deleteStorm: (stormId: string) => void;
   deleteMainIdea: (stormId: string, mainIdeaId: string) => void;
   deleteIdea: (stormId: string, ideaId: string) => void;
@@ -47,9 +52,10 @@ const initialState: BrainstormState = {
   selectedIdeaId: null,
 };
 
-function buildEntry(entry: Omit<BrainstormEntry, 'id' | 'entries'>): BrainstormEntry {
+function buildEntry(entry: BrainstormEntryDraft, entryType?: EntryType): BrainstormEntry {
   return {
     ...entry,
+    entryType: entryType ?? entry.entryType ?? 'general',
     id: crypto.randomUUID(),
     entries: [],
   };
@@ -283,8 +289,8 @@ export const useBrainstormStore = create<BrainstormState & BrainstormActions>()(
         awardBrainstormWisdomXP();
       },
 
-      addEntry: (stormId, ideaId, entry) => {
-        const nextEntry = buildEntry(entry);
+      addEntry: (stormId, ideaId, entry, entryType) => {
+        const nextEntry = buildEntry(entry, entryType);
 
         set((state) => {
           const storm = state.storms[stormId];
@@ -313,8 +319,8 @@ export const useBrainstormStore = create<BrainstormState & BrainstormActions>()(
         awardBrainstormWisdomXP();
       },
 
-      addEntryToMainIdea: (stormId, mainIdeaId, entry) => {
-        const nextEntry = buildEntry(entry);
+      addEntryToMainIdea: (stormId, mainIdeaId, entry, entryType) => {
+        const nextEntry = buildEntry(entry, entryType);
 
         set((state) => {
           const storm = state.storms[stormId];
@@ -691,7 +697,7 @@ export const useBrainstormStore = create<BrainstormState & BrainstormActions>()(
     }),
     {
       name: 'cdb-brainstorm',
-      version: 2,
+      version: 3,
       partialize: (state) => ({
         storms: state.storms,
       }),
