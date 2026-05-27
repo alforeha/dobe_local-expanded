@@ -283,14 +283,6 @@ export function GeneralStormCanvas({
   }, []);
 
   useEffect(() => {
-    setPillBlurbOpen(false);
-  }, [selectedStormId]);
-
-  useEffect(() => {
-    setIdeaPillBlurbOpen(false);
-  }, [selectedMainIdeaId, selectedIdeaId]);
-
-  useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || !storm) {
       return;
@@ -676,6 +668,7 @@ export function GeneralStormCanvas({
           toScreen,
         );
         if (hitMainIdeaId) {
+          setIdeaPillBlurbOpen(false);
           onSelectMainIdea(hitMainIdeaId);
           onSelectIdea(null);
           return;
@@ -689,11 +682,13 @@ export function GeneralStormCanvas({
         );
         if (hitIdeaId) {
           const ownerMainIdeaId = allFlatIdeaLayoutsRef.current.find((layout) => layout.id === hitIdeaId)?.mainIdeaId ?? null;
+          setIdeaPillBlurbOpen(false);
           onSelectMainIdea(ownerMainIdeaId);
           onSelectIdea(hitIdeaId);
           return;
         }
 
+        setIdeaPillBlurbOpen(false);
         onSelectIdea(null);
         onSelectMainIdea(null);
       }}
