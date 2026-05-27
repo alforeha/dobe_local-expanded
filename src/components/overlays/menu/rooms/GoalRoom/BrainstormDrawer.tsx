@@ -82,19 +82,19 @@ const ENTRY_STATE_SWATCH: Record<EntryState, string> = {
 };
 
 function formatIdeaStateLabel(state: IdeaState) {
-  return state.replace(/-/g, ' ');
+  return state === 'others' ? 'General' : state.replace(/-/g, ' ');
 }
 
 function formatIdeaTypeLabel(type: IdeaType) {
-  return type === 'others' ? 'Color Code' : type;
+  return type === 'others' ? 'General' : type;
 }
 
 function formatEntryStateLabel(state: EntryState) {
-  return state.replace(/-/g, ' ');
+  return state === 'others' ? 'General' : state.replace(/-/g, ' ');
 }
 
 function formatEntryTypeLabel(type: EntryType) {
-  return type === 'others' ? 'Color Code' : ENTRY_TYPE_META[type].displayName;
+  return type === 'others' ? 'General' : ENTRY_TYPE_META[type].displayName;
 }
 
 function getEntryBadgeStyle(entry: BrainstormEntry) {
@@ -237,6 +237,25 @@ export interface BrainstormDrawerProps {
   onDeleteStorm: () => void;
   onDeleteMainIdea: () => void;
   onDeleteIdea: () => void;
+  onDeleteEntry: (entryId: string) => void;
+  onUpdateMainIdea: (mainIdeaId: string, updates: {
+    title?: string;
+    state?: IdeaState;
+    type?: IdeaType;
+    customProperties?: Record<string, string>;
+  }) => void;
+  onUpdateIdea: (ideaId: string, updates: {
+    title?: string;
+    state?: IdeaState;
+    type?: IdeaType;
+    customProperties?: Record<string, string>;
+  }) => void;
+  onUpdateEntry: (entryId: string, updates: {
+    content?: string;
+    state?: EntryState;
+    type?: EntryType;
+    customProperties?: Record<string, string>;
+  }) => void;
   onEnterStorm: () => void;
   onHandleAddStormOpen: () => void;
   onHandleAddStormConfirm: () => void;
@@ -250,6 +269,7 @@ export interface BrainstormDrawerProps {
   onDraftCustomStateColorChange?: (color: string) => void;
   onDraftCustomColorChange?: (color: string) => void;
   onAddingChildIdeaChange: (adding: boolean) => void;
+  onEditingChildIdeaChange?: (editing: boolean) => void;
   onDraftChildIdeaStateChange: (state: IdeaState) => void;
   onDraftChildIdeaTypeChange: (type: IdeaType) => void;
   onDraftChildIdeaCustomColorChange?: (color: string) => void;
@@ -311,6 +331,10 @@ export function BrainstormDrawer({
   onDeleteStorm,
   onDeleteMainIdea,
   onDeleteIdea,
+  onDeleteEntry,
+  onUpdateMainIdea,
+  onUpdateIdea,
+  onUpdateEntry,
   onEnterStorm,
   onHandleAddStormOpen,
   onHandleAddStormConfirm,
@@ -324,6 +348,7 @@ export function BrainstormDrawer({
   onDraftCustomStateColorChange,
   onDraftCustomColorChange,
   onAddingChildIdeaChange,
+  onEditingChildIdeaChange,
   onDraftChildIdeaStateChange,
   onDraftChildIdeaTypeChange,
   onDraftChildIdeaCustomColorChange,
@@ -356,9 +381,10 @@ export function BrainstormDrawer({
   const [draftCustomStateColor, setDraftCustomStateColor] = useState('#ffffff');
   const [draftCustomColor, setDraftCustomColor] = useState('#ffffff');
   const [addingChildIdea, setAddingChildIdea] = useState(false);
+  const [editingChildIdea, setEditingChildIdea] = useState(false);
   const [newChildIdeaTitle, setNewChildIdeaTitle] = useState('');
   const [newChildIdeaState, setNewChildIdeaState] = useState<IdeaState>('open');
-  const [newChildIdeaType, setNewChildIdeaType] = useState<IdeaType>('insight');
+  const [newChildIdeaType, setNewChildIdeaType] = useState<IdeaType>('others');
   const [newChildIdeaCustomColor, setNewChildIdeaCustomColor] = useState('#ffffff');
   const [newChildIdeaCustomStateColor, setNewChildIdeaCustomStateColor] = useState('#ffffff');
   const [childIdeaTypePickerOpen, setChildIdeaTypePickerOpen] = useState(false);
@@ -369,6 +395,14 @@ export function BrainstormDrawer({
   const [newEntryCustomColor, setNewEntryCustomColor] = useState('#ffffff');
   const [newEntryState, setNewEntryState] = useState<EntryState>('others');
   const [newEntryCustomStateColor, setNewEntryCustomStateColor] = useState('#ffffff');
+  const [editingEntry, setEditingEntry] = useState<BrainstormEntry | null>(null);
+  const [editEntryContent, setEditEntryContent] = useState('');
+  const [editEntryState, setEditEntryState] = useState<EntryState>('others');
+  const [editEntryType, setEditEntryType] = useState<EntryType>('others');
+  const [editEntryCustomColor, setEditEntryCustomColor] = useState('#ffffff');
+  const [editEntryCustomStateColor, setEditEntryCustomStateColor] = useState('#ffffff');
+  const [entryActionMenuOpenId, setEntryActionMenuOpenId] = useState<string | null>(null);
+  const [confirmDeleteEntryId, setConfirmDeleteEntryId] = useState<string | null>(null);
   const [entryTypePickerOpen, setEntryTypePickerOpen] = useState(false);
   const [entryStatePickerOpen, setEntryStatePickerOpen] = useState(false);
 
@@ -407,18 +441,42 @@ export function BrainstormDrawer({
 
   function resetChildIdeaForm() {
     setAddingChildIdea(false);
+    setEditingChildIdea(false);
     setNewChildIdeaTitle('');
     setNewChildIdeaState('open');
-    setNewChildIdeaType('insight');
+    setNewChildIdeaType('others');
     setNewChildIdeaCustomColor('#ffffff');
     setNewChildIdeaCustomStateColor('#ffffff');
     setChildIdeaTypePickerOpen(false);
     setChildIdeaStatePickerOpen(false);
     onAddingChildIdeaChange(false);
+    onEditingChildIdeaChange?.(false);
     onDraftChildIdeaStateChange('open');
-    onDraftChildIdeaTypeChange('insight');
+    onDraftChildIdeaTypeChange('others');
     onDraftChildIdeaCustomColorChange?.('#ffffff');
     onDraftChildIdeaCustomStateColorChange?.('#ffffff');
+  }
+
+  function openIdeaEditForm() {
+    const ideaToEdit = selectedIdea ?? selectedMainIdea;
+    if (!ideaToEdit) return;
+
+    resetEntryForm();
+    setAddingChildIdea(false);
+    setEditingChildIdea(true);
+    setNewChildIdeaTitle(ideaToEdit.title ?? '');
+    setNewChildIdeaState(ideaToEdit.state ?? 'others');
+    setNewChildIdeaType(ideaToEdit.type ?? 'others');
+    setNewChildIdeaCustomColor(ideaToEdit.customProperties?.typeColor ?? '#ffffff');
+    setNewChildIdeaCustomStateColor(ideaToEdit.customProperties?.stateColor ?? '#ffffff');
+    setChildIdeaTypePickerOpen(false);
+    setChildIdeaStatePickerOpen(false);
+    onAddingChildIdeaChange(true);
+    onEditingChildIdeaChange?.(true);
+    onDraftChildIdeaStateChange(ideaToEdit.state ?? 'others');
+    onDraftChildIdeaTypeChange(ideaToEdit.type ?? 'others');
+    onDraftChildIdeaCustomColorChange?.(ideaToEdit.customProperties?.typeColor ?? '#ffffff');
+    onDraftChildIdeaCustomStateColorChange?.(ideaToEdit.customProperties?.stateColor ?? '#ffffff');
   }
 
   function resetEntryForm() {
@@ -433,9 +491,36 @@ export function BrainstormDrawer({
     onEntryScrollAngleChange(0);
   }
 
+  function resetEditingEntryForm() {
+    setEditingEntry(null);
+    setEditEntryContent('');
+    setEditEntryState('others');
+    setEditEntryType('others');
+    setEditEntryCustomColor('#ffffff');
+    setEditEntryCustomStateColor('#ffffff');
+    setEntryTypePickerOpen(false);
+    setEntryStatePickerOpen(false);
+    setEntryActionMenuOpenId(null);
+    setConfirmDeleteEntryId(null);
+    onEntryScrollAngleChange(0);
+  }
+
+  function openEntryEditForm(entry: BrainstormEntry) {
+    resetChildIdeaForm();
+    resetEntryForm();
+    setEditingEntry(entry);
+    setEditEntryContent(entry.content ?? '');
+    setEditEntryState(entry.state ?? 'others');
+    setEditEntryType(entry.type ?? 'others');
+    setEditEntryCustomColor(entry.customProperties?.typeColor ?? '#ffffff');
+    setEditEntryCustomStateColor(entry.customProperties?.stateColor ?? '#ffffff');
+    setEntryActionMenuOpenId(null);
+    setConfirmDeleteEntryId(null);
+  }
+
   function handleSaveChildIdea() {
     const trimmedTitle = newChildIdeaTitle.trim();
-    if (!selectedStormId || !selectedMainIdeaId || !trimmedTitle) return;
+    if (!selectedStormId || !trimmedTitle) return;
 
     const customProps: Record<string, string> = {};
     if (newChildIdeaState === 'others') {
@@ -446,6 +531,28 @@ export function BrainstormDrawer({
     }
 
     const nextCustomProps = Object.keys(customProps).length > 0 ? customProps : undefined;
+
+    if (editingChildIdea) {
+      const updates = {
+        title: trimmedTitle,
+        state: newChildIdeaState,
+        type: newChildIdeaType,
+        customProperties: nextCustomProps ?? {},
+      };
+
+      if (selectedIdeaId) {
+        onUpdateIdea(selectedIdeaId, updates);
+      } else if (selectedMainIdeaId) {
+        onUpdateMainIdea(selectedMainIdeaId, updates);
+      } else {
+        return;
+      }
+
+      resetChildIdeaForm();
+      return;
+    }
+
+    if (!selectedMainIdeaId) return;
 
     if (selectedIdeaId) {
       addChildIdea(
@@ -498,6 +605,27 @@ export function BrainstormDrawer({
     resetEntryForm();
   }
 
+  function handleUpdateEntry() {
+    const trimmedContent = editEntryContent.trim();
+    if (!editingEntry || !trimmedContent) return;
+
+    const customProps: Record<string, string> = {};
+    if (editEntryType === 'others') {
+      customProps.typeColor = editEntryCustomColor;
+    }
+    if (editEntryState === 'others') {
+      customProps.stateColor = editEntryCustomStateColor;
+    }
+
+    onUpdateEntry(editingEntry.id, {
+      content: trimmedContent,
+      state: editEntryState,
+      type: editEntryType,
+      customProperties: Object.keys(customProps).length > 0 ? customProps : {},
+    });
+    resetEditingEntryForm();
+  }
+
   useEffect(() => {
     onAddingMainIdeaChange?.(addingMainIdea);
   }, [addingMainIdea, onAddingMainIdeaChange]);
@@ -514,10 +642,16 @@ export function BrainstormDrawer({
     onDraftMainIdeaTypeChange(newMainIdeaType);
   }, [newMainIdeaType, onDraftMainIdeaTypeChange]);
 
+  useEffect(() => {
+    setEntryActionMenuOpenId(null);
+    setConfirmDeleteEntryId(null);
+    resetEditingEntryForm();
+  }, [selectedMainIdeaId, selectedIdeaId, selectedStormId]);
+
   const anyMainIdeaPickerOpen = ideaStatePickerOpen || ideaTypePickerOpen;
   const anyChildIdeaPickerOpen = childIdeaStatePickerOpen || childIdeaTypePickerOpen;
   const anyEntryPickerOpen = entryTypePickerOpen || entryStatePickerOpen;
-  const isInlineIdeaFormOpen = addingChildIdea || addingEntry;
+  const isInlineIdeaFormOpen = addingChildIdea || editingChildIdea || addingEntry || editingEntry !== null;
 
   return (
     <>
@@ -558,7 +692,7 @@ export function BrainstormDrawer({
               <button
                 type="button"
                 onClick={() => {
-                  if (addingChildIdea) {
+                  if (addingChildIdea || editingChildIdea) {
                     resetChildIdeaForm();
                     return;
                   }
@@ -1253,10 +1387,11 @@ export function BrainstormDrawer({
           </div>
         </div>
       ) : (
-        <div className="flex-1 overflow-y-auto px-4 py-2">
-          {!isInlineIdeaFormOpen ? (
-            <>
-              <div className="flex items-center justify-between border-b border-white/5 pb-1 pt-2">
+        <div className="flex flex-1 flex-col min-h-0">
+          <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-4 py-2">
+            {!isInlineIdeaFormOpen ? (
+              <>
+                <div className="flex items-center justify-between border-b border-white/5 pb-1 pt-2">
                 <div className="flex gap-4">
                   {(['entries', 'ideas'] as const).map((tab) => (
                     <button
@@ -1310,7 +1445,7 @@ export function BrainstormDrawer({
                           <button
                             type="button"
                             onClick={() => {
-                              console.log('Edit');
+                              openIdeaEditForm();
                               setActionMenuOpen(false);
                             }}
                             className="w-full px-4 py-2.5 text-left text-sm text-white/70 hover:bg-white/5"
@@ -1363,59 +1498,132 @@ export function BrainstormDrawer({
                   ) : null}
                 </div>
               </div>
-              {ideaActiveTab === 'entries' ? (
-                <div
-                  className="max-h-64 overflow-y-auto pb-3 pt-2"
-                  onScroll={(event) => {
-                    const el = event.currentTarget;
-                    const scrollRatio = el.scrollTop / Math.max(1, el.scrollHeight - el.clientHeight);
-                    const angle = scrollRatio * Math.PI * 2;
-                    onEntryScrollAngleChange(angle);
-                  }}
-                >
-                  {currentEntries.length > 0 ? (
-                    currentEntries.map((entry) => (
-                      <div key={entry.id} className="flex items-center gap-2 py-1.5">
-                        <span className="min-w-0 flex-1 truncate text-xs text-white/50">
-                          {entry.content.length > 60 ? `${entry.content.slice(0, 60)}...` : entry.content}
-                        </span>
-                        <span
-                          className="shrink-0 rounded px-1.5 py-0.5 text-[10px] uppercase"
-                          style={getEntryBadgeStyle(entry)}
-                        >
-                          {entry.state}
-                        </span>
-                      </div>
-                    ))
+                <div className="min-h-0 flex-1 overflow-y-scroll">
+                  {ideaActiveTab === 'entries' ? (
+                    <div
+                      className="pb-3 pt-2"
+                      onScroll={(event) => {
+                        const el = event.currentTarget;
+                        const scrollRatio = el.scrollTop / Math.max(1, el.scrollHeight - el.clientHeight);
+                        const angle = scrollRatio * Math.PI * 2;
+                        setEntryActionMenuOpenId(null);
+                        setConfirmDeleteEntryId(null);
+                        onEntryScrollAngleChange(angle);
+                      }}
+                    >
+                      {editingEntry ? null : currentEntries.length > 0 ? (
+                        currentEntries.map((entry) => (
+                          <div key={entry.id} className="flex items-center gap-2 py-1.5">
+                            <span className="min-w-0 flex-1 truncate text-xs text-white/50">
+                              {entry.content.length > 60 ? `${entry.content.slice(0, 60)}...` : entry.content}
+                            </span>
+                            <span
+                              className="shrink-0 rounded px-1.5 py-0.5 text-[10px] uppercase"
+                              style={getEntryBadgeStyle(entry)}
+                            >
+                              {entry.state}
+                            </span>
+                            <div
+                              className="relative shrink-0"
+                              tabIndex={0}
+                              onBlur={(event) => {
+                                if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+                                  setEntryActionMenuOpenId((currentId) => (currentId === entry.id ? null : currentId));
+                                  setConfirmDeleteEntryId((currentId) => (currentId === entry.id ? null : currentId));
+                                }
+                              }}
+                            >
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEntryActionMenuOpenId((currentId) => (currentId === entry.id ? null : entry.id));
+                                  setConfirmDeleteEntryId(null);
+                                }}
+                                className="px-2 py-1 text-xs text-white/40 hover:text-white/80"
+                              >
+                                ...
+                              </button>
+                              {entryActionMenuOpenId === entry.id ? (
+                                <div className="absolute right-0 top-8 z-50 min-w-[140px] overflow-hidden rounded-lg border border-white/10 bg-gray-900">
+                                  {confirmDeleteEntryId === entry.id ? (
+                                    <div className="px-4 py-3">
+                                      <p className="pb-2 text-xs text-white/50">Confirm delete?</p>
+                                      <div className="flex gap-2">
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            onDeleteEntry(entry.id);
+                                            setEntryActionMenuOpenId(null);
+                                            setConfirmDeleteEntryId(null);
+                                          }}
+                                          className="flex-1 rounded border border-red-500/20 px-2 py-1.5 text-xs text-red-300 hover:bg-white/5"
+                                        >
+                                          Yes
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => setConfirmDeleteEntryId(null)}
+                                          className="flex-1 rounded border border-white/10 px-2 py-1.5 text-xs text-white/60 hover:bg-white/5"
+                                        >
+                                          No
+                                        </button>
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          openEntryEditForm(entry);
+                                        }}
+                                        className="w-full px-4 py-2.5 text-left text-sm text-white/70 hover:bg-white/5"
+                                      >
+                                        Edit
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => setConfirmDeleteEntryId(entry.id)}
+                                        className="w-full px-4 py-2.5 text-left text-sm text-red-400/80 hover:bg-white/5"
+                                      >
+                                        Delete
+                                      </button>
+                                    </>
+                                  )}
+                                </div>
+                              ) : null}
+                            </div>
+                          </div>
+                        ))
+                      ) : (
+                        <div className="py-2 text-xs text-white/35">No entries yet</div>
+                      )}
+                    </div>
                   ) : (
-                    <div className="py-2 text-xs text-white/35">No entries yet</div>
+                    <div className="pb-3 pt-2">
+                      {currentChildIdeas.length > 0 ? (
+                        currentChildIdeas.map((idea) => (
+                          <button
+                            key={idea.id}
+                            type="button"
+                            onClick={() => onSelectIdea(idea.id)}
+                            className="flex w-full items-center gap-3 py-2 text-left"
+                          >
+                            <span className="flex-1 text-sm text-white/75">{idea.title}</span>
+                            <span className="text-xs text-white/35">
+                              {idea.entries.length} entr{idea.entries.length === 1 ? 'y' : 'ies'}
+                            </span>
+                          </button>
+                        ))
+                      ) : (
+                        <div className="py-2 text-xs text-white/35">No ideas yet</div>
+                      )}
+                    </div>
                   )}
                 </div>
-              ) : (
-                <div className="pb-3 pt-2">
-                  {currentChildIdeas.length > 0 ? (
-                    currentChildIdeas.map((idea) => (
-                      <button
-                        key={idea.id}
-                        type="button"
-                        onClick={() => onSelectIdea(idea.id)}
-                        className="flex w-full items-center gap-3 py-2 text-left"
-                      >
-                        <span className="flex-1 text-sm text-white/75">{idea.title}</span>
-                        <span className="text-xs text-white/35">
-                          {idea.entries.length} entr{idea.entries.length === 1 ? 'y' : 'ies'}
-                        </span>
-                      </button>
-                    ))
-                  ) : (
-                    <div className="py-2 text-xs text-white/35">No ideas yet</div>
-                  )}
-                </div>
-              )}
-            </>
-          ) : null}
-          {addingChildIdea ? (
-            <div className="space-y-4 pb-3 pt-2">
+              </>
+            ) : null}
+            {addingChildIdea || editingChildIdea ? (
+              <div className="space-y-4 pb-3 pt-2">
               {!anyChildIdeaPickerOpen ? (
                 <input
                   type="text"
@@ -1554,10 +1762,143 @@ export function BrainstormDrawer({
                   ) : null}
                 </div>
               ) : null}
-            </div>
-          ) : null}
-          {addingEntry ? (
-            <div className="space-y-4 pb-3 pt-2">
+              </div>
+            ) : null}
+            {editingEntry ? (
+              <div className="space-y-4 pb-3 pt-2">
+                <div className="relative space-y-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEntryTypePickerOpen((open) => !open);
+                      setEntryStatePickerOpen(false);
+                    }}
+                    className="flex w-full items-center justify-between gap-3 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-left text-sm text-white hover:bg-white/[0.05]"
+                  >
+                    <span className="flex min-w-0 items-center gap-3">
+                      <span className="shrink-0 text-base leading-none">{resolveIcon(`entry-${editEntryType}`)}</span>
+                      <span className="truncate">{formatEntryTypeLabel(editEntryType)}</span>
+                    </span>
+                    <span className="text-xs text-white/40">Type</span>
+                  </button>
+                  {entryTypePickerOpen ? (
+                    <div className="absolute left-0 right-0 top-full z-10 mt-2 overflow-hidden rounded-lg border border-white/10 bg-[#161624] shadow-xl">
+                      {editEntryType === 'others' ? (
+                        <div className="border-b border-white/10 p-3">
+                          <div className="flex justify-start">
+                            <ColorPicker
+                              value={editEntryCustomColor}
+                              onChange={(color) => {
+                                setEditEntryCustomColor(color);
+                              }}
+                              align="left"
+                            />
+                          </div>
+                        </div>
+                      ) : null}
+                      {ENTRY_TYPES.map((type) => (
+                        <button
+                          key={type}
+                          type="button"
+                          onClick={() => {
+                            setEditEntryType(type);
+                            setEntryTypePickerOpen(false);
+                          }}
+                          className="flex w-full items-center gap-3 px-3 py-2 text-left text-sm text-white hover:bg-white/[0.05]"
+                        >
+                          <span className="shrink-0 text-base leading-none">{resolveIcon(`entry-${type}`)}</span>
+                          <span>{formatEntryTypeLabel(type)}</span>
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+                <div className="relative space-y-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEntryStatePickerOpen((open) => !open);
+                      setEntryTypePickerOpen(false);
+                    }}
+                    className="flex w-full items-center justify-between gap-3 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-left text-sm text-white hover:bg-white/[0.05]"
+                  >
+                    <span className="flex min-w-0 items-center gap-3">
+                      <span
+                        className="inline-block h-3 w-3 shrink-0 rounded-full"
+                        style={{
+                          backgroundColor:
+                            editEntryState === 'others'
+                              ? editEntryCustomStateColor
+                              : ENTRY_STATE_SWATCH[editEntryState],
+                        }}
+                      />
+                      <span className="truncate">{formatEntryStateLabel(editEntryState)}</span>
+                    </span>
+                    <span className="text-xs text-white/40">State</span>
+                  </button>
+                  {entryStatePickerOpen ? (
+                    <div className="absolute left-0 right-0 top-full z-10 mt-2 overflow-hidden rounded-lg border border-white/10 bg-[#161624] shadow-xl">
+                      {editEntryState === 'others' ? (
+                        <div className="border-b border-white/10 p-3">
+                          <div className="flex justify-start">
+                            <ColorPicker
+                              value={editEntryCustomStateColor}
+                              onChange={(color) => {
+                                setEditEntryCustomStateColor(color);
+                              }}
+                              align="left"
+                            />
+                          </div>
+                        </div>
+                      ) : null}
+                      {ENTRY_STATES.map((state) => (
+                        <button
+                          key={state}
+                          type="button"
+                          onClick={() => {
+                            setEditEntryState(state);
+                            setEntryStatePickerOpen(false);
+                          }}
+                          className="flex w-full items-center gap-3 px-3 py-2 text-left text-sm text-white hover:bg-white/[0.05]"
+                        >
+                          <span
+                            className="inline-block h-3 w-3 shrink-0 rounded-full"
+                            style={{
+                              backgroundColor:
+                                state === 'others'
+                                  ? editEntryCustomStateColor
+                                  : ENTRY_STATE_SWATCH[state],
+                            }}
+                          />
+                          <span>{formatEntryStateLabel(state)}</span>
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+                {!anyEntryPickerOpen ? (
+                  <textarea
+                    value={editEntryContent}
+                    onChange={(event) => setEditEntryContent(event.target.value)}
+                    onKeyDown={(event) => {
+                      if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+                        event.preventDefault();
+                        handleUpdateEntry();
+                      }
+                      if (event.key === 'Escape') {
+                        event.preventDefault();
+                        resetEditingEntryForm();
+                      }
+                    }}
+                    placeholder="Entry content..."
+                    autoFocus
+                    rows={4}
+                    className="w-full resize-none rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-white/20"
+                  />
+                ) : null}
+              </div>
+            ) : addingEntry ? (
+              <div className="space-y-4 pb-3 pt-2">
               <div className="relative space-y-2">
                 <button
                   type="button"
@@ -1688,17 +2029,40 @@ export function BrainstormDrawer({
                   className="w-full resize-none rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-white/20"
                 />
               ) : null}
-            </div>
-          ) : null}
-          <div className="border-t border-white/10 pb-3 pt-3">
-            {isInlineIdeaFormOpen && !anyEntryPickerOpen ? (
+              </div>
+            ) : null}
+          </div>
+          <div className="border-t border-white/10 px-4 pb-4 pt-3">
+            {editingEntry && !anyEntryPickerOpen ? (
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={resetEditingEntryForm}
+                  className="flex-1 rounded-lg border border-white/10 py-2 text-xs text-white/60 hover:border-white/20 hover:bg-white/[0.03] hover:text-white"
+                >
+                  Back
+                </button>
+                <button
+                  type="button"
+                  onClick={handleUpdateEntry}
+                  disabled={!editEntryContent.trim()}
+                  className={`flex-1 rounded-lg py-2 text-xs ${
+                    editEntryContent.trim()
+                      ? 'border border-white/10 text-white/70 hover:border-white/20 hover:text-white'
+                      : 'cursor-not-allowed border border-white/5 text-white/25'
+                  }`}
+                >
+                  Save
+                </button>
+              </div>
+            ) : isInlineIdeaFormOpen && !anyEntryPickerOpen ? (
               <div>
                 <button
                   type="button"
-                  onClick={addingChildIdea ? handleSaveChildIdea : handleSaveEntry}
-                  disabled={addingChildIdea ? !newChildIdeaTitle.trim() : !newEntryContent.trim()}
+                  onClick={addingChildIdea || editingChildIdea ? handleSaveChildIdea : handleSaveEntry}
+                  disabled={addingChildIdea || editingChildIdea ? !newChildIdeaTitle.trim() : !newEntryContent.trim()}
                   className={`w-full rounded-lg py-2 text-xs ${
-                    (addingChildIdea ? newChildIdeaTitle.trim() : newEntryContent.trim())
+                    ((addingChildIdea || editingChildIdea) ? newChildIdeaTitle.trim() : newEntryContent.trim())
                       ? 'border border-white/10 text-white/70 hover:border-white/20 hover:text-white'
                       : 'cursor-not-allowed border border-white/5 text-white/25'
                   }`}
@@ -1714,8 +2078,9 @@ export function BrainstormDrawer({
                   resetChildIdeaForm();
                   setAddingChildIdea(true);
                   onAddingChildIdeaChange(true);
+                  onEditingChildIdeaChange?.(false);
                   onDraftChildIdeaStateChange('open');
-                  onDraftChildIdeaTypeChange('insight');
+                  onDraftChildIdeaTypeChange('others');
                   onDraftChildIdeaCustomColorChange?.('#ffffff');
                   onDraftChildIdeaCustomStateColorChange?.('#ffffff');
                 }}

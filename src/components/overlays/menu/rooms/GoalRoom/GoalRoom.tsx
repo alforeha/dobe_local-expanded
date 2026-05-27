@@ -15,7 +15,7 @@ import {
   createBlankSmarter,
 } from './goalEditorUtils';
 import type { Aspiration, NestedAct, Smarter, Woop } from '../../../../../types';
-import type { BrainstormEntry, EntryType, IdeaState, IdeaType, StormCategory } from '../../../../../types/brainstorm';
+import type { BrainstormEntry, EntryState, EntryType, IdeaState, IdeaType, StormCategory } from '../../../../../types/brainstorm';
 import type { LogInputFields } from '../../../../../types/taskTemplate';
 
 interface GoalRoomProps {
@@ -41,6 +41,7 @@ export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
   const [draftCustomStateColor, setDraftCustomStateColor] = useState('#ffffff');
   const [draftCustomColor, setDraftCustomColor] = useState('#ffffff');
   const [addingChildIdea, setAddingChildIdea] = useState(false);
+  const [editingChildIdea, setEditingChildIdea] = useState(false);
   const [draftChildIdeaState, setDraftChildIdeaState] = useState<IdeaState>('open');
   const [draftChildIdeaType, setDraftChildIdeaType] = useState<IdeaType>('insight');
   const [draftChildIdeaCustomColor, setDraftChildIdeaCustomColor] = useState('#ffffff');
@@ -77,10 +78,14 @@ export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
     deleteStorm,
     deleteMainIdea,
     deleteIdea,
+    deleteEntry,
     renameStorm,
     setStormType,
     setStormState,
     setStormCategory,
+    updateMainIdea,
+    updateIdea,
+    updateEntry,
     renameMainIdea,
     renameIdea,
     setSelectedStorm,
@@ -196,6 +201,26 @@ export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
   ) {
     if (selectedStormId) {
       addEntryToMainIdea(selectedStormId, mainIdeaId, entry, entryType, customProperties);
+    }
+  }
+
+  function handleUpdateEntry(
+    entryId: string,
+    updates: {
+      content?: string;
+      state?: EntryState;
+      type?: EntryType;
+      customProperties?: Record<string, string>;
+    },
+  ) {
+    if (selectedStormId) {
+      updateEntry(selectedStormId, entryId, updates);
+    }
+  }
+
+  function handleDeleteEntry(entryId: string) {
+    if (selectedStormId) {
+      deleteEntry(selectedStormId, entryId);
     }
   }
 
@@ -905,6 +930,7 @@ export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
             draftCustomStateColor={draftCustomStateColor}
             draftCustomColor={draftCustomColor}
             addingChildIdea={addingChildIdea}
+            editingChildIdea={editingChildIdea}
             draftChildIdeaState={draftChildIdeaState}
             draftChildIdeaType={draftChildIdeaType}
             draftChildIdeaCustomColor={draftChildIdeaCustomColor}
@@ -971,6 +997,7 @@ export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
         onDraftCustomStateColorChange={setDraftCustomStateColor}
         onDraftCustomColorChange={setDraftCustomColor}
         onAddingChildIdeaChange={setAddingChildIdea}
+        onEditingChildIdeaChange={setEditingChildIdea}
         onDraftChildIdeaStateChange={setDraftChildIdeaState}
         onDraftChildIdeaTypeChange={setDraftChildIdeaType}
         onDraftChildIdeaCustomColorChange={setDraftChildIdeaCustomColor}
@@ -996,6 +1023,18 @@ export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
             setSelectedIdea(null);
           }
         }}
+        onDeleteEntry={handleDeleteEntry}
+        onUpdateMainIdea={(mainIdeaId, updates) => {
+          if (selectedStormId) {
+            updateMainIdea(selectedStormId, mainIdeaId, updates);
+          }
+        }}
+        onUpdateIdea={(ideaId, updates) => {
+          if (selectedStormId) {
+            updateIdea(selectedStormId, ideaId, updates);
+          }
+        }}
+        onUpdateEntry={handleUpdateEntry}
         onRenameStorm={(name) => {
           if (selectedStormId) {
             renameStorm(selectedStormId, name);

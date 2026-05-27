@@ -6,6 +6,7 @@ import type {
   BrainstormEntry,
   BrainstormIdea,
   BrainstormState,
+  EntryState,
   EntryType,
   IdeaState,
   IdeaType,
@@ -21,6 +22,20 @@ type BrainstormEntryDraft = Omit<BrainstormEntry, 'id' | 'entries' | 'type'> & {
   entries?: BrainstormEntryDraft[];
   type?: EntryType;
   entryType?: EntryType;
+};
+
+type BrainstormIdeaUpdates = {
+  title?: string;
+  state?: IdeaState;
+  type?: IdeaType;
+  customProperties?: Record<string, string>;
+};
+
+type BrainstormEntryUpdates = {
+  content?: string;
+  state?: EntryState;
+  type?: EntryType;
+  customProperties?: Record<string, string>;
 };
 
 interface BrainstormActions {
@@ -66,10 +81,14 @@ interface BrainstormActions {
   deleteStorm: (stormId: string) => void;
   deleteMainIdea: (stormId: string, mainIdeaId: string) => void;
   deleteIdea: (stormId: string, ideaId: string) => void;
+  deleteEntry: (stormId: string, entryId: string) => void;
   renameStorm: (stormId: string, name: string) => void;
   setStormType: (stormId: string, type: StormType) => void;
   setStormCategory: (stormId: string, category: StormCategory) => void;
   setStormState: (stormId: string, state: StormState) => void;
+  updateMainIdea: (stormId: string, mainIdeaId: string, updates: BrainstormIdeaUpdates) => void;
+  updateIdea: (stormId: string, ideaId: string, updates: BrainstormIdeaUpdates) => void;
+  updateEntry: (stormId: string, entryId: string, updates: BrainstormEntryUpdates) => void;
   renameMainIdea: (stormId: string, mainIdeaId: string, name: string) => void;
   renameIdea: (stormId: string, ideaId: string, name: string) => void;
   spendBrainWidth: (stormId: string, amount: number) => boolean;
@@ -160,11 +179,61 @@ function addNestedEntryToTree(
   return { entries: nextEntries, found };
 }
 
+function updateEntryInList(
+  entries: BrainstormEntry[],
+  entryId: string,
+  updates: BrainstormEntryUpdates,
+): { entries: BrainstormEntry[]; found: boolean } {
+  let found = false;
+
+  const nextEntries = entries.map((entry) => {
+    if (entry.id !== entryId) {
+      return entry;
+    }
+
+    found = true;
+    return {
+      ...entry,
+      ...(updates.content !== undefined ? { content: updates.content } : {}),
+      ...(updates.state !== undefined ? { state: updates.state } : {}),
+      ...(updates.type !== undefined ? { type: updates.type } : {}),
+      ...(updates.customProperties !== undefined ? { customProperties: updates.customProperties } : {}),
+    };
+  });
+
+  return { entries: nextEntries, found };
+}
+
+function deleteEntryFromList(entries: BrainstormEntry[], entryId: string): { entries: BrainstormEntry[]; found: boolean } {
+  const nextEntries = entries.filter((entry) => entry.id !== entryId);
+  return {
+    entries: nextEntries,
+    found: nextEntries.length !== entries.length,
+  };
+}
+
 function collectIdeaIdsForDeletion(ideas: Record<string, BrainstormIdea>, ideaId: string): string[] {
   const idea = ideas[ideaId];
   if (!idea) return [];
 
   return [ideaId, ...idea.ideas.flatMap((childId) => collectIdeaIdsForDeletion(ideas, childId))];
+}
+
+function stormContainsIdea(storm: Storm, ideaId: string): boolean {
+  const visited = new Set<string>();
+
+  function visitIdea(currentIdeaId: string): boolean {
+    if (currentIdeaId === ideaId) return true;
+    if (visited.has(currentIdeaId)) return false;
+
+    visited.add(currentIdeaId);
+    const currentIdea = storm.ideas[currentIdeaId];
+    if (!currentIdea) return false;
+
+    return currentIdea.ideas.some((childIdeaId) => visitIdea(childIdeaId));
+  }
+
+  return Object.values(storm.mainIdeas).some((mainIdea) => mainIdea.ideas.some((childIdeaId) => visitIdea(childIdeaId)));
 }
 
 function fixStormIdeaRelationships(storm: Storm): Storm {
@@ -537,6 +606,57 @@ export const useBrainstormStore = create<BrainstormState & BrainstormActions>()(
         });
       },
 
+      deleteEntry: (stormId, entryId) => {
+        set((state) => {
+          const storm = state.storms[stormId];
+          if (!storm) return state;
+
+          for (const [mainIdeaId, mainIdea] of Object.entries(storm.mainIdeas)) {
+            const result = deleteEntryFromList(mainIdea.entries, entryId);
+            if (!result.found) continue;
+
+            return {
+              storms: {
+                ...state.storms,
+                [stormId]: {
+                  ...storm,
+                  mainIdeas: {
+                    ...storm.mainIdeas,
+                    [mainIdeaId]: {
+                      ...mainIdea,
+                      entries: result.entries,
+                    },
+                  },
+                },
+              },
+            };
+          }
+
+          for (const [ideaId, idea] of Object.entries(storm.ideas)) {
+            const result = deleteEntryFromList(idea.entries, entryId);
+            if (!result.found) continue;
+
+            return {
+              storms: {
+                ...state.storms,
+                [stormId]: {
+                  ...storm,
+                  ideas: {
+                    ...storm.ideas,
+                    [ideaId]: {
+                      ...idea,
+                      entries: result.entries,
+                    },
+                  },
+                },
+              },
+            };
+          }
+
+          return state;
+        });
+      },
+
       renameStorm: (stormId, name) => {
         set((state) => {
           const storm = state.storms[stormId];
@@ -602,6 +722,111 @@ export const useBrainstormStore = create<BrainstormState & BrainstormActions>()(
               },
             },
           };
+        });
+      },
+
+      updateMainIdea: (stormId, mainIdeaId, updates) => {
+        set((state) => {
+          const storm = state.storms[stormId];
+          const mainIdea = storm?.mainIdeas[mainIdeaId];
+          if (!storm || !mainIdea) return state;
+
+          return {
+            storms: {
+              ...state.storms,
+              [stormId]: {
+                ...storm,
+                mainIdeas: {
+                  ...storm.mainIdeas,
+                  [mainIdeaId]: {
+                    ...mainIdea,
+                    ...(updates.title !== undefined ? { title: updates.title } : {}),
+                    ...(updates.state !== undefined ? { state: updates.state } : {}),
+                    ...(updates.type !== undefined ? { type: updates.type } : {}),
+                    ...(updates.customProperties !== undefined ? { customProperties: updates.customProperties } : {}),
+                  },
+                },
+              },
+            },
+          };
+        });
+      },
+
+      updateIdea: (stormId, ideaId, updates) => {
+        set((state) => {
+          const storm = state.storms[stormId];
+          const idea = storm?.ideas[ideaId];
+          if (!storm || !idea || !stormContainsIdea(storm, ideaId)) return state;
+
+          return {
+            storms: {
+              ...state.storms,
+              [stormId]: {
+                ...storm,
+                ideas: {
+                  ...storm.ideas,
+                  [ideaId]: {
+                    ...idea,
+                    ...(updates.title !== undefined ? { title: updates.title } : {}),
+                    ...(updates.state !== undefined ? { state: updates.state } : {}),
+                    ...(updates.type !== undefined ? { type: updates.type } : {}),
+                    ...(updates.customProperties !== undefined ? { customProperties: updates.customProperties } : {}),
+                  },
+                },
+              },
+            },
+          };
+        });
+      },
+
+      updateEntry: (stormId, entryId, updates) => {
+        set((state) => {
+          const storm = state.storms[stormId];
+          if (!storm) return state;
+
+          for (const [mainIdeaId, mainIdea] of Object.entries(storm.mainIdeas)) {
+            const result = updateEntryInList(mainIdea.entries, entryId, updates);
+            if (!result.found) continue;
+
+            return {
+              storms: {
+                ...state.storms,
+                [stormId]: {
+                  ...storm,
+                  mainIdeas: {
+                    ...storm.mainIdeas,
+                    [mainIdeaId]: {
+                      ...mainIdea,
+                      entries: result.entries,
+                    },
+                  },
+                },
+              },
+            };
+          }
+
+          for (const [ideaId, idea] of Object.entries(storm.ideas)) {
+            const result = updateEntryInList(idea.entries, entryId, updates);
+            if (!result.found) continue;
+
+            return {
+              storms: {
+                ...state.storms,
+                [stormId]: {
+                  ...storm,
+                  ideas: {
+                    ...storm.ideas,
+                    [ideaId]: {
+                      ...idea,
+                      entries: result.entries,
+                    },
+                  },
+                },
+              },
+            };
+          }
+
+          return state;
         });
       },
 

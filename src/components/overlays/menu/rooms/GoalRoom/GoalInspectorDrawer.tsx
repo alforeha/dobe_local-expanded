@@ -84,6 +84,7 @@ interface GoalInspectorDrawerProps {
   onDraftCustomStateColorChange?: (color: string) => void;
   onDraftCustomColorChange?: (color: string) => void;
   onAddingChildIdeaChange: (adding: boolean) => void;
+  onEditingChildIdeaChange?: (editing: boolean) => void;
   onDraftChildIdeaStateChange: (state: IdeaState) => void;
   onDraftChildIdeaTypeChange: (type: IdeaType) => void;
   onDraftChildIdeaCustomColorChange?: (color: string) => void;
@@ -92,6 +93,25 @@ interface GoalInspectorDrawerProps {
   onDeleteStorm: () => void;
   onDeleteMainIdea: () => void;
   onDeleteIdea: () => void;
+  onDeleteEntry: (entryId: string) => void;
+  onUpdateMainIdea: (mainIdeaId: string, updates: {
+    title?: string;
+    state?: IdeaState;
+    type?: IdeaType;
+    customProperties?: Record<string, string>;
+  }) => void;
+  onUpdateIdea: (ideaId: string, updates: {
+    title?: string;
+    state?: IdeaState;
+    type?: IdeaType;
+    customProperties?: Record<string, string>;
+  }) => void;
+  onUpdateEntry: (entryId: string, updates: {
+    content?: string;
+    state?: import('../../../../../types/brainstorm').EntryState;
+    type?: EntryType;
+    customProperties?: Record<string, string>;
+  }) => void;
   onEnterStorm: () => void;
   onRenameStorm: (name: string) => void;
   onRenameMainIdea: (name: string) => void;
@@ -451,6 +471,7 @@ export function GoalInspectorDrawer({
   onDraftCustomStateColorChange,
   onDraftCustomColorChange,
   onAddingChildIdeaChange,
+  onEditingChildIdeaChange,
   onDraftChildIdeaStateChange,
   onDraftChildIdeaTypeChange,
   onDraftChildIdeaCustomColorChange,
@@ -459,6 +480,10 @@ export function GoalInspectorDrawer({
   onDeleteStorm,
   onDeleteMainIdea,
   onDeleteIdea,
+  onDeleteEntry,
+  onUpdateMainIdea,
+  onUpdateIdea,
+  onUpdateEntry,
   onEnterStorm,
   onRenameStorm,
   onRenameMainIdea,
@@ -769,6 +794,10 @@ export function GoalInspectorDrawer({
           onDeleteStorm={onDeleteStorm}
           onDeleteMainIdea={onDeleteMainIdea}
           onDeleteIdea={onDeleteIdea}
+          onDeleteEntry={onDeleteEntry}
+          onUpdateMainIdea={onUpdateMainIdea}
+          onUpdateIdea={onUpdateIdea}
+          onUpdateEntry={onUpdateEntry}
           onEnterStorm={onEnterStorm}
           onHandleAddStormOpen={handleAddStormOpen}
           onHandleAddStormConfirm={handleAddStormConfirm}
@@ -782,6 +811,7 @@ export function GoalInspectorDrawer({
         onDraftCustomStateColorChange={onDraftCustomStateColorChange}
         onDraftCustomColorChange={onDraftCustomColorChange}
         onAddingChildIdeaChange={onAddingChildIdeaChange}
+        onEditingChildIdeaChange={onEditingChildIdeaChange}
         onDraftChildIdeaStateChange={onDraftChildIdeaStateChange}
         onDraftChildIdeaTypeChange={onDraftChildIdeaTypeChange}
         onDraftChildIdeaCustomColorChange={onDraftChildIdeaCustomColorChange}

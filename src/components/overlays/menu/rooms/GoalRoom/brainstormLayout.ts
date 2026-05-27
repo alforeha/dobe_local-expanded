@@ -81,12 +81,34 @@ export function getIdeaLayoutTree(
   baseRadius: number = 160,
   brainstormCenterX?: number,
   brainstormCenterY?: number,
+  mainIdeaCount: number = 1,
 ): IdeaLayoutNode[] {
   const centerX = parentX;
   const centerY = parentY;
+  const MIN_STEP = Math.PI / 12;
+  const effectiveMaxArc = Math.min(
+    (2 * Math.PI) / Math.max(1, mainIdeaCount),
+    Math.PI * 0.75,
+  );
+  const arcBasedCapacity = Math.max(1, Math.floor(effectiveMaxArc / MIN_STEP));
   const outwardAngle = (brainstormCenterX !== undefined && brainstormCenterY !== undefined)
     ? Math.atan2(parentY - brainstormCenterY, parentX - brainstormCenterX)
     : -Math.PI / 2;
+
+  const getFirstLevelAngle = (count: number, index: number): number => {
+    if (count <= 1) return outwardAngle;
+
+    if (count === 2) {
+      return [outwardAngle - Math.PI / 4, outwardAngle + Math.PI / 4][index] ?? outwardAngle;
+    }
+
+    const naturalStep = effectiveMaxArc / Math.max(1, count - 1);
+    const step = Math.max(MIN_STEP, naturalStep);
+    const totalArc = step * Math.max(1, count - 1);
+    const startAngle = outwardAngle - totalArc / 2;
+
+    return startAngle + step * index;
+  };
 
   const buildChildren = (
     parentIdea: BrainstormIdea,
@@ -100,15 +122,21 @@ export function getIdeaLayoutTree(
       .map((ideaId) => ideas[ideaId])
       .filter((idea): idea is BrainstormIdea => Boolean(idea));
     const childRadius = 120;
+    const siblingCount = childIdeas.length;
+    const CHILD_RING_CAPACITY = 6;
 
     return childIdeas.map((childIdea, index) => {
+      const ringIndex = Math.floor(index / CHILD_RING_CAPACITY);
+      const ringStart = ringIndex * CHILD_RING_CAPACITY;
+      const ringCount = Math.min(CHILD_RING_CAPACITY, siblingCount - ringStart);
+      const tether = childRadius * (ringIndex + 1);
       const angle = getOutwardChildAngle(
-        childIdeas.length,
-        index,
+        ringCount,
+        index - ringStart,
         Math.atan2(anchorY - centerY, anchorX - centerX),
       );
-      const x = anchorX + Math.cos(angle) * childRadius;
-      const y = anchorY + Math.sin(angle) * childRadius;
+      const x = anchorX + Math.cos(angle) * tether;
+      const y = anchorY + Math.sin(angle) * tether;
       const node: IdeaLayoutNode = {
         id: childIdea.id,
         x,
@@ -130,21 +158,13 @@ export function getIdeaLayoutTree(
     .filter((idea): idea is BrainstormIdea => Boolean(idea));
 
   return firstLevelIdeas.map((idea, index) => {
-    let angle = outwardAngle;
-    if (firstLevelIdeas.length === 2) {
-      angle = [outwardAngle - Math.PI / 4, outwardAngle + Math.PI / 4][index] ?? outwardAngle;
-    } else if (firstLevelIdeas.length >= 3) {
-      const MAX_ARC = Math.PI / 3;
-      const MIN_STEP = Math.PI / 12;
-      const naturalStep = MAX_ARC / Math.max(1, firstLevelIdeas.length - 1);
-      const step = Math.max(MIN_STEP, naturalStep);
-      const totalArc = step * Math.max(1, firstLevelIdeas.length - 1);
-      const startAngle = outwardAngle - totalArc / 2;
-      angle = startAngle + step * index;
-    }
-
-    const x = parentX + Math.cos(angle) * baseRadius;
-    const y = parentY + Math.sin(angle) * baseRadius;
+    const ringIndex = Math.floor(index / arcBasedCapacity);
+    const ringStart = ringIndex * arcBasedCapacity;
+    const ringCount = Math.min(arcBasedCapacity, firstLevelIdeas.length - ringStart);
+    const angle = getFirstLevelAngle(ringCount, index - ringStart);
+    const tether = baseRadius * (ringIndex + 1);
+    const x = parentX + Math.cos(angle) * tether;
+    const y = parentY + Math.sin(angle) * tether;
     const node: IdeaLayoutNode = {
       id: idea.id,
       x,

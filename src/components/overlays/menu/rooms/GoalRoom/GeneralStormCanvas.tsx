@@ -34,6 +34,7 @@ interface GeneralStormCanvasProps {
   draftCustomStateColor?: string;
   draftCustomColor?: string;
   addingChildIdea?: boolean;
+  editingChildIdea?: boolean;
   draftChildIdeaState?: IdeaState;
   draftChildIdeaType?: IdeaType;
   draftChildIdeaCustomColor?: string;
@@ -168,6 +169,7 @@ export function GeneralStormCanvas({
   draftCustomStateColor = '#ffffff',
   draftCustomColor = '#ffffff',
   addingChildIdea = false,
+  editingChildIdea = false,
   draftChildIdeaState = 'open',
   draftChildIdeaType = 'insight',
   draftChildIdeaCustomColor = '#ffffff',
@@ -191,6 +193,7 @@ export function GeneralStormCanvas({
   const entryScrollAngleRef = useRef(entryScrollAngle);
   const addingMainIdeaRef = useRef(addingMainIdea);
   const addingChildIdeaRef = useRef(addingChildIdea);
+  const editingChildIdeaRef = useRef(editingChildIdea);
   const draftMainIdeaTitleRef = useRef(draftMainIdeaTitle);
   const draftMainIdeaStateRef = useRef(draftMainIdeaState);
   const draftMainIdeaTypeRef = useRef(draftMainIdeaType);
@@ -252,6 +255,10 @@ export function GeneralStormCanvas({
   useEffect(() => {
     addingChildIdeaRef.current = addingChildIdea;
   }, [addingChildIdea]);
+
+  useEffect(() => {
+    editingChildIdeaRef.current = editingChildIdea;
+  }, [editingChildIdea]);
 
   useEffect(() => {
     draftMainIdeaTitleRef.current = draftMainIdeaTitle;
@@ -341,7 +348,7 @@ export function GeneralStormCanvas({
           return;
         }
 
-        const tree = getIdeaLayoutTree(mainIdea, renderIdeas, layout.x, layout.y, undefined, 0, 0);
+        const tree = getIdeaLayoutTree(mainIdea, renderIdeas, layout.x, layout.y, undefined, 0, 0, mainLayouts.length);
         ideaTreesByMainId[layout.id] = tree;
         allFlatIdeas.push(...flattenIdeaTree(tree));
       });
@@ -356,10 +363,38 @@ export function GeneralStormCanvas({
       const currentSelectedMainIdeaId = selectedMainIdeaIdRef.current;
       const flatNodeById = new Map(allFlatIdeas.map((node) => [node.id, node]));
       const selectedNode = currentSelectedIdeaId ? flatNodeById.get(currentSelectedIdeaId) ?? null : null;
+      const isEditingChildIdea = editingChildIdeaRef.current;
+      const isAddingChildIdea = addingChildIdeaRef.current;
+      const draftChildNode = allFlatIdeas.find((node) => node.id === '__draft_child__') ?? null;
 
       let focusNodes: BoundsNode[] = [];
 
-      if (selectedNode) {
+      if (isAddingChildIdea && selectedNode) {
+        focusNodes = [
+          selectedNode,
+          ...(draftChildNode ? [draftChildNode] : []),
+        ];
+      } else if (isAddingChildIdea && currentSelectedMainIdeaId) {
+        const selectedMainLayout = mainLayouts.find((layout) => layout.id === currentSelectedMainIdeaId) ?? null;
+        focusNodes = [
+          ...(selectedMainLayout ? [selectedMainLayout] : []),
+          ...(draftChildNode ? [draftChildNode] : []),
+        ];
+      } else if (isEditingChildIdea && selectedNode) {
+        focusNodes = [
+          selectedNode,
+          ...allFlatIdeas.filter((node) => node.parentId === selectedNode.id),
+        ];
+      } else if (isEditingChildIdea && currentSelectedMainIdeaId) {
+        const selectedMainLayout = mainLayouts.find((layout) => layout.id === currentSelectedMainIdeaId) ?? null;
+        const immediateChildren = allFlatIdeas.filter(
+          (node) => node.mainIdeaId === currentSelectedMainIdeaId && node.parentId === null,
+        );
+        focusNodes = [
+          ...(selectedMainLayout ? [selectedMainLayout] : []),
+          ...immediateChildren,
+        ];
+      } else if (selectedNode) {
         const subtreeIds = collectSubtreeIds(allFlatIdeas, selectedNode.id);
         focusNodes = allFlatIdeas.filter((node) => subtreeIds.has(node.id));
       } else if (currentSelectedMainIdeaId) {
@@ -420,6 +455,7 @@ export function GeneralStormCanvas({
       void elapsed;
       const currentSelectedIdeaId = selectedIdeaIdRef.current;
       const currentSelectedMainIdeaId = selectedMainIdeaIdRef.current;
+      const isEditingChildIdea = editingChildIdeaRef.current;
 
       const phantom = addingMainIdeaRef.current ? {
         id: draftMainIdeaId,
@@ -443,7 +479,39 @@ export function GeneralStormCanvas({
       let renderIdeas: Record<string, BrainstormIdea> = ideas;
       let nextRenderMainIdeas = renderMainIdeas;
 
-      if (addingChildIdeaRef.current && (currentSelectedMainIdeaId || currentSelectedIdeaId)) {
+      if (isEditingChildIdea) {
+        if (currentSelectedIdeaId && ideas[currentSelectedIdeaId]) {
+          renderIdeas = {
+            ...renderIdeas,
+            [currentSelectedIdeaId]: {
+              ...renderIdeas[currentSelectedIdeaId],
+              type: draftChildIdeaTypeRef.current,
+              state: draftChildIdeaStateRef.current,
+              customProperties: {
+                ...renderIdeas[currentSelectedIdeaId].customProperties,
+                typeColor: draftChildIdeaCustomColorRef.current,
+                stateColor: draftChildIdeaCustomStateColorRef.current,
+              },
+            },
+          };
+        } else if (currentSelectedMainIdeaId && nextRenderMainIdeas[currentSelectedMainIdeaId]) {
+          nextRenderMainIdeas = {
+            ...nextRenderMainIdeas,
+            [currentSelectedMainIdeaId]: {
+              ...nextRenderMainIdeas[currentSelectedMainIdeaId],
+              type: draftChildIdeaTypeRef.current,
+              state: draftChildIdeaStateRef.current,
+              customProperties: {
+                ...nextRenderMainIdeas[currentSelectedMainIdeaId].customProperties,
+                typeColor: draftChildIdeaCustomColorRef.current,
+                stateColor: draftChildIdeaCustomStateColorRef.current,
+              },
+            },
+          };
+        }
+      }
+
+      if (addingChildIdeaRef.current && !isEditingChildIdea && (currentSelectedMainIdeaId || currentSelectedIdeaId)) {
         const selectedIdea = currentSelectedIdeaId ? ideas[currentSelectedIdeaId] ?? null : null;
         const ownerMainIdeaId = selectedIdea?.mainIdeaId ?? currentSelectedMainIdeaId ?? '';
         const phantomChildIdea: BrainstormIdea = {
@@ -626,6 +694,36 @@ export function GeneralStormCanvas({
         );
         context.stroke();
         context.restore();
+      }
+
+      if (isEditingChildIdea) {
+        const targetIdeaLayout = currentSelectedIdeaId
+          ? allFlatIdeaLayoutsRef.current.find((node) => node.id === currentSelectedIdeaId) ?? null
+          : null;
+        const targetMainIdeaLayout = currentSelectedIdeaId
+          ? null
+          : currentSelectedMainIdeaId
+            ? mainIdeaLayoutsRef.current.find((layout) => layout.id === currentSelectedMainIdeaId) ?? null
+            : null;
+        const editingLayout = targetIdeaLayout ?? targetMainIdeaLayout;
+
+        if (editingLayout) {
+          context.save();
+          context.setLineDash([4, 4]);
+          context.strokeStyle = '#ffffff';
+          context.globalAlpha = 0.6;
+          context.lineWidth = 1.5 / cameraRef.current.scale;
+          context.beginPath();
+          context.arc(
+            editingLayout.x,
+            editingLayout.y,
+            editingLayout.radius,
+            0,
+            Math.PI * 2,
+          );
+          context.stroke();
+          context.restore();
+        }
       }
 
       context.restore();
