@@ -16,7 +16,10 @@ import type {
   StormType,
 } from '../types/brainstorm';
 
-type BrainstormEntryDraft = Omit<BrainstormEntry, 'id' | 'entries' | 'entryType'> & {
+type BrainstormEntryDraft = Omit<BrainstormEntry, 'id' | 'entries' | 'type'> & {
+  id?: string;
+  entries?: BrainstormEntryDraft[];
+  type?: EntryType;
   entryType?: EntryType;
 };
 
@@ -45,8 +48,20 @@ interface BrainstormActions {
     type?: IdeaType,
     customProperties?: Record<string, string>,
   ) => void;
-  addEntry: (stormId: string, ideaId: string, entry: BrainstormEntryDraft, entryType?: EntryType) => void;
-  addEntryToMainIdea: (stormId: string, mainIdeaId: string, entry: BrainstormEntryDraft, entryType?: EntryType) => void;
+  addEntry: (
+    stormId: string,
+    ideaId: string,
+    entry: BrainstormEntryDraft,
+    entryType?: EntryType,
+    customProperties?: Record<string, string>,
+  ) => void;
+  addEntryToMainIdea: (
+    stormId: string,
+    mainIdeaId: string,
+    entry: BrainstormEntryDraft,
+    entryType?: EntryType,
+    customProperties?: Record<string, string>,
+  ) => void;
   addNestedEntry: (stormId: string, ideaId: string, parentEntryId: string, entry: BrainstormEntryDraft) => void;
   deleteStorm: (stormId: string) => void;
   deleteMainIdea: (stormId: string, mainIdeaId: string) => void;
@@ -74,12 +89,43 @@ const initialState: BrainstormState = {
   selectedIdeaId: null,
 };
 
-function buildEntry(entry: BrainstormEntryDraft, entryType?: EntryType): BrainstormEntry {
+function buildEntry(
+  entry: BrainstormEntryDraft,
+  entryType?: EntryType,
+  customProperties?: Record<string, string>,
+): BrainstormEntry {
   return {
     ...entry,
-    entryType: entryType ?? entry.entryType ?? 'general',
+    type: entryType ?? entry.type ?? entry.entryType ?? 'general',
+    customProperties: customProperties ?? entry.customProperties,
     id: crypto.randomUUID(),
     entries: [],
+  };
+}
+
+function normalizeEntry(entry: BrainstormEntryDraft): BrainstormEntry {
+  return {
+    ...entry,
+    id: entry.id ?? crypto.randomUUID(),
+    type: entry.type ?? entry.entryType ?? 'general',
+    customProperties: entry.customProperties ?? {},
+    entries: (entry.entries ?? []).map((childEntry) => normalizeEntry(childEntry)),
+  };
+}
+
+function normalizeMainIdea(mainIdea: MainIdea): MainIdea {
+  return {
+    ...mainIdea,
+    customProperties: mainIdea.customProperties ?? {},
+    entries: mainIdea.entries.map((entry) => normalizeEntry(entry)),
+  };
+}
+
+function normalizeIdea(idea: BrainstormIdea): BrainstormIdea {
+  return {
+    ...idea,
+    customProperties: idea.customProperties ?? {},
+    entries: idea.entries.map((entry) => normalizeEntry(entry)),
   };
 }
 
@@ -122,17 +168,20 @@ function collectIdeaIdsForDeletion(ideas: Record<string, BrainstormIdea>, ideaId
 }
 
 function fixStormIdeaRelationships(storm: Storm): Storm {
+  const fixedMainIdeas = Object.fromEntries(
+    Object.entries(storm.mainIdeas).map(([mainIdeaId, mainIdea]) => [mainIdeaId, normalizeMainIdea(mainIdea)]),
+  ) as Record<string, MainIdea>;
   const fixedIdeas = Object.fromEntries(
     Object.entries(storm.ideas).map(([ideaId, idea]) => {
       const parentIdeaId = idea.parentIdeaId ?? null;
       const mainIdeaId = idea.mainIdeaId ?? (
         parentIdeaId
           ? storm.ideas[parentIdeaId]?.mainIdeaId ?? ''
-          : Object.values(storm.mainIdeas).find((mainIdea) => mainIdea.ideas.includes(ideaId))?.id ?? ''
+          : Object.values(fixedMainIdeas).find((mainIdea) => mainIdea.ideas.includes(ideaId))?.id ?? ''
       );
 
       return [ideaId, {
-        ...idea,
+        ...normalizeIdea(idea),
         parentIdeaId,
         mainIdeaId,
       }];
@@ -141,6 +190,7 @@ function fixStormIdeaRelationships(storm: Storm): Storm {
 
   return {
     ...storm,
+    mainIdeas: fixedMainIdeas,
     ideas: fixedIdeas,
   };
 }
@@ -314,8 +364,8 @@ export const useBrainstormStore = create<BrainstormState & BrainstormActions>()(
         awardBrainstormWisdomXP();
       },
 
-      addEntry: (stormId, ideaId, entry, entryType) => {
-        const nextEntry = buildEntry(entry, entryType);
+      addEntry: (stormId, ideaId, entry, entryType, customProperties) => {
+        const nextEntry = buildEntry(entry, entryType, customProperties);
 
         set((state) => {
           const storm = state.storms[stormId];
@@ -344,8 +394,8 @@ export const useBrainstormStore = create<BrainstormState & BrainstormActions>()(
         awardBrainstormWisdomXP();
       },
 
-      addEntryToMainIdea: (stormId, mainIdeaId, entry, entryType) => {
-        const nextEntry = buildEntry(entry, entryType);
+      addEntryToMainIdea: (stormId, mainIdeaId, entry, entryType, customProperties) => {
+        const nextEntry = buildEntry(entry, entryType, customProperties);
 
         set((state) => {
           const storm = state.storms[stormId];

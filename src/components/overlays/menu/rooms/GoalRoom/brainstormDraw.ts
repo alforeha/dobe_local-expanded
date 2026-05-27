@@ -1,5 +1,5 @@
 import { ICON_MAP, isImageIcon } from '../../../../../constants/iconMap';
-import type { BrainstormIdea, MainIdea, StormState } from '../../../../../types/brainstorm';
+import type { BrainstormEntry, BrainstormIdea, MainIdea, StormState } from '../../../../../types/brainstorm';
 import { flattenIdeaTree, type IdeaLayoutNode, type MainIdeaLayout, type PointerLine } from './brainstormLayout';
 
 const MAIN_IDEA_STATE_COLORS = {
@@ -591,6 +591,7 @@ export function drawBrainstormIdeaSpokes(
   centerX: number,
   centerY: number,
   timestamp: number,
+  entryRotationAngle: number = 0,
 ) {
   const flatIdeaLayouts = flattenIdeaTree(ideaLayouts);
   const layoutById = new Map(flatIdeaLayouts.map((layout) => [layout.id, layout]));
@@ -670,8 +671,153 @@ export function drawBrainstormIdeaSpokes(
       drawMainIdeaIcon(ctx, iconValue, x, y, nodeRadius);
     }
 
+    const visibleEntries = idea?.entries ?? [];
+    const entryOrbRadius = 8;
+    const subEntryRadius = 5;
+    const slotCount = 6;
+    const totalEntries = visibleEntries.length;
+
+    if (totalEntries <= 6) {
+      visibleEntries.forEach((entry, entryIndex) => {
+        const angle = (entryIndex / Math.max(1, totalEntries)) * Math.PI * 2;
+        const entryAlpha = 0.85;
+        const orbX = x + Math.cos(angle) * nodeRadius;
+        const orbY = y + Math.sin(angle) * nodeRadius;
+        const entryStateColor = getEntryOrbColor(entry);
+        const entryIconValue = ICON_MAP[`entry-${entry.type}`];
+
+        ctx.save();
+        ctx.globalAlpha = opacity * entryAlpha;
+        ctx.fillStyle = withAlpha(entryStateColor, 0.85);
+        ctx.beginPath();
+        ctx.arc(orbX, orbY, entryOrbRadius, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.arc(orbX, orbY, entryOrbRadius, 0, Math.PI * 2);
+        ctx.stroke();
+
+        if (entry.type === 'others') {
+          ctx.fillStyle = entry.customProperties?.typeColor ?? '#ffffff';
+          ctx.beginPath();
+          ctx.arc(orbX, orbY, 3, 0, Math.PI * 2);
+          ctx.fill();
+        } else if (entryIconValue && !isImageIcon(entryIconValue)) {
+          ctx.fillStyle = '#0f172a';
+          ctx.font = '8px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(entryIconValue, orbX, orbY + 0.5);
+        }
+
+        entry.entries.slice(0, 3).forEach((subEntry, subEntryIndex, subEntries) => {
+          const subAngle = (subEntryIndex / Math.max(1, subEntries.length)) * Math.PI * 2 - Math.PI / 2;
+          const subOrbX = orbX + Math.cos(subAngle) * entryOrbRadius;
+          const subOrbY = orbY + Math.sin(subAngle) * entryOrbRadius;
+
+          ctx.fillStyle = withAlpha(getEntryOrbColor(subEntry), 0.85);
+          ctx.beginPath();
+          ctx.arc(subOrbX, subOrbY, subEntryRadius, 0, Math.PI * 2);
+          ctx.fill();
+
+          ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.arc(subOrbX, subOrbY, subEntryRadius, 0, Math.PI * 2);
+          ctx.stroke();
+        });
+
+        ctx.restore();
+      });
+    } else {
+      const scrollFloat = (entryRotationAngle / (Math.PI * 2)) * totalEntries;
+      const normalizedScrollFloat = ((scrollFloat % totalEntries) + totalEntries) % totalEntries;
+      const scrollOffset = Math.floor(normalizedScrollFloat);
+      const fraction = normalizedScrollFloat % 1;
+
+      for (let slotIndex = 0; slotIndex <= slotCount; slotIndex += 1) {
+        const entryIndex = (scrollOffset + slotIndex) % totalEntries;
+        const entry = visibleEntries[entryIndex];
+        if (!entry) {
+          continue;
+        }
+
+        const angle = (slotIndex / slotCount) * Math.PI * 2;
+        let entryAlpha = 0.85;
+        if (slotIndex === 0) entryAlpha = 0.85 * (1 - fraction);
+        if (slotIndex === slotCount) entryAlpha = 0.85 * fraction;
+        const orbX = x + Math.cos(angle) * nodeRadius;
+        const orbY = y + Math.sin(angle) * nodeRadius;
+        const entryStateColor = getEntryOrbColor(entry);
+        const entryIconValue = ICON_MAP[`entry-${entry.type}`];
+
+        ctx.save();
+        ctx.globalAlpha = opacity * entryAlpha;
+        ctx.fillStyle = withAlpha(entryStateColor, 0.85);
+        ctx.beginPath();
+        ctx.arc(orbX, orbY, entryOrbRadius, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.arc(orbX, orbY, entryOrbRadius, 0, Math.PI * 2);
+        ctx.stroke();
+
+        if (entry.type === 'others') {
+          ctx.fillStyle = entry.customProperties?.typeColor ?? '#ffffff';
+          ctx.beginPath();
+          ctx.arc(orbX, orbY, 3, 0, Math.PI * 2);
+          ctx.fill();
+        } else if (entryIconValue && !isImageIcon(entryIconValue)) {
+          ctx.fillStyle = '#0f172a';
+          ctx.font = '8px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(entryIconValue, orbX, orbY + 0.5);
+        }
+
+        entry.entries.slice(0, 3).forEach((subEntry, subEntryIndex, subEntries) => {
+          const subAngle = (subEntryIndex / Math.max(1, subEntries.length)) * Math.PI * 2 - Math.PI / 2;
+          const subOrbX = orbX + Math.cos(subAngle) * entryOrbRadius;
+          const subOrbY = orbY + Math.sin(subAngle) * entryOrbRadius;
+
+          ctx.fillStyle = withAlpha(getEntryOrbColor(subEntry), 0.85);
+          ctx.beginPath();
+          ctx.arc(subOrbX, subOrbY, subEntryRadius, 0, Math.PI * 2);
+          ctx.fill();
+
+          ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.arc(subOrbX, subOrbY, subEntryRadius, 0, Math.PI * 2);
+          ctx.stroke();
+        });
+
+        ctx.restore();
+      }
+    }
+
     ctx.restore();
   });
+}
+
+function getEntryOrbColor(entry: BrainstormEntry): string {
+  switch (entry.state) {
+    case 'outcome':
+      return '#4ade80';
+    case 'obstacle':
+      return '#f87171';
+    case 'question':
+      return '#60a5fa';
+    case 'solved':
+      return '#2dd4bf';
+    case 'others':
+    default:
+      return entry.customProperties?.stateColor ?? '#ffffff';
+  }
 }
 
 export function drawBrainstormPointerLines(

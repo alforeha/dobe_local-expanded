@@ -15,7 +15,7 @@ import {
   createBlankSmarter,
 } from './goalEditorUtils';
 import type { Aspiration, NestedAct, Smarter, Woop } from '../../../../../types';
-import type { BrainstormEntry, IdeaState, IdeaType, StormCategory } from '../../../../../types/brainstorm';
+import type { BrainstormEntry, EntryType, IdeaState, IdeaType, StormCategory } from '../../../../../types/brainstorm';
 import type { LogInputFields } from '../../../../../types/taskTemplate';
 
 interface GoalRoomProps {
@@ -45,6 +45,7 @@ export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
   const [draftChildIdeaType, setDraftChildIdeaType] = useState<IdeaType>('insight');
   const [draftChildIdeaCustomColor, setDraftChildIdeaCustomColor] = useState('#ffffff');
   const [draftChildIdeaCustomStateColor, setDraftChildIdeaCustomStateColor] = useState('#ffffff');
+  const [entryScrollAngle, setEntryScrollAngle] = useState(0);
   const focusOrbitRef = useRef<((orbit: 'user' | 'system' | null) => void) | null>(null);
   const clearCanvasFocusRef = useRef<((scope: 'planet' | 'all') => void) | null>(null);
   const selectAspirationFromDrawerRef = useRef<((id: string) => void) | null>(null);
@@ -179,18 +180,22 @@ export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
   function handleAddEntry(
     ideaId: string,
     entry: Omit<BrainstormEntry, 'id' | 'entries'>,
+    entryType?: EntryType,
+    customProperties?: Record<string, string>,
   ) {
     if (selectedStormId) {
-      addEntry(selectedStormId, ideaId, entry);
+      addEntry(selectedStormId, ideaId, entry, entryType, customProperties);
     }
   }
 
   function handleAddEntryToMainIdea(
     mainIdeaId: string,
     entry: Omit<BrainstormEntry, 'id' | 'entries'>,
+    entryType?: EntryType,
+    customProperties?: Record<string, string>,
   ) {
     if (selectedStormId) {
-      addEntryToMainIdea(selectedStormId, mainIdeaId, entry);
+      addEntryToMainIdea(selectedStormId, mainIdeaId, entry, entryType, customProperties);
     }
   }
 
@@ -904,6 +909,7 @@ export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
             draftChildIdeaType={draftChildIdeaType}
             draftChildIdeaCustomColor={draftChildIdeaCustomColor}
             draftChildIdeaCustomStateColor={draftChildIdeaCustomStateColor}
+            entryScrollAngle={entryScrollAngle}
           />
         ) : null}
       </div>
@@ -954,8 +960,8 @@ export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
         onAddMainIdea={handleAddMainIdea}
         onAddIdea={handleAddIdea}
         onAddChildIdea={handleAddChildIdea}
-        onAddEntry={(ideaId, content, state) => {
-          handleAddEntry(ideaId, { content, state, pointsTo: [] });
+        onAddEntry={(ideaId, entry, entryType, customProperties) => {
+          handleAddEntry(ideaId, entry, entryType, customProperties);
         }}
         onAddEntryToMainIdea={handleAddEntryToMainIdea}
         onAddingMainIdeaChange={setAddingMainIdea}
@@ -969,6 +975,7 @@ export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
         onDraftChildIdeaTypeChange={setDraftChildIdeaType}
         onDraftChildIdeaCustomColorChange={setDraftChildIdeaCustomColor}
         onDraftChildIdeaCustomStateColorChange={setDraftChildIdeaCustomStateColor}
+        onEntryScrollAngleChange={setEntryScrollAngle}
         onDeleteStorm={() => {
           if (selectedStormId) {
             deleteStorm(selectedStormId);

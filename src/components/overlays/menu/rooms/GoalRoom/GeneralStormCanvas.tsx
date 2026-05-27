@@ -24,6 +24,7 @@ interface GeneralStormCanvasProps {
   selectedStormId: string;
   selectedMainIdeaId: string | null;
   selectedIdeaId: string | null;
+  entryScrollAngle?: number;
   onSelectMainIdea: (id: string | null) => void;
   onSelectIdea: (id: string | null) => void;
   addingMainIdea?: boolean;
@@ -145,6 +146,7 @@ export function GeneralStormCanvas({
   selectedStormId,
   selectedMainIdeaId,
   selectedIdeaId,
+  entryScrollAngle = 0,
   onSelectMainIdea,
   onSelectIdea,
   addingMainIdea = false,
@@ -174,6 +176,7 @@ export function GeneralStormCanvas({
   const allFlatIdeaLayoutsRef = useRef<IdeaLayoutNode[]>([]);
   const selectedMainIdeaIdRef = useRef<string | null>(selectedMainIdeaId);
   const selectedIdeaIdRef = useRef<string | null>(selectedIdeaId);
+  const entryScrollAngleRef = useRef(entryScrollAngle);
   const addingMainIdeaRef = useRef(addingMainIdea);
   const addingChildIdeaRef = useRef(addingChildIdea);
   const draftMainIdeaTitleRef = useRef(draftMainIdeaTitle);
@@ -225,6 +228,10 @@ export function GeneralStormCanvas({
   useEffect(() => {
     selectedIdeaIdRef.current = selectedIdeaId;
   }, [selectedIdeaId]);
+
+  useEffect(() => {
+    entryScrollAngleRef.current = entryScrollAngle;
+  }, [entryScrollAngle]);
 
   useEffect(() => {
     addingMainIdeaRef.current = addingMainIdea;
@@ -589,6 +596,7 @@ export function GeneralStormCanvas({
           layout.x,
           layout.y,
           timestamp,
+          entryScrollAngleRef.current,
         );
       });
 

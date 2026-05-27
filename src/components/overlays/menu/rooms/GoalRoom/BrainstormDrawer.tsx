@@ -3,6 +3,7 @@ import type {
   BrainstormEntry,
   BrainstormIdea,
   EntryState,
+  EntryType,
   IdeaState,
   IdeaType,
   MainIdea,
@@ -12,7 +13,7 @@ import type {
   StormType,
 } from '../../../../../types/brainstorm';
 import { useBrainstormStore } from '../../../../../stores/useBrainstormStore';
-import { STORM_STATE_META, STORM_TYPE_META } from '../../../../../types/brainstorm';
+import { ENTRY_TYPE_META, STORM_STATE_META, STORM_TYPE_META } from '../../../../../types/brainstorm';
 import { resolveIcon } from '../../../../../constants/iconMap';
 import { ColorPicker } from '../../../../shared/ColorPicker';
 import { IconDisplay } from '../../../../shared/IconDisplay';
@@ -22,6 +23,7 @@ import { brainstormDraftRef } from './brainstormDraftRef';
 export type BrainstormModalMode = 'mainIdea' | 'idea' | 'childIdea' | 'entry' | 'rename' | 'storm';
 
 const ENTRY_STATES: EntryState[] = ['outcome', 'obstacle', 'question', 'solved', 'others'];
+const ENTRY_TYPES: EntryType[] = ['general', 'observation', 'question', 'research', 'hypothesis', 'test', 'review', 'result', 'bet', 'others'];
 const IDEA_STATES: IdeaState[] = ['open', 'in-progress', 'resolved', 'parked', 'others'];
 const IDEA_TYPES: IdeaType[] = [
   'insight',
@@ -72,11 +74,11 @@ const IDEA_STATE_SWATCH: Record<IdeaState, string> = {
   others: '#ffffff',
 };
 const ENTRY_STATE_SWATCH: Record<EntryState, string> = {
-  outcome: '#10b981',
-  obstacle: '#ef4444',
-  question: '#f59e0b',
-  solved: '#6366f1',
-  others: '#64748b',
+  outcome: '#4ade80',
+  obstacle: '#f87171',
+  question: '#60a5fa',
+  solved: '#2dd4bf',
+  others: '#ffffff',
 };
 
 function formatIdeaStateLabel(state: IdeaState) {
@@ -91,17 +93,15 @@ function formatEntryStateLabel(state: EntryState) {
   return state.replace(/-/g, ' ');
 }
 
-function getEntryBadgeStyle(state: EntryState) {
-  const backgroundByState: Record<EntryState, string> = {
-    outcome: '#10b981',
-    obstacle: '#ef4444',
-    question: '#f59e0b',
-    solved: '#6366f1',
-    others: '#64748b',
-  };
+function formatEntryTypeLabel(type: EntryType) {
+  return type === 'others' ? 'Color Code' : ENTRY_TYPE_META[type].displayName;
+}
 
+function getEntryBadgeStyle(entry: BrainstormEntry) {
   return {
-    background: backgroundByState[state],
+    background: entry.state === 'others'
+      ? entry.customProperties?.stateColor ?? ENTRY_STATE_SWATCH.others
+      : ENTRY_STATE_SWATCH[entry.state],
     color: 'white',
   };
 }
@@ -222,8 +222,18 @@ export interface BrainstormDrawerProps {
   onSelectStorm: (id: string | null) => void;
   onSelectMainIdea: (id: string | null) => void;
   onSelectIdea: (id: string | null) => void;
-  onAddEntry: (ideaId: string, content: string, state: EntryState) => void;
-  onAddEntryToMainIdea: (mainIdeaId: string, entry: Omit<BrainstormEntry, 'id' | 'entries'>) => void;
+  onAddEntry: (
+    ideaId: string,
+    entry: Omit<BrainstormEntry, 'id' | 'entries'>,
+    entryType?: EntryType,
+    customProperties?: Record<string, string>,
+  ) => void;
+  onAddEntryToMainIdea: (
+    mainIdeaId: string,
+    entry: Omit<BrainstormEntry, 'id' | 'entries'>,
+    entryType?: EntryType,
+    customProperties?: Record<string, string>,
+  ) => void;
   onDeleteStorm: () => void;
   onDeleteMainIdea: () => void;
   onDeleteIdea: () => void;
@@ -244,6 +254,7 @@ export interface BrainstormDrawerProps {
   onDraftChildIdeaTypeChange: (type: IdeaType) => void;
   onDraftChildIdeaCustomColorChange?: (color: string) => void;
   onDraftChildIdeaCustomStateColorChange?: (color: string) => void;
+  onEntryScrollAngleChange: (angle: number) => void;
   setAddingStorm: (adding: boolean) => void;
   setEditingStorm: Dispatch<SetStateAction<boolean>>;
   setNewStormName: Dispatch<SetStateAction<string>>;
@@ -317,6 +328,7 @@ export function BrainstormDrawer({
   onDraftChildIdeaTypeChange,
   onDraftChildIdeaCustomColorChange,
   onDraftChildIdeaCustomStateColorChange,
+  onEntryScrollAngleChange,
   setAddingStorm,
   setEditingStorm,
   setNewStormName,
@@ -353,7 +365,12 @@ export function BrainstormDrawer({
   const [childIdeaStatePickerOpen, setChildIdeaStatePickerOpen] = useState(false);
   const [addingEntry, setAddingEntry] = useState(false);
   const [newEntryContent, setNewEntryContent] = useState('');
-  const [newEntryState, setNewEntryState] = useState<EntryState>('outcome');
+  const [newEntryType, setNewEntryType] = useState<EntryType>('others');
+  const [newEntryCustomColor, setNewEntryCustomColor] = useState('#ffffff');
+  const [newEntryState, setNewEntryState] = useState<EntryState>('others');
+  const [newEntryCustomStateColor, setNewEntryCustomStateColor] = useState('#ffffff');
+  const [entryTypePickerOpen, setEntryTypePickerOpen] = useState(false);
+  const [entryStatePickerOpen, setEntryStatePickerOpen] = useState(false);
 
   function resetMainIdeaForm() {
     setAddingMainIdea(false);
@@ -407,8 +424,13 @@ export function BrainstormDrawer({
   function resetEntryForm() {
     setAddingEntry(false);
     setNewEntryContent('');
-    setNewEntryState('outcome');
-    setChildIdeaStatePickerOpen(false);
+    setNewEntryType('others');
+    setNewEntryCustomColor('#ffffff');
+    setNewEntryState('others');
+    setNewEntryCustomStateColor('#ffffff');
+    setEntryTypePickerOpen(false);
+    setEntryStatePickerOpen(false);
+    onEntryScrollAngleChange(0);
   }
 
   function handleSaveChildIdea() {
@@ -451,15 +473,26 @@ export function BrainstormDrawer({
   function handleSaveEntry() {
     const trimmedContent = newEntryContent.trim();
     if (!selectedMainIdeaId || !trimmedContent) return;
+    const customProps: Record<string, string> = {};
+    if (newEntryType === 'others') {
+      customProps.typeColor = newEntryCustomColor;
+    }
+    if (newEntryState === 'others') {
+      customProps.stateColor = newEntryCustomStateColor;
+    }
+    const nextCustomProps = Object.keys(customProps).length > 0 ? customProps : undefined;
+    const nextEntry = {
+      content: trimmedContent,
+      state: newEntryState,
+      type: newEntryType,
+      customProperties: nextCustomProps,
+      pointsTo: [],
+    };
 
     if (selectedIdeaId) {
-      onAddEntry(selectedIdeaId, trimmedContent, newEntryState);
+      onAddEntry(selectedIdeaId, nextEntry, newEntryType, nextCustomProps);
     } else {
-      onAddEntryToMainIdea(selectedMainIdeaId, {
-        content: trimmedContent,
-        state: newEntryState,
-        pointsTo: [],
-      });
+      onAddEntryToMainIdea(selectedMainIdeaId, nextEntry, newEntryType, nextCustomProps);
     }
 
     resetEntryForm();
@@ -483,6 +516,7 @@ export function BrainstormDrawer({
 
   const anyMainIdeaPickerOpen = ideaStatePickerOpen || ideaTypePickerOpen;
   const anyChildIdeaPickerOpen = childIdeaStatePickerOpen || childIdeaTypePickerOpen;
+  const anyEntryPickerOpen = entryTypePickerOpen || entryStatePickerOpen;
   const isInlineIdeaFormOpen = addingChildIdea || addingEntry;
 
   return (
@@ -1330,7 +1364,15 @@ export function BrainstormDrawer({
                 </div>
               </div>
               {ideaActiveTab === 'entries' ? (
-                <div className="pb-3 pt-2">
+                <div
+                  className="max-h-64 overflow-y-auto pb-3 pt-2"
+                  onScroll={(event) => {
+                    const el = event.currentTarget;
+                    const scrollRatio = el.scrollTop / Math.max(1, el.scrollHeight - el.clientHeight);
+                    const angle = scrollRatio * Math.PI * 2;
+                    onEntryScrollAngleChange(angle);
+                  }}
+                >
                   {currentEntries.length > 0 ? (
                     currentEntries.map((entry) => (
                       <div key={entry.id} className="flex items-center gap-2 py-1.5">
@@ -1339,7 +1381,7 @@ export function BrainstormDrawer({
                         </span>
                         <span
                           className="shrink-0 rounded px-1.5 py-0.5 text-[10px] uppercase"
-                          style={getEntryBadgeStyle(entry.state)}
+                          style={getEntryBadgeStyle(entry)}
                         >
                           {entry.state}
                         </span>
@@ -1516,54 +1558,109 @@ export function BrainstormDrawer({
           ) : null}
           {addingEntry ? (
             <div className="space-y-4 pb-3 pt-2">
-              <textarea
-                value={newEntryContent}
-                onChange={(event) => setNewEntryContent(event.target.value)}
-                onKeyDown={(event) => {
-                  if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
-                    event.preventDefault();
-                    handleSaveEntry();
-                  }
-                  if (event.key === 'Escape') {
-                    event.preventDefault();
-                    resetEntryForm();
-                  }
-                }}
-                placeholder="Entry content..."
-                autoFocus
-                rows={4}
-                className="w-full resize-none rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-white/20"
-              />
               <div className="relative space-y-2">
                 <button
                   type="button"
-                  onClick={() => setChildIdeaStatePickerOpen((open) => !open)}
+                  onClick={() => {
+                    setEntryTypePickerOpen((open) => !open);
+                    setEntryStatePickerOpen(false);
+                  }}
+                  className="flex w-full items-center justify-between gap-3 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-left text-sm text-white hover:bg-white/[0.05]"
+                >
+                  <span className="flex min-w-0 items-center gap-3">
+                    <span className="shrink-0 text-base leading-none">{resolveIcon(`entry-${newEntryType}`)}</span>
+                    <span className="truncate">{formatEntryTypeLabel(newEntryType)}</span>
+                  </span>
+                  <span className="text-xs text-white/40">Type</span>
+                </button>
+                {entryTypePickerOpen ? (
+                  <div className="absolute left-0 right-0 top-full z-10 mt-2 overflow-hidden rounded-lg border border-white/10 bg-[#161624] shadow-xl">
+                    {newEntryType === 'others' ? (
+                      <div className="border-b border-white/10 p-3">
+                        <div className="flex justify-start">
+                          <ColorPicker
+                            value={newEntryCustomColor}
+                            onChange={(color) => {
+                              setNewEntryCustomColor(color);
+                            }}
+                            align="left"
+                          />
+                        </div>
+                      </div>
+                    ) : null}
+                    {ENTRY_TYPES.map((type) => (
+                      <button
+                        key={type}
+                        type="button"
+                        onClick={() => {
+                          setNewEntryType(type);
+                          setEntryTypePickerOpen(false);
+                        }}
+                        className="flex w-full items-center gap-3 px-3 py-2 text-left text-sm text-white hover:bg-white/[0.05]"
+                      >
+                        <span className="shrink-0 text-base leading-none">{resolveIcon(`entry-${type}`)}</span>
+                        <span>{formatEntryTypeLabel(type)}</span>
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+              <div className="relative space-y-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEntryStatePickerOpen((open) => !open);
+                    setEntryTypePickerOpen(false);
+                  }}
                   className="flex w-full items-center justify-between gap-3 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-left text-sm text-white hover:bg-white/[0.05]"
                 >
                   <span className="flex min-w-0 items-center gap-3">
                     <span
                       className="inline-block h-3 w-3 shrink-0 rounded-full"
-                      style={{ backgroundColor: ENTRY_STATE_SWATCH[newEntryState] }}
+                      style={{
+                        backgroundColor:
+                          newEntryState === 'others'
+                            ? newEntryCustomStateColor
+                            : ENTRY_STATE_SWATCH[newEntryState],
+                      }}
                     />
                     <span className="truncate">{formatEntryStateLabel(newEntryState)}</span>
                   </span>
                   <span className="text-xs text-white/40">State</span>
                 </button>
-                {childIdeaStatePickerOpen ? (
+                {entryStatePickerOpen ? (
                   <div className="absolute left-0 right-0 top-full z-10 mt-2 overflow-hidden rounded-lg border border-white/10 bg-[#161624] shadow-xl">
+                    {newEntryState === 'others' ? (
+                      <div className="border-b border-white/10 p-3">
+                        <div className="flex justify-start">
+                          <ColorPicker
+                            value={newEntryCustomStateColor}
+                            onChange={(color) => {
+                              setNewEntryCustomStateColor(color);
+                            }}
+                            align="left"
+                          />
+                        </div>
+                      </div>
+                    ) : null}
                     {ENTRY_STATES.map((state) => (
                       <button
                         key={state}
                         type="button"
                         onClick={() => {
                           setNewEntryState(state);
-                          setChildIdeaStatePickerOpen(false);
+                          setEntryStatePickerOpen(false);
                         }}
                         className="flex w-full items-center gap-3 px-3 py-2 text-left text-sm text-white hover:bg-white/[0.05]"
                       >
                         <span
                           className="inline-block h-3 w-3 shrink-0 rounded-full"
-                          style={{ backgroundColor: ENTRY_STATE_SWATCH[state] }}
+                          style={{
+                            backgroundColor:
+                              state === 'others'
+                                ? newEntryCustomStateColor
+                                : ENTRY_STATE_SWATCH[state],
+                          }}
                         />
                         <span>{formatEntryStateLabel(state)}</span>
                       </button>
@@ -1571,10 +1668,30 @@ export function BrainstormDrawer({
                   </div>
                 ) : null}
               </div>
+              {!anyEntryPickerOpen ? (
+                <textarea
+                  value={newEntryContent}
+                  onChange={(event) => setNewEntryContent(event.target.value)}
+                  onKeyDown={(event) => {
+                    if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+                      event.preventDefault();
+                      handleSaveEntry();
+                    }
+                    if (event.key === 'Escape') {
+                      event.preventDefault();
+                      resetEntryForm();
+                    }
+                  }}
+                  placeholder="Entry content..."
+                  autoFocus
+                  rows={4}
+                  className="w-full resize-none rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-white/20"
+                />
+              ) : null}
             </div>
           ) : null}
           <div className="border-t border-white/10 pb-3 pt-3">
-            {isInlineIdeaFormOpen ? (
+            {isInlineIdeaFormOpen && !anyEntryPickerOpen ? (
               <div>
                 <button
                   type="button"

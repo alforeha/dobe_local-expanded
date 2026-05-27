@@ -202,6 +202,7 @@ export const ICON_MAP: Record<string, string> = {
 'entry-review':     '📋',
 'entry-result':     '✅',
 'entry-bet':        '🎲',
+'entry-others':     '🎨',
 
 
 

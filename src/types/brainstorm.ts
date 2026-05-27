@@ -16,7 +16,7 @@ export type IdeaType =
 export type EntryState = 'outcome' | 'obstacle' | 'question' | 'solved' | 'others';
 export type EntryType =
   'general' | 'observation' | 'question' | 'research' | 'hypothesis' |
-  'test' | 'review' | 'result' | 'bet';
+  'test' | 'review' | 'result' | 'bet' | 'others';
 export type PointerType = 'solution' | 'choice' | 'others';
 
 export const STORM_TYPE_META: Record<StormType, { displayName: string; mainIdeaTerm: string; addLabel: string }> = {
@@ -48,13 +48,14 @@ export const ENTRY_TYPE_META: Record<EntryType, { displayName: string }> = {
   review: { displayName: 'Review' },
   result: { displayName: 'Result' },
   bet: { displayName: 'Bet' },
+  others: { displayName: 'Others' },
 };
 
 export interface BrainstormEntry {
   id: string;
   content: string;
   state: EntryState;
-  entryType?: EntryType;
+  type: EntryType;
   customProperties?: Record<string, string>;
   entries: BrainstormEntry[];
   pointsTo: Array<{
