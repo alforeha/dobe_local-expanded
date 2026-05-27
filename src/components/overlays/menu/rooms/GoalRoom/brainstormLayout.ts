@@ -32,10 +32,6 @@ export interface PointerLine {
   pointerType: 'solution' | 'choice' | 'others';
 }
 
-const MAX_ARC = Math.PI * 0.75;
-const MIN_STEP = Math.PI / 8;
-const RING_CAPACITY = Math.floor(MAX_ARC / MIN_STEP);
-
 export function getMainIdeaLayouts(
   mainIdeas: Record<string, MainIdea>,
   cx: number,
@@ -67,35 +63,14 @@ function getOutwardChildAngle(
     return [parentAngleFromCenter - Math.PI / 4, parentAngleFromCenter + Math.PI / 4][index] ?? parentAngleFromCenter;
   }
 
+  const MAX_ARC = Math.PI / 3;
+  const MIN_STEP = Math.PI / 12;
   const naturalStep = MAX_ARC / Math.max(1, count - 1);
   const step = Math.max(MIN_STEP, naturalStep);
   const totalArc = step * Math.max(1, count - 1);
   const startAngle = parentAngleFromCenter - totalArc / 2;
 
   return startAngle + step * index;
-}
-
-function getSiblingPlacement(
-  count: number,
-  index: number,
-  parentAngleFromCenter: number,
-  tether: number,
-): { angle: number; tether: number } {
-  if (count <= RING_CAPACITY) {
-    return {
-      angle: getOutwardChildAngle(count, index, parentAngleFromCenter),
-      tether,
-    };
-  }
-
-  const isOverflow = index >= RING_CAPACITY;
-  const ringIndex = isOverflow ? index - RING_CAPACITY : index;
-  const ringCount = isOverflow ? count - RING_CAPACITY : RING_CAPACITY;
-
-  return {
-    angle: getOutwardChildAngle(ringCount, ringIndex, parentAngleFromCenter),
-    tether: isOverflow ? tether * 2 : tether,
-  };
 }
 
 export function getIdeaLayoutTree(
@@ -127,19 +102,18 @@ export function getIdeaLayoutTree(
     const childRadius = 120;
 
     return childIdeas.map((childIdea, index) => {
-      const placement = getSiblingPlacement(
+      const angle = getOutwardChildAngle(
         childIdeas.length,
         index,
         Math.atan2(anchorY - centerY, anchorX - centerX),
-        childRadius,
       );
-      const x = anchorX + Math.cos(placement.angle) * placement.tether;
-      const y = anchorY + Math.sin(placement.angle) * placement.tether;
+      const x = anchorX + Math.cos(angle) * childRadius;
+      const y = anchorY + Math.sin(angle) * childRadius;
       const node: IdeaLayoutNode = {
         id: childIdea.id,
         x,
         y,
-        radius: 28,
+        radius: Math.max(8, 22 - (depth + 1) * 3),
         mainIdeaId: mainIdea.id,
         depth,
         parentId: parentIdea.id,
@@ -156,14 +130,26 @@ export function getIdeaLayoutTree(
     .filter((idea): idea is BrainstormIdea => Boolean(idea));
 
   return firstLevelIdeas.map((idea, index) => {
-    const placement = getSiblingPlacement(firstLevelIdeas.length, index, outwardAngle, baseRadius);
-    const x = parentX + Math.cos(placement.angle) * placement.tether;
-    const y = parentY + Math.sin(placement.angle) * placement.tether;
+    let angle = outwardAngle;
+    if (firstLevelIdeas.length === 2) {
+      angle = [outwardAngle - Math.PI / 4, outwardAngle + Math.PI / 4][index] ?? outwardAngle;
+    } else if (firstLevelIdeas.length >= 3) {
+      const MAX_ARC = Math.PI / 3;
+      const MIN_STEP = Math.PI / 12;
+      const naturalStep = MAX_ARC / Math.max(1, firstLevelIdeas.length - 1);
+      const step = Math.max(MIN_STEP, naturalStep);
+      const totalArc = step * Math.max(1, firstLevelIdeas.length - 1);
+      const startAngle = outwardAngle - totalArc / 2;
+      angle = startAngle + step * index;
+    }
+
+    const x = parentX + Math.cos(angle) * baseRadius;
+    const y = parentY + Math.sin(angle) * baseRadius;
     const node: IdeaLayoutNode = {
       id: idea.id,
       x,
       y,
-      radius: 28,
+      radius: 18,
       mainIdeaId: mainIdea.id,
       depth: 0,
       parentId: null,

@@ -120,26 +120,38 @@ function collectSubtreeIds(flatIdeas: IdeaLayoutNode[], rootId: string) {
   return ids;
 }
 
-function buildHighlightIds(flatIdeas: IdeaLayoutNode[], selectedIdeaId: string | null) {
-  if (!selectedIdeaId) {
+function buildHighlightIds(
+  flatIdeas: IdeaLayoutNode[],
+  selectedMainIdeaId: string | null,
+  selectedIdeaId: string | null,
+) {
+  if (selectedIdeaId) {
+    const nodeById = new Map(flatIdeas.map((node) => [node.id, node]));
+    const selectedNode = nodeById.get(selectedIdeaId);
+    if (!selectedNode) {
+      return new Set<string>();
+    }
+
+    const ids = collectSubtreeIds(flatIdeas, selectedNode.id);
+
+    let currentParentId = selectedNode.parentId;
+    while (currentParentId) {
+      ids.add(currentParentId);
+      currentParentId = nodeById.get(currentParentId)?.parentId ?? null;
+    }
+
+    return ids;
+  }
+
+  if (!selectedMainIdeaId) {
     return new Set<string>();
   }
 
-  const nodeById = new Map(flatIdeas.map((node) => [node.id, node]));
-  const selectedNode = nodeById.get(selectedIdeaId);
-  if (!selectedNode) {
-    return new Set<string>();
-  }
-
-  const ids = collectSubtreeIds(flatIdeas, selectedNode.id);
-
-  let currentParentId = selectedNode.parentId;
-  while (currentParentId) {
-    ids.add(currentParentId);
-    currentParentId = nodeById.get(currentParentId)?.parentId ?? null;
-  }
-
-  return ids;
+  return new Set(
+    flatIdeas
+      .filter((node) => node.mainIdeaId === selectedMainIdeaId)
+      .map((node) => node.id),
+  );
 }
 
 export function GeneralStormCanvas({
@@ -534,7 +546,11 @@ export function GeneralStormCanvas({
         ? allFlatIdeaLayoutsRef.current.find((node) => node.id === currentSelectedIdeaId)?.mainIdeaId
           ?? currentSelectedMainIdeaId
         : currentSelectedMainIdeaId;
-      const highlightedIds = buildHighlightIds(allFlatIdeaLayoutsRef.current, currentSelectedIdeaId);
+      const highlightedIds = buildHighlightIds(
+        allFlatIdeaLayoutsRef.current,
+        effectiveSelectedMainIdeaId,
+        currentSelectedIdeaId,
+      );
       const constellationLayouts = [
         ...mainIdeaLayoutsRef.current,
         ...(addingMainIdeaRef.current && draftMainIdeaLayoutRef.current
