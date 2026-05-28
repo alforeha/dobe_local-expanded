@@ -3,6 +3,7 @@ import type { Aspiration, NestedAct, Smarter, Woop } from '../../../../../types'
 import type {
   BrainstormEntry,
   BrainstormIdea,
+  EntryState,
   EntryType,
   IdeaState,
   IdeaType,
@@ -89,6 +90,13 @@ interface GoalInspectorDrawerProps {
   onDraftChildIdeaTypeChange: (type: IdeaType) => void;
   onDraftChildIdeaCustomColorChange?: (color: string) => void;
   onDraftChildIdeaCustomStateColorChange?: (color: string) => void;
+  onAddingEntryChange: (adding: boolean) => void;
+  onAddingSubEntryChange?: (adding: boolean) => void;
+  onSubEntryParentIdChange?: (id: string | null) => void;
+  onDraftEntryStateChange: (state: EntryState) => void;
+  onDraftEntryTypeChange: (type: EntryType) => void;
+  onDraftEntryCustomColorChange?: (color: string) => void;
+  onDraftEntryCustomStateColorChange?: (color: string) => void;
   onEntryScrollAngleChange: (angle: number) => void;
   onDeleteStorm: () => void;
   onDeleteMainIdea: () => void;
@@ -476,6 +484,13 @@ export function GoalInspectorDrawer({
   onDraftChildIdeaTypeChange,
   onDraftChildIdeaCustomColorChange,
   onDraftChildIdeaCustomStateColorChange,
+  onAddingEntryChange,
+  onAddingSubEntryChange,
+  onSubEntryParentIdChange,
+  onDraftEntryStateChange,
+  onDraftEntryTypeChange,
+  onDraftEntryCustomColorChange,
+  onDraftEntryCustomStateColorChange,
   onEntryScrollAngleChange,
   onDeleteStorm,
   onDeleteMainIdea,
@@ -816,6 +831,13 @@ export function GoalInspectorDrawer({
         onDraftChildIdeaTypeChange={onDraftChildIdeaTypeChange}
         onDraftChildIdeaCustomColorChange={onDraftChildIdeaCustomColorChange}
         onDraftChildIdeaCustomStateColorChange={onDraftChildIdeaCustomStateColorChange}
+        onAddingEntryChange={onAddingEntryChange}
+        onAddingSubEntryChange={onAddingSubEntryChange}
+        onSubEntryParentIdChange={onSubEntryParentIdChange}
+        onDraftEntryStateChange={onDraftEntryStateChange}
+        onDraftEntryTypeChange={onDraftEntryTypeChange}
+        onDraftEntryCustomColorChange={onDraftEntryCustomColorChange}
+        onDraftEntryCustomStateColorChange={onDraftEntryCustomStateColorChange}
         onEntryScrollAngleChange={onEntryScrollAngleChange}
         setAddingStorm={setAddingStorm}
           setEditingStorm={setEditingStorm}

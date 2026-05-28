@@ -601,7 +601,7 @@ function drawEntryOrbs(
   entryRotationAngle: number,
 ): void {
   const entryOrbRadius = 8;
-  const subEntryRadius = 5;
+  const subEntryRadius = 8;
   const slotCount = 6;
   const totalEntries = entries.length;
 
@@ -609,55 +609,115 @@ function drawEntryOrbs(
     return;
   }
 
-  const drawOrb = (entry: BrainstormEntry, orbX: number, orbY: number, entryAlpha: number) => {
-    const entryStateColor = getEntryOrbColor(entry);
-    const entryIconValue = ICON_MAP[`entry-${entry.type}`];
+const drawOrb = (entry: BrainstormEntry, orbX: number, orbY: number, entryAlpha: number) => {
+  const entryStateColor = getEntryOrbColor(entry);
+  const entryIconValue = ICON_MAP[`entry-${entry.type}`];
 
-    ctx.save();
-    ctx.globalAlpha = alpha * entryAlpha;
-    ctx.fillStyle = withAlpha(entryStateColor, 0.85);
+  ctx.save();
+  ctx.globalAlpha = alpha * entryAlpha;
+
+  // Main orb
+  ctx.fillStyle = withAlpha(entryStateColor, 0.85);
+  ctx.beginPath();
+  ctx.arc(orbX, orbY, entryOrbRadius, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.arc(orbX, orbY, entryOrbRadius, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // Main orb icon
+  if (entry.type === 'others') {
+    ctx.fillStyle = entry.customProperties?.typeColor ?? '#ffffff';
     ctx.beginPath();
-    ctx.arc(orbX, orbY, entryOrbRadius, 0, Math.PI * 2);
+    ctx.arc(orbX, orbY, 3, 0, Math.PI * 2);
+    ctx.fill();
+  } else if (entryIconValue && !isImageIcon(entryIconValue)) {
+    ctx.fillStyle = '#0f172a';
+    ctx.font = '8px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(entryIconValue, orbX, orbY + 0.5);
+  }
+
+  // Sub-entry orbs
+  entry.entries.slice(0, 3).forEach((subEntry, subEntryIndex, subEntries) => {
+    const subAngle = (subEntryIndex / Math.max(1, subEntries.length)) * Math.PI * 2 - Math.PI / 2;
+    const subOrbX = orbX + Math.cos(subAngle) * (entryOrbRadius + subEntryRadius);
+    const subOrbY = orbY + Math.sin(subAngle) * (entryOrbRadius + subEntryRadius);
+
+    // Sub-entry orb fill
+    ctx.fillStyle = withAlpha(getEntryOrbColor(subEntry), 0.85);
+    ctx.beginPath();
+    ctx.arc(subOrbX, subOrbY, subEntryRadius, 0, Math.PI * 2);
     ctx.fill();
 
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
     ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.arc(orbX, orbY, entryOrbRadius, 0, Math.PI * 2);
+    ctx.arc(subOrbX, subOrbY, subEntryRadius, 0, Math.PI * 2);
     ctx.stroke();
 
-    if (entry.type === 'others') {
-      ctx.fillStyle = entry.customProperties?.typeColor ?? '#ffffff';
+    // Sub-entry icon
+    if (subEntry.type === 'others') {
+      ctx.fillStyle = subEntry.customProperties?.typeColor ?? '#ffffff';
       ctx.beginPath();
-      ctx.arc(orbX, orbY, 3, 0, Math.PI * 2);
+      ctx.arc(subOrbX, subOrbY, 3, 0, Math.PI * 2);
       ctx.fill();
-    } else if (entryIconValue && !isImageIcon(entryIconValue)) {
-      ctx.fillStyle = '#0f172a';
-      ctx.font = '8px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(entryIconValue, orbX, orbY + 0.5);
+    } else {
+      const subIcon = ICON_MAP[`entry-${subEntry.type}`];
+      if (subIcon && !isImageIcon(subIcon)) {
+        ctx.fillStyle = '#0f172a';
+        ctx.font = '7px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(subIcon, subOrbX, subOrbY + 0.5);
+      }
     }
 
-    entry.entries.slice(0, 3).forEach((subEntry, subEntryIndex, subEntries) => {
-      const subAngle = (subEntryIndex / Math.max(1, subEntries.length)) * Math.PI * 2 - Math.PI / 2;
-      const subOrbX = orbX + Math.cos(subAngle) * entryOrbRadius;
-      const subOrbY = orbY + Math.sin(subAngle) * entryOrbRadius;
+    // Sub-sub-entry orbs
+    if (subEntry.entries.length > 0) {
+      subEntry.entries.slice(0, 3).forEach((subSubEntry, subSubIndex, subSubEntries) => {
+        const subSubAngle = (subSubIndex / Math.max(1, subSubEntries.length)) * Math.PI * 2 - Math.PI / 2;
+        const subSubOrbX = subOrbX + Math.cos(subSubAngle) * subEntryRadius * 2;
+        const subSubOrbY = subOrbY + Math.sin(subSubAngle) * subEntryRadius * 2;
 
-      ctx.fillStyle = withAlpha(getEntryOrbColor(subEntry), 0.85);
-      ctx.beginPath();
-      ctx.arc(subOrbX, subOrbY, subEntryRadius, 0, Math.PI * 2);
-      ctx.fill();
+        // Sub-sub orb fill
+        ctx.fillStyle = withAlpha(getEntryOrbColor(subSubEntry), 0.85);
+        ctx.beginPath();
+        ctx.arc(subSubOrbX, subSubOrbY, subEntryRadius, 0, Math.PI * 2);
+        ctx.fill();
 
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.arc(subOrbX, subOrbY, subEntryRadius, 0, Math.PI * 2);
-      ctx.stroke();
-    });
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.arc(subSubOrbX, subSubOrbY, subEntryRadius, 0, Math.PI * 2);
+        ctx.stroke();
 
-    ctx.restore();
-  };
+        // Sub-sub icon
+        if (subSubEntry.type === 'others') {
+          ctx.fillStyle = subSubEntry.customProperties?.typeColor ?? '#ffffff';
+          ctx.beginPath();
+          ctx.arc(subSubOrbX, subSubOrbY, 3, 0, Math.PI * 2);
+          ctx.fill();
+        } else {
+          const subSubIcon = ICON_MAP[`entry-${subSubEntry.type}`];
+          if (subSubIcon && !isImageIcon(subSubIcon)) {
+            ctx.fillStyle = '#0f172a';
+            ctx.font = '6px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(subSubIcon, subSubOrbX, subSubOrbY + 0.5);
+          }
+        }
+      });
+    }
+  });
+
+  ctx.restore();
+};
 
   if (totalEntries <= 6) {
     entries.forEach((entry, entryIndex) => {

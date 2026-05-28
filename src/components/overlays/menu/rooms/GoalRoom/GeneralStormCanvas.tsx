@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { isImageIcon, resolveIcon } from '../../../../../constants/iconMap';
 import { useBrainstormStore } from '../../../../../stores/useBrainstormStore';
-import type { BrainstormIdea, IdeaState, IdeaType, MainIdea } from '../../../../../types/brainstorm';
+import type { BrainstormEntry, BrainstormIdea, EntryState, EntryType, IdeaState, IdeaType, MainIdea } from '../../../../../types/brainstorm';
 import {
   drawBrainstormCenterGlow,
   drawBrainstormConstellation,
@@ -39,6 +39,13 @@ interface GeneralStormCanvasProps {
   draftChildIdeaType?: IdeaType;
   draftChildIdeaCustomColor?: string;
   draftChildIdeaCustomStateColor?: string;
+  addingEntry?: boolean;
+  addingSubEntry?: boolean;
+  subEntryParentId?: string | null;
+  draftEntryState?: EntryState;
+  draftEntryType?: EntryType;
+  draftEntryCustomColor?: string;
+  draftEntryCustomStateColor?: string;
 }
 
 type Camera = {
@@ -155,6 +162,27 @@ function buildHighlightIds(
   );
 }
 
+function injectPhantomIntoEntries(
+  entries: BrainstormEntry[],
+  targetId: string,
+  phantom: BrainstormEntry,
+): { entries: BrainstormEntry[]; found: boolean } {
+  let found = false;
+  const updated = entries.map((e) => {
+    if (e.id === targetId) {
+      found = true;
+      return { ...e, entries: [...e.entries, phantom] };
+    }
+    const child = injectPhantomIntoEntries(e.entries, targetId, phantom);
+    if (child.found) {
+      found = true;
+      return { ...e, entries: child.entries };
+    }
+    return e;
+  });
+  return { entries: updated, found };
+}
+
 export function GeneralStormCanvas({
   selectedStormId,
   selectedMainIdeaId,
@@ -174,6 +202,13 @@ export function GeneralStormCanvas({
   draftChildIdeaType = 'insight',
   draftChildIdeaCustomColor = '#ffffff',
   draftChildIdeaCustomStateColor = '#ffffff',
+  addingEntry = false,
+  addingSubEntry = false,
+  subEntryParentId = null,
+  draftEntryState = 'others',
+  draftEntryType = 'others',
+  draftEntryCustomColor = '#ffffff',
+  draftEntryCustomStateColor = '#ffffff',
 }: GeneralStormCanvasProps) {
   const storms = useBrainstormStore((state) => state.storms);
   const storm = storms[selectedStormId] ?? null;
@@ -203,9 +238,17 @@ export function GeneralStormCanvas({
   const draftChildIdeaTypeRef = useRef(draftChildIdeaType);
   const draftChildIdeaCustomColorRef = useRef(draftChildIdeaCustomColor);
   const draftChildIdeaCustomStateColorRef = useRef(draftChildIdeaCustomStateColor);
+  const addingEntryRef = useRef(addingEntry);
+  const addingSubEntryRef = useRef(addingSubEntry);
+  const subEntryParentIdRef = useRef(subEntryParentId);
+  const draftEntryStateRef = useRef(draftEntryState);
+  const draftEntryTypeRef = useRef(draftEntryType);
+  const draftEntryCustomColorRef = useRef(draftEntryCustomColor);
+  const draftEntryCustomStateColorRef = useRef(draftEntryCustomStateColor);
   const [visible, setVisible] = useState(false);
   const [pillBlurbOpen, setPillBlurbOpen] = useState(false);
   const [ideaPillBlurbOpen, setIdeaPillBlurbOpen] = useState(false);
+  const ideaPillBlurbOpenRef = useRef(false);
 
   const mainIdeas = useMemo(() => storm?.mainIdeas ?? {}, [storm]);
   const ideas = useMemo(() => storm?.ideas ?? {}, [storm]);
@@ -235,6 +278,16 @@ export function GeneralStormCanvas({
     () => (selectedPillMainIdea ? resolveIcon(`idea-${selectedPillMainIdea.type}`) : ''),
     [selectedPillMainIdea],
   );
+  const ancestorIdeas = useMemo<BrainstormIdea[]>(() => {
+    if (!selectedIdeaId) return [];
+    const result: BrainstormIdea[] = [];
+    let parentId = ideas[selectedIdeaId]?.parentIdeaId ?? null;
+    while (parentId && ideas[parentId]) {
+      result.push(ideas[parentId]);
+      parentId = ideas[parentId].parentIdeaId ?? null;
+    }
+    return result;
+  }, [ideas, selectedIdeaId]);
 
   useEffect(() => {
     selectedMainIdeaIdRef.current = selectedMainIdeaId;
@@ -295,6 +348,38 @@ export function GeneralStormCanvas({
   useEffect(() => {
     draftChildIdeaCustomStateColorRef.current = draftChildIdeaCustomStateColor;
   }, [draftChildIdeaCustomStateColor]);
+
+  useEffect(() => {
+    addingEntryRef.current = addingEntry;
+  }, [addingEntry]);
+
+  useEffect(() => {
+    addingSubEntryRef.current = addingSubEntry;
+  }, [addingSubEntry]);
+
+  useEffect(() => {
+    subEntryParentIdRef.current = subEntryParentId;
+  }, [subEntryParentId]);
+
+  useEffect(() => {
+    draftEntryStateRef.current = draftEntryState;
+  }, [draftEntryState]);
+
+  useEffect(() => {
+    draftEntryTypeRef.current = draftEntryType;
+  }, [draftEntryType]);
+
+  useEffect(() => {
+    draftEntryCustomColorRef.current = draftEntryCustomColor;
+  }, [draftEntryCustomColor]);
+
+  useEffect(() => {
+    draftEntryCustomStateColorRef.current = draftEntryCustomStateColor;
+  }, [draftEntryCustomStateColor]);
+
+  useEffect(() => {
+    ideaPillBlurbOpenRef.current = ideaPillBlurbOpen;
+  }, [ideaPillBlurbOpen]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => setVisible(true), 0);
@@ -367,9 +452,29 @@ export function GeneralStormCanvas({
       const isAddingChildIdea = addingChildIdeaRef.current;
       const draftChildNode = allFlatIdeas.find((node) => node.id === '__draft_child__') ?? null;
 
+      const isBlurbOpen = ideaPillBlurbOpenRef.current;
       let focusNodes: BoundsNode[] = [];
 
-      if (isAddingChildIdea && selectedNode) {
+      if (isBlurbOpen && selectedNode) {
+        const originNode: BoundsNode = { x: 0, y: 0, radius: 28 };
+        const selectedMainLayout = mainLayouts.find((layout) => layout.id === selectedNode.mainIdeaId) ?? null;
+        const nodeByIdForPath = new Map(allFlatIdeas.map((node) => [node.id, node]));
+        const ancestorPathNodes: IdeaLayoutNode[] = [];
+        let currentParentId = selectedNode.parentId;
+        while (currentParentId) {
+          const ancestorNode = nodeByIdForPath.get(currentParentId);
+          if (ancestorNode) {
+            ancestorPathNodes.push(ancestorNode);
+          }
+          currentParentId = nodeByIdForPath.get(currentParentId)?.parentId ?? null;
+        }
+        focusNodes = [
+          originNode,
+          ...(selectedMainLayout ? [selectedMainLayout] : []),
+          ...ancestorPathNodes,
+          selectedNode,
+        ];
+      } else if (isAddingChildIdea && selectedNode) {
         focusNodes = [
           selectedNode,
           ...(draftChildNode ? [draftChildNode] : []),
@@ -548,6 +653,80 @@ export function GeneralStormCanvas({
               ideas: [...nextRenderMainIdeas[currentSelectedMainIdeaId].ideas, draftChildIdeaId],
             },
           };
+        }
+      }
+
+      if (addingEntryRef.current && !addingSubEntryRef.current) {
+        const phantomEntry: BrainstormEntry = {
+          id: '__draft_entry__',
+          content: '',
+          state: draftEntryStateRef.current,
+          type: draftEntryTypeRef.current,
+          customProperties: {
+            typeColor: draftEntryCustomColorRef.current,
+            stateColor: draftEntryCustomStateColorRef.current,
+          },
+          entries: [],
+          pointsTo: [],
+        };
+
+        if (currentSelectedIdeaId && renderIdeas[currentSelectedIdeaId]) {
+          renderIdeas = {
+            ...renderIdeas,
+            [currentSelectedIdeaId]: {
+              ...renderIdeas[currentSelectedIdeaId],
+              entries: [...renderIdeas[currentSelectedIdeaId].entries, phantomEntry],
+            },
+          };
+        } else if (currentSelectedMainIdeaId && nextRenderMainIdeas[currentSelectedMainIdeaId]) {
+          nextRenderMainIdeas = {
+            ...nextRenderMainIdeas,
+            [currentSelectedMainIdeaId]: {
+              ...nextRenderMainIdeas[currentSelectedMainIdeaId],
+              entries: [...nextRenderMainIdeas[currentSelectedMainIdeaId].entries, phantomEntry],
+            },
+          };
+        }
+      }
+
+      if (addingSubEntryRef.current && subEntryParentIdRef.current) {
+        const phantomSubEntry: BrainstormEntry = {
+          id: '__draft_sub_entry__',
+          content: '',
+          state: draftEntryStateRef.current,
+          type: draftEntryTypeRef.current,
+          customProperties: {
+            typeColor: draftEntryCustomColorRef.current,
+            stateColor: draftEntryCustomStateColorRef.current,
+          },
+          entries: [],
+          pointsTo: [],
+        };
+        const parentEntryId = subEntryParentIdRef.current;
+        let subInjected = false;
+        const updatedIdeasForSub: Record<string, BrainstormIdea> = { ...renderIdeas };
+        for (const ideaId of Object.keys(updatedIdeasForSub)) {
+          const idea = updatedIdeasForSub[ideaId];
+          const result = injectPhantomIntoEntries(idea.entries, parentEntryId, phantomSubEntry);
+          if (result.found) {
+            updatedIdeasForSub[ideaId] = { ...idea, entries: result.entries };
+            subInjected = true;
+            break;
+          }
+        }
+        if (subInjected) {
+          renderIdeas = updatedIdeasForSub;
+        } else {
+          const updatedMainIdeasForSub: Record<string, MainIdea> = { ...nextRenderMainIdeas };
+          for (const mainIdeaId of Object.keys(updatedMainIdeasForSub)) {
+            const mainIdea = updatedMainIdeasForSub[mainIdeaId];
+            const result = injectPhantomIntoEntries(mainIdea.entries, parentEntryId, phantomSubEntry);
+            if (result.found) {
+              updatedMainIdeasForSub[mainIdeaId] = { ...mainIdea, entries: result.entries };
+              nextRenderMainIdeas = updatedMainIdeasForSub;
+              break;
+            }
+          }
         }
       }
 
@@ -855,6 +1034,25 @@ export function GeneralStormCanvas({
                       event.stopPropagation();
                     }}
                   >
+                    {selectedIdeaId && ancestorIdeas.length > 0 ? (
+                      ancestorIdeas.map((ancestor) => {
+                        const ancestorIcon = resolveIcon(`idea-${ancestor.type}`);
+                        return (
+                          <div key={ancestor.id} className="flex items-center gap-2">
+                            {isImageIcon(ancestorIcon) ? (
+                              <img
+                                src={ancestorIcon}
+                                alt=""
+                                className="h-3.5 w-3.5 shrink-0 object-contain"
+                              />
+                            ) : (
+                              <span className="text-xs leading-none">{ancestorIcon}</span>
+                            )}
+                            <span>{ancestor.title}</span>
+                          </div>
+                        );
+                      })
+                    ) : null}
                     {selectedIdeaId && selectedPillMainIdea ? (
                       <div className="flex items-center gap-2">
                         {isImageIcon(selectedPillMainIdeaIcon) ? (

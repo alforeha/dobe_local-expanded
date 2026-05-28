@@ -78,6 +78,7 @@ interface BrainstormActions {
     customProperties?: Record<string, string>,
   ) => void;
   addNestedEntry: (stormId: string, ideaId: string, parentEntryId: string, entry: BrainstormEntryDraft) => void;
+  addSubEntry: (stormId: string, parentEntryId: string, entry: BrainstormEntryDraft) => void;
   deleteStorm: (stormId: string) => void;
   deleteMainIdea: (stormId: string, mainIdeaId: string) => void;
   deleteIdea: (stormId: string, ideaId: string) => void;
@@ -520,6 +521,63 @@ export const useBrainstormStore = create<BrainstormState & BrainstormActions>()(
             },
           };
         });
+      },
+
+      addSubEntry: (stormId, parentEntryId, entry) => {
+        const nextEntry = buildEntry(entry);
+
+        set((state) => {
+          const storm = state.storms[stormId];
+          if (!storm) return state;
+
+          for (const [mainIdeaId, mainIdea] of Object.entries(storm.mainIdeas)) {
+            const result = addNestedEntryToTree(mainIdea.entries, parentEntryId, nextEntry);
+            if (!result.found) continue;
+
+            return {
+              storms: {
+                ...state.storms,
+                [stormId]: {
+                  ...storm,
+                  mainIdeas: {
+                    ...storm.mainIdeas,
+                    [mainIdeaId]: {
+                      ...mainIdea,
+                      entries: result.entries,
+                    },
+                  },
+                },
+              },
+            };
+          }
+
+          for (const [ideaId, idea] of Object.entries(storm.ideas)) {
+            const result = addNestedEntryToTree(idea.entries, parentEntryId, nextEntry);
+            if (!result.found) continue;
+
+            return {
+              storms: {
+                ...state.storms,
+                [stormId]: {
+                  ...storm,
+                  ideas: {
+                    ...storm.ideas,
+                    [ideaId]: {
+                      ...idea,
+                      entries: result.entries,
+                    },
+                  },
+                },
+              },
+            };
+          }
+
+          return state;
+        });
+
+        get().spendBrainWidth(stormId, 10);
+        get().raiseBrainWidthCap(stormId, 1);
+        awardBrainstormWisdomXP();
       },
 
       deleteStorm: (stormId) => {

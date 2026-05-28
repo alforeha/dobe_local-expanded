@@ -47,6 +47,13 @@ export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
   const [draftChildIdeaCustomColor, setDraftChildIdeaCustomColor] = useState('#ffffff');
   const [draftChildIdeaCustomStateColor, setDraftChildIdeaCustomStateColor] = useState('#ffffff');
   const [entryScrollAngle, setEntryScrollAngle] = useState(0);
+  const [addingEntry, setAddingEntry] = useState(false);
+  const [addingSubEntry, setAddingSubEntry] = useState(false);
+  const [subEntryParentId, setSubEntryParentId] = useState<string | null>(null);
+  const [draftEntryState, setDraftEntryState] = useState<EntryState>('others');
+  const [draftEntryType, setDraftEntryType] = useState<EntryType>('others');
+  const [draftEntryCustomColor, setDraftEntryCustomColor] = useState('#ffffff');
+  const [draftEntryCustomStateColor, setDraftEntryCustomStateColor] = useState('#ffffff');
   const focusOrbitRef = useRef<((orbit: 'user' | 'system' | null) => void) | null>(null);
   const clearCanvasFocusRef = useRef<((scope: 'planet' | 'all') => void) | null>(null);
   const selectAspirationFromDrawerRef = useRef<((id: string) => void) | null>(null);
@@ -936,6 +943,13 @@ export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
             draftChildIdeaCustomColor={draftChildIdeaCustomColor}
             draftChildIdeaCustomStateColor={draftChildIdeaCustomStateColor}
             entryScrollAngle={entryScrollAngle}
+            addingEntry={addingEntry}
+            addingSubEntry={addingSubEntry}
+            subEntryParentId={subEntryParentId}
+            draftEntryState={draftEntryState}
+            draftEntryType={draftEntryType}
+            draftEntryCustomColor={draftEntryCustomColor}
+            draftEntryCustomStateColor={draftEntryCustomStateColor}
           />
         ) : null}
       </div>
@@ -1002,6 +1016,13 @@ export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
         onDraftChildIdeaTypeChange={setDraftChildIdeaType}
         onDraftChildIdeaCustomColorChange={setDraftChildIdeaCustomColor}
         onDraftChildIdeaCustomStateColorChange={setDraftChildIdeaCustomStateColor}
+        onAddingEntryChange={setAddingEntry}
+        onAddingSubEntryChange={setAddingSubEntry}
+        onSubEntryParentIdChange={setSubEntryParentId}
+        onDraftEntryStateChange={setDraftEntryState}
+        onDraftEntryTypeChange={setDraftEntryType}
+        onDraftEntryCustomColorChange={setDraftEntryCustomColor}
+        onDraftEntryCustomStateColorChange={setDraftEntryCustomStateColor}
         onEntryScrollAngleChange={setEntryScrollAngle}
         onDeleteStorm={() => {
           if (selectedStormId) {
