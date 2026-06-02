@@ -162,7 +162,7 @@ export function computeCameraTarget(params: {
     const scaleX = (width * padding) / Math.max(1, boundsWidth);
     const scaleY = (height * padding) / Math.max(1, boundsHeight);
     const fitScale = Math.min(scaleX, scaleY, 2.5);
-    targetScale = Math.max(0.05, fitScale);
+    targetScale = Math.max(0.01, fitScale);
   }
 
   return {

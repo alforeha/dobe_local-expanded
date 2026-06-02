@@ -209,6 +209,7 @@ const originNodeRef = useRef<PhysicsIdeaNode>({
   freezeCountdown: 0,
   entryCount: 0,
   descendantCount: 0,
+  immediateChildCount: 0,
   radius: 160,
   depth: 0,
   mainIdeaId: '__origin__',
@@ -487,6 +488,18 @@ const topologySignatureRef = useRef<string>('__uninitialized__');
       return descendantCounts;
     }
 
+    function computeImmediateChildCounts(allFlatIdeas: IdeaLayoutNode[]) {
+      const counts = new Map<string, number>();
+      allFlatIdeas.forEach((node) => {
+        counts.set(node.id, 0);
+      });
+      allFlatIdeas.forEach((node) => {
+        const parentId = getLayoutParentId(node);
+        counts.set(parentId, (counts.get(parentId) ?? 0) + 1);
+      });
+      return counts;
+    }
+
     function hasSafeDistanceViolations() {
       const spawnedNodes = getSpawnedNodes();
       for (let i = 0; i < spawnedNodes.length; i++) {
@@ -572,6 +585,7 @@ const topologySignatureRef = useRef<string>('__uninitialized__');
         allFlatIdeaIds?: Set<string>;
         flatIdeaById?: Map<string, IdeaLayoutNode>;
         descendantCountById?: Map<string, number>;
+        immediateChildCountById?: Map<string, number>;
       },
     ) {
       const {
@@ -579,6 +593,7 @@ const topologySignatureRef = useRef<string>('__uninitialized__');
         allFlatIdeaIds,
         flatIdeaById,
         descendantCountById,
+        immediateChildCountById,
       } = options ?? {};
 
       let unfrozeRootForDescendantChange = false;
@@ -589,7 +604,9 @@ const topologySignatureRef = useRef<string>('__uninitialized__');
           const mainIdea = renderMainIdeas[node.id];
           const entryCount = mainIdea !== undefined ? countNestedEntries(mainIdea) : node.entryCount;
           const descendantCount = descendantCountById?.get(node.id) ?? node.descendantCount ?? 0;
-          const descendantCountChanged = descendantCount !== node.descendantCount;
+          const immediateChildCount = immediateChildCountById?.get(node.id) ?? node.immediateChildCount ?? 0;
+          const descendantCountChanged = descendantCount !== node.descendantCount
+            || immediateChildCount !== node.immediateChildCount;
           if (descendantCountChanged) {
             unfrozeRootForDescendantChange = true;
           }
@@ -597,6 +614,7 @@ const topologySignatureRef = useRef<string>('__uninitialized__');
             ...node,
             entryCount,
             descendantCount,
+            immediateChildCount,
             frozen: descendantCountChanged ? false : node.frozen,
             freezeCountdown: descendantCountChanged ? 120 : node.freezeCountdown,
             radius: getPhysicsRadius(entryCount),
@@ -614,12 +632,15 @@ const topologySignatureRef = useRef<string>('__uninitialized__');
           const layoutNode = flatIdeaById?.get(node.id);
           const entryCount = idea !== undefined ? countNestedEntries(idea) : node.entryCount;
           const descendantCount = descendantCountById?.get(node.id) ?? node.descendantCount ?? 0;
-          const descendantCountChanged = descendantCount !== node.descendantCount;
+          const immediateChildCount = immediateChildCountById?.get(node.id) ?? node.immediateChildCount ?? 0;
+          const descendantCountChanged = descendantCount !== node.descendantCount
+            || immediateChildCount !== node.immediateChildCount;
           return {
             ...node,
             parentId: layoutNode !== undefined ? getLayoutParentId(layoutNode) : node.parentId,
             entryCount,
             descendantCount,
+            immediateChildCount,
             frozen: descendantCountChanged ? false : node.frozen,
             freezeCountdown: descendantCountChanged ? 120 : node.freezeCountdown,
           };
@@ -635,6 +656,7 @@ const topologySignatureRef = useRef<string>('__uninitialized__');
       const mainLayoutById = new Map(mainLayouts.map((layout) => [layout.id, layout]));
       const flatIdeaById = new Map(allFlatIdeas.map((node) => [node.id, node]));
       const descendantCountById = computeDescendantCounts(allFlatIdeas);
+      const immediateChildCountById = computeImmediateChildCounts(allFlatIdeas);
 
       while (spawnQueueRef.current.length > 0) {
         const nextId = spawnQueueRef.current.shift();
@@ -647,8 +669,9 @@ const topologySignatureRef = useRef<string>('__uninitialized__');
           const mainIdea = renderMainIdeas[nextId];
           const entryCount = countNestedEntries(mainIdea);
           const descendantCount = descendantCountById.get(mainLayout.id) ?? 0;
+          const immediateChildCount = immediateChildCountById.get(mainLayout.id) ?? 0;
           const rootSafeDistance = parentRestDistance(
-            { entryCount, descendantCount },
+            { entryCount, descendantCount, immediateChildCount },
             originNodeRef.current,
           );
           let dx = mainLayout.x;
@@ -672,6 +695,7 @@ const topologySignatureRef = useRef<string>('__uninitialized__');
               parentId: '__origin__',
               freezeCountdown: 0,
               descendantCount,
+              immediateChildCount,
               children: [] as IdeaLayoutNode[],
             },
             entryCount,
@@ -723,8 +747,9 @@ const topologySignatureRef = useRef<string>('__uninitialized__');
 
         const entryCount = countNestedEntries(idea);
         const descendantCount = descendantCountById.get(flatIdea.id) ?? 0;
+        const immediateChildCount = immediateChildCountById.get(flatIdea.id) ?? 0;
         const safeDistance = parentRestDistance(
-          { entryCount, descendantCount },
+          { entryCount, descendantCount, immediateChildCount },
           parentNode,
         );
         const seeded = initPhysicsNode(
@@ -736,6 +761,7 @@ const topologySignatureRef = useRef<string>('__uninitialized__');
             radius: getPhysicsRadius(entryCount),
             freezeCountdown: 180,
             descendantCount,
+            immediateChildCount,
           },
           entryCount,
           flatIdea.mainIdeaId,
@@ -793,12 +819,14 @@ const topologySignatureRef = useRef<string>('__uninitialized__');
       const allMainLayoutIds = new Set(allMainLayouts.map((layout) => layout.id));
       const flatIdeaById = new Map(allFlatIdeas.map((node) => [node.id, node]));
       const descendantCountById = computeDescendantCounts(allFlatIdeas);
+      const immediateChildCountById = computeImmediateChildCounts(allFlatIdeas);
 
       refreshPhysicsNodeMetadata(renderMainIdeas, renderIdeas, {
         allMainLayoutIds,
         allFlatIdeaIds,
         flatIdeaById,
         descendantCountById,
+        immediateChildCountById,
       });
       spawnedIdsRef.current = new Set(getSpawnedNodes().map((node) => node.id));
       const bfsIds = buildBfsSpawnQueue(allMainLayouts, allFlatIdeas);
@@ -854,6 +882,7 @@ const topologySignatureRef = useRef<string>('__uninitialized__');
               freezeCountdown: 0,
               entryCount: 0,
               descendantCount: 0,
+              immediateChildCount: 0,
             }
           : null
       );
@@ -1210,6 +1239,7 @@ const topologySignatureRef = useRef<string>('__uninitialized__');
       // existing physics nodes without disturbing positions or velocities.
       refreshPhysicsNodeMetadata(mainIdeas, ideas, {
         descendantCountById: computeDescendantCounts(queueFlatIdeas),
+        immediateChildCountById: computeImmediateChildCounts(queueFlatIdeas),
       });
       resizeCanvas();
       frameRef.current = requestAnimationFrame(drawFrame);

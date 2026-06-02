@@ -12,6 +12,7 @@ export interface PhysicsIdeaNode {
   freezeCountdown: number;
   entryCount: number;
   descendantCount: number;
+  immediateChildCount: number;
   radius: number;
   depth: number;
   mainIdeaId: string;
@@ -26,7 +27,7 @@ export const PHYSICS_CONSTANTS = {
   DAMPING: 0.85,
   SPAWN_JITTER: 0.3,
   JITTER_STRENGTH: 0.05,
-  BRANCH_AXIS_BIAS: .1,
+  BRANCH_AXIS_BIAS: 0.01,
   BRANCH_GAP_MULTIPLIER: 4,
   ANCESTOR_GAP_MULTIPLIER: 3.5,
   SIBLING_BRANCH_MULTIPLIER: 1.8,
@@ -46,11 +47,11 @@ export function getPhysicsRadius(entryCount: number): number {
 }
 
 export function parentRestDistance(
-  node: Pick<PhysicsIdeaNode, 'entryCount' | 'descendantCount'>,
+  node: Pick<PhysicsIdeaNode, 'entryCount' | 'descendantCount' | 'immediateChildCount'>,
   parent: Pick<PhysicsIdeaNode, 'entryCount'>,
 ): number {
   return cr(node) + cr(parent) + PHYSICS_CONSTANTS.PARENT_GAP
-    + node.descendantCount * PHYSICS_CONSTANTS.DESCENDANT_DISTANCE_FACTOR;
+    + node.immediateChildCount * PHYSICS_CONSTANTS.PARENT_GAP;
 }
 
 function bowlStiffnessFor(node: PhysicsIdeaNode): number {
@@ -707,7 +708,11 @@ let ancestorId = parent.parentId;
 }
 
 export function initPhysicsNode(
-  node: IdeaLayoutNode & { freezeCountdown?: number; descendantCount?: number },
+  node: IdeaLayoutNode & {
+    freezeCountdown?: number;
+    descendantCount?: number;
+    immediateChildCount?: number;
+  },
   entryCount: number,
   rootIdentityId: string,
 ): PhysicsIdeaNode {
@@ -719,6 +724,7 @@ export function initPhysicsNode(
     freezeCountdown: node.freezeCountdown ?? 0,
     entryCount,
     descendantCount: node.descendantCount ?? 0,
+    immediateChildCount: node.immediateChildCount ?? 0,
     rootIdentityId,
   };
 }
