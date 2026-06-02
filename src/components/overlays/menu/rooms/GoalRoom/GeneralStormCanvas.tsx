@@ -3,15 +3,6 @@ import { isImageIcon, resolveIcon } from '../../../../../constants/iconMap';
 import { useBrainstormStore } from '../../../../../stores/useBrainstormStore';
 import type { BrainstormEntry, BrainstormIdea, EntryState, EntryType, IdeaState, IdeaType, MainIdea } from '../../../../../types/brainstorm';
 import {
-  drawBrainstormCenterGlow,
-  drawBrainstormConstellation,
-  drawBrainstormIdeaSpokes,
-  drawBrainstormNode,
-  drawStormBeam,
-} from './brainstormDraw';
-import { drawGeneralStormBackground, drawGeneralVoidBackground } from './generalStormBackground';
-import {
-  BRAINSTORM_FIT_PADDING,
   flattenIdeaTree,
   getIdeaLayoutTree,
   getMainIdeaLayouts,
@@ -19,6 +10,16 @@ import {
   type MainIdeaLayout,
 } from './brainstormLayout';
 import { hitTestIdea, hitTestMainIdea } from './brainstormInteraction';
+import {
+  cr,
+  getPhysicsRadius,
+  initPhysicsNode,
+  parentRestDistance,
+  stepPhysics,
+  type PhysicsIdeaNode,
+} from './brainstormPhysics';
+import { computeCameraTarget } from './stormCamera';
+import { renderStormWorld } from './stormRenderer';
 
 interface GeneralStormCanvasProps {
   selectedStormId: string;
@@ -54,12 +55,6 @@ type Camera = {
   scale: number;
 };
 
-type BoundsNode = {
-  x: number;
-  y: number;
-  radius: number;
-};
-
 const CAMERA_LERP = 0.2;
 const IDEA_STATE_COLORS = {
   open: '#4ade80',
@@ -79,35 +74,6 @@ function worldToScreen(
   return {
     x: (wx - camera.x) * camera.scale + canvasCenterX,
     y: (wy - camera.y) * camera.scale + canvasCenterY,
-  };
-}
-
-function collectBounds(nodes: BoundsNode[]) {
-  if (nodes.length === 0) {
-    return {
-      minX: -180,
-      maxX: 180,
-      minY: -180,
-      maxY: 180,
-      centroidX: 0,
-      centroidY: 0,
-    };
-  }
-
-  const minX = Math.min(...nodes.map((node) => node.x - node.radius));
-  const maxX = Math.max(...nodes.map((node) => node.x + node.radius));
-  const minY = Math.min(...nodes.map((node) => node.y - node.radius));
-  const maxY = Math.max(...nodes.map((node) => node.y + node.radius));
-  const centroidX = nodes.reduce((sum, node) => sum + node.x, 0) / nodes.length;
-  const centroidY = nodes.reduce((sum, node) => sum + node.y, 0) / nodes.length;
-
-  return {
-    minX,
-    maxX,
-    minY,
-    maxY,
-    centroidX,
-    centroidY,
   };
 }
 
@@ -183,6 +149,13 @@ function injectPhantomIntoEntries(
   return { entries: updated, found };
 }
 
+function countNestedEntries(idea: { entries: BrainstormEntry[] }): number {
+  function countEntries(entries: BrainstormEntry[]): number {
+    return entries.reduce((sum, entry) => sum + 1 + countEntries(entry.entries), 0);
+  }
+  return countEntries(idea.entries);
+}
+
 export function GeneralStormCanvas({
   selectedStormId,
   selectedMainIdeaId,
@@ -222,7 +195,37 @@ export function GeneralStormCanvas({
   const draftMainIdeaLayoutRef = useRef<MainIdeaLayout | null>(null);
   const draftChildIdeaLayoutRef = useRef<IdeaLayoutNode | null>(null);
   const ideaTreesRef = useRef<Record<string, IdeaLayoutNode[]>>({});
-  const allFlatIdeaLayoutsRef = useRef<IdeaLayoutNode[]>([]);
+  const allFlatIdeaLayoutsRef = useRef<PhysicsIdeaNode[]>([]);
+  // Stable origin anchor -- initialized once on mount, never re-seeded.
+const originNodeRef = useRef<PhysicsIdeaNode>({
+  id: '__origin__',
+  parentId: null,
+  rootIdentityId: '__origin__',
+  frozen: false,
+  x: 0,
+  y: 0,
+  vx: 0,
+  vy: 0,
+  freezeCountdown: 0,
+  entryCount: 0,
+  descendantCount: 0,
+  radius: 160,
+  depth: 0,
+  mainIdeaId: '__origin__',
+  children: [] as IdeaLayoutNode[],
+});
+  const mainIdeaPhysicsRef = useRef<PhysicsIdeaNode[]>([]);
+  const spawnQueueRef = useRef<string[]>([]);
+  const spawnedIdsRef = useRef<Set<string>>(new Set());
+  const isSettledRef = useRef<boolean>(true);
+  const settleFrameCountRef = useRef<number>(0);
+  const spawnFallbackFrameRef = useRef<number>(0);
+  const rootsFrozenRef = useRef<boolean>(false);
+  const rootFreezeCountdownRef = useRef<number>(0);
+  // Topology signature: sorted join of all idea node ids. Used by the
+  // main useEffect to distinguish node-count changes (full respawn) from
+  // entry-content changes (entryCount refresh only, no position reset).
+const topologySignatureRef = useRef<string>('__uninitialized__');
   const selectedMainIdeaIdRef = useRef<string | null>(selectedMainIdeaId);
   const selectedIdeaIdRef = useRef<string | null>(selectedIdeaId);
   const entryScrollAngleRef = useRef(entryScrollAngle);
@@ -388,7 +391,7 @@ export function GeneralStormCanvas({
 
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas || !storm) {
+    if (!canvas) {
       return;
     }
 
@@ -406,6 +409,42 @@ export function GeneralStormCanvas({
     const parentEl = parent as HTMLElement;
     const context = ctx as CanvasRenderingContext2D;
 
+    // Storm not yet loaded: start the animation loop so the canvas is live
+    // (background, void, etc.) but skip all physics/topology work. When
+    // storm populates the useEffect re-fires, this guard is skipped, and
+    // the full tier-reset runs correctly.
+    if (!storm) {
+      function drawFrameNoStorm(timestamp: number) {
+        if (startedAtRef.current === null) {
+          startedAtRef.current = timestamp;
+        }
+        const dpr = window.devicePixelRatio || 1;
+        const width = canvasEl.width / dpr;
+        const height = canvasEl.height / dpr;
+        context.clearRect(0, 0, width, height);
+        frameRef.current = requestAnimationFrame(drawFrameNoStorm);
+      }
+      function resizeCanvasNoStorm() {
+        const rect = parentEl.getBoundingClientRect();
+        const dpr = window.devicePixelRatio || 1;
+        canvasEl.width = Math.max(1, Math.floor(rect.width * dpr));
+        canvasEl.height = Math.max(1, Math.floor(rect.height * dpr));
+        canvasEl.style.width = `${rect.width}px`;
+        canvasEl.style.height = `${rect.height}px`;
+        context.setTransform(dpr, 0, 0, dpr, 0, 0);
+      }
+      const observerNoStorm = new ResizeObserver(resizeCanvasNoStorm);
+      observerNoStorm.observe(parentEl);
+      resizeCanvasNoStorm();
+      frameRef.current = requestAnimationFrame(drawFrameNoStorm);
+      return () => {
+        observerNoStorm.disconnect();
+        if (frameRef.current !== null) {
+          cancelAnimationFrame(frameRef.current);
+        }
+      };
+    }
+
     function resizeCanvas() {
       const rect = parentEl.getBoundingClientRect();
       const dpr = window.devicePixelRatio || 1;
@@ -414,6 +453,309 @@ export function GeneralStormCanvas({
       canvasEl.style.width = `${rect.width}px`;
       canvasEl.style.height = `${rect.height}px`;
       context.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+
+    function getLayoutParentId(node: IdeaLayoutNode) {
+      const nodeWithParentIdea = node as IdeaLayoutNode & { parentIdeaId?: string | null };
+      return nodeWithParentIdea.parentIdeaId ?? node.parentId ?? node.mainIdeaId;
+    }
+
+    function getSpawnedNodes() {
+      return [
+        ...mainIdeaPhysicsRef.current,
+        ...allFlatIdeaLayoutsRef.current,
+      ];
+    }
+
+    function computeDescendantCounts(allFlatIdeas: IdeaLayoutNode[]) {
+      const descendantCounts = new Map<string, number>();
+      const byDepthDesc = [...allFlatIdeas].sort((a, b) => b.depth - a.depth);
+
+      allFlatIdeas.forEach((node) => {
+        descendantCounts.set(node.id, 0);
+      });
+
+      byDepthDesc.forEach((node) => {
+        const nodeDescendantCount = descendantCounts.get(node.id) ?? 0;
+        const parentId = getLayoutParentId(node);
+        descendantCounts.set(
+          parentId,
+          (descendantCounts.get(parentId) ?? 0) + nodeDescendantCount + 1,
+        );
+      });
+
+      return descendantCounts;
+    }
+
+    function hasSafeDistanceViolations() {
+      const spawnedNodes = getSpawnedNodes();
+      for (let i = 0; i < spawnedNodes.length; i++) {
+        const nodeA = spawnedNodes[i];
+        for (let j = i + 1; j < spawnedNodes.length; j++) {
+          const nodeB = spawnedNodes[j];
+          const dx = nodeA.x - nodeB.x;
+          const dy = nodeA.y - nodeB.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist < cr(nodeA) + cr(nodeB)) {
+            return true;
+          }
+        }
+      }
+      return false;
+    }
+
+    function allNodesStill() {
+      const spawnedNodes = getSpawnedNodes();
+      const threshold = 0.5
+        * Math.sqrt(spawnedNodes.length);
+      return spawnedNodes.every(
+        (node) => Math.sqrt(node.vx * node.vx + node.vy * node.vy) < threshold,
+      );
+    }
+
+    function buildBfsSpawnQueue(mainLayouts: MainIdeaLayout[], allFlatIdeas: IdeaLayoutNode[]) {
+      const queue: string[] = [];
+      const childIdsByParentId = new Map<string, string[]>();
+
+      allFlatIdeas.forEach((node) => {
+        const parentId = getLayoutParentId(node);
+        const childIds = childIdsByParentId.get(parentId);
+        if (childIds === undefined) {
+          childIdsByParentId.set(parentId, [node.id]);
+        } else {
+          childIds.push(node.id);
+        }
+      });
+
+      const frontier = mainLayouts
+        .filter((layout) => layout.id !== draftMainIdeaId)
+        .map((layout) => layout.id);
+      queue.push(...frontier);
+
+      let currentLevel = frontier;
+      while (currentLevel.length > 0) {
+        const nextLevel: string[] = [];
+        const childLists = currentLevel.map((parentId) => childIdsByParentId.get(parentId) ?? []);
+        let childIndex = 0;
+        let addedChild = true;
+        while (addedChild) {
+          addedChild = false;
+          childLists.forEach((childIds) => {
+            const childId = childIds[childIndex];
+            if (childId !== undefined) {
+              nextLevel.push(childId);
+              addedChild = true;
+            }
+          });
+          childIndex += 1;
+        }
+        queue.push(...nextLevel);
+        currentLevel = nextLevel;
+      }
+
+      return queue;
+    }
+
+    function findPhysicsNode(id: string) {
+      return (
+        mainIdeaPhysicsRef.current.find((node) => node.id === id)
+        ?? allFlatIdeaLayoutsRef.current.find((node) => node.id === id)
+        ?? (id === '__origin__' ? originNodeRef.current : undefined)
+      );
+    }
+
+    function refreshPhysicsNodeMetadata(
+      renderMainIdeas: Record<string, MainIdea>,
+      renderIdeas: Record<string, BrainstormIdea>,
+      options?: {
+        allMainLayoutIds?: Set<string>;
+        allFlatIdeaIds?: Set<string>;
+        flatIdeaById?: Map<string, IdeaLayoutNode>;
+        descendantCountById?: Map<string, number>;
+      },
+    ) {
+      const {
+        allMainLayoutIds,
+        allFlatIdeaIds,
+        flatIdeaById,
+        descendantCountById,
+      } = options ?? {};
+
+      let unfrozeRootForDescendantChange = false;
+
+      mainIdeaPhysicsRef.current = mainIdeaPhysicsRef.current
+        .filter((node) => allMainLayoutIds === undefined || allMainLayoutIds.has(node.id))
+        .map((node) => {
+          const mainIdea = renderMainIdeas[node.id];
+          const entryCount = mainIdea !== undefined ? countNestedEntries(mainIdea) : node.entryCount;
+          const descendantCount = descendantCountById?.get(node.id) ?? node.descendantCount ?? 0;
+          const descendantCountChanged = descendantCount !== node.descendantCount;
+          if (descendantCountChanged) {
+            unfrozeRootForDescendantChange = true;
+          }
+          return {
+            ...node,
+            entryCount,
+            descendantCount,
+            frozen: descendantCountChanged ? false : node.frozen,
+            freezeCountdown: descendantCountChanged ? 120 : node.freezeCountdown,
+            radius: getPhysicsRadius(entryCount),
+          };
+        });
+
+      if (unfrozeRootForDescendantChange) {
+        rootsFrozenRef.current = false;
+      }
+
+      allFlatIdeaLayoutsRef.current = allFlatIdeaLayoutsRef.current
+        .filter((node) => allFlatIdeaIds === undefined || allFlatIdeaIds.has(node.id))
+        .map((node) => {
+          const idea = renderIdeas[node.id];
+          const layoutNode = flatIdeaById?.get(node.id);
+          const entryCount = idea !== undefined ? countNestedEntries(idea) : node.entryCount;
+          const descendantCount = descendantCountById?.get(node.id) ?? node.descendantCount ?? 0;
+          const descendantCountChanged = descendantCount !== node.descendantCount;
+          return {
+            ...node,
+            parentId: layoutNode !== undefined ? getLayoutParentId(layoutNode) : node.parentId,
+            entryCount,
+            descendantCount,
+            frozen: descendantCountChanged ? false : node.frozen,
+            freezeCountdown: descendantCountChanged ? 120 : node.freezeCountdown,
+          };
+        });
+    }
+
+    function spawnNextQueuedNode(
+      mainLayouts: MainIdeaLayout[],
+      allFlatIdeas: IdeaLayoutNode[],
+      renderMainIdeas: Record<string, MainIdea>,
+      renderIdeas: Record<string, BrainstormIdea>,
+    ) {
+      const mainLayoutById = new Map(mainLayouts.map((layout) => [layout.id, layout]));
+      const flatIdeaById = new Map(allFlatIdeas.map((node) => [node.id, node]));
+      const descendantCountById = computeDescendantCounts(allFlatIdeas);
+
+      while (spawnQueueRef.current.length > 0) {
+        const nextId = spawnQueueRef.current.shift();
+        if (nextId === undefined || spawnedIdsRef.current.has(nextId)) {
+          continue;
+        }
+
+        const mainLayout = mainLayoutById.get(nextId);
+        if (mainLayout !== undefined && renderMainIdeas[nextId] !== undefined) {
+          const mainIdea = renderMainIdeas[nextId];
+          const entryCount = countNestedEntries(mainIdea);
+          const descendantCount = descendantCountById.get(mainLayout.id) ?? 0;
+          const rootSafeDistance = parentRestDistance(
+            { entryCount, descendantCount },
+            originNodeRef.current,
+          );
+          let dx = mainLayout.x;
+          let dy = mainLayout.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist < 0.001) {
+            dx = 0;
+            dy = -1;
+          } else {
+            dx /= dist;
+            dy /= dist;
+          }
+          const seeded = initPhysicsNode(
+            {
+              id: mainLayout.id,
+              x: dx * rootSafeDistance,
+              y: dy * rootSafeDistance,
+              radius: getPhysicsRadius(entryCount),
+              mainIdeaId: mainLayout.id,
+              depth: 0,
+              parentId: '__origin__',
+              freezeCountdown: 0,
+              descendantCount,
+              children: [] as IdeaLayoutNode[],
+            },
+            entryCount,
+            mainLayout.id,
+          );
+          mainIdeaPhysicsRef.current.push(seeded);
+          spawnedIdsRef.current.add(nextId);
+          settleFrameCountRef.current = 0;
+          spawnFallbackFrameRef.current = 0;
+          isSettledRef.current = false;
+          const remainingRootIds = spawnQueueRef.current.filter((id) => mainLayoutById.has(id));
+          if (remainingRootIds.length === 0) {
+            rootFreezeCountdownRef.current = 180;
+          }
+          return;
+        }
+
+        const flatIdea = flatIdeaById.get(nextId);
+        const idea = renderIdeas[nextId];
+        if (flatIdea === undefined || idea === undefined) {
+          continue;
+        }
+
+        const parentId = getLayoutParentId(flatIdea);
+        const parentNode = findPhysicsNode(parentId);
+        if (parentNode === undefined) {
+          spawnQueueRef.current.unshift(nextId);
+          return;
+        }
+        if (parentNode.freezeCountdown > 0) {
+          spawnQueueRef.current.unshift(nextId);
+          return;
+        }
+
+        const grandparentNode = parentNode.parentId !== null
+          ? findPhysicsNode(parentNode.parentId)
+          : originNodeRef.current;
+        const directionSource = grandparentNode ?? originNodeRef.current;
+        let dx = parentNode.x - directionSource.x;
+        let dy = parentNode.y - directionSource.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < 0.001) {
+          dx = 0;
+          dy = -1;
+        } else {
+          dx /= dist;
+          dy /= dist;
+        }
+
+        const entryCount = countNestedEntries(idea);
+        const descendantCount = descendantCountById.get(flatIdea.id) ?? 0;
+        const safeDistance = parentRestDistance(
+          { entryCount, descendantCount },
+          parentNode,
+        );
+        const seeded = initPhysicsNode(
+          {
+            ...flatIdea,
+            parentId,
+            x: parentNode.x + dx * safeDistance,
+            y: parentNode.y + dy * safeDistance,
+            radius: getPhysicsRadius(entryCount),
+            freezeCountdown: 180,
+            descendantCount,
+          },
+          entryCount,
+          flatIdea.mainIdeaId,
+        );
+        allFlatIdeaLayoutsRef.current.push(seeded);
+        allFlatIdeaLayoutsRef.current = allFlatIdeaLayoutsRef.current.map((node) => (
+          node.parentId === seeded.parentId && node.id !== seeded.id
+            ? {
+                ...node,
+                frozen: false,
+                freezeCountdown: Math.max(node.freezeCountdown, 60),
+              }
+            : node
+        ));
+        spawnedIdsRef.current.add(nextId);
+        settleFrameCountRef.current = 0;
+        spawnFallbackFrameRef.current = 0;
+        isSettledRef.current = false;
+        return;
+      }
     }
 
     function updateCameraTarget(
@@ -442,122 +784,103 @@ export function GeneralStormCanvas({
       draftChildIdeaLayoutRef.current = allFlatIdeas.find((layout) => layout.id === '__draft_child__') ?? null;
       mainIdeaLayoutsRef.current = mainLayouts.filter((layout) => layout.id !== draftMainIdeaId);
       ideaTreesRef.current = ideaTreesByMainId;
-      allFlatIdeaLayoutsRef.current = allFlatIdeas;
+      const allMainLayouts = mainLayouts.filter((layout) => layout.id !== draftMainIdeaId);
+      const currentIds = new Set([
+        ...allMainLayouts.map((layout) => layout.id),
+        ...allFlatIdeas.map((node) => node.id),
+      ]);
+      const allFlatIdeaIds = new Set(allFlatIdeas.map((node) => node.id));
+      const allMainLayoutIds = new Set(allMainLayouts.map((layout) => layout.id));
+      const flatIdeaById = new Map(allFlatIdeas.map((node) => [node.id, node]));
+      const descendantCountById = computeDescendantCounts(allFlatIdeas);
 
-      const currentSelectedIdeaId = selectedIdeaIdRef.current;
-      const currentSelectedMainIdeaId = selectedMainIdeaIdRef.current;
-      const flatNodeById = new Map(allFlatIdeas.map((node) => [node.id, node]));
-      const selectedNode = currentSelectedIdeaId ? flatNodeById.get(currentSelectedIdeaId) ?? null : null;
-      const isEditingChildIdea = editingChildIdeaRef.current;
-      const isAddingChildIdea = addingChildIdeaRef.current;
-      const draftChildNode = allFlatIdeas.find((node) => node.id === '__draft_child__') ?? null;
+      refreshPhysicsNodeMetadata(renderMainIdeas, renderIdeas, {
+        allMainLayoutIds,
+        allFlatIdeaIds,
+        flatIdeaById,
+        descendantCountById,
+      });
+      spawnedIdsRef.current = new Set(getSpawnedNodes().map((node) => node.id));
+      const bfsIds = buildBfsSpawnQueue(allMainLayouts, allFlatIdeas);
+      spawnQueueRef.current = bfsIds.filter(
+        (id) => currentIds.has(id) && !spawnedIdsRef.current.has(id),
+      );
 
-      const isBlurbOpen = ideaPillBlurbOpenRef.current;
-      let focusNodes: BoundsNode[] = [];
-
-      if (isBlurbOpen && selectedNode) {
-        const originNode: BoundsNode = { x: 0, y: 0, radius: 28 };
-        const selectedMainLayout = mainLayouts.find((layout) => layout.id === selectedNode.mainIdeaId) ?? null;
-        const nodeByIdForPath = new Map(allFlatIdeas.map((node) => [node.id, node]));
-        const ancestorPathNodes: IdeaLayoutNode[] = [];
-        let currentParentId = selectedNode.parentId;
-        while (currentParentId) {
-          const ancestorNode = nodeByIdForPath.get(currentParentId);
-          if (ancestorNode) {
-            ancestorPathNodes.push(ancestorNode);
-          }
-          currentParentId = nodeByIdForPath.get(currentParentId)?.parentId ?? null;
-        }
-        focusNodes = [
-          originNode,
-          ...(selectedMainLayout ? [selectedMainLayout] : []),
-          ...ancestorPathNodes,
-          selectedNode,
-        ];
-      } else if (isAddingChildIdea && selectedNode) {
-        focusNodes = [
-          selectedNode,
-          ...(draftChildNode ? [draftChildNode] : []),
-        ];
-      } else if (isAddingChildIdea && currentSelectedMainIdeaId) {
-        const selectedMainLayout = mainLayouts.find((layout) => layout.id === currentSelectedMainIdeaId) ?? null;
-        focusNodes = [
-          ...(selectedMainLayout ? [selectedMainLayout] : []),
-          ...(draftChildNode ? [draftChildNode] : []),
-        ];
-      } else if (isEditingChildIdea && selectedNode) {
-        focusNodes = [
-          selectedNode,
-          ...allFlatIdeas.filter((node) => node.parentId === selectedNode.id),
-        ];
-      } else if (isEditingChildIdea && currentSelectedMainIdeaId) {
-        const selectedMainLayout = mainLayouts.find((layout) => layout.id === currentSelectedMainIdeaId) ?? null;
-        const immediateChildren = allFlatIdeas.filter(
-          (node) => node.mainIdeaId === currentSelectedMainIdeaId && node.parentId === null,
-        );
-        focusNodes = [
-          ...(selectedMainLayout ? [selectedMainLayout] : []),
-          ...immediateChildren,
-        ];
-      } else if (selectedNode) {
-        const subtreeIds = collectSubtreeIds(allFlatIdeas, selectedNode.id);
-        focusNodes = allFlatIdeas.filter((node) => subtreeIds.has(node.id));
-      } else if (currentSelectedMainIdeaId) {
-        const selectedMainLayout = mainLayouts.find((layout) => layout.id === currentSelectedMainIdeaId) ?? null;
-        const selectedTree = ideaTreesByMainId[currentSelectedMainIdeaId] ?? [];
-        focusNodes = [
-          ...(selectedMainLayout ? [selectedMainLayout] : []),
-          ...flattenIdeaTree(selectedTree),
-        ];
+      const frameSettled = !hasSafeDistanceViolations()
+        && allNodesStill();
+      if (frameSettled) {
+        settleFrameCountRef.current += 1;
       } else {
-        focusNodes = [...mainLayouts, ...allFlatIdeas];
+        settleFrameCountRef.current = 0;
       }
-
-      const bounds = collectBounds(focusNodes);
-      const padding = BRAINSTORM_FIT_PADDING ?? 0.8;
-      let targetScale = 1;
-
-      if (focusNodes.length === 1) {
-        const fitScale = Math.min(
-          (width * padding) / 240,
-          (height * padding) / 240,
-          2.5,
+      const remainingRootIds = spawnQueueRef.current.filter((id) =>
+        allMainLayoutIds.has(id),
+      );
+      isSettledRef.current = settleFrameCountRef.current >= 10;
+      if (!rootsFrozenRef.current && remainingRootIds.length === 0 && isSettledRef.current) {
+        rootsFrozenRef.current = true;
+        mainIdeaPhysicsRef.current = mainIdeaPhysicsRef.current.map((node) => ({
+          ...node,
+          frozen: true,
+          vx: 0,
+          vy: 0,
+        }));
+      }
+      const shouldSpawnNext = spawnQueueRef.current.length > 0
+        && (
+          isSettledRef.current
+          || spawnFallbackFrameRef.current >= 180
         );
-        targetScale = Math.max(0.15, fitScale);
-      } else {
-        const boundsWidth = bounds.maxX - bounds.minX;
-        const boundsHeight = bounds.maxY - bounds.minY;
-        const scaleX = (width * padding) / Math.max(1, boundsWidth);
-        const scaleY = (height * padding) / Math.max(1, boundsHeight);
-        const fitScale = Math.min(scaleX, scaleY, 2.5);
-        targetScale = Math.max(0.15, fitScale);
+      if (shouldSpawnNext) {
+        spawnNextQueuedNode(allMainLayouts, allFlatIdeas, renderMainIdeas, renderIdeas);
       }
 
-      cameraTargetRef.current = {
-        x: bounds.centroidX,
-        y: bounds.centroidY,
-        scale: targetScale,
-      };
+      // Camera framing for the draft child orb must use the physics-stepped
+      // position (the same source the visible preview ring draws from) so the
+      // camera centroid tracks where the orb actually is, not the static
+      // layout coordinate. Fall back to the static layout entry only if the
+      // physics ref has not yet seeded a node for the draft id.
+      const draftChildIdeaId = '__draft_child__';
+      const draftChildPhysicsNode = allFlatIdeaLayoutsRef.current.find((node) => node.id === draftChildIdeaId);
+      const draftChildLayoutNode = allFlatIdeas.find((node) => node.id === draftChildIdeaId) ?? null;
+      const draftChildNode = draftChildPhysicsNode ?? (
+        draftChildLayoutNode
+          ? {
+              ...draftChildLayoutNode,
+              rootIdentityId: draftChildLayoutNode.mainIdeaId,
+              frozen: false,
+              vx: 0,
+              vy: 0,
+              freezeCountdown: 0,
+              entryCount: 0,
+              descendantCount: 0,
+            }
+          : null
+      );
 
-      if (startedAtRef.current === null) {
-        cameraRef.current = { ...cameraTargetRef.current };
-      }
+      cameraTargetRef.current = computeCameraTarget({
+        width,
+        height,
+        mainIdeaNodes: mainIdeaPhysicsRef.current,
+        childNodes: allFlatIdeaLayoutsRef.current,
+        selectedIdeaId: selectedIdeaIdRef.current,
+        selectedMainIdeaId: selectedMainIdeaIdRef.current,
+        isAddingChildIdea: addingChildIdeaRef.current,
+        isEditingChildIdea: editingChildIdeaRef.current,
+        ideaPillBlurbOpen: ideaPillBlurbOpenRef.current,
+        draftChildNode,
+      });
     }
 
     function drawFrame(timestamp: number) {
       if (startedAtRef.current === null) {
         startedAtRef.current = timestamp;
       }
+      spawnFallbackFrameRef.current += 1;
 
       const width = canvasEl.width / (window.devicePixelRatio || 1);
       const height = canvasEl.height / (window.devicePixelRatio || 1);
       const dpr = window.devicePixelRatio || 1;
-      const canvasWidth = canvasEl.width / dpr;
-      const canvasHeight = canvasEl.height / dpr;
-      const canvasCenterX = width * 0.5;
-      const canvasCenterY = height * 0.5;
-      const elapsed = timestamp - startedAtRef.current;
-      void elapsed;
       const currentSelectedIdeaId = selectedIdeaIdRef.current;
       const currentSelectedMainIdeaId = selectedMainIdeaIdRef.current;
       const isEditingChildIdea = editingChildIdeaRef.current;
@@ -730,6 +1053,91 @@ export function GeneralStormCanvas({
         }
       }
 
+      const shouldStep = getSpawnedNodes().length > 0;
+
+      if (shouldStep) {
+        // All three node groups advance together so they repel each other
+        // correctly, then results are split back into their own refs.
+        // Origin is always pinned to world 0,0 after the step.
+        const rootStepNodes = rootsFrozenRef.current
+          ? mainIdeaPhysicsRef.current.map((node) => ({
+              ...node,
+              parentId: '__origin__',
+              frozen: true,
+              vx: 0,
+              vy: 0,
+            }))
+          : mainIdeaPhysicsRef.current;
+        const mainIdeaIds = new Set(mainIdeaPhysicsRef.current.map((n) => n.id));
+        const childIds = new Set(allFlatIdeaLayoutsRef.current.map((n) => n.id));
+        const stepped = stepPhysics([
+          originNodeRef.current,
+          ...rootStepNodes,
+          ...allFlatIdeaLayoutsRef.current,
+        ]);
+        const frozenRootPositions = new Map(
+          mainIdeaPhysicsRef.current.map((n) => [n.id, { x: n.x, y: n.y }]),
+        );
+        mainIdeaPhysicsRef.current = stepped
+          .filter((n) => mainIdeaIds.has(n.id))
+          .map((node) => (
+            rootsFrozenRef.current
+              ? {
+                  ...node,
+                  parentId: '__origin__',
+                  frozen: true,
+                  vx: 0,
+                  vy: 0,
+                  x: frozenRootPositions.get(node.id)?.x ?? node.x,
+                  y: frozenRootPositions.get(node.id)?.y ?? node.y,
+                }
+              : node
+          ));
+        allFlatIdeaLayoutsRef.current = stepped
+          .filter((n) => childIds.has(n.id))
+          .map((node) => (
+            node.freezeCountdown === 0 && node.frozen === false
+              ? {
+                  ...node,
+                  frozen: true,
+                }
+              : node
+          ));
+        // Sync the draft preview ring to the physics-stepped position
+        // of __draft_child__ so the rendered ring matches the body
+        // being simulated rather than the static layout coordinates.
+        const draftChildPhysics = allFlatIdeaLayoutsRef.current.find(
+          (n) => n.id === '__draft_child__',
+        );
+        if (
+          draftChildPhysics !== undefined
+          && draftChildIdeaLayoutRef.current !== null
+        ) {
+          draftChildIdeaLayoutRef.current = {
+            ...draftChildIdeaLayoutRef.current,
+            x: draftChildPhysics.x,
+            y: draftChildPhysics.y,
+          };
+        }
+        const steppedOrigin = stepped.find((n) => n.id === '__origin__');
+        if (steppedOrigin !== undefined) {
+          originNodeRef.current = { ...steppedOrigin, x: 0, y: 0, vx: 0, vy: 0, frozen: false, freezeCountdown: 0 };
+        }
+      }
+
+      if (rootFreezeCountdownRef.current > 0 && !rootsFrozenRef.current) {
+        rootFreezeCountdownRef.current -= 1;
+        if (rootFreezeCountdownRef.current === 0) {
+          rootsFrozenRef.current = true;
+          mainIdeaPhysicsRef.current = mainIdeaPhysicsRef.current.map((node) => ({
+            ...node,
+            frozen: true,
+            vx: 0,
+            vy: 0,
+          }));
+        }
+      }
+
       updateCameraTarget(width, height, nextRenderMainIdeas, renderIdeas);
 
       cameraRef.current = {
@@ -737,57 +1145,6 @@ export function GeneralStormCanvas({
         y: cameraRef.current.y + (cameraTargetRef.current.y - cameraRef.current.y) * CAMERA_LERP,
         scale: cameraRef.current.scale + (cameraTargetRef.current.scale - cameraRef.current.scale) * CAMERA_LERP,
       };
-
-      context.clearRect(0, 0, width, height);
-
-      drawBrainstormCenterGlow(
-        context,
-        canvasCenterX,
-        canvasCenterY,
-        canvasWidth,
-        canvasHeight,
-        1,
-      );
-      [0, (2 * Math.PI) / 3, (4 * Math.PI) / 3].forEach((angle) => {
-        drawStormBeam(
-          context,
-          canvasCenterX,
-          canvasCenterY,
-          angle,
-          storm.category.color,
-          1,
-          canvasWidth,
-          canvasHeight,
-          'selected',
-        );
-      });
-      if (storm.type === 'general') {
-        drawGeneralStormBackground(
-          context,
-          canvasCenterX,
-          canvasCenterY,
-          storm.category.color,
-          1,
-          timestamp,
-        );
-      }
-
-      context.save();
-      context.translate(canvasCenterX, canvasCenterY);
-      context.scale(cameraRef.current.scale, cameraRef.current.scale);
-      context.translate(-cameraRef.current.x, -cameraRef.current.y);
-
-      if (!canvas) {
-        return;
-      }
-
-      drawGeneralVoidBackground(
-        context,
-        canvas.width / dpr,
-        canvas.height / dpr,
-        0.4,
-      );
-      drawBrainstormNode(context, 0, 0, 28, '', 1, false, true, 1);
 
       const effectiveSelectedMainIdeaId = currentSelectedIdeaId
         ? allFlatIdeaLayoutsRef.current.find((node) => node.id === currentSelectedIdeaId)?.mainIdeaId
@@ -798,116 +1155,123 @@ export function GeneralStormCanvas({
         effectiveSelectedMainIdeaId,
         currentSelectedIdeaId,
       );
-      const constellationLayouts = [
-        ...mainIdeaLayoutsRef.current,
-        ...(addingMainIdeaRef.current && draftMainIdeaLayoutRef.current
-          ? [draftMainIdeaLayoutRef.current]
-          : []),
-      ].map((layout) => ({
-        ...layout,
-        ...nextRenderMainIdeas[layout.id],
-      }));
 
-      drawBrainstormConstellation(
-        context,
-        constellationLayouts,
-        effectiveSelectedMainIdeaId,
-        null,
+      renderStormWorld(context, {
+        camera: cameraRef.current,
+        width,
+        height,
+        dpr,
+        storm: {
+          ...storm,
+          mainIdeas: nextRenderMainIdeas,
+          ideas: renderIdeas,
+        },
+        mainIdeaNodes: mainIdeaPhysicsRef.current,
+        childNodes: allFlatIdeaLayoutsRef.current,
+        mainIdeaLayouts: mainIdeaLayoutsRef.current,
+        ideaTrees: ideaTreesRef.current,
+        selectedIdeaId: currentSelectedIdeaId,
+        selectedMainIdeaId: effectiveSelectedMainIdeaId,
+        isAddingChildIdea: addingChildIdeaRef.current,
+        isEditingChildIdea,
+        draftMainIdeaLayout: addingMainIdeaRef.current ? draftMainIdeaLayoutRef.current : null,
+        draftChildIdeaLayout: draftChildIdeaLayoutRef.current,
         highlightedIds,
-        currentSelectedIdeaId,
+        entryScrollAngle: entryScrollAngleRef.current,
         timestamp,
-        nextRenderMainIdeas,
-      );
-
-      if (addingMainIdeaRef.current && draftMainIdeaLayoutRef.current) {
-        const phantomLayout = draftMainIdeaLayoutRef.current;
-
-        context.save();
-        context.setLineDash([4, 4]);
-        context.strokeStyle = '#ffffff';
-        context.globalAlpha = 0.6;
-        context.lineWidth = 1.5 / cameraRef.current.scale;
-        context.beginPath();
-        context.arc(
-          phantomLayout.x,
-          phantomLayout.y,
-          phantomLayout.radius,
-          0,
-          Math.PI * 2,
-        );
-        context.stroke();
-        context.restore();
-      }
-
-      mainIdeaLayoutsRef.current.forEach((layout) => {
-        const tree = ideaTreesRef.current[layout.id] ?? [];
-        drawBrainstormIdeaSpokes(
-          context,
-          tree,
-          renderIdeas,
-          highlightedIds,
-          currentSelectedIdeaId,
-          null,
-          layout.x,
-          layout.y,
-          timestamp,
-          entryScrollAngleRef.current,
-        );
       });
 
-      if (addingChildIdeaRef.current && draftChildIdeaLayoutRef.current) {
-        const phantomLayout = draftChildIdeaLayoutRef.current;
-
-        context.save();
-        context.setLineDash([4, 4]);
-        context.strokeStyle = '#ffffff';
-        context.globalAlpha = 0.6;
-        context.lineWidth = 1.5 / cameraRef.current.scale;
-        context.beginPath();
-        context.arc(
-          phantomLayout.x,
-          phantomLayout.y,
-          phantomLayout.radius,
-          0,
-          Math.PI * 2,
-        );
-        context.stroke();
-        context.restore();
-      }
-
-      if (isEditingChildIdea) {
-        const targetIdeaLayout = currentSelectedIdeaId
-          ? allFlatIdeaLayoutsRef.current.find((node) => node.id === currentSelectedIdeaId) ?? null
-          : null;
-        const targetMainIdeaLayout = currentSelectedIdeaId
-          ? null
-          : currentSelectedMainIdeaId
-            ? mainIdeaLayoutsRef.current.find((layout) => layout.id === currentSelectedMainIdeaId) ?? null
-            : null;
-        const editingLayout = targetIdeaLayout ?? targetMainIdeaLayout;
-
-        if (editingLayout) {
-          context.save();
-          context.setLineDash([4, 4]);
-          context.strokeStyle = '#ffffff';
-          context.globalAlpha = 0.6;
-          context.lineWidth = 1.5 / cameraRef.current.scale;
-          context.beginPath();
-          context.arc(
-            editingLayout.x,
-            editingLayout.y,
-            editingLayout.radius,
-            0,
-            Math.PI * 2,
-          );
-          context.stroke();
-          context.restore();
-        }
-      }
-
-      context.restore();
-
       frameRef.current = requestAnimationFrame(drawFrame);
+    }
+
+    // Topology signature: sorted join of all main-idea and child-idea ids.
+    // If only entry content changed (no ids added/removed) we skip the
+    // full tier respawn and only refresh entryCount on existing nodes so
+    // positions and velocities are preserved.
+    const queueMainLayouts = getMainIdeaLayouts(mainIdeas, 0, 0);
+    const queueFlatIdeas: IdeaLayoutNode[] = [];
+    queueMainLayouts.forEach((layout) => {
+      const mainIdea = mainIdeas[layout.id];
+      if (mainIdea === undefined) {
+        return;
+      }
+      queueFlatIdeas.push(...flattenIdeaTree(
+        getIdeaLayoutTree(mainIdea, ideas, layout.x, layout.y, undefined, 0, 0, queueMainLayouts.length),
+      ));
+    });
+
+    const newTopologySignature = [
+      ...Object.keys(mainIdeas).sort(),
+      ...Object.keys(ideas).sort(),
+    ].join('|');
+
+    if (newTopologySignature === topologySignatureRef.current) {
+      // Non-topology change (e.g. entry save). Refresh entryCount on all
+      // existing physics nodes without disturbing positions or velocities.
+      refreshPhysicsNodeMetadata(mainIdeas, ideas, {
+        descendantCountById: computeDescendantCounts(queueFlatIdeas),
+      });
+      resizeCanvas();
+      frameRef.current = requestAnimationFrame(drawFrame);
+      return () => {
+        if (frameRef.current !== null) {
+          cancelAnimationFrame(frameRef.current);
+        }
+      };
+    }
+    const isInitialTopology = topologySignatureRef.current === '__uninitialized__';
+    topologySignatureRef.current = newTopologySignature;
+    allFlatIdeaLayoutsRef.current = allFlatIdeaLayoutsRef.current.map((node) => ({
+      ...node,
+      frozen: false,
+    }));
+
+    const currentTopologyIds = new Set([
+      ...queueMainLayouts
+        .filter((layout) => layout.id !== draftMainIdeaId)
+        .map((layout) => layout.id),
+      ...queueFlatIdeas.map((node) => node.id),
+    ]);
+    const bfsQueue = buildBfsSpawnQueue(queueMainLayouts, queueFlatIdeas);
+    const nextRootIds = new Set(
+      queueMainLayouts
+        .filter((layout) => layout.id !== draftMainIdeaId)
+        .map((layout) => layout.id),
+    );
+    const currentRootIds = new Set(mainIdeaPhysicsRef.current.map((node) => node.id));
+    const rootTopologyChanged = nextRootIds.size !== currentRootIds.size
+      || [...nextRootIds].some((id) => !currentRootIds.has(id));
+
+    if (isInitialTopology) {
+      spawnQueueRef.current = bfsQueue;
+      spawnedIdsRef.current = new Set();
+      isSettledRef.current = true;
+      settleFrameCountRef.current = 0;
+      spawnFallbackFrameRef.current = 0;
+      rootsFrozenRef.current = false;
+      rootFreezeCountdownRef.current = 0;
+      mainIdeaPhysicsRef.current = [];
+      allFlatIdeaLayoutsRef.current = [];
+    } else {
+      if (rootTopologyChanged) {
+        rootsFrozenRef.current = false;
+        rootFreezeCountdownRef.current = 0;
+        mainIdeaPhysicsRef.current = mainIdeaPhysicsRef.current.map((node) => ({
+          ...node,
+          frozen: false,
+        }));
+      }
+      mainIdeaPhysicsRef.current = mainIdeaPhysicsRef.current.filter((node) => currentTopologyIds.has(node.id));
+      allFlatIdeaLayoutsRef.current = allFlatIdeaLayoutsRef.current.filter((node) => currentTopologyIds.has(node.id));
+      spawnedIdsRef.current = new Set(getSpawnedNodes().map((node) => node.id));
+      spawnQueueRef.current = bfsQueue.filter(
+        (id) => currentTopologyIds.has(id) && !spawnedIdsRef.current.has(id),
+      );
+      
+      isSettledRef.current = settleFrameCountRef.current >= 10;
+      if (spawnQueueRef.current.length === 0) {
+        spawnFallbackFrameRef.current = 0;
+      }
     }
 
     const observer = new ResizeObserver(resizeCanvas);
@@ -957,7 +1321,7 @@ export function GeneralStormCanvas({
         const hitMainIdeaId = hitTestMainIdea(
           screenX,
           screenY,
-          mainIdeaLayoutsRef.current,
+          mainIdeaPhysicsRef.current,
           toScreen,
         );
         if (hitMainIdeaId) {

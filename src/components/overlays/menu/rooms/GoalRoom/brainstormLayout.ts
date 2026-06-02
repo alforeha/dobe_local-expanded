@@ -63,10 +63,8 @@ function getOutwardChildAngle(
     return [parentAngleFromCenter - Math.PI / 4, parentAngleFromCenter + Math.PI / 4][index] ?? parentAngleFromCenter;
   }
 
-  const MAX_ARC = Math.PI / 3;
   const MIN_STEP = Math.PI / 12;
-  const naturalStep = MAX_ARC / Math.max(1, count - 1);
-  const step = Math.max(MIN_STEP, naturalStep);
+  const step = MIN_STEP;
   const totalArc = step * Math.max(1, count - 1);
   const startAngle = parentAngleFromCenter - totalArc / 2;
 
@@ -81,16 +79,11 @@ export function getIdeaLayoutTree(
   baseRadius: number = 160,
   brainstormCenterX?: number,
   brainstormCenterY?: number,
-  mainIdeaCount: number = 1,
+  _mainIdeaCount: number = 1,
 ): IdeaLayoutNode[] {
   const centerX = parentX;
   const centerY = parentY;
   const MIN_STEP = Math.PI / 12;
-  const effectiveMaxArc = Math.min(
-    (2 * Math.PI) / Math.max(1, mainIdeaCount),
-    Math.PI * 0.75,
-  );
-  const arcBasedCapacity = Math.max(1, Math.floor(effectiveMaxArc / MIN_STEP));
   const outwardAngle = (brainstormCenterX !== undefined && brainstormCenterY !== undefined)
     ? Math.atan2(parentY - brainstormCenterY, parentX - brainstormCenterX)
     : -Math.PI / 2;
@@ -102,8 +95,7 @@ export function getIdeaLayoutTree(
       return [outwardAngle - Math.PI / 4, outwardAngle + Math.PI / 4][index] ?? outwardAngle;
     }
 
-    const naturalStep = effectiveMaxArc / Math.max(1, count - 1);
-    const step = Math.max(MIN_STEP, naturalStep);
+    const step = MIN_STEP;
     const totalArc = step * Math.max(1, count - 1);
     const startAngle = outwardAngle - totalArc / 2;
 
@@ -116,23 +108,19 @@ export function getIdeaLayoutTree(
     anchorY: number,
     depth: number,
   ): IdeaLayoutNode[] => {
-    if (depth >= 4) return [];
+  
 
     const childIdeas = parentIdea.ideas
       .map((ideaId) => ideas[ideaId])
       .filter((idea): idea is BrainstormIdea => Boolean(idea));
     const childRadius = 120;
     const siblingCount = childIdeas.length;
-    const CHILD_RING_CAPACITY = 6;
 
     return childIdeas.map((childIdea, index) => {
-      const ringIndex = Math.floor(index / CHILD_RING_CAPACITY);
-      const ringStart = ringIndex * CHILD_RING_CAPACITY;
-      const ringCount = Math.min(CHILD_RING_CAPACITY, siblingCount - ringStart);
-      const tether = childRadius * (ringIndex + 1);
+      const tether = childRadius;
       const angle = getOutwardChildAngle(
-        ringCount,
-        index - ringStart,
+        siblingCount,
+        index,
         Math.atan2(anchorY - centerY, anchorX - centerX),
       );
       const x = anchorX + Math.cos(angle) * tether;
@@ -141,7 +129,7 @@ export function getIdeaLayoutTree(
         id: childIdea.id,
         x,
         y,
-        radius: Math.max(8, 22 - (depth + 1) * 3),
+        radius: 18,// Math.max(8, 22 - (depth + 1) * 3),
         mainIdeaId: mainIdea.id,
         depth,
         parentId: parentIdea.id,
@@ -158,11 +146,8 @@ export function getIdeaLayoutTree(
     .filter((idea): idea is BrainstormIdea => Boolean(idea));
 
   return firstLevelIdeas.map((idea, index) => {
-    const ringIndex = Math.floor(index / arcBasedCapacity);
-    const ringStart = ringIndex * arcBasedCapacity;
-    const ringCount = Math.min(arcBasedCapacity, firstLevelIdeas.length - ringStart);
-    const angle = getFirstLevelAngle(ringCount, index - ringStart);
-    const tether = baseRadius * (ringIndex + 1);
+    const angle = getFirstLevelAngle(firstLevelIdeas.length, index);
+    const tether = baseRadius;
     const x = parentX + Math.cos(angle) * tether;
     const y = parentY + Math.sin(angle) * tether;
     const node: IdeaLayoutNode = {
@@ -183,20 +168,6 @@ export function getIdeaLayoutTree(
 
 export function flattenIdeaTree(nodes: IdeaLayoutNode[]): IdeaLayoutNode[] {
   return nodes.flatMap((node) => [node, ...flattenIdeaTree(node.children)]);
-}
-
-export function getTreeBoundingRadius(
-  nodes: IdeaLayoutNode[],
-  cx: number,
-  cy: number,
-): number {
-  const allNodes = flattenIdeaTree(nodes);
-
-  return allNodes.reduce((maxRadius, node) => {
-    const dx = node.x - cx;
-    const dy = node.y - cy;
-    return Math.max(maxRadius, Math.sqrt(dx * dx + dy * dy));
-  }, 0);
 }
 
 export function getPointerLines(

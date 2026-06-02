@@ -1,6 +1,7 @@
 import { ICON_MAP, isImageIcon } from '../../../../../constants/iconMap';
-import type { BrainstormEntry, BrainstormIdea, MainIdea, StormState } from '../../../../../types/brainstorm';
+import type { BrainstormEntry, BrainstormIdea, MainIdea } from '../../../../../types/brainstorm';
 import { flattenIdeaTree, type IdeaLayoutNode, type MainIdeaLayout, type PointerLine } from './brainstormLayout';
+import { cr } from './brainstormPhysics';
 
 const MAIN_IDEA_STATE_COLORS = {
   open: '#4ade80',
@@ -11,7 +12,6 @@ const MAIN_IDEA_STATE_COLORS = {
 } as const;
 
 const ideaIconImageCache = new Map<string, HTMLImageElement>();
-void drawGlowOrb;
 
 function hexagonPoints(cx: number, cy: number, radius: number, rotationOffset: number = 0) {
   return Array.from({ length: 6 }, (_, index) => {
@@ -23,49 +23,16 @@ function hexagonPoints(cx: number, cy: number, radius: number, rotationOffset: n
   });
 }
 
-export const STORM_STATE_COLORS: Record<StormState, string> = {
+const STORM_STATE_COLORS = {
   active: 'rgba(16, 185, 129, 0.85)',
   incubating: 'rgba(245, 158, 11, 0.85)',
   archived: 'rgba(100, 116, 139, 0.85)',
   resolved: 'rgba(99, 102, 241, 0.85)',
   folding: 'rgba(34, 211, 238, 0.85)',
-};
+} as const;
 
 function drawCircle(ctx: CanvasRenderingContext2D, x: number, y: number, radius: number, fillStyle: string) {
   ctx.fillStyle = fillStyle;
-  ctx.beginPath();
-  ctx.arc(x, y, radius, 0, Math.PI * 2);
-  ctx.fill();
-}
-
-function drawGlowOrb(
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  radius: number,
-  glowScale: number,
-  coreColor: string,
-) {
-  if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(radius) || radius <= 0) {
-    return;
-  }
-
-  const glowRadius = radius * glowScale;
-  if (!Number.isFinite(glowRadius) || glowRadius <= 0) {
-    return;
-  }
-
-  const gradient = ctx.createRadialGradient(x, y, 0, x, y, glowRadius);
-  gradient.addColorStop(0, coreColor);
-  gradient.addColorStop(0.45, coreColor.replace('0.85', '0.38'));
-  gradient.addColorStop(1, coreColor.replace('0.85', '0'));
-
-  ctx.fillStyle = gradient;
-  ctx.beginPath();
-  ctx.arc(x, y, glowRadius, 0, Math.PI * 2);
-  ctx.fill();
-
-  ctx.fillStyle = coreColor;
   ctx.beginPath();
   ctx.arc(x, y, radius, 0, Math.PI * 2);
   ctx.fill();
@@ -361,80 +328,6 @@ ctx.closePath();
 ctx.fillStyle = gradient;
 ctx.fill();
 ctx.restore();
-}
-
-export function drawGateMarker(
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  timestamp: number,
-) {
-  const pulseAlpha = Math.sin(timestamp / 800) * 0.1 + 0.3;
-
-  ctx.save();
-  ctx.globalAlpha = pulseAlpha;
-  ctx.beginPath();
-  ctx.arc(x, y, 14, 0, Math.PI * 2);
-  ctx.strokeStyle = 'rgba(124, 58, 237, 1)';
-  ctx.lineWidth = 1;
-  ctx.setLineDash([3, 4]);
-  ctx.stroke();
-  ctx.setLineDash([]);
-  ctx.globalAlpha = 1;
-  ctx.restore();
-}
-
-export function drawMoreStormsIndicator(
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  timestamp: number,
-) {
-  const pulse = 1 + Math.sin(timestamp / 700) * 0.08;
-  const radius = 10 * pulse;
-
-  ctx.save();
-  ctx.strokeStyle = 'rgba(124, 58, 237, 0.4)';
-  ctx.lineWidth = 1.5;
-  ctx.beginPath();
-  ctx.arc(x, y, radius, 0, Math.PI * 2);
-  ctx.stroke();
-
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
-  [-4, 0, 4].forEach((offsetY) => {
-    ctx.beginPath();
-    ctx.arc(x, y + offsetY, 1.6, 0, Math.PI * 2);
-    ctx.fill();
-  });
-  ctx.restore();
-}
-
-export function drawStormPageIndicator(
-  ctx: CanvasRenderingContext2D,
-  cx: number,
-  cy: number,
-  pageCount: number,
-  activePage: number,
-) {
-  if (pageCount <= 1) {
-    return;
-  }
-
-  const clampedActivePage = Math.max(0, Math.min(activePage, pageCount - 1));
-  const radius = 214;
-  const startX = cx - ((pageCount - 1) * 8) / 2;
-  const y = cy + radius;
-
-  ctx.save();
-  for (let index = 0; index < pageCount; index += 1) {
-    ctx.beginPath();
-    ctx.fillStyle = index === clampedActivePage
-      ? 'rgba(255,255,255,0.72)'
-      : 'rgba(255,255,255,0.22)';
-    ctx.arc(startX + index * 8, y, index === clampedActivePage ? 2.6 : 2, 0, Math.PI * 2);
-    ctx.fill();
-  }
-  ctx.restore();
 }
 
 export function drawBrainstormPreview(
@@ -952,4 +845,43 @@ export function drawBrainstormWebBackground(
 
 export function getBrainstormHitRadius(): number {
   return 36;
+}
+
+export function drawOriginSpokes(
+  ctx: CanvasRenderingContext2D,
+  mainIdeaNodes: { x: number; y: number; radius: number }[],
+): void {
+  ctx.save();
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
+  ctx.lineWidth = 1;
+  for (const node of mainIdeaNodes) {
+    const dist = Math.sqrt(node.x * node.x + node.y * node.y);
+    if (dist < 0.001) {
+      continue;
+    }
+    const endX = node.x - (node.x / dist) * node.radius;
+    const endY = node.y - (node.y / dist) * node.radius;
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo(endX, endY);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+export function drawPhysicsDebugRing(
+  ctx: CanvasRenderingContext2D,
+  node: { x: number; y: number; entryCount: number },
+  scale: number,
+): void {
+  const safeRadius = cr(node);
+  ctx.save();
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.18)';
+  ctx.lineWidth = 1 / scale;
+  ctx.setLineDash([6 / scale, 4 / scale]);
+  ctx.beginPath();
+  ctx.arc(node.x, node.y, safeRadius, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.restore();
 }
