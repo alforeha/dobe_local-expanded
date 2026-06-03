@@ -27,6 +27,7 @@ import {
 } from './ropePhysics';
 import { computeCameraTarget } from './stormCamera';
 import { renderStormWorld } from './stormRenderer';
+import { LoadingPill } from './LoadingPill';
 
 interface GeneralStormCanvasProps {
   selectedStormId: string;
@@ -198,6 +199,14 @@ export function GeneralStormCanvas({
   const startedAtRef = useRef<number | null>(null);
   const cameraRef = useRef<Camera>({ x: 0, y: 0, scale: 1 });
   const cameraTargetRef = useRef<Camera>({ x: 0, y: 0, scale: 1 });
+  const userExploringRef = useRef<boolean>(false);
+  const isDraggingRef = useRef<boolean>(false);
+  const dragPointerIdRef = useRef<number | null>(null);
+  const lastPointerRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const dragStartRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const pinchActiveRef = useRef<boolean>(false);
+  const pinchDistanceRef = useRef<number>(0);
+  const activePointersRef = useRef<Map<number, { x: number; y: number }>>(new Map());
   const mainIdeaLayoutsRef = useRef<MainIdeaLayout[]>([]);
   const draftMainIdeaLayoutRef = useRef<MainIdeaLayout | null>(null);
   const draftChildIdeaLayoutRef = useRef<IdeaLayoutNode | null>(null);
@@ -227,6 +236,7 @@ const originNodeRef = useRef<PhysicsIdeaNode>({
   const mainIdeaPhysicsRef = useRef<PhysicsIdeaNode[]>([]);
   const spawnQueueRef = useRef<string[]>([]);
   const spawnedIdsRef = useRef<Set<string>>(new Set());
+  const totalExpectedCountRef = useRef<number>(0);
   const isSettledRef = useRef<boolean>(true);
   const settleFrameCountRef = useRef<number>(0);
   const spawnFallbackFrameRef = useRef<number>(0);
@@ -261,6 +271,12 @@ const topologySignatureRef = useRef<string>('__uninitialized__');
   const [visible, setVisible] = useState(false);
   const [pillBlurbOpen, setPillBlurbOpen] = useState(false);
   const [ideaPillBlurbOpen, setIdeaPillBlurbOpen] = useState(false);
+  const [isUserExploring, setIsUserExploring] = useState(false);
+  const [loadingPillProgress, setLoadingPillProgress] = useState({
+    currentCount: 0,
+    totalCount: 0,
+    isComplete: true,
+  });
   const ideaPillBlurbOpenRef = useRef(false);
 
   const mainIdeas = useMemo(() => storm?.mainIdeas ?? {}, [storm]);
@@ -397,6 +413,44 @@ const topologySignatureRef = useRef<string>('__uninitialized__');
   useEffect(() => {
     const timer = window.setTimeout(() => setVisible(true), 0);
     return () => window.clearTimeout(timer);
+  }, []);
+
+  function handleToggleExplore() {
+    const next = !userExploringRef.current;
+    userExploringRef.current = next;
+    setIsUserExploring(next);
+    if (next) {
+      selectedIdeaIdRef.current = null;
+      selectedMainIdeaIdRef.current = null;
+      onSelectIdea?.(null);
+      onSelectMainIdea?.(null);
+    } else {
+      isDraggingRef.current = false;
+      pinchActiveRef.current = false;
+      dragPointerIdRef.current = null;
+      pinchDistanceRef.current = 0;
+      activePointersRef.current.clear();
+    }
+  }
+
+  useEffect(() => {
+    const el = canvasRef.current?.parentElement;
+    if (!el) {
+      return;
+    }
+    const handleWheel = (event: WheelEvent) => {
+      if (!userExploringRef.current) {
+        return;
+      }
+      event.preventDefault();
+      const zoomFactor = event.deltaY < 0 ? 1.1 : 0.9;
+      cameraTargetRef.current = {
+        ...cameraTargetRef.current,
+        scale: Math.max(0.01, Math.min(2.5, cameraTargetRef.current.scale * zoomFactor)),
+      };
+    };
+    el.addEventListener('wheel', handleWheel, { passive: false });
+    return () => el.removeEventListener('wheel', handleWheel);
   }, []);
 
   useEffect(() => {
@@ -939,7 +993,7 @@ const topologySignatureRef = useRef<string>('__uninitialized__');
       const remainingRootIds = spawnQueueRef.current.filter((id) =>
         allMainLayoutIds.has(id),
       );
-      isSettledRef.current = settleFrameCountRef.current >= 10;
+isSettledRef.current = settleFrameCountRef.current >= 1;
       if (!rootsFrozenRef.current && remainingRootIds.length === 0 && isSettledRef.current) {
         rootsFrozenRef.current = true;
         mainIdeaPhysicsRef.current = mainIdeaPhysicsRef.current.map((node) => ({
@@ -952,7 +1006,7 @@ const topologySignatureRef = useRef<string>('__uninitialized__');
       const shouldSpawnNext = spawnQueueRef.current.length > 0
         && (
           isSettledRef.current
-          || spawnFallbackFrameRef.current >= 180
+          || spawnFallbackFrameRef.current >= 20
         );
       if (shouldSpawnNext) {
         spawnNextQueuedNode(allMainLayouts, allFlatIdeas, renderMainIdeas, renderIdeas);
@@ -982,18 +1036,20 @@ const topologySignatureRef = useRef<string>('__uninitialized__');
           : null
       );
 
-      cameraTargetRef.current = computeCameraTarget({
-        width,
-        height,
-        mainIdeaNodes: mainIdeaPhysicsRef.current,
-        childNodes: allFlatIdeaLayoutsRef.current,
-        selectedIdeaId: selectedIdeaIdRef.current,
-        selectedMainIdeaId: selectedMainIdeaIdRef.current,
-        isAddingChildIdea: addingChildIdeaRef.current,
-        isEditingChildIdea: editingChildIdeaRef.current,
-        ideaPillBlurbOpen: ideaPillBlurbOpenRef.current,
-        draftChildNode,
-      });
+      if (!userExploringRef.current) {
+        cameraTargetRef.current = computeCameraTarget({
+          width,
+          height,
+          mainIdeaNodes: mainIdeaPhysicsRef.current,
+          childNodes: allFlatIdeaLayoutsRef.current,
+          selectedIdeaId: selectedIdeaIdRef.current,
+          selectedMainIdeaId: selectedMainIdeaIdRef.current,
+          isAddingChildIdea: addingChildIdeaRef.current,
+          isEditingChildIdea: editingChildIdeaRef.current,
+          ideaPillBlurbOpen: ideaPillBlurbOpenRef.current,
+          draftChildNode,
+        });
+      }
     }
 
     function drawFrame(timestamp: number) {
@@ -1008,6 +1064,7 @@ const topologySignatureRef = useRef<string>('__uninitialized__');
       const currentSelectedIdeaId = selectedIdeaIdRef.current;
       const currentSelectedMainIdeaId = selectedMainIdeaIdRef.current;
       const isEditingChildIdea = editingChildIdeaRef.current;
+      syncLoadingPillProgress();
 
       const phantom = addingMainIdeaRef.current ? {
         id: draftMainIdeaId,
@@ -1332,6 +1389,21 @@ const topologySignatureRef = useRef<string>('__uninitialized__');
       frameRef.current = requestAnimationFrame(drawFrame);
     }
 
+    function syncLoadingPillProgress() {
+      const nextProgress = {
+        currentCount: spawnedIdsRef.current.size,
+        totalCount: totalExpectedCountRef.current,
+        isComplete: spawnQueueRef.current.length === 0,
+      };
+      setLoadingPillProgress((previousProgress) => (
+        previousProgress.currentCount === nextProgress.currentCount
+          && previousProgress.totalCount === nextProgress.totalCount
+          && previousProgress.isComplete === nextProgress.isComplete
+          ? previousProgress
+          : nextProgress
+      ));
+    }
+
     // Topology signature: sorted join of all main-idea and child-idea ids.
     // If only entry content changed (no ids added/removed) we skip the
     // full tier respawn and only refresh entryCount on existing nodes so
@@ -1393,6 +1465,7 @@ const topologySignatureRef = useRef<string>('__uninitialized__');
 
     if (isInitialTopology) {
       spawnQueueRef.current = bfsQueue;
+      totalExpectedCountRef.current = bfsQueue.length;
       spawnedIdsRef.current = new Set();
       isSettledRef.current = true;
       settleFrameCountRef.current = 0;
@@ -1401,6 +1474,7 @@ const topologySignatureRef = useRef<string>('__uninitialized__');
       rootFreezeCountdownRef.current = 0;
       mainIdeaPhysicsRef.current = [];
       allFlatIdeaLayoutsRef.current = [];
+      syncLoadingPillProgress();
     } else {
       if (rootTopologyChanged) {
         rootsFrozenRef.current = false;
@@ -1421,10 +1495,11 @@ const topologySignatureRef = useRef<string>('__uninitialized__');
         (id) => currentTopologyIds.has(id) && !spawnedIdsRef.current.has(id),
       );
       
-      isSettledRef.current = settleFrameCountRef.current >= 10;
+isSettledRef.current = settleFrameCountRef.current >= 1;
       if (spawnQueueRef.current.length === 0) {
         spawnFallbackFrameRef.current = 0;
       }
+      syncLoadingPillProgress();
     }
 
     const observer = new ResizeObserver(resizeCanvas);
@@ -1447,12 +1522,30 @@ const topologySignatureRef = useRef<string>('__uninitialized__');
   return (
     <div
       className="absolute inset-0 z-20 transition-opacity duration-300 ease-out"
-      style={{ opacity: visible ? 1 : 0 }}
+      style={{ opacity: visible ? 1 : 0, touchAction: isUserExploring ? 'none' : 'auto' }}
       onClick={() => {
         setPillBlurbOpen(false);
         setIdeaPillBlurbOpen(false);
       }}
       onPointerDown={(event) => {
+        activePointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+        if (userExploringRef.current) {
+          if (activePointersRef.current.size === 2) {
+            const pts = [...activePointersRef.current.values()];
+            const dx = pts[1].x - pts[0].x;
+            const dy = pts[1].y - pts[0].y;
+            pinchDistanceRef.current = Math.sqrt(dx * dx + dy * dy);
+            pinchActiveRef.current = true;
+            isDraggingRef.current = false;
+            dragPointerIdRef.current = null;
+            return;
+          }
+          dragPointerIdRef.current = event.pointerId;
+          dragStartRef.current = { x: event.clientX, y: event.clientY };
+          lastPointerRef.current = { x: event.clientX, y: event.clientY };
+          isDraggingRef.current = false;
+          return;
+        }
         const canvas = canvasRef.current;
         if (!canvas) {
           return;
@@ -1478,6 +1571,8 @@ const topologySignatureRef = useRef<string>('__uninitialized__');
           toScreen,
         );
         if (hitMainIdeaId) {
+          userExploringRef.current = false;
+          setIsUserExploring(false);
           setIdeaPillBlurbOpen(false);
           onSelectMainIdea(hitMainIdeaId);
           onSelectIdea(null);
@@ -1492,6 +1587,8 @@ const topologySignatureRef = useRef<string>('__uninitialized__');
         );
         if (hitIdeaId) {
           const ownerMainIdeaId = allFlatIdeaLayoutsRef.current.find((layout) => layout.id === hitIdeaId)?.mainIdeaId ?? null;
+          userExploringRef.current = false;
+          setIsUserExploring(false);
           setIdeaPillBlurbOpen(false);
           onSelectMainIdea(ownerMainIdeaId);
           onSelectIdea(hitIdeaId);
@@ -1502,10 +1599,126 @@ const topologySignatureRef = useRef<string>('__uninitialized__');
         onSelectIdea(null);
         onSelectMainIdea(null);
       }}
+      onPointerMove={(event) => {
+        activePointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+        if (!userExploringRef.current) {
+          return;
+        }
+        if (pinchActiveRef.current && activePointersRef.current.size === 2) {
+          const pts = [...activePointersRef.current.values()];
+          const dx = pts[1].x - pts[0].x;
+          const dy = pts[1].y - pts[0].y;
+          const newDist = Math.sqrt(dx * dx + dy * dy);
+          const ratio = newDist / (pinchDistanceRef.current || 1);
+          pinchDistanceRef.current = newDist;
+          cameraTargetRef.current = {
+            ...cameraTargetRef.current,
+            scale: Math.max(0.01, Math.min(2.5, cameraTargetRef.current.scale * ratio)),
+          };
+          return;
+        }
+        if (event.pointerId !== dragPointerIdRef.current) {
+          return;
+        }
+        const dx = event.clientX - lastPointerRef.current.x;
+        const dy = event.clientY - lastPointerRef.current.y;
+        const totalDx = event.clientX - dragStartRef.current.x;
+        const totalDy = event.clientY - dragStartRef.current.y;
+        if (!isDraggingRef.current && Math.sqrt(totalDx * totalDx + totalDy * totalDy) > 6) {
+          isDraggingRef.current = true;
+        }
+        if (isDraggingRef.current) {
+          cameraTargetRef.current = {
+            ...cameraTargetRef.current,
+            x: cameraTargetRef.current.x - dx / cameraRef.current.scale,
+            y: cameraTargetRef.current.y - dy / cameraRef.current.scale,
+          };
+        }
+        lastPointerRef.current = { x: event.clientX, y: event.clientY };
+      }}
+      onPointerUp={(event) => {
+        const wasDragging = isDraggingRef.current;
+        activePointersRef.current.delete(event.pointerId);
+        if (activePointersRef.current.size < 2) {
+          pinchActiveRef.current = false;
+          pinchDistanceRef.current = 0;
+        }
+        if (event.pointerId === dragPointerIdRef.current) {
+          isDraggingRef.current = false;
+          dragPointerIdRef.current = null;
+        }
+        if (userExploringRef.current && !wasDragging) {
+          const canvas = canvasRef.current;
+          if (!canvas) {
+            return;
+          }
+          const rect = canvas.getBoundingClientRect();
+          const screenX = event.clientX - rect.left;
+          const screenY = event.clientY - rect.top;
+          const canvasCenterX = rect.width * 0.5;
+          const canvasCenterY = rect.height * 0.5;
+          const toScreen = (wx: number, wy: number) => worldToScreen(
+            wx,
+            wy,
+            cameraRef.current,
+            canvasCenterX,
+            canvasCenterY,
+          );
+          const hitMainIdeaId = hitTestMainIdea(
+            screenX,
+            screenY,
+            mainIdeaPhysicsRef.current,
+            toScreen,
+          );
+          if (hitMainIdeaId) {
+            userExploringRef.current = false;
+            setIsUserExploring(false);
+            setIdeaPillBlurbOpen(false);
+            onSelectMainIdea(hitMainIdeaId);
+            onSelectIdea(null);
+            return;
+          }
+          const hitIdeaId = hitTestIdea(
+            screenX,
+            screenY,
+            allFlatIdeaLayoutsRef.current.filter((layout) => layout.id !== '__draft_child__'),
+            toScreen,
+          );
+          if (hitIdeaId) {
+            const ownerMainIdeaId = allFlatIdeaLayoutsRef.current.find(
+              (layout) => layout.id === hitIdeaId,
+            )?.mainIdeaId ?? null;
+            userExploringRef.current = false;
+            setIsUserExploring(false);
+            setIdeaPillBlurbOpen(false);
+            onSelectMainIdea(ownerMainIdeaId);
+            onSelectIdea(hitIdeaId);
+            return;
+          }
+        }
+      }}
+      onPointerCancel={(event) => {
+        activePointersRef.current.delete(event.pointerId);
+        if (event.pointerId === dragPointerIdRef.current) {
+          isDraggingRef.current = false;
+          dragPointerIdRef.current = null;
+        }
+        if (activePointersRef.current.size < 2) {
+          pinchActiveRef.current = false;
+          pinchDistanceRef.current = 0;
+        }
+      }}
     >
       <canvas
         ref={canvasRef}
         className="absolute inset-0 h-full w-full"
+      />
+      <LoadingPill
+        currentCount={loadingPillProgress.currentCount}
+        totalCount={loadingPillProgress.totalCount}
+        isComplete={loadingPillProgress.isComplete}
+        isUserExploring={isUserExploring}
+        onToggleExplore={handleToggleExplore}
       />
       <div className="absolute left-4 right-4 top-4 flex items-center justify-between pointer-events-none">
         <div className="pointer-events-auto">

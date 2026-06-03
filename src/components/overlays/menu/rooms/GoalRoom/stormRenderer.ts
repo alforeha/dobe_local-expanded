@@ -114,15 +114,6 @@ const DISPLAY_RADIUS = camera.scale < 0.01
   : 28;
   
 
-  //let renderStormWorldFrame = 0;
-  // renderStormWorldFrame += 1;
-  // if (renderStormWorldFrame % 60 === 0) {
-  //   console.log('[renderStormWorld]', {
-  //     cameraScale: camera.scale,
-  //     displayRadius: DISPLAY_RADIUS,
-  //   });
-  // }
-
   const canvasWidth = width;
   const canvasHeight = height;
   const canvasCenterX = width * 0.5;
