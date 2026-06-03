@@ -13,6 +13,10 @@ import type { PhysicsIdeaNode } from './brainstormPhysics';
 import type { RopeBody, RopeParticle } from './ropePhysics';
 import { drawRopes } from './ropeRenderer';
 
+
+type DisplayPos = { x: number; y: number };
+
+
 function patchTreeWithPhysics(
   nodes: IdeaLayoutNode[],
   physicsMap: Map<string, { x: number; y: number }>,
@@ -86,12 +90,10 @@ export function renderStormWorld(
     storm,
     mainIdeaNodes,
     childNodes,
-    mainIdeaLayouts,
     ideaTrees,
     selectedIdeaId,
     selectedMainIdeaId,
     isAddingChildIdea,
-    isEditingChildIdea,
     draftMainIdeaLayout,
     draftChildIdeaLayout,
     highlightedIds,
@@ -100,6 +102,26 @@ export function renderStormWorld(
     entryScrollAngle,
     timestamp,
   } = params;
+
+
+
+const DISPLAY_RADIUS = camera.scale < 0.01
+  ? 4 + ((camera.scale - 0.001) / (0.01 - 0.001)) * 2
+  : camera.scale < 0.1
+  ? 6 + ((camera.scale - 0.01) / (0.1 - 0.01)) * 6
+  : camera.scale < 0.3
+  ? 12 + ((camera.scale - 0.1) / (0.3 - 0.1)) * 16
+  : 28;
+  
+
+  //let renderStormWorldFrame = 0;
+  // renderStormWorldFrame += 1;
+  // if (renderStormWorldFrame % 60 === 0) {
+  //   console.log('[renderStormWorld]', {
+  //     cameraScale: camera.scale,
+  //     displayRadius: DISPLAY_RADIUS,
+  //   });
+  // }
 
   const canvasWidth = width;
   const canvasHeight = height;
@@ -191,6 +213,18 @@ export function renderStormWorld(
     patchedTreesByMainIdeaId.set(physNode.id, patchedTree);
   });
 
+  const displayPositions = new Map<string, DisplayPos>();
+  const allDisplayNodes = [
+    ...mainIdeaNodes.filter((n) => !n.id.startsWith('__draft')),
+    ...childNodes.filter((n) => !n.id.startsWith('__draft')),
+  ];
+
+  allDisplayNodes.forEach((node) => {
+    const sx = (node.x - camera.x) * camera.scale + canvasCenterX;
+    const sy = (node.y - camera.y) * camera.scale + canvasCenterY;
+    displayPositions.set(node.id, { x: sx, y: sy });
+  });
+
   drawRopes(
     ctx,
     ropeParticles,
@@ -201,6 +235,16 @@ export function renderStormWorld(
     highlightedIds,
   );
 
+  mainIdeaNodes.forEach((node) => {
+    drawPhysicsDebugRing(ctx, node, camera.scale);
+  });
+  childNodes.forEach((node) => {
+    drawPhysicsDebugRing(ctx, node, camera.scale);
+  });
+
+  ctx.restore();
+
+  ctx.save();
   drawBrainstormConstellation(
     ctx,
     constellationLayouts,
@@ -210,20 +254,14 @@ export function renderStormWorld(
     selectedIdeaId,
     timestamp,
     storm.mainIdeas,
+    undefined,
+    displayPositions,
+    DISPLAY_RADIUS,
   );
 
-  if (draftMainIdeaLayout) {
-    drawDashedOverlayRing(
-      ctx,
-      draftMainIdeaLayout.x,
-      draftMainIdeaLayout.y,
-      draftMainIdeaLayout.radius,
-      camera.scale,
-    );
-  }
-
-  mainIdeaNodes.forEach((physNode) => {
-    const patchedTree = patchedTreesByMainIdeaId.get(physNode.id) ?? [];
+  patchedTreesByMainIdeaId.forEach((patchedTree, mainIdeaId) => {
+    const physNode = mainIdeaNodes.find((n) => n.id === mainIdeaId);
+    if (physNode === undefined) return;
     drawBrainstormIdeaSpokes(
       ctx,
       patchedTree,
@@ -235,47 +273,23 @@ export function renderStormWorld(
       physNode.y,
       timestamp,
       entryScrollAngle,
+      displayPositions,
+      DISPLAY_RADIUS,
     );
   });
 
-  mainIdeaNodes.forEach((node) => {
-    drawPhysicsDebugRing(ctx, node, camera.scale);
-  });
-  childNodes.forEach((node) => {
-    drawPhysicsDebugRing(ctx, node, camera.scale);
-  });
-
-  if (isAddingChildIdea && draftChildIdeaLayout) {
-    drawDashedOverlayRing(
-      ctx,
-      draftChildIdeaLayout.x,
-      draftChildIdeaLayout.y,
-      draftChildIdeaLayout.radius,
-      camera.scale,
-    );
-  }
-
-  if (isEditingChildIdea) {
-    const targetIdeaLayout = selectedIdeaId
-      ? childNodes.find((node) => node.id === selectedIdeaId) ?? null
-      : null;
-    const targetMainIdeaLayout = selectedIdeaId
-      ? null
-      : selectedMainIdeaId
-        ? mainIdeaLayouts.find((layout) => layout.id === selectedMainIdeaId) ?? null
-        : null;
-    const editingLayout = targetIdeaLayout ?? targetMainIdeaLayout;
-
-    if (editingLayout) {
-      drawDashedOverlayRing(
-        ctx,
-        editingLayout.x,
-        editingLayout.y,
-        editingLayout.radius,
-        camera.scale,
-      );
+  if (draftMainIdeaLayout !== null) {
+    const draftScreenPos = displayPositions.get(draftMainIdeaLayout.id);
+    if (draftScreenPos !== undefined) {
+      drawDashedOverlayRing(ctx, draftScreenPos.x, draftScreenPos.y, DISPLAY_RADIUS, 1);
     }
   }
 
+  if (isAddingChildIdea && draftChildIdeaLayout !== null && !draftChildIdeaLayout.id.startsWith('__draft')) {
+    const draftChildScreenPos = displayPositions.get(draftChildIdeaLayout.id);
+    const ringX = draftChildScreenPos?.x ?? (draftChildIdeaLayout.x - camera.x) * camera.scale + canvasCenterX;
+    const ringY = draftChildScreenPos?.y ?? (draftChildIdeaLayout.y - camera.y) * camera.scale + canvasCenterY;
+    drawDashedOverlayRing(ctx, ringX, ringY, DISPLAY_RADIUS, 1);
+  }
   ctx.restore();
 }

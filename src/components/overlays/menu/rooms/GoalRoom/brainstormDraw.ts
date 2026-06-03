@@ -13,6 +13,8 @@ const MAIN_IDEA_STATE_COLORS = {
 
 const ideaIconImageCache = new Map<string, HTMLImageElement>();
 
+type DisplayPosition = { x: number; y: number };
+
 function hexagonPoints(cx: number, cy: number, radius: number, rotationOffset: number = 0) {
   return Array.from({ length: 6 }, (_, index) => {
     const angle = (Math.PI * 2 * index) / 6 - Math.PI / 2 + rotationOffset;
@@ -417,11 +419,14 @@ export function drawBrainstormConstellation(
   timestamp: number,
   mainIdeas: Record<string, MainIdea> | MainIdea[],
   customColors?: { stateColor?: string; typeColor?: string },
+  displayPositions: Map<string, DisplayPosition> = new Map(),
+  displayRadius: number = 28,
 ) {
   mainIdeaLayouts.forEach((layout, index) => {
     const floatY = Math.sin(timestamp / 1200 + index * 1.1) * 3;
-    const x = layout.x;
-    const y = layout.y + floatY;
+    const displayPos = displayPositions.get(layout.id);
+    const x = displayPos?.x ?? layout.x;
+    const y = (displayPos?.y ?? layout.y) + floatY;
     const mainIdea = getMainIdeaById(mainIdeas, layout.id);
     const isSelected = selectedMainIdeaId === layout.id;
     void hoveredMainIdeaId;
@@ -435,11 +440,11 @@ export function drawBrainstormConstellation(
     const baseColor = customStateColor
       ?? MAIN_IDEA_STATE_COLORS[mainIdea?.state ?? 'others'];
     const glowAlpha = isSelected ? 0.6 : 0.35;
-    const glowRadius = layout.radius * 2;
+    const nodeRadius = displayRadius;
+    const glowRadius = nodeRadius * 2;
     const iconValue = mainIdea?.type
       ? ICON_MAP[`idea-${mainIdea.type}`] ?? ICON_MAP[mainIdea.type]
       : undefined;
-    const nodeRadius = layout.radius;
 
     ctx.save();
     ctx.globalAlpha = alpha;
@@ -457,7 +462,7 @@ export function drawBrainstormConstellation(
       ctx.strokeStyle = '#10b981';
       ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.arc(x, y, layout.radius + 5, 0, Math.PI * 2);
+      ctx.arc(x, y, nodeRadius + 5, 0, Math.PI * 2);
       ctx.stroke();
     }
 
@@ -476,7 +481,7 @@ export function drawBrainstormConstellation(
       ctx,
       x,
       y,
-      layout.radius,
+      nodeRadius,
       mainIdea?.entries ?? [],
       alpha,
       0,
@@ -493,8 +498,11 @@ function drawEntryOrbs(
   alpha: number,
   entryRotationAngle: number,
 ): void {
-  const entryOrbRadius = 8;
-  const subEntryRadius = 8;
+  const sizeScale = nodeRadius / 28;
+  const entryOrbRadius = Math.max(3, 8 * sizeScale);
+  const subEntryRadius = Math.max(3, 8 * sizeScale);
+  const entryStrokeWidth = Math.max(0.5, sizeScale);
+  const typeDotRadius = Math.max(1, 3 * sizeScale);
   const slotCount = 6;
   const totalEntries = entries.length;
 
@@ -516,7 +524,7 @@ const drawOrb = (entry: BrainstormEntry, orbX: number, orbY: number, entryAlpha:
   ctx.fill();
 
   ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
-  ctx.lineWidth = 1;
+  ctx.lineWidth = entryStrokeWidth;
   ctx.beginPath();
   ctx.arc(orbX, orbY, entryOrbRadius, 0, Math.PI * 2);
   ctx.stroke();
@@ -525,11 +533,11 @@ const drawOrb = (entry: BrainstormEntry, orbX: number, orbY: number, entryAlpha:
   if (entry.type === 'others') {
     ctx.fillStyle = entry.customProperties?.typeColor ?? '#ffffff';
     ctx.beginPath();
-    ctx.arc(orbX, orbY, 3, 0, Math.PI * 2);
+    ctx.arc(orbX, orbY, typeDotRadius, 0, Math.PI * 2);
     ctx.fill();
   } else if (entryIconValue && !isImageIcon(entryIconValue)) {
     ctx.fillStyle = '#0f172a';
-    ctx.font = '8px sans-serif';
+    ctx.font = `${Math.max(6, Math.round(8 * sizeScale))}px sans-serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(entryIconValue, orbX, orbY + 0.5);
@@ -548,7 +556,7 @@ const drawOrb = (entry: BrainstormEntry, orbX: number, orbY: number, entryAlpha:
     ctx.fill();
 
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
-    ctx.lineWidth = 1;
+    ctx.lineWidth = entryStrokeWidth;
     ctx.beginPath();
     ctx.arc(subOrbX, subOrbY, subEntryRadius, 0, Math.PI * 2);
     ctx.stroke();
@@ -557,13 +565,13 @@ const drawOrb = (entry: BrainstormEntry, orbX: number, orbY: number, entryAlpha:
     if (subEntry.type === 'others') {
       ctx.fillStyle = subEntry.customProperties?.typeColor ?? '#ffffff';
       ctx.beginPath();
-      ctx.arc(subOrbX, subOrbY, 3, 0, Math.PI * 2);
+      ctx.arc(subOrbX, subOrbY, typeDotRadius, 0, Math.PI * 2);
       ctx.fill();
     } else {
       const subIcon = ICON_MAP[`entry-${subEntry.type}`];
       if (subIcon && !isImageIcon(subIcon)) {
         ctx.fillStyle = '#0f172a';
-        ctx.font = '7px sans-serif';
+        ctx.font = `${Math.max(5, Math.round(7 * sizeScale))}px sans-serif`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText(subIcon, subOrbX, subOrbY + 0.5);
@@ -584,7 +592,7 @@ const drawOrb = (entry: BrainstormEntry, orbX: number, orbY: number, entryAlpha:
         ctx.fill();
 
         ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
-        ctx.lineWidth = 1;
+        ctx.lineWidth = entryStrokeWidth;
         ctx.beginPath();
         ctx.arc(subSubOrbX, subSubOrbY, subEntryRadius, 0, Math.PI * 2);
         ctx.stroke();
@@ -593,13 +601,13 @@ const drawOrb = (entry: BrainstormEntry, orbX: number, orbY: number, entryAlpha:
         if (subSubEntry.type === 'others') {
           ctx.fillStyle = subSubEntry.customProperties?.typeColor ?? '#ffffff';
           ctx.beginPath();
-          ctx.arc(subSubOrbX, subSubOrbY, 3, 0, Math.PI * 2);
+          ctx.arc(subSubOrbX, subSubOrbY, typeDotRadius, 0, Math.PI * 2);
           ctx.fill();
         } else {
           const subSubIcon = ICON_MAP[`entry-${subSubEntry.type}`];
           if (subSubIcon && !isImageIcon(subSubIcon)) {
             ctx.fillStyle = '#0f172a';
-            ctx.font = '6px sans-serif';
+            ctx.font = `${Math.max(4, Math.round(6 * sizeScale))}px sans-serif`;
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
             ctx.fillText(subSubIcon, subSubOrbX, subSubOrbY + 0.5);
@@ -615,8 +623,8 @@ const drawOrb = (entry: BrainstormEntry, orbX: number, orbY: number, entryAlpha:
   if (totalEntries <= 6) {
     entries.forEach((entry, entryIndex) => {
       const angle = (entryIndex / Math.max(1, totalEntries)) * Math.PI * 2;
-      const orbX = centerX + Math.cos(angle) * nodeRadius;
-      const orbY = centerY + Math.sin(angle) * nodeRadius;
+      const orbX = centerX + Math.cos(angle) * (nodeRadius + entryOrbRadius);
+      const orbY = centerY + Math.sin(angle) * (nodeRadius + entryOrbRadius);
 
       drawOrb(entry, orbX, orbY, 0.85);
     });
@@ -639,8 +647,8 @@ const drawOrb = (entry: BrainstormEntry, orbX: number, orbY: number, entryAlpha:
     let entryAlpha = 0.85;
     if (slotIndex === 0) entryAlpha = 0.85 * (1 - fraction);
     if (slotIndex === slotCount) entryAlpha = 0.85 * fraction;
-    const orbX = centerX + Math.cos(angle) * nodeRadius;
-    const orbY = centerY + Math.sin(angle) * nodeRadius;
+    const orbX = centerX + Math.cos(angle) * (nodeRadius + entryOrbRadius);
+    const orbY = centerY + Math.sin(angle) * (nodeRadius + entryOrbRadius);
 
     drawOrb(entry, orbX, orbY, entryAlpha);
   }
@@ -657,6 +665,8 @@ export function drawBrainstormIdeaSpokes(
   _centerY: number,
   timestamp: number,
   entryRotationAngle: number = 0,
+  displayPositions: Map<string, DisplayPosition> = new Map(),
+  displayRadius: number = 28,
 ) {
   const flatIdeaLayouts = flattenIdeaTree(ideaLayouts);
   const hasHighlights = highlightedIds.size > 0;
@@ -664,15 +674,16 @@ export function drawBrainstormIdeaSpokes(
   flatIdeaLayouts.forEach((layout, index) => {
     const idea = ideas[layout.id];
     const floatY = Math.sin(timestamp / 1200 + (index + 5) * 1.1) * 3;
-    const x = layout.x;
-    const y = layout.y + floatY;
+    const displayPos = displayPositions.get(layout.id);
+    const x = displayPos?.x ?? layout.x;
+    const y = (displayPos?.y ?? layout.y) + floatY;
     const isHighlighted = highlightedIds.has(layout.id);
     const isSelected = selectedIdeaId === layout.id;
     const isHovered = hoveredIdeaId === layout.id;
     const safeDepth = layout.depth ?? 0;
     void safeDepth;
     const depthFade = 1;
-    const nodeRadius = 28;
+    const nodeRadius = displayRadius;
     const opacity = hasHighlights && !isHighlighted ? 0.25 : depthFade;
     const customStateColor =
       idea?.state === 'others'
