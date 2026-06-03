@@ -653,31 +653,13 @@ export function drawBrainstormIdeaSpokes(
   highlightedIds: Set<string>,
   selectedIdeaId: string | null,
   hoveredIdeaId: string | null,
-  centerX: number,
-  centerY: number,
+  _centerX: number,
+  _centerY: number,
   timestamp: number,
   entryRotationAngle: number = 0,
 ) {
   const flatIdeaLayouts = flattenIdeaTree(ideaLayouts);
-  const layoutById = new Map(flatIdeaLayouts.map((layout) => [layout.id, layout]));
   const hasHighlights = highlightedIds.size > 0;
-
-  ctx.save();
-  ctx.strokeStyle = '#10b981';
-  ctx.lineWidth = 2.7;
-
-  flatIdeaLayouts.forEach((layout) => {
-    const parentLayout = layout.parentId ? layoutById.get(layout.parentId) : null;
-    ctx.globalAlpha = hasHighlights
-      ? (highlightedIds.has(layout.id) ? 1 : 0.15)
-      : 0.6;
-    ctx.beginPath();
-    ctx.moveTo(parentLayout?.x ?? centerX, parentLayout?.y ?? centerY);
-    ctx.lineTo(layout.x, layout.y);
-    ctx.stroke();
-    ctx.globalAlpha = 1;
-  });
-  ctx.restore();
 
   flatIdeaLayouts.forEach((layout, index) => {
     const idea = ideas[layout.id];

@@ -4,13 +4,14 @@ import {
   drawBrainstormConstellation,
   drawBrainstormIdeaSpokes,
   drawBrainstormNode,
-  drawOriginSpokes,
   drawPhysicsDebugRing,
   drawStormBeam,
 } from './brainstormDraw';
 import { drawGeneralStormBackground, drawGeneralVoidBackground } from './generalStormBackground';
 import type { IdeaLayoutNode, MainIdeaLayout } from './brainstormLayout';
 import type { PhysicsIdeaNode } from './brainstormPhysics';
+import type { RopeBody, RopeParticle } from './ropePhysics';
+import { drawRopes } from './ropeRenderer';
 
 function patchTreeWithPhysics(
   nodes: IdeaLayoutNode[],
@@ -71,6 +72,8 @@ export function renderStormWorld(
     draftMainIdeaLayout: MainIdeaLayout | null;
     draftChildIdeaLayout: IdeaLayoutNode | null;
     highlightedIds: Set<string>;
+    ropeParticles: RopeParticle[];
+    ropeBodies: Map<string, RopeBody>;
     entryScrollAngle: number;
     timestamp: number;
   },
@@ -92,6 +95,8 @@ export function renderStormWorld(
     draftMainIdeaLayout,
     draftChildIdeaLayout,
     highlightedIds,
+    ropeParticles,
+    ropeBodies,
     entryScrollAngle,
     timestamp,
   } = params;
@@ -114,6 +119,14 @@ export function renderStormWorld(
     ...layout,
     ...storm.mainIdeas[layout.id],
   }));
+  const getNodePosition = (id: string) => {
+    if (id === '__origin__') return { x: 0, y: 0, radius: 0 };
+    const rootNode = mainIdeaNodes.find((n) => n.id === id);
+    if (rootNode) return { x: rootNode.x, y: rootNode.y, radius: rootNode.radius };
+    const childNode = childNodes.find((n) => n.id === id);
+    if (childNode) return { x: childNode.x, y: childNode.y, radius: childNode.radius };
+    return null;
+  };
 
   ctx.clearRect(0, 0, width, height);
 
@@ -164,7 +177,29 @@ export function renderStormWorld(
   );
   drawBrainstormNode(ctx, 0, 0, 28, '', 1, false, true, 1);
 
-  drawOriginSpokes(ctx, mainIdeaNodes);
+  const patchedTreesByMainIdeaId = new Map<string, IdeaLayoutNode[]>();
+  mainIdeaNodes.forEach((physNode) => {
+    if (physNode.id.startsWith('__draft')) {
+      patchedTreesByMainIdeaId.set(physNode.id, []);
+      return;
+    }
+
+    const tree = ideaTrees[physNode.id] ?? [];
+    const patchedTree = patchTreeWithPhysics(tree, physicsChildPosMap).filter(
+      (node): node is IdeaLayoutNode => node !== null && !node.id.startsWith('__draft'),
+    );
+    patchedTreesByMainIdeaId.set(physNode.id, patchedTree);
+  });
+
+  drawRopes(
+    ctx,
+    ropeParticles,
+    ropeBodies,
+    getNodePosition,
+    camera.scale,
+    effectiveSelectedMainIdeaId,
+    highlightedIds,
+  );
 
   drawBrainstormConstellation(
     ctx,
@@ -188,10 +223,7 @@ export function renderStormWorld(
   }
 
   mainIdeaNodes.forEach((physNode) => {
-    const tree = ideaTrees[physNode.id] ?? [];
-    const patchedTree = patchTreeWithPhysics(tree, physicsChildPosMap).filter(
-      (node): node is IdeaLayoutNode => node !== null,
-    );
+    const patchedTree = patchedTreesByMainIdeaId.get(physNode.id) ?? [];
     drawBrainstormIdeaSpokes(
       ctx,
       patchedTree,

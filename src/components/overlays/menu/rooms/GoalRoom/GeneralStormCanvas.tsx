@@ -18,6 +18,13 @@ import {
   stepPhysics,
   type PhysicsIdeaNode,
 } from './brainstormPhysics';
+import {
+  initRopeParticles,
+  type RopeBody,
+  type RopeParticle,
+  ropeParticleCount,
+  stepRopePhysics,
+} from './ropePhysics';
 import { computeCameraTarget } from './stormCamera';
 import { renderStormWorld } from './stormRenderer';
 
@@ -196,6 +203,8 @@ export function GeneralStormCanvas({
   const draftChildIdeaLayoutRef = useRef<IdeaLayoutNode | null>(null);
   const ideaTreesRef = useRef<Record<string, IdeaLayoutNode[]>>({});
   const allFlatIdeaLayoutsRef = useRef<PhysicsIdeaNode[]>([]);
+  const ropeParticlesRef = useRef<RopeParticle[]>([]);
+  const ropeBodiesRef = useRef<Map<string, RopeBody>>(new Map());
   // Stable origin anchor -- initialized once on mount, never re-seeded.
 const originNodeRef = useRef<PhysicsIdeaNode>({
   id: '__origin__',
@@ -577,6 +586,91 @@ const topologySignatureRef = useRef<string>('__uninitialized__');
       );
     }
 
+    function syncRopeBodies(
+      rootColorById: Map<string, string>,
+    ) {
+      const nextBodies = new Map<string, RopeBody>();
+
+      const allNodes = [
+        originNodeRef.current,
+        ...mainIdeaPhysicsRef.current,
+        ...allFlatIdeaLayoutsRef.current,
+      ];
+
+      const getPos = (id: string) => {
+        if (id === '__origin__') return { x: 0, y: 0, radius: 0 };
+        const n = allNodes.find((node) => node.id === id);
+        return n ? { x: n.x, y: n.y, radius: n.radius } : null;
+      };
+
+      mainIdeaPhysicsRef.current.forEach((mainNode) => {
+        if (mainNode.id.startsWith('__draft')) return;
+        const edgeKey = `origin->${mainNode.id}`;
+        const color = rootColorById.get(mainNode.id) ?? '#ffffff';
+        const existing = ropeBodiesRef.current.get(edgeKey);
+        const parentPos = getPos('__origin__');
+        const childPos = getPos(mainNode.id);
+        if (parentPos === null || childPos === null) return;
+        const dist = Math.sqrt((childPos.x - parentPos.x) ** 2 + (childPos.y - parentPos.y) ** 2);
+        const count = ropeParticleCount(dist);
+        if (existing === undefined) {
+          const body: RopeBody = {
+            edgeKey,
+            rootId: mainNode.id,
+            color,
+            parentNodeId: '__origin__',
+            childNodeId: mainNode.id,
+            particleCount: count,
+          };
+          nextBodies.set(edgeKey, body);
+          const newParticles = initRopeParticles(body, parentPos.x, parentPos.y, childPos.x, childPos.y);
+          ropeParticlesRef.current = [...ropeParticlesRef.current, ...newParticles];
+        } else {
+          nextBodies.set(edgeKey, { ...existing, color });
+        }
+      });
+
+      allFlatIdeaLayoutsRef.current.forEach((childNode) => {
+        if (childNode.id.startsWith('__draft') || !childNode.parentId) return;
+        const edgeKey = `${childNode.parentId}->${childNode.id}`;
+        const color = rootColorById.get(childNode.mainIdeaId) ?? '#ffffff';
+        const existing = ropeBodiesRef.current.get(edgeKey);
+        const parentPos = getPos(childNode.parentId);
+        const childPos = getPos(childNode.id);
+        if (parentPos === null || childPos === null) return;
+        const dist = Math.sqrt((childPos.x - parentPos.x) ** 2 + (childPos.y - parentPos.y) ** 2);
+        const count = ropeParticleCount(dist);
+        if (existing === undefined) {
+          const body: RopeBody = {
+            edgeKey,
+            rootId: childNode.mainIdeaId,
+            color,
+            parentNodeId: childNode.parentId,
+            childNodeId: childNode.id,
+            particleCount: count,
+          };
+          nextBodies.set(edgeKey, body);
+          const newParticles = initRopeParticles(body, parentPos.x, parentPos.y, childPos.x, childPos.y);
+          ropeParticlesRef.current = [...ropeParticlesRef.current, ...newParticles];
+        } else {
+          nextBodies.set(edgeKey, { ...existing, color });
+        }
+      });
+
+      ropeParticlesRef.current = ropeParticlesRef.current.filter((p) => nextBodies.has(p.edgeKey));
+      ropeBodiesRef.current = nextBodies;
+    }
+
+    function buildRootColorById(): Map<string, string> {
+      const map = new Map<string, string>();
+      mainIdeaPhysicsRef.current.forEach((node) => {
+        const mainIdea = originNodeRef.current;
+        void mainIdea;
+        map.set(node.id, '#4ade80');
+      });
+      return map;
+    }
+
     function refreshPhysicsNodeMetadata(
       renderMainIdeas: Record<string, MainIdea>,
       renderIdeas: Record<string, BrainstormIdea>,
@@ -645,6 +739,7 @@ const topologySignatureRef = useRef<string>('__uninitialized__');
             freezeCountdown: descendantCountChanged ? 120 : node.freezeCountdown,
           };
         });
+
     }
 
     function spawnNextQueuedNode(
@@ -1154,6 +1249,28 @@ const topologySignatureRef = useRef<string>('__uninitialized__');
         }
       }
 
+      const rootColorById = buildRootColorById();
+      syncRopeBodies(rootColorById);
+
+      const allPhysicsNodes = [
+        originNodeRef.current,
+        ...mainIdeaPhysicsRef.current,
+        ...allFlatIdeaLayoutsRef.current,
+      ];
+
+      const getNodePosition = (id: string) => {
+        if (id === '__origin__') return { x: 0, y: 0, radius: 0 };
+        const node = allPhysicsNodes.find((n) => n.id === id);
+        return node ? { x: node.x, y: node.y, radius: node.radius } : null;
+      };
+
+      ropeParticlesRef.current = stepRopePhysics(
+        ropeParticlesRef.current,
+        ropeBodiesRef.current,
+        allPhysicsNodes,
+        getNodePosition,
+      );
+
       if (rootFreezeCountdownRef.current > 0 && !rootsFrozenRef.current) {
         rootFreezeCountdownRef.current -= 1;
         if (rootFreezeCountdownRef.current === 0) {
@@ -1206,9 +1323,11 @@ const topologySignatureRef = useRef<string>('__uninitialized__');
         draftMainIdeaLayout: addingMainIdeaRef.current ? draftMainIdeaLayoutRef.current : null,
         draftChildIdeaLayout: draftChildIdeaLayoutRef.current,
         highlightedIds,
+        ropeParticles: ropeParticlesRef.current,
+        ropeBodies: ropeBodiesRef.current,
         entryScrollAngle: entryScrollAngleRef.current,
         timestamp,
-      });
+      } as Parameters<typeof renderStormWorld>[1]);
 
       frameRef.current = requestAnimationFrame(drawFrame);
     }
@@ -1233,6 +1352,10 @@ const topologySignatureRef = useRef<string>('__uninitialized__');
       ...Object.keys(mainIdeas).sort(),
       ...Object.keys(ideas).sort(),
     ].join('|');
+    const prevMainIdeaIds = new Set(mainIdeaPhysicsRef.current.map((node) => node.id));
+    const nextMainIdeaIds = new Set(Object.keys(mainIdeas));
+    const rootTopologyChanged = [...nextMainIdeaIds].some((id) => !prevMainIdeaIds.has(id))
+      || [...prevMainIdeaIds].some((id) => !nextMainIdeaIds.has(id));
 
     if (newTopologySignature === topologySignatureRef.current) {
       // Non-topology change (e.g. entry save). Refresh entryCount on all
@@ -1255,6 +1378,10 @@ const topologySignatureRef = useRef<string>('__uninitialized__');
       ...node,
       frozen: false,
     }));
+    if (isSettledRef.current) {
+      settleFrameCountRef.current = 0;
+      isSettledRef.current = false;
+    }
 
     const currentTopologyIds = new Set([
       ...queueMainLayouts
@@ -1263,14 +1390,6 @@ const topologySignatureRef = useRef<string>('__uninitialized__');
       ...queueFlatIdeas.map((node) => node.id),
     ]);
     const bfsQueue = buildBfsSpawnQueue(queueMainLayouts, queueFlatIdeas);
-    const nextRootIds = new Set(
-      queueMainLayouts
-        .filter((layout) => layout.id !== draftMainIdeaId)
-        .map((layout) => layout.id),
-    );
-    const currentRootIds = new Set(mainIdeaPhysicsRef.current.map((node) => node.id));
-    const rootTopologyChanged = nextRootIds.size !== currentRootIds.size
-      || [...nextRootIds].some((id) => !currentRootIds.has(id));
 
     if (isInitialTopology) {
       spawnQueueRef.current = bfsQueue;
@@ -1290,6 +1409,10 @@ const topologySignatureRef = useRef<string>('__uninitialized__');
           ...node,
           frozen: false,
         }));
+        if (isSettledRef.current) {
+          settleFrameCountRef.current = 0;
+          isSettledRef.current = false;
+        }
       }
       mainIdeaPhysicsRef.current = mainIdeaPhysicsRef.current.filter((node) => currentTopologyIds.has(node.id));
       allFlatIdeaLayoutsRef.current = allFlatIdeaLayoutsRef.current.filter((node) => currentTopologyIds.has(node.id));
