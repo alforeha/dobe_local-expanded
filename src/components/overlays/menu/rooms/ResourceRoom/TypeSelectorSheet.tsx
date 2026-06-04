@@ -14,7 +14,6 @@ const TYPES: TypeOption[] = [
   { id: 'home', type: 'home', iconKey: 'resource-home', label: 'Home', available: true },
   { id: 'vehicle', type: 'vehicle', iconKey: 'resource-vehicle', label: 'Vehicle', available: true },
   { id: 'account', type: 'account', iconKey: 'resource-account', label: 'Account', available: true },
-  { id: 'doc', type: 'doc', iconKey: 'resource-doc', label: 'Doc', available: true },
 ];
 
 interface TypeSelectorSheetProps {

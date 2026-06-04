@@ -114,7 +114,9 @@ export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
 
   useEffect(() => {
     if (selectedStormId === null) {
-      setStormCanvasOpen(false);
+        setTimeout(() => {
+          setStormCanvasOpen(false);
+        }, 0);
     }
   }, [selectedStormId]);
 

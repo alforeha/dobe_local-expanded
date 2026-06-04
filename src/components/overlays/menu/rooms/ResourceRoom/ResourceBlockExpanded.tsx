@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { AlbumEntry, HomeResource, Resource } from '../../../../../types/resource';
-import { isDoc, isHome, isInventory } from '../../../../../types/resource';
+import { isHome, isInventory } from '../../../../../types/resource';
 import { useResourceStore } from '../../../../../stores/useResourceStore';
 import { useUserStore } from '../../../../../stores/useUserStore';
 import { AlbumEntryEditor } from '../../../../shared/AlbumEntryEditor';
@@ -15,7 +15,6 @@ import { VehicleMetaView } from './vehicle/VehicleMetaView';
 import { VehicleLayout } from './vehicle/VehicleLayout';
 import { AccountMetaView } from './account/AccountMetaView';
 import { InventoryMetaView } from './inventory/InventoryMetaView';
-import { DocMetaView } from './doc/DocMetaView';
 
 interface ResourceBlockExpandedProps {
   resource: Resource;
@@ -195,13 +194,6 @@ export function ResourceBlockExpanded({ resource, onRoomSelectedChange, roomSele
     }
   }
 
-  if (isDoc(currentResource) && currentResource.expiryDate) {
-    const d = daysUntil(currentResource.expiryDate);
-    if (d !== null && d <= 30) {
-      badges.push({ iconKey: 'resource-doc', label: d <= 0 ? 'Document expired!' : `Expires in ${d}d`, color: 'red' });
-    }
-  }
-
   const colorMap: Record<string, string> = {
     amber: 'text-amber-700 bg-amber-50',
     red: 'text-red-700 bg-red-50',
@@ -224,9 +216,6 @@ export function ResourceBlockExpanded({ resource, onRoomSelectedChange, roomSele
       break;
     case 'inventory':
       metaView = isInventory(currentResource) ? <InventoryMetaView resource={currentResource} /> : null;
-      break;
-    case 'doc':
-      metaView = isDoc(currentResource) ? <DocMetaView resource={currentResource} /> : null;
       break;
     default:
       metaView = (
@@ -350,7 +339,7 @@ export function ResourceBlockExpanded({ resource, onRoomSelectedChange, roomSele
                 : 'text-red-400 hover:text-red-500'
             }`}
           >
-            {deleteConfirm ? 'Tap again: delete resource, linked docs, and links' : 'Delete'}
+            {deleteConfirm ? 'Tap again: delete resource, linked resources, and links' : 'Delete'}
           </button>
         </div>
       </div>

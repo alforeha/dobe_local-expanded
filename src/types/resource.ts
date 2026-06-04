@@ -7,7 +7,7 @@ import type { InputFields } from './taskTemplate';
 // Each resource type generates a specific task category via prebuilt
 // templates in RecommendationsLibrary (D42).
 
-export type ResourceType = 'contact' | 'home' | 'vehicle' | 'account' | 'inventory' | 'doc';
+export type ResourceType = 'contact' | 'home' | 'vehicle' | 'account' | 'inventory';
 
 export interface ResourceLogEntry {
   note: string;
@@ -670,29 +670,25 @@ const RESOURCE_RELATIONSHIP_OPTIONS: Partial<Record<ResourceType, Partial<Record
     contact: ['parent', 'child', 'sibling', 'spouse', 'partner', 'friend', 'colleague', 'acquaintance'],
     home: ['resident', 'owner', 'tenant', 'guest'],
     account: ['account holder', 'authorized user'],
-    doc: ['signatory', 'recipient'],
   },
   home: {
     contact: ['member'],
     account: ['mortgage', 'rent', 'utility', 'insurance'],
     vehicle: ['garaged here'],
-    doc: ['layout', 'lease', 'deed', 'rental agreement', 'inspection report'],
     inventory: ['stored here'],
   },
   vehicle: {
     contact: ['owner', 'driver'],
     account: ['insurance', 'loan', 'registration'],
-    doc: ['registration', 'insurance certificate', 'service record'],
   },
   account: {
     contact: ['account holder', 'beneficiary'],
     home: ['mortgage', 'rent', 'utilities'],
     vehicle: ['insurance', 'loan', 'registration'],
     account: ['sub-account', 'parent account', 'direct transaction'],
-    doc: ['statement', 'contract'],
   },
 };
 
 export function getRelationshipOptions(sourceType: ResourceType, targetType: ResourceType): string[] {
-  return RESOURCE_RELATIONSHIP_OPTIONS[sourceType]?.[targetType] ?? ['related document', 'reference'];
+  return RESOURCE_RELATIONSHIP_OPTIONS[sourceType]?.[targetType] ?? ['related resource', 'reference'];
 }

@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import type { Resource } from '../../../../../types/resource';
-import { isAccount, isContact, isDoc, isHome, isInventory, isVehicle } from '../../../../../types/resource';
+import { isAccount, isContact, isHome, isInventory, isVehicle } from '../../../../../types/resource';
 import { useResourceStore } from '../../../../../stores/useResourceStore';
 import { ResourceBlockExpanded } from './ResourceBlockExpanded';
 import { IconDisplay } from '../../../../shared/IconDisplay';
@@ -35,9 +35,6 @@ function getLinkedTargets(resource: Resource, resources: Record<string, Resource
           targetIds.add(entry.id);
         }
       }
-      if (isDoc(entry) && (entry.linkedContactIds ?? []).includes(resource.id)) {
-        targetIds.add(entry.id);
-      }
     }
   }
 
@@ -45,17 +42,9 @@ function getLinkedTargets(resource: Resource, resources: Record<string, Resource
     for (const accountId of resource.linkedAccountIds ?? []) {
       targetIds.add(accountId);
     }
-    for (const docId of resource.linkedDocIds ?? []) {
-      targetIds.add(docId);
-    }
 
     for (const entry of Object.values(resources)) {
       if (entry.id === resource.id) continue;
-      if (isDoc(entry)) {
-        if (entry.linkedResourceRef === resource.id || (entry.linkedResourceRefs ?? []).includes(resource.id)) {
-          targetIds.add(entry.id);
-        }
-      }
       for (const link of entry.links ?? []) {
         if (link.targetResourceId === resource.id) {
           targetIds.add(entry.id);
@@ -91,11 +80,6 @@ function getLinkedTargets(resource: Resource, resources: Record<string, Resource
           targetIds.add(entry.id);
         }
       }
-      if (isDoc(entry)) {
-        if (entry.linkedResourceRef === resource.id || (entry.linkedResourceRefs ?? []).includes(resource.id)) {
-          targetIds.add(entry.id);
-        }
-      }
       if (isInventory(entry)) {
         for (const container of entry.containers ?? []) {
           for (const link of container.links ?? []) {
@@ -116,26 +100,6 @@ function getLinkedTargets(resource: Resource, resources: Record<string, Resource
           targetIds.add(entry.id);
         }
       }
-      if (isDoc(entry) && entry.linkedAccountId === resource.id) {
-        targetIds.add(entry.id);
-      }
-    }
-  }
-
-  if (resource.type === 'doc') {
-    // layout / manual: single resource ref (home, vehicle)
-    if (resource.linkedResourceRef && resources[resource.linkedResourceRef]) {
-      targetIds.add(resource.linkedResourceRef);
-    }
-    for (const resourceId of resource.linkedResourceRefs ?? []) {
-      if (resources[resourceId]) targetIds.add(resourceId);
-    }
-    // contract: contacts + account
-    for (const contactId of resource.linkedContactIds ?? []) {
-      if (resources[contactId]) targetIds.add(contactId);
-    }
-    if (resource.linkedAccountId && resources[resource.linkedAccountId]) {
-      targetIds.add(resource.linkedAccountId);
     }
   }
 
@@ -165,7 +129,6 @@ export function ResourceBlock({ resource, onEdit, onRoomSelectedChange, roomSele
   };
   const homeAddress = homeResource?.address ?? '';
   const vehicleMileage = vehicleResource?.mileage ?? null;
-  const docResource = isDoc(currentResource) ? currentResource : null;
   const accountBalance = accountResource?.balance ?? null;
   const debtPaymentAmount =
     accountResource?.kind === 'debt'
@@ -238,8 +201,6 @@ export function ResourceBlock({ resource, onEdit, onRoomSelectedChange, roomSele
         {balanceDisplay}
       </span>
     );
-  } else if (docResource) {
-    summaryContent = <span className="capitalize">{docResource.docType ?? ''}</span>;
   }
 
   return (

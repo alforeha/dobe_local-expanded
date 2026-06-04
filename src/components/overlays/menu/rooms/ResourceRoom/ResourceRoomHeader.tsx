@@ -7,7 +7,6 @@ const RESOURCE_TYPES: ResourceType[] = [
   'vehicle',
   'account',
   'inventory',
-  'doc',
 ];
 
 const TYPE_ICONS: Record<ResourceType, string> = {
@@ -16,7 +15,6 @@ const TYPE_ICONS: Record<ResourceType, string> = {
   vehicle: 'resource-tab-vehicles',
   account: 'resource-tab-accounts',
   inventory: 'resource-tab-inventory',
-  doc: 'resource-tab-docs',
 };
 
 interface ResourceRoomHeaderProps {

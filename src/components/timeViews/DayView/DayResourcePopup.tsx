@@ -17,7 +17,6 @@ const TYPE_LABELS: Record<string, string> = {
   vehicle: 'Vehicle',
   account: 'Account',
   inventory: 'Inventory',
-  doc: 'Doc',
 };
 
 export function DayResourcePopup({ date, onClose, onOpenResource }: DayResourcePopupProps) {

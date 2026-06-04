@@ -23,8 +23,17 @@ const TYPE_LABELS: Record<ResourceType, string> = {
   vehicle: 'Vehicle',
   account: 'Account',
   inventory: 'Inventory',
-  doc: 'Doc',
 };
+
+const RESOURCE_TYPE_VALUES: ResourceType[] = ['contact', 'home', 'vehicle', 'account', 'inventory'];
+
+function toResourceType(value: string): ResourceType {
+  return RESOURCE_TYPE_VALUES.includes(value as ResourceType) ? (value as ResourceType) : 'contact';
+}
+
+function getTypeLabel(value: string): string {
+  return RESOURCE_TYPE_VALUES.includes(value as ResourceType) ? TYPE_LABELS[value as ResourceType] : 'Resource';
+}
 
 function sortByResourceName(entries: Array<{ targetId: string }>, resources: Record<string, Resource>) {
   return [...entries].sort((left, right) => {
@@ -141,14 +150,14 @@ export function ResourceLinksTabNew({
 
   const selectedTarget = selectedTargetId ? resources[selectedTargetId] : undefined;
   const selectedRelationshipOptions = selectedTarget
-    ? getRelationshipOptions(currentResource.type, selectedTarget.type)
+    ? getRelationshipOptions(toResourceType(currentResource.type), toResourceType(selectedTarget.type))
     : [];
   const expandedLink = expandedLinkId
     ? forwardLinks.find((link) => link.id === expandedLinkId) ?? null
     : null;
   const expandedTarget = expandedLink ? resources[expandedLink.targetResourceId] : undefined;
   const expandedRelationshipOptions = expandedTarget
-    ? getRelationshipOptions(currentResource.type, expandedTarget.type)
+    ? getRelationshipOptions(toResourceType(currentResource.type), toResourceType(expandedTarget.type))
     : [];
   const persistedPendingAutoLink = pendingAutoLinkId
     ? forwardLinks.find((link) => link.targetResourceId === pendingAutoLinkId && link.isPullLink === true)
@@ -183,7 +192,7 @@ export function ResourceLinksTabNew({
   function handleSelectResource(targetId: string) {
     const target = resources[targetId];
     setSelectedTargetId(targetId);
-    setRelationshipDraft(target ? getRelationshipOptions(currentResource.type, target.type)[0] ?? '' : '');
+    setRelationshipDraft(target ? getRelationshipOptions(toResourceType(currentResource.type), toResourceType(target.type))[0] ?? '' : '');
     setAddStep('relationship');
   }
 
@@ -215,7 +224,7 @@ export function ResourceLinksTabNew({
 
   function startEditing(link: ResourceLink) {
     const target = resources[link.targetResourceId];
-    const options = target ? getRelationshipOptions(currentResource.type, target.type) : [];
+    const options = target ? getRelationshipOptions(toResourceType(currentResource.type), toResourceType(target.type)) : [];
     setEditingLinkId(link.id);
     setEditingRelationship(
       options.length > 0
@@ -252,7 +261,7 @@ export function ResourceLinksTabNew({
         <div className="flex items-center gap-3">
           <div className="flex min-w-0 flex-1 items-center gap-2">
             <IconDisplay
-              iconKey={targetResource?.icon ?? 'doc'}
+              iconKey={targetResource?.icon ?? currentResource.icon}
               size={18}
               className="h-5 w-5 shrink-0 object-contain"
               alt=""
@@ -319,7 +328,7 @@ export function ResourceLinksTabNew({
                       className="flex w-full items-center gap-3 rounded-md border border-gray-200 bg-white px-3 py-2 text-left transition-colors hover:border-blue-300 hover:bg-blue-50/60 dark:border-gray-700 dark:bg-gray-900 dark:hover:border-blue-500/60 dark:hover:bg-gray-800"
                     >
                       <IconDisplay
-                        iconKey={entry.icon ?? 'doc'}
+                        iconKey={entry.icon ?? currentResource.icon}
                         size={18}
                         className="h-5 w-5 shrink-0 object-contain"
                         alt=""
@@ -330,7 +339,7 @@ export function ResourceLinksTabNew({
                         </div>
                       </div>
                       <span className="shrink-0 rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-500 dark:bg-gray-800 dark:text-gray-400">
-                        {TYPE_LABELS[entry.type]}
+                        {getTypeLabel(entry.type)}
                       </span>
                     </button>
                   ))
@@ -343,7 +352,7 @@ export function ResourceLinksTabNew({
                 <div className="text-xs font-medium text-gray-500 dark:text-gray-400">Selected resource</div>
                 <div className="mt-1 flex items-center gap-2">
                   <IconDisplay
-                    iconKey={selectedTarget?.icon ?? 'doc'}
+                    iconKey={selectedTarget?.icon ?? currentResource.icon}
                     size={18}
                     className="h-5 w-5 shrink-0 object-contain"
                     alt=""
@@ -353,7 +362,7 @@ export function ResourceLinksTabNew({
                   </div>
                   {selectedTarget ? (
                     <span className="shrink-0 rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-500 dark:bg-gray-800 dark:text-gray-400">
-                      {TYPE_LABELS[selectedTarget.type]}
+                      {getTypeLabel(selectedTarget.type)}
                     </span>
                   ) : null}
                 </div>
@@ -410,7 +419,7 @@ export function ResourceLinksTabNew({
         <div className="rounded-lg border border-gray-200 bg-white px-3 py-3 dark:border-gray-700 dark:bg-gray-800/70">
           <div className="flex items-center gap-3">
             <IconDisplay
-              iconKey={expandedTarget.icon ?? 'doc'}
+              iconKey={expandedTarget.icon ?? currentResource.icon}
               size={18}
               className="h-5 w-5 shrink-0 object-contain"
               alt=""
@@ -527,7 +536,7 @@ export function ResourceLinksTabNew({
                 <div className="flex items-center gap-3">
                   <div className="flex min-w-0 flex-1 items-center gap-2">
                     <IconDisplay
-                      iconKey={targetResource?.icon ?? 'doc'}
+                      iconKey={targetResource?.icon ?? currentResource.icon}
                       size={18}
                       className="h-5 w-5 shrink-0 object-contain"
                       alt=""
@@ -566,7 +575,7 @@ export function ResourceLinksTabNew({
                 <div className="flex items-center gap-3">
                   <div className="flex min-w-0 flex-1 items-center gap-2">
                     <IconDisplay
-                      iconKey={sourceResource?.icon ?? 'doc'}
+                      iconKey={sourceResource?.icon ?? currentResource.icon}
                       size={18}
                       className="h-5 w-5 shrink-0 object-contain"
                       alt=""

@@ -7,7 +7,6 @@ const TYPE_LABELS: Record<ResourceType, string> = {
   vehicle: 'Vehicles',
   account: 'Accounts',
   inventory: 'Inventory',
-  doc: 'Docs',
 };
 
 interface ResourceRoomSubHeaderProps {

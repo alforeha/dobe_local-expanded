@@ -14,6 +14,12 @@ import {
 
 const WEEKDAY_KEYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'] as const;
 
+const RESOURCE_TYPE_VALUES: ResourceType[] = ['contact', 'home', 'vehicle', 'account', 'inventory'];
+
+function toResourceType(value: string): ResourceType {
+  return RESOURCE_TYPE_VALUES.includes(value as ResourceType) ? (value as ResourceType) : 'contact';
+}
+
 function daysBetween(start: Date, end: Date): number {
   return Math.round((end.getTime() - start.getTime()) / 86_400_000);
 }
@@ -89,7 +95,7 @@ function makeIndicator(resource: Resource, iconKey: string, label: string): Reso
     iconKey,
     resourceId: resource.id,
     resourceName: resource.name,
-    resourceType: resource.type,
+    resourceType: toResourceType(resource.type),
     label,
   };
 }

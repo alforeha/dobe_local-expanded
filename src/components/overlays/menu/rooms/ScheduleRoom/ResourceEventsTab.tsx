@@ -14,7 +14,6 @@ import { useScheduleStore } from '../../../../../stores/useScheduleStore';
 import type {
   AccountResource,
   ContactResource,
-  DocResource,
   HomeResource,
   InventoryResource,
   ItemRecurringTask,
@@ -53,17 +52,6 @@ interface LegacyContactTask {
   icon?: string;
   recurrenceMode?: 'recurring' | 'never';
   recurrence: ResourceRecurrenceRule;
-  reminderLeadDays?: number;
-  lastCompleted?: string;
-}
-
-interface LegacyContractTask {
-  id: string;
-  title?: string;
-  name?: string;
-  icon?: string;
-  recurrenceMode?: 'recurring' | 'never';
-  recurrence?: ResourceRecurrenceRule;
   reminderLeadDays?: number;
   lastCompleted?: string;
 }
@@ -257,7 +245,6 @@ export function ResourceEventsTab({ onGoToResource }: ResourceEventsTabProps) {
     const contactEvents: ResourceEvent[] = [];
     const vehicleEvents: ResourceEvent[] = [];
     const accountEvents: ResourceEvent[] = [];
-    const docEvents:     ResourceEvent[] = [];
     const choreEvents:   ResourceEvent[] = [];
     const homeItemEvents: ResourceEvent[] = [];
     const inventoryEvents: ResourceEvent[] = [];
@@ -393,46 +380,6 @@ export function ResourceEventsTab({ onGoToResource }: ResourceEventsTabProps) {
         }
       }
 
-      // ── Docs: expiry dates ──────────────────────────────────────────────────
-      if (resource.type === 'doc') {
-        const doc = resource as DocResource;
-        if (doc.expiryDate) {
-          const d = daysUntilDate(doc.expiryDate);
-          if (d >= 0) {
-            docEvents.push({
-              key: `doc-exp-${resource.id}`,
-              resourceId: resource.id,
-              resourceType: resource.type,
-              resourceIcon: rIcon,
-              label: `${resource.name} Expires`,
-              reminderLeadDays: doc.expiryLeadDays,
-              date: doc.expiryDate.slice(0, 10),
-              daysAway: d,
-            });
-          }
-        }
-
-        if (doc.docType === 'contract') {
-          const contractTasks = (doc.contractTasks ?? []) as LegacyContractTask[];
-          for (const task of contractTasks) {
-            if (!task.recurrence || !isRecurringTask(task)) continue;
-            const next = computeNextOccurrence(task.recurrence);
-            const taskName = task.title || task.name || 'Contract task';
-            contractEvents.push({
-              key: `doc-contract-${resource.id}-${task.id}`,
-              resourceId: resource.id,
-              resourceType: resource.type,
-              resourceIcon: task.icon || rIcon,
-              label: `${resource.name}: ${taskName}`,
-              reminderLeadDays: task.reminderLeadDays,
-              lastCompleted: task.lastCompleted,
-              date: next.date,
-              daysAway: next.days,
-            });
-          }
-        }
-      }
-
       // ── Homes: chores ───────────────────────────────────────────────────────
       if (resource.type === 'home') {
         const home = resource as HomeResource;
@@ -546,7 +493,6 @@ export function ResourceEventsTab({ onGoToResource }: ResourceEventsTabProps) {
     contactEvents.sort(sortByDays);
     vehicleEvents.sort(sortByDays);
     accountEvents.sort(sortByDays);
-    docEvents.sort(sortByDays);
     choreEvents.sort(sortByDays);
     homeItemEvents.sort(sortByDays);
     inventoryEvents.sort(sortByDays);
@@ -558,7 +504,6 @@ export function ResourceEventsTab({ onGoToResource }: ResourceEventsTabProps) {
       { header: '👥 Contacts',    events: contactEvents },
       { header: '🚗 Vehicles',    events: vehicleEvents  },
       { header: '💳 Accounts',    events: accountEvents  },
-      { header: '📄 Docs',        events: docEvents      },
       { header: '🏠 Home Chores', events: choreEvents    },
       { header: '🪑 Home Items',  events: homeItemEvents },
       { header: '📦 Inventory',   events: inventoryEvents },

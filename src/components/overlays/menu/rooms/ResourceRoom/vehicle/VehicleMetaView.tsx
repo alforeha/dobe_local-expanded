@@ -1,6 +1,6 @@
 // VehicleMetaView - read-only display of VehicleResource. W24.
 
-import { isDoc, isInventory, normalizeRecurrenceMode, type Resource, type VehicleMaintenanceTask, type VehicleResource } from '../../../../../../types/resource';
+import { isInventory, normalizeRecurrenceMode, type Resource, type VehicleMaintenanceTask, type VehicleResource } from '../../../../../../types/resource';
 import { useResourceStore } from '../../../../../../stores/useResourceStore';
 import { IconDisplay } from '../../../../../shared/IconDisplay';
 
@@ -78,9 +78,6 @@ function getLinkedTargets(resource: Resource, resources: Record<string, Resource
           targetIds.add(entry.id);
         }
       }
-      if (isDoc(entry) && (entry.linkedContactIds ?? []).includes(resource.id)) {
-        targetIds.add(entry.id);
-      }
     }
   }
 
@@ -88,17 +85,9 @@ function getLinkedTargets(resource: Resource, resources: Record<string, Resource
     for (const accountId of resource.linkedAccountIds ?? []) {
       targetIds.add(accountId);
     }
-    for (const docId of resource.linkedDocIds ?? []) {
-      targetIds.add(docId);
-    }
 
     for (const entry of Object.values(resources)) {
       if (entry.id === resource.id) continue;
-      if (isDoc(entry)) {
-        if (entry.linkedResourceRef === resource.id || (entry.linkedResourceRefs ?? []).includes(resource.id)) {
-          targetIds.add(entry.id);
-        }
-      }
       for (const link of entry.links ?? []) {
         if (link.targetResourceId === resource.id) {
           targetIds.add(entry.id);
@@ -134,11 +123,6 @@ function getLinkedTargets(resource: Resource, resources: Record<string, Resource
           targetIds.add(entry.id);
         }
       }
-      if (isDoc(entry)) {
-        if (entry.linkedResourceRef === resource.id || (entry.linkedResourceRefs ?? []).includes(resource.id)) {
-          targetIds.add(entry.id);
-        }
-      }
       if (isInventory(entry)) {
         for (const container of entry.containers ?? []) {
           for (const link of container.links ?? []) {
@@ -159,24 +143,6 @@ function getLinkedTargets(resource: Resource, resources: Record<string, Resource
           targetIds.add(entry.id);
         }
       }
-      if (isDoc(entry) && entry.linkedAccountId === resource.id) {
-        targetIds.add(entry.id);
-      }
-    }
-  }
-
-  if (resource.type === 'doc') {
-    if (resource.linkedResourceRef && resources[resource.linkedResourceRef]) {
-      targetIds.add(resource.linkedResourceRef);
-    }
-    for (const resourceId of resource.linkedResourceRefs ?? []) {
-      if (resources[resourceId]) targetIds.add(resourceId);
-    }
-    for (const contactId of resource.linkedContactIds ?? []) {
-      if (resources[contactId]) targetIds.add(contactId);
-    }
-    if (resource.linkedAccountId && resources[resource.linkedAccountId]) {
-      targetIds.add(resource.linkedAccountId);
     }
   }
 

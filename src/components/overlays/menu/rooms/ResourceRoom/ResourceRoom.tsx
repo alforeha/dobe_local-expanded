@@ -13,7 +13,6 @@ import { HomeFormNew } from './home/HomeFormNew';
 import { VehicleFormNew } from './vehicle/VehicleFormNew';
 import { AccountFormNew } from './account/AccountFormNew';
 import { InventoryForm } from './inventory/InventoryForm';
-import { DocForm } from './doc/DocForm';
 import { autoCompleteSystemTask } from '../../../../../engine/resourceEngine';
 
 type AddStep =
@@ -23,8 +22,7 @@ type AddStep =
   | 'home-form'
   | 'vehicle-form'
   | 'account-form'
-  | 'inventory-form'
-  | 'doc-form';
+  | 'inventory-form';
 
 const TYPE_TO_ADD_STEP: Record<ResourceType, AddStep> = {
   contact:   'contact-form',
@@ -32,7 +30,6 @@ const TYPE_TO_ADD_STEP: Record<ResourceType, AddStep> = {
   vehicle:   'vehicle-form',
   account:   'account-form',
   inventory: 'inventory-form',
-  doc:       'doc-form',
 };
 
 interface ResourceRoomProps {
@@ -222,7 +219,6 @@ export function ResourceRoom({ onOverlayActiveChange }: ResourceRoomProps) {
         {editingResource.type === 'vehicle'   && <VehicleFormNew existing={editingResource} onSaved={handleEditDone} registerOnAutoSave={registerResourceFormAutoSave} />}
         {editingResource.type === 'account'   && <AccountFormNew existing={editingResource} onSaved={handleEditDone} onCancel={handleEditDone} />}
         {editingResource.type === 'inventory' && <InventoryForm existing={editingResource} onSaved={handleEditDone} onCancel={handleEditDone} editorMode={inventoryEditMode} editingContainerId={editingInventoryContainerId} />}
-        {editingResource.type === 'doc'       && <DocForm existing={editingResource} onSaved={handleEditDone} onCancel={handleEditDone} />}
         {editingResource.type === 'contact'   && <ContactFormNew existing={editingResource} onSaved={handleEditDone} registerOnAutoSave={registerResourceFormAutoSave} />}
       </div>
     );
@@ -258,10 +254,6 @@ export function ResourceRoom({ onOverlayActiveChange }: ResourceRoomProps) {
   if (addStep === 'inventory-form') {
     return <div className="flex flex-col h-full"><InventoryForm onSaved={handleAdded} onCancel={handleBackToSelector} /></div>;
   }
-  if (addStep === 'doc-form') {
-    return <div className="flex flex-col h-full"><DocForm       onSaved={handleAdded} onCancel={handleBackToSelector} /></div>;
-  }
-
   // ── Normal room view ──────────────────────────────────────────────────────
   return (
     <div className="flex flex-col h-full">

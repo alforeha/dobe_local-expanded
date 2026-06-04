@@ -29,6 +29,14 @@ import { createDefaultTalentTrees, type User } from '../../types/user';
 import type { Event, InventoryResource, Task } from '../../types';
 import type { TimeView } from '../timeViews/TimeViewContainer';
 
+const RESOURCE_TYPE_VALUES = ['contact', 'home', 'vehicle', 'account', 'inventory'] as const;
+
+function toResourceType(value: string): (typeof RESOURCE_TYPE_VALUES)[number] {
+  return RESOURCE_TYPE_VALUES.includes(value as (typeof RESOURCE_TYPE_VALUES)[number])
+    ? (value as (typeof RESOURCE_TYPE_VALUES)[number])
+    : 'contact';
+}
+
 export type ActiveOverlay = 'event' | 'coach' | 'profile' | 'menu' | 'welcomeDay' | null;
 
 // ── DEFAULT USER FACTORY ──────────────────────────────────────────────────────
@@ -364,7 +372,7 @@ export function AppShell() {
     const resource = useResourceStore.getState().resources[resourceId];
     if (!resource) return;
 
-    useSystemStore.getState().setMenuResourceTarget(resourceId, resource.type);
+    useSystemStore.getState().setMenuResourceTarget(resourceId, toResourceType(resource.type));
     setMenuInitialRoom('resource');
     setOverlay('menu');
   };

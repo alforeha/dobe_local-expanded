@@ -97,8 +97,13 @@ const TYPE_LABELS: Record<ResourceType, string> = {
   vehicle: 'Vehicle',
   account: 'Account',
   inventory: 'Inventory',
-  doc: 'Doc',
 };
+
+const RESOURCE_TYPE_VALUES: ResourceType[] = ['contact', 'home', 'vehicle', 'account', 'inventory'];
+
+function toResourceType(value: string): ResourceType {
+  return RESOURCE_TYPE_VALUES.includes(value as ResourceType) ? (value as ResourceType) : 'contact';
+}
 
 export function ResourceLinksTab({
   resource,
@@ -130,7 +135,7 @@ export function ResourceLinksTab({
       !directLinkedTargetIds.has(entry.id),
   );
   const relationshipOptions = selectedType && selectedTargetId
-    ? getRelationshipOptions(currentResource.type, selectedType)
+    ? getRelationshipOptions(toResourceType(currentResource.type), selectedType)
     : [];
   const resolvedRelationship = fixedRelationship?.trim() || relationshipOptions[0] || relationship;
   const shouldHideRelationshipSelector = Boolean(fixedRelationship?.trim()) || relationshipOptions.length <= 1;
@@ -295,8 +300,8 @@ export function ResourceLinksTab({
           {visibleLinks.map((link) => {
             const targetResource = resources[link.targetResourceId];
             const rowOptions = getRelationshipOptions(
-              currentResource.type,
-              targetResource?.type ?? 'doc',
+              toResourceType(currentResource.type),
+              toResourceType(targetResource?.type ?? currentResource.type),
             );
 
             return (
@@ -306,7 +311,7 @@ export function ResourceLinksTab({
                 targetResource={targetResource}
                 relationshipOptions={rowOptions}
                 inherited={link.inherited}
-                onNavigate={(target) => setMenuResourceTarget(target.id, target.type)}
+                onNavigate={(target) => setMenuResourceTarget(target.id, toResourceType(target.type))}
                 onUpdate={(linkId, nextRelationship) =>
                   updateResourceLink(currentResource.id, linkId, nextRelationship)
                 }
