@@ -250,6 +250,8 @@ export interface InventoryItemTemplate {
   description?: string;
   isCustom?: boolean;
   customTaskTemplates?: InventoryCustomTaskTemplate[];
+  nutritionalValue?: Record<string, number>;
+  monetaryValue?: number;
 }
 
 export interface HomeChore {
@@ -576,6 +578,7 @@ export interface AccountResource {
   accountTasks?: AccountTask[];
   allowanceTasks?: AccountTask[];
   allowanceContactId?: string;
+  consumptionBudget?: number;
   album?: AlbumEntry[];
   notes?: ResourceNote[];
   links?: ResourceLink[];

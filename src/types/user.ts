@@ -39,6 +39,34 @@ export type StatGroupKey = 'health' | 'strength' | 'agility' | 'defense' | 'char
 
 export type StatGroups = Record<StatGroupKey, number>;
 
+export interface NutritionStats {
+  proteinTarget?: number;
+  carbTarget?: number;
+  proteinConsumed?: number;
+  carbConsumed?: number;
+}
+
+export interface PhysicalStats {
+  weight?: number;
+  height?: number;
+  restingHeartRate?: number;
+}
+
+export interface EnergyBar {
+  current: number;
+  cap: number;
+  baseRegenRate: number;
+  dailyCalorieBurn?: number;
+}
+
+declare module './stats' {
+  interface UserStats {
+    nutrition?: NutritionStats;
+    energy?: EnergyBar;
+    physicalStats?: PhysicalStats;
+  }
+}
+
 export const STAT_GROUP_KEYS: StatGroupKey[] = [
   'health',
   'strength',
@@ -91,6 +119,14 @@ export function createDefaultTalentTrees(): TalentTrees {
   };
 }
 
+export interface DailyStatSnapshot {
+  xp: number;
+  level: number;
+  streakCurrent: number;
+  streakBest: number;
+  gold: number;
+}
+
 export interface UserProgression {
   stats: UserStats;
   avatar: Avatar;
@@ -101,6 +137,7 @@ export interface UserProgression {
   /** STUB: TALENT-TREE — reserved for unlocked talent-node state when the TALENT-TREE chapter is enabled. */
   talentPoints: number;
   talentTrees: TalentTrees | null;
+  dailyStatSnapshots?: Record<string, DailyStatSnapshot>;
 }
 
 export interface UserLists {

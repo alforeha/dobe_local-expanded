@@ -67,6 +67,12 @@ export interface TaskSet {
   entries: TaskEntry[];
 }
 
+export interface OccurrenceOverride {
+  suppressed?: boolean;
+  startTime?: string;
+  endTime?: string;
+}
+
 // ── PLANNED EVENT ROOT ────────────────────────────────────────────────────────
 
 export interface PlannedEvent {
@@ -109,4 +115,5 @@ export interface PlannedEvent {
   sharedWith: PlannedEventSharedWithStub;
   /** STUB: APP-STORE — stores reminder scheduling/config once the APP-STORE chapter is enabled. */
   pushReminder: PushReminderStub;
+  occurrenceOverrides?: Record<string, OccurrenceOverride>;
 }

@@ -613,6 +613,7 @@ export function GoalInspectorDrawer({
   useEffect(() => {
     if (!editingStorm || !selectedStorm) return;
 
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setNewStormName(selectedStorm.name);
     setNewStormType(selectedStorm.type);
     setNewStormState(selectedStorm.state);
@@ -625,6 +626,7 @@ export function GoalInspectorDrawer({
 
   useEffect(() => {
     if (selectedStormId === null) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setEditingStorm(false);
       brainstormDraftRef.current = null;
     }
