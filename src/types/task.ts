@@ -24,7 +24,7 @@ export type SharedWithStub = null;
 
 // ── TASK ROOT ─────────────────────────────────────────────────────────────────
 
-export type TaskCompletionState = 'pending' | 'complete' | 'skipped';
+export type TaskCompletionState = 'pending' | 'complete' | 'skipped' | 'signedOut';
 
 export interface Task {
   /** uuid */

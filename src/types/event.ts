@@ -16,7 +16,7 @@ export type EventType = 'standard' | 'quickActions' | 'planned';
 
 // ── EVENT COMPLETION STATE ────────────────────────────────────────────────────
 
-export type EventCompletionState = 'pending' | 'complete' | 'skipped';
+export type EventCompletionState = 'pending' | 'complete' | 'skipped' | 'signedOut';
 
 // ── STUBS ─────────────────────────────────────────────────────────────────────
 

@@ -50,6 +50,8 @@ export interface PhysicalStats {
   weight?: number;
   height?: number;
   restingHeartRate?: number;
+  muscleGroupVolume?: Record<string, number>;
+  muscleGroupLastTouched?: Record<string, string>;
 }
 
 export interface EnergyBar {

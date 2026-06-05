@@ -424,4 +424,15 @@ export interface TaskTemplate {
   items: string[];
   /** Optional category tag for grouping and filtering in TASK room. Enum values BUILD-time. */
   secondaryTag: TaskSecondaryTag | null;
+  /** Optional EXERCISE TEMPLATE fields. */
+muscleGroup?: 'chest' | 'back' | 'legs' | 'shoulders' | 'arms' | 'core' | 'cardio';
+intensityRating?: 1 | 2 | 3 | 4 | 5;
+  /** Optional RECIPIE TEMPLATE fields. */
+durationEstimate?: number;
+nutritionalValue?: Record<string, number>;
+craftsItem?: string;
+difficulty?: 'easy' | 'medium' | 'hard';
+
+
+
 }
