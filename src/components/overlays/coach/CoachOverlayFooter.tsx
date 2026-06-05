@@ -1,36 +1,19 @@
 import type { CoachRoom } from './CoachOverlay';
-import { GlowRing } from '../../shared/GlowRing';
-import { ONBOARDING_GLOW } from '../../../constants/onboardingKeys';
-import { useGlows } from '../../../hooks/useOnboardingGlow';
 import { resolveIcon } from '../../../constants/iconMap';
 
 interface CoachOverlayFooterProps {
   activeRoom: CoachRoom;
   onNav: (room: CoachRoom) => void;
-  userLevel: number;
   onClose: () => void;
 }
 
-export const LEADERBOARD_LEVEL_GATE = 5;
-
-const ROOMS: { room: CoachRoom; icon: string; ariaLabel: string }[] = [
-  { room: 'recommendations', icon: '🎯', ariaLabel: 'Recommendations' },
-  { room: 'reviewing', icon: '🔍', ariaLabel: 'Reviewing' },
-  { room: 'tracking', icon: '📍', ariaLabel: 'Tracking' },
-  { room: 'leaderboard', icon: '🏅', ariaLabel: 'Leaderboard' },
+const ROOMS: { room: Exclude<CoachRoom, 'feed'>; label: string; ariaLabel: string }[] = [
+  { room: 'controlcenter', label: 'Control Center', ariaLabel: 'Control Center' },
+  { room: 'track', label: 'Track', ariaLabel: 'Track' },
+  { room: 'review', label: 'Review', ariaLabel: 'Review' },
 ];
 
-export function CoachOverlayFooter({
-  activeRoom,
-  onNav,
-  userLevel,
-  onClose,
-}: CoachOverlayFooterProps) {
-  const showLeaderboard = userLevel >= LEADERBOARD_LEVEL_GATE;
-  const recommendationsNavGlows = useGlows(ONBOARDING_GLOW.RECOMMENDATIONS_NAV);
-
-  const visibleRooms = ROOMS.filter((r) => r.room !== 'leaderboard' || showLeaderboard);
-
+export function CoachOverlayFooter({ activeRoom, onNav, onClose }: CoachOverlayFooterProps) {
   return (
     <nav className="shrink-0 border-t border-gray-100 bg-white dark:border-gray-800 dark:bg-gray-900">
       <div className="flex items-center gap-2 px-2">
@@ -44,27 +27,21 @@ export function CoachOverlayFooter({
         </button>
 
         <div className="flex min-w-0 flex-1 justify-end">
-          {visibleRooms.map(({ room, icon, ariaLabel }) => (
-            <GlowRing
+          {ROOMS.map(({ room, label, ariaLabel }) => (
+            <button
               key={room}
-              active={room === 'recommendations' && recommendationsNavGlows}
-              rounded="lg"
-              className="flex-1"
+              type="button"
+              aria-label={ariaLabel}
+              aria-pressed={activeRoom === room}
+              onClick={() => onNav(room)}
+              className={`flex-1 px-3 py-3 text-sm font-medium transition-colors ${
+                activeRoom === room
+                  ? 'bg-purple-50 text-purple-600 dark:bg-purple-950/20'
+                  : 'text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+              }`}
             >
-              <button
-                type="button"
-                aria-label={ariaLabel}
-                aria-pressed={activeRoom === room}
-                onClick={() => onNav(room)}
-                className={`flex h-full w-full items-center justify-center py-3 text-2xl transition-colors ${
-                  activeRoom === room
-                    ? 'bg-purple-50 text-purple-600 dark:bg-purple-950/20'
-                    : 'text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
-                }`}
-              >
-                {icon}
-              </button>
-            </GlowRing>
+              {label}
+            </button>
           ))}
         </div>
       </div>

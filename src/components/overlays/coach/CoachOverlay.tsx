@@ -4,42 +4,26 @@ import { autoCompleteSystemTask } from '../../../engine/resourceEngine';
 import { CoachOverlayHeader } from './CoachOverlayHeader';
 import { CoachOverlayFooter } from './CoachOverlayFooter';
 import { FeedRoom } from './rooms/FeedRoom';
-import { RecommendationsRoom } from './rooms/RecommendationsRoom';
-import { ReviewingRoom } from './rooms/ReviewingRoom';
-import { TrackingRoom } from './rooms/TrackingRoom';
-import { LeaderboardRoom } from './rooms/LeaderboardRoom';
+import { ControlCenterRoom } from './rooms/ControlCenterRoom';
 import { AboutPopup } from './AboutPopup';
 
-export type CoachRoom = 'feed' | 'recommendations' | 'reviewing' | 'tracking' | 'leaderboard';
+export type CoachRoom = 'feed' | 'controlcenter' | 'track' | 'review';
 
 interface CoachOverlayProps {
   onClose: () => void;
-  onOpenEvent?: (eventId: string) => void;
-  onNavigateToDayView?: (date: string) => void;
 }
 
-export function CoachOverlay({ onClose, onOpenEvent, onNavigateToDayView }: CoachOverlayProps) {
+export function CoachOverlay({ onClose }: CoachOverlayProps) {
   const unreadCount = useUserStore(
     (s) => s.user?.feed.entries.filter((e) => !e.read).length ?? 0,
   );
-  const userLevel = useUserStore((s) => s.user?.progression.stats.level ?? 0);
 
-  const [activeRoom, setActiveRoom] = useState<CoachRoom>('recommendations');
+  const [activeRoom, setActiveRoom] = useState<CoachRoom>('controlcenter');
   const [aboutOpen, setAboutOpen] = useState(false);
 
   useEffect(() => {
     autoCompleteSystemTask('task-sys-explore-coach');
   }, []);
-
-  const handleOpenEvent = (eventId: string) => {
-    onClose();
-    onOpenEvent?.(eventId);
-  };
-
-  const handleNavigateToDayView = (date: string) => {
-    onClose();
-    onNavigateToDayView?.(date);
-  };
 
   return (
     <div className="flex h-full flex-col bg-white dark:bg-gray-900">
@@ -51,23 +35,20 @@ export function CoachOverlay({ onClose, onOpenEvent, onNavigateToDayView }: Coac
 
       <div className="flex-1 overflow-hidden">
         {activeRoom === 'feed' && <FeedRoom />}
-        {activeRoom === 'recommendations' && <RecommendationsRoom />}
-        {activeRoom === 'reviewing' && (
-          <ReviewingRoom
-            onNavigateToDayView={handleNavigateToDayView}
-            onOpenEvent={handleOpenEvent}
-          />
+        {activeRoom === 'controlcenter' && <ControlCenterRoom />}
+        {activeRoom === 'track' && (
+          <div className="flex h-full items-center justify-center p-6 text-sm text-gray-500 dark:text-gray-400">
+            Track placeholder
+          </div>
         )}
-        {activeRoom === 'tracking' && <TrackingRoom onOpenEvent={handleOpenEvent} />}
-        {activeRoom === 'leaderboard' && <LeaderboardRoom />}
+        {activeRoom === 'review' && (
+          <div className="flex h-full items-center justify-center p-6 text-sm text-gray-500 dark:text-gray-400">
+            Review placeholder
+          </div>
+        )}
       </div>
 
-      <CoachOverlayFooter
-        activeRoom={activeRoom}
-        onNav={setActiveRoom}
-        userLevel={userLevel}
-        onClose={onClose}
-      />
+      <CoachOverlayFooter activeRoom={activeRoom} onNav={setActiveRoom} onClose={onClose} />
 
       {aboutOpen && <AboutPopup onClose={() => setAboutOpen(false)} />}
     </div>

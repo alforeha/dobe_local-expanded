@@ -416,8 +416,8 @@ export function AppShell() {
         <SlideUpOverlay closing={overlayClosing} onBackdropClick={requestClose}>
           <CoachOverlay
             onClose={requestClose}
-            onOpenEvent={openEventOverlay}
-            onNavigateToDayView={navigateToDayView}
+          //  onOpenEvent={openEventOverlay}
+          //  onNavigateToDayView={navigateToDayView}
           />
         </SlideUpOverlay>
       )}
