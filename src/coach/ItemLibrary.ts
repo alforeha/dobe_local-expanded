@@ -13,7 +13,8 @@ export type ItemCategory =
   | 'garden'
   | 'vehicle'
   | 'bathroom'
-  | 'workspace';
+  | 'workspace'
+  | 'gym';
 
 export interface ItemTemplate {
   id: string;
@@ -327,6 +328,90 @@ export const itemLibrary: ItemTemplate[] = [
     builtInTasks: [
       { taskTemplateRef: 'item-tmpl-check-tyre-01' },
     ],
+  },
+  {
+    id: 'exercise-item-dumbbell',
+    name: 'Dumbbell',
+    icon: 'exercise-item-dumbbell',
+    description: 'Free weight for strength training.',
+    kind: 'facility',
+    resourceType: 'home',
+    associatedTaskTemplateRef: null,
+    category: 'gym',
+    rarity: 'common',
+    isCustom: false,
+  },
+  {
+    id: 'exercise-item-barbell',
+    name: 'Barbell',
+    icon: 'exercise-item-barbell',
+    description: 'Olympic bar for compound lifts.',
+    kind: 'facility',
+    resourceType: 'home',
+    associatedTaskTemplateRef: null,
+    category: 'gym',
+    rarity: 'common',
+    isCustom: false,
+  },
+  {
+    id: 'exercise-item-kettlebell',
+    name: 'Kettlebell',
+    icon: 'exercise-item-kettlebell',
+    description: 'Cast iron weight for dynamic movements.',
+    kind: 'facility',
+    resourceType: 'home',
+    associatedTaskTemplateRef: null,
+    category: 'gym',
+    rarity: 'common',
+    isCustom: false,
+  },
+  {
+    id: 'exercise-item-resistance-band',
+    name: 'Resistance Band',
+    icon: 'exercise-item-resistance-band',
+    description: 'Elastic band for resistance training.',
+    kind: 'facility',
+    resourceType: 'home',
+    associatedTaskTemplateRef: null,
+    category: 'gym',
+    rarity: 'common',
+    isCustom: false,
+  },
+  {
+    id: 'exercise-item-pull-up-bar',
+    name: 'Pull Up Bar',
+    icon: 'exercise-item-pull-up-bar',
+    description: 'Overhead bar for pulling exercises.',
+    kind: 'facility',
+    resourceType: 'home',
+    associatedTaskTemplateRef: null,
+    category: 'gym',
+    rarity: 'common',
+    isCustom: false,
+  },
+  {
+    id: 'exercise-item-yoga-mat',
+    name: 'Yoga Mat',
+    icon: 'exercise-item-yoga-mat',
+    description: 'Non-slip mat for floor exercises.',
+    kind: 'facility',
+    resourceType: 'home',
+    associatedTaskTemplateRef: null,
+    category: 'gym',
+    rarity: 'common',
+    isCustom: false,
+  },
+  {
+    id: 'exercise-item-jump-rope',
+    name: 'Jump Rope',
+    icon: 'exercise-item-jump-rope',
+    description: 'Rope for cardio and coordination training.',
+    kind: 'facility',
+    resourceType: 'home',
+    associatedTaskTemplateRef: null,
+    category: 'gym',
+    rarity: 'common',
+    isCustom: false,
   },
 ];
 

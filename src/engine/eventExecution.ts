@@ -21,7 +21,7 @@ import { useProgressionStore } from '../stores/useProgressionStore';
 import { useResourceStore } from '../stores/useResourceStore';
 import { EVENT_MAX_ATTACHMENTS } from '../storage/storageBudget';
 
-import { awardXP, awardStat, awardGold } from './awardPipeline';
+import { awardXP, awardStat, awardGold, applyFitnessStatGrant } from './awardPipeline';
 import { completeMilestone, decodeQuestRef, syncDailyQuestProgressForTask } from './markerEngine';
 import { starterTaskTemplates, STARTER_TEMPLATE_IDS } from '../coach/StarterQuestLibrary';
 import { checkAchievements } from '../coach/checkAchievements';
@@ -473,6 +473,7 @@ export function completeTask(
             statAwards.push({ group, points });
           }
         }
+        applyFitnessStatGrant(template);
 
         // Context-specific stat bonuses
         if (isQuickActions) {

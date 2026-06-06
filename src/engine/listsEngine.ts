@@ -24,7 +24,7 @@ import { useScheduleStore } from '../stores/useScheduleStore';
 import { useUserStore } from '../stores/useUserStore';
 import { useResourceStore } from '../stores/useResourceStore';
 import { storageSet, storageKey } from '../storage';
-import { awardXP, awardStat } from './awardPipeline';
+import { awardXP, awardStat, applyFitnessStatGrant } from './awardPipeline';
 import { checkAchievements } from '../coach/checkAchievements';
 import { awardBadge } from '../coach/rewardPipeline';
 import { pushRibbet } from '../coach/ribbet';
@@ -165,6 +165,7 @@ export function completeFavourite(
       source: `favourite.complete.quickActions:${taskTemplateRef}`,
     });
     awardStat(userId, 'agility', 2, `favourite.complete:${taskTemplateRef}`);
+    applyFitnessStatGrant(template);
   } else {
     awardXP(userId, 5, {
       isWisdomTask: true,

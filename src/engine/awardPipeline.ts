@@ -15,6 +15,7 @@
 
 import type { GearDefinition } from '../types/coach';
 import type { StatGroupKey, User } from '../types/user';
+import type { TaskTemplate } from '../types/taskTemplate';
 import { useUserStore } from '../stores/useUserStore';
 
 import { checkAchievements } from '../coach/checkAchievements';
@@ -425,5 +426,41 @@ export function awardStat(
     newStatPoints,
     talentPointsEarned,
     userId,
+  });
+}
+
+// ── FITNESS STAT GRANT ────────────────────────────────────────────────────────
+
+/**
+ * Writes muscleGroupVolume and muscleGroupLastTouched into User.progression.stats.physicalStats
+ * when a fitness-tagged template with a muscleGroup is completed.
+ * No-ops if secondaryTag !== 'fitness' or muscleGroup is absent.
+ */
+export function applyFitnessStatGrant(
+  template: TaskTemplate,
+): void {
+  if (template.secondaryTag !== 'fitness') return;
+  if (!template.muscleGroup) return;
+  const intensityMap: Record<number, number> = { 1: 2, 2: 4, 3: 6, 4: 10, 5: 16 };
+  const volume = intensityMap[template.intensityRating ?? 1] ?? 2;
+  const muscleGroup = template.muscleGroup;
+  const nowISO = new Date().toISOString();
+  const userStore = useUserStore.getState();
+  const user = userStore.user;
+  if (!user) return;
+  const existing = user.progression.stats.physicalStats?.muscleGroupVolume ?? {};
+  userStore.setStats({
+    ...user.progression.stats,
+    physicalStats: {
+      ...user.progression.stats.physicalStats,
+      muscleGroupVolume: {
+        ...existing,
+        [muscleGroup]: (existing[muscleGroup] ?? 0) + volume,
+      },
+      muscleGroupLastTouched: {
+        ...user.progression.stats.physicalStats?.muscleGroupLastTouched,
+        [muscleGroup]: nowISO,
+      },
+    },
   });
 }

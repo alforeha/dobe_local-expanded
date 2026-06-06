@@ -293,7 +293,7 @@
      "xpBonus": 0,
      "cooldown": null,
      "media": null,
-     "items": [],
+     "items": ["exercise-item-yoga-mat"],
      "secondaryTag": "fitness",
      "muscleGroup": "chest",
      "intensityRating": 3,

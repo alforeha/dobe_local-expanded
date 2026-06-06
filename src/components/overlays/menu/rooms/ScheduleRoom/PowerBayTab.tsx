@@ -1,10 +1,13 @@
 import { useState } from 'react';
+import { v4 as uuidv4 } from 'uuid';
 import { useUserStore } from '../../../../../stores/useUserStore';
 import { useScheduleStore } from '../../../../../stores/useScheduleStore';
 import { taskTemplateLibrary } from '../../../../../coach';
 import { WorkoutExecutionInput } from '../../../event/inputs/WorkoutExecutionInput';
 import { completeFavourite } from '../../../../../engine/listsEngine';
 import type { TaskTemplate, SetsRepsInputFields } from '../../../../../types/taskTemplate';
+import { itemLibrary } from '../../../../../coach/ItemLibrary';
+import { IconDisplay } from '../../../../shared/IconDisplay';
 
 type MuscleGroupFilter =
   | 'all'
@@ -25,6 +28,7 @@ interface PowerBayTabProps {
 export function PowerBayTab({ activeTab }: PowerBayTabProps) {
   const user = useUserStore((s) => s.user);
   const customTemplates = useScheduleStore((s) => s.taskTemplates);
+  const setTaskTemplate = useScheduleStore((s) => s.setTaskTemplate);
   const energy = user?.progression.stats.energy;
 
   const [search, setSearch] = useState('');
@@ -37,10 +41,19 @@ export function PowerBayTab({ activeTab }: PowerBayTabProps) {
   }
 
   // --- Derived fitness template list ---
-  const libraryFitness: TaskTemplate[] = (taskTemplateLibrary as TaskTemplate[]).filter(
-    (t) => t.secondaryTag === 'fitness',
+  // Build a set of library template IDs that already have a user copy.
+  const clonedLibraryIds = new Set(
+    Object.values(customTemplates)
+      .filter((t) => t.sourceTemplateId != null)
+      .map((t) => t.sourceTemplateId as string),
   );
 
+  // Library templates that have NOT been added to custom yet.
+  const libraryFitness: TaskTemplate[] = (taskTemplateLibrary as TaskTemplate[]).filter(
+    (t) => t.secondaryTag === 'fitness' && !clonedLibraryIds.has(t.id ?? ''),
+  );
+
+  // User custom fitness templates (includes copies of library templates).
   const customFitness: TaskTemplate[] = Object.values(customTemplates).filter(
     (t) => t.secondaryTag === 'fitness',
   );
@@ -61,6 +74,21 @@ export function PowerBayTab({ activeTab }: PowerBayTabProps) {
   const energyCurrent = energy?.current ?? 0;
   const energyCap = energy?.cap ?? 0;
   const energyPct = energyCap > 0 ? Math.min(100, (energyCurrent / energyCap) * 100) : 0;
+
+  const handleAddToMyList = (template: TaskTemplate) => {
+    const alreadyAdded = Object.values(customTemplates).some(
+      (t) => t.sourceTemplateId === template.id,
+    );
+    if (alreadyAdded) return;
+    const newKey = uuidv4();
+    setTaskTemplate(newKey, {
+      ...template,
+      isCustom: true,
+      id: newKey,
+      sourceTemplateId: template.id,
+      name: template.name,
+    });
+  };
 
   const handleRowPress = (id: string) => {
     if (expandedId === id) {
@@ -147,6 +175,15 @@ export function PowerBayTab({ activeTab }: PowerBayTabProps) {
                 <span className="flex-1 text-sm font-medium text-gray-800 dark:text-gray-100 truncate">
                   {template.name}
                 </span>
+                {template.items && template.items.length > 0 && (
+                  <span className="flex items-center gap-0.5 shrink-0">
+                    {template.items.map((ref) => {
+                      const item = itemLibrary.find((i) => i.id === ref);
+                      if (!item) return null;
+                      return <IconDisplay key={ref} iconKey={item.icon} size={14} />;
+                    })}
+                  </span>
+                )}
                 {muscleLabel && (
                   <span className="shrink-0 text-xs px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300">
                     {muscleLabel}
@@ -202,11 +239,28 @@ secondaryTag: null,
                       <p className="text-xs text-gray-500 dark:text-gray-400">
                         {muscleLabel ?? 'General'} &middot; Intensity: {rating}/5
                       </p>
+                      {template.items && template.items.length > 0 && (
+                        <div className="flex flex-col gap-1">
+                          <span className="text-xs text-gray-400 dark:text-gray-500">Equipment</span>
+                          <div className="flex flex-wrap gap-2">
+                            {template.items.map((ref) => {
+                              const item = itemLibrary.find((i) => i.id === ref);
+                              if (!item) return null;
+                              return (
+                                <div key={ref} className="flex items-center gap-1">
+                                  <IconDisplay iconKey={item.icon} size={16} />
+                                  <span className="text-xs text-gray-600 dark:text-gray-300">{item.name}</span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
                       <div className="flex gap-2 mt-1">
                         {!template.isCustom ? (
                           <button
                             className="bg-blue-500 text-white rounded-lg px-3 py-1 text-sm"
-                            onClick={() => console.log('add to my list', template.id)}
+                            onClick={() => handleAddToMyList(template)}
                           >
                             Add to My List
                           </button>

@@ -232,6 +232,19 @@ export const ICON_MAP: Record<string, string> = {
    'schedule-tab-leaderboard': '🥇',
 
 
+
+'exercise-item-dumbbell': '🏋️',
+'exercise-item-barbell': '🏋️',
+'exercise-item-kettlebell': '🫙',
+'exercise-item-resistance-band': '〰',
+'exercise-item-pull-up-bar': '🔱',
+'exercise-item-yoga-mat': '🟦',
+'exercise-item-jump-rope': '➰',
+
+
+
+
+
   // FLOOR PLAN ACTION ICONS
   'fp-add-room': '🏠',
   'fp-add-story': '➕',

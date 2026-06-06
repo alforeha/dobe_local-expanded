@@ -42,7 +42,7 @@ import { useUserStore } from '../stores/useUserStore';
 import { useResourceStore } from '../stores/useResourceStore';
 import { useProgressionStore } from '../stores/useProgressionStore';
 
-import { awardXP, awardStat } from './awardPipeline';
+import { awardXP, awardStat, applyFitnessStatGrant } from './awardPipeline';
 import { completeMilestone, decodeQuestRef, encodeQuestRef } from './markerEngine';
 import { checkAchievements } from '../coach/checkAchievements';
 import { awardBadge } from '../coach/rewardPipeline';
@@ -1543,6 +1543,7 @@ export function completeGTDItem(
       awardStat(userId, 'agility', 2, `gtd.complete.quickActions:${task.templateRef}`);
       awardStat(userId, 'defense', 2, `gtd.complete.resource:${task.templateRef}`);
     }
+    applyFitnessStatGrant(template);
   } else {
     awardXP(userId, 7, {
       isWisdomTask: true,

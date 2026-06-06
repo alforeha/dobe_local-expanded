@@ -432,6 +432,7 @@ durationEstimate?: number;
 nutritionalValue?: Record<string, number>;
 craftsItem?: string;
 difficulty?: 'easy' | 'medium' | 'hard';
+sourceTemplateId?: string;
 
 
 
