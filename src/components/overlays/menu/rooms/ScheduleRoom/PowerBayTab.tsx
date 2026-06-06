@@ -5,9 +5,13 @@ import { useScheduleStore } from '../../../../../stores/useScheduleStore';
 import { taskTemplateLibrary } from '../../../../../coach';
 import { WorkoutExecutionInput } from '../../../event/inputs/WorkoutExecutionInput';
 import { completeFavourite } from '../../../../../engine/listsEngine';
-import type { TaskTemplate, SetsRepsInputFields } from '../../../../../types/taskTemplate';
+import type { TaskTemplate, SetsRepsInputFields, DurationInputFields, InputFields  } from '../../../../../types/taskTemplate';
 import { itemLibrary } from '../../../../../coach/ItemLibrary';
 import { IconDisplay } from '../../../../shared/IconDisplay';
+import { FitnessTaskPopup } from './FitnessTaskPopup';
+//import { ref } from 'process';
+
+
 
 type MuscleGroupFilter =
   | 'all'
@@ -31,6 +35,12 @@ export function PowerBayTab({ activeTab }: PowerBayTabProps) {
   const setTaskTemplate = useScheduleStore((s) => s.setTaskTemplate);
   const energy = user?.progression.stats.energy;
 
+  type FitnessPopupState =
+    | { mode: 'add' }
+    | { mode: 'config'; key: string; template: TaskTemplate }
+    | null;
+
+  const [fitnessPopup, setFitnessPopup] = useState<FitnessPopupState>(null);
   const [search, setSearch] = useState('');
   const [muscleGroupFilter, setMuscleGroupFilter] = useState<MuscleGroupFilter>('all');
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -54,9 +64,10 @@ export function PowerBayTab({ activeTab }: PowerBayTabProps) {
   );
 
   // User custom fitness templates (includes copies of library templates).
-  const customFitness: TaskTemplate[] = Object.values(customTemplates).filter(
-    (t) => t.secondaryTag === 'fitness',
-  );
+const customFitness: TaskTemplate[] = Object.entries(customTemplates)
+  .filter(([, t]) => t.secondaryTag === 'fitness')
+  .map(([key, t]) => ({ ...t, id: t.id ?? key })
+);
 
   const allFitness: TaskTemplate[] = [...libraryFitness, ...customFitness];
 
@@ -141,7 +152,7 @@ export function PowerBayTab({ activeTab }: PowerBayTabProps) {
         </select>
         <button
           className="rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 px-3 py-1.5 text-sm font-bold"
-          onClick={() => console.log('add fitness task')}
+          onClick={() => setFitnessPopup({ mode: 'add' })}
         >
           +
         </button>
@@ -164,7 +175,7 @@ export function PowerBayTab({ activeTab }: PowerBayTabProps) {
 
           return (
             <div
-              key={template.id}
+key={template.id ?? template.name}
               className="rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden"
             >
               {/* Row */}
@@ -180,7 +191,7 @@ export function PowerBayTab({ activeTab }: PowerBayTabProps) {
                     {template.items.map((ref) => {
                       const item = itemLibrary.find((i) => i.id === ref);
                       if (!item) return null;
-                      return <IconDisplay key={ref} iconKey={item.icon} size={14} />;
+                      return <IconDisplay key={`template-${template.id}-item-${ref}`} iconKey={item.icon} size={14} />;
                     })}
                   </span>
                 )}
@@ -199,7 +210,7 @@ export function PowerBayTab({ activeTab }: PowerBayTabProps) {
                 <div className="px-3 pb-3 pt-1 bg-white dark:bg-gray-800 border-t border-gray-100 dark:border-gray-700 flex flex-col gap-2">
                   {isExecuting ? (
                     <WorkoutExecutionInput
-                      inputFields={template.inputFields as SetsRepsInputFields}
+inputFields={template.inputFields as SetsRepsInputFields | DurationInputFields}
                       task={{
                         id: `exec-${template.id}`,
                         templateRef: template.id ?? null,
@@ -214,12 +225,12 @@ export function PowerBayTab({ activeTab }: PowerBayTabProps) {
 actRef: null,
 secondaryTag: null,
                       }}
-                      onComplete={(result: Partial<SetsRepsInputFields>) => {
+                      onComplete={(result) => {
                         if (user) {
                           completeFavourite(
                             template.id ?? '',
                             user,
-                            result,
+result as Partial<InputFields>,
                           );
                         }
                         setExecutingId(null);
@@ -247,7 +258,7 @@ secondaryTag: null,
                               const item = itemLibrary.find((i) => i.id === ref);
                               if (!item) return null;
                               return (
-                                <div key={ref} className="flex items-center gap-1">
+                                <div key={`${template.id ?? template.name}-eq-${ref}`} className="flex items-center gap-1">
                                   <IconDisplay iconKey={item.icon} size={16} />
                                   <span className="text-xs text-gray-600 dark:text-gray-300">{item.name}</span>
                                 </div>
@@ -265,12 +276,20 @@ secondaryTag: null,
                             Add to My List
                           </button>
                         ) : (
-                          <button
-                            className="bg-green-500 text-white rounded-lg px-3 py-1 text-sm"
-                            onClick={() => setExecutingId(template.id ?? null)}
-                          >
-                            Execute
-                          </button>
+                          <>
+                            <button
+                              className="bg-green-500 text-white rounded-lg px-3 py-1 text-sm"
+                              onClick={() => setExecutingId(template.id ?? null)}
+                            >
+                              Execute
+                            </button>
+                            <button
+                              className="bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg px-3 py-1 text-sm"
+                              onClick={() => setFitnessPopup({ mode: 'config', key: template.id ?? '', template })}
+                            >
+                              Configure
+                            </button>
+                          </>
                         )}
                       </div>
                     </>
@@ -287,6 +306,14 @@ secondaryTag: null,
           </p>
         )}
       </div>
+
+      {fitnessPopup !== null && (
+        <FitnessTaskPopup
+          editKey={fitnessPopup.mode === 'config' ? fitnessPopup.key : null}
+          editTemplate={fitnessPopup.mode === 'config' ? fitnessPopup.template : null}
+          onClose={() => setFitnessPopup(null)}
+        />
+      )}
     </div>
   );
 }

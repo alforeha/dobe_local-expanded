@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { PopupShell } from '../../../../shared/popups/PopupShell';
-import { TaskTypeConfigEditor } from '../../../../shared/TaskTypeConfigEditor';
+import { FitnessTaskConfigEditor } from '../../../../shared/FitnessTaskConfigEditor';
 import { useScheduleStore } from '../../../../../stores/useScheduleStore';
 import { itemLibrary } from '../../../../../coach/ItemLibrary';
 import type { InputFields, TaskTemplate, TaskType, XpAward } from '../../../../../types';
@@ -139,7 +139,9 @@ export function FitnessTaskPopup({ editKey, editTemplate, onClose }: FitnessTask
       } as TaskTemplate);
     } else {
       // Create mode
-      setTaskTemplate(uuidv4(), {
+      const newKey = uuidv4();
+      setTaskTemplate(newKey, {
+        id: newKey,
         name,
         description,
         icon: 'exercise-item-dumbbell',
@@ -211,6 +213,33 @@ export function FitnessTaskPopup({ editKey, editTemplate, onClose }: FitnessTask
             />
           </div>
 
+          {/* Task Type */}
+          <div className="flex gap-3">
+            <div className="flex-1">
+              <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                Task Type
+              </label>
+              <select
+                value={taskType}
+                onChange={(e) => setTaskType(e.target.value as TaskType)}
+                disabled={isLocked}
+                className={`w-full rounded-lg border border-gray-200 dark:border-gray-600 px-3 py-2 text-sm outline-none ${
+                  isLocked
+                    ? 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400'
+                    : 'bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100'
+                }`}
+              >
+                {FITNESS_TASK_TYPES.map((t) => (
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {taskType !== 'CIRCUIT' && (
+            <>
           {/* Muscle Group + Intensity row */}
           <div className="flex gap-3">
             <div className="flex-1">
@@ -267,31 +296,6 @@ export function FitnessTaskPopup({ editKey, editTemplate, onClose }: FitnessTask
             <span>Energy Cost: {deriveEnergyCost(intensityRating)}</span>
           </div>
 
-          {/* Task Type + Items row */}
-          <div className="flex gap-3">
-            <div className="flex-1">
-              <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-                Task Type
-              </label>
-              <select
-                value={taskType}
-                onChange={(e) => setTaskType(e.target.value as TaskType)}
-                disabled={isLocked}
-                className={`w-full rounded-lg border border-gray-200 dark:border-gray-600 px-3 py-2 text-sm outline-none ${
-                  isLocked
-                    ? 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400'
-                    : 'bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100'
-                }`}
-              >
-                {FITNESS_TASK_TYPES.map((t) => (
-                  <option key={t} value={t}>
-                    {t}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-
           {/* Items — exercise-item-* chips */}
           {exerciseItems.length > 0 && (
             <div>
@@ -320,13 +324,15 @@ export function FitnessTaskPopup({ editKey, editTemplate, onClose }: FitnessTask
               </div>
             </div>
           )}
+            </>
+          )}
 
           {/* Task Config — always editable */}
           <div>
             <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-2">
               Configuration
             </label>
-            <TaskTypeConfigEditor
+            <FitnessTaskConfigEditor
               taskType={taskType}
               inputFields={inputFields}
               onChange={(updated) => setInputFields((prev) => ({ ...prev, ...updated }))}
@@ -339,6 +345,15 @@ export function FitnessTaskPopup({ editKey, editTemplate, onClose }: FitnessTask
         {/* Footer */}
         <div className="border-t border-gray-100 dark:border-gray-700 px-4 py-3 flex justify-between">
           <div>
+            {isConfigMode && editKey && (
+              <button
+                type="button"
+                onClick={handleDelete}
+                className="bg-red-500 text-white rounded-lg px-3 py-2 text-sm"
+              >
+                {confirmDelete ? 'Confirm?' : 'Remove from List'}
+              </button>
+            )}
             {isEditMode && (
               <button
                 type="button"
@@ -352,15 +367,8 @@ export function FitnessTaskPopup({ editKey, editTemplate, onClose }: FitnessTask
           <div className="flex gap-2">
             <button
               type="button"
-              onClick={onClose}
-              className="text-gray-500 text-sm px-3 py-2"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
               onClick={handleSave}
-              className="bg-blue-500 text-white rounded-lg px-3 py-2 text-sm"
+              className="bg-blue-500 text-white rounded-lg px-3 py-2 text-sm text-white"
             >
               Save
             </button>

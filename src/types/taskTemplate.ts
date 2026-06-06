@@ -83,9 +83,10 @@ export interface SetsRepsInputFields {
   restAfter: number | null;
   /** true for drop sets — BUILD-time task */
   dropSet: boolean;
+  dropSetValues?: { reps: number; weight: number | null }[];
 }
 
-export type CircuitStepType = 'CHECK' | 'CHOICE' | 'COUNTER' | 'SETS_REPS' | 'DURATION' | 'TIMER' | 'RATING' | 'TEXT' | 'SCAN';
+export type CircuitStepType = 'CHECK' | 'CHOICE' | 'COUNTER' | 'SETS_REPS' | 'DURATION' | 'TIMER' | 'RATING' | 'TEXT' | 'SCAN' | 'LOCATION_TRAIL';
 
 export interface CircuitStep {
   id: string;
@@ -105,6 +106,7 @@ export interface CircuitStep {
   restAfter?: number | null;
   dropSet?: boolean;
   required?: boolean;
+  dropSetValues?: { reps: number; weight: number | null }[];
 }
 
 export interface CircuitInputFields {

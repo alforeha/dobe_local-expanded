@@ -36,8 +36,8 @@ function formatDurationLabel(targetMinutes: number): string {
 }
 
 function buildCircuitStepTemplate(step: CircuitStep): TaskTemplate {
-  let inputFields: Partial<InputFields>;
-  let taskType: TaskType;
+  let inputFields: Partial<InputFields> = {};
+  let taskType: TaskType = 'CHECK';
 
   switch (step.stepType) {
     case 'CHECK':

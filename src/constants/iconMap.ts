@@ -241,6 +241,9 @@ export const ICON_MAP: Record<string, string> = {
 'exercise-item-yoga-mat': '🟦',
 'exercise-item-jump-rope': '➰',
 
+'task-fit-push-ups': '🤸',
+
+
 
 
 
