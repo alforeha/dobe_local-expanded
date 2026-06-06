@@ -1,18 +1,17 @@
 import { useEffect, useState } from 'react';
 import { useScheduleStore } from '../../../../../stores/useScheduleStore';
 import { ScheduleRoomHeader } from './ScheduleRoomHeader';
-import { ScheduleRoomSubHeader } from './ScheduleRoomSubHeader';
-import { ScheduleRoomBody } from './ScheduleRoomBody';
-import { LeaguesTabStub } from './LeaguesTabStub';
-import { ResourceEventsTab } from './ResourceEventsTab';
 import { RoutinePopup } from './RoutinePopup';
 import { OneOffEventPopup } from './OneOffEventPopup';
+import { EventsTabContent } from './EventsTabContent';
+import { LeaguesTabContent } from './LeaguesTabContent';
+import { ScheduleTabContent } from './ScheduleTabContent';
 import { isOneOffEvent } from '../../../../../utils/isOneOffEvent';
 import type { PlannedEvent } from '../../../../../types';
 import { autoCompleteSystemTask } from '../../../../../engine/resourceEngine';
 import type { ResourceType } from '../../../../../types/resource';
 
-type ScheduleTab = 'routines' | 'events' | 'resources' | 'leagues';
+type ScheduleTab = 'schedule' | 'events' | 'leagues';
 
 type PopupState =
   | { mode: 'add-routine' }
@@ -27,8 +26,7 @@ interface ScheduleRoomProps {
 }
 
 export function ScheduleRoom({ onGoToResource, onExpandedChange }: ScheduleRoomProps) {
-  const [tab, setTab] = useState<ScheduleTab>('routines');
-  const [routineFilter, setRoutineFilter] = useState('');
+  const [tab, setTab] = useState<ScheduleTab>('schedule');
   const [eventFilter, setEventFilter] = useState('');
   const [expandedRowId, setExpandedRowId] = useState<string | null>(null);
   const [popup, setPopup] = useState<PopupState>(null);
@@ -48,11 +46,6 @@ export function ScheduleRoom({ onGoToResource, onExpandedChange }: ScheduleRoomP
   useEffect(() => {
     onExpandedChange?.(Boolean(expandedRowId));
   }, [expandedRowId, onExpandedChange]);
-
-  const allRoutines = Object.values(plannedEvents).filter((e) => !isOneOffEvent(e));
-  const filteredRoutines = routineFilter
-    ? allRoutines.filter((e) => e.name.toLowerCase().includes(routineFilter.toLowerCase()))
-    : allRoutines;
 
   const allOneOffs = Object.values(plannedEvents).filter((e) => isOneOffEvent(e));
   const filteredOneOffs = eventFilter
@@ -75,43 +68,21 @@ export function ScheduleRoom({ onGoToResource, onExpandedChange }: ScheduleRoomP
   return (
     <div className="flex flex-col h-full">
       <ScheduleRoomHeader activeTab={tab} onTabChange={setTab} />
-      {tab === 'routines' && (
-        <>
-          {!expandedRowId && (
-            <ScheduleRoomSubHeader
-              filterValue={routineFilter}
-              onFilterChange={setRoutineFilter}
-              onAddRoutine={() => setPopup({ mode: 'add-routine' })}
-            />
-          )}
-          <ScheduleRoomBody events={filteredRoutines} onEdit={handleEdit} onDelete={handleDelete} onExpandedChange={setExpandedRowId} />
-        </>
-      )}
+      {tab === 'schedule' && <ScheduleTabContent />}
       {tab === 'events' && (
-        <>
-          {!expandedRowId && (
-            <div className="px-4 py-2 border-b border-gray-100 dark:border-gray-700 flex items-center gap-2">
-              <input
-                type="text"
-                value={eventFilter}
-                onChange={(e) => setEventFilter(e.target.value)}
-                placeholder="Filter..."
-                className="flex-1 text-sm border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 rounded-lg px-2 py-1 outline-none focus:border-indigo-300"
-              />
-              <button
-                type="button"
-                onClick={() => setPopup({ mode: 'add-event' })}
-                className="text-xs text-blue-500 hover:text-blue-700 font-medium shrink-0 whitespace-nowrap"
-              >
-                + Event
-              </button>
-            </div>
-          )}
-          <ScheduleRoomBody events={filteredOneOffs} onEdit={handleEdit} onDelete={handleDelete} onExpandedChange={setExpandedRowId} />
-        </>
+        <EventsTabContent
+          filteredOneOffs={filteredOneOffs}
+          eventFilter={eventFilter}
+          onEventFilterChange={setEventFilter}
+          onAddEvent={() => setPopup({ mode: 'add-event' })}
+          onEdit={handleEdit}
+          onDelete={handleDelete}
+          onExpandedChange={setExpandedRowId}
+          expandedRowId={expandedRowId}
+          onGoToResource={onGoToResource}
+        />
       )}
-      {tab === 'resources' && <ResourceEventsTab onGoToResource={onGoToResource} />}
-      {tab === 'leagues' && <LeaguesTabStub />}
+      {tab === 'leagues' && <LeaguesTabContent />}
 
       {(popup?.mode === 'add-routine' || popup?.mode === 'edit-routine') && (
         <RoutinePopup

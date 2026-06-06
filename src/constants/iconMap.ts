@@ -207,10 +207,31 @@ export const ICON_MAP: Record<string, string> = {
 
 
   // SCHEDULE ROOM TABS
-  'schedule-tab-routines': '🔄',
-  'schedule-tab-events': '📌',
-  'schedule-tab-resources': '🏠',
-  'schedule-tab-leagues': '🏆',
+
+
+// HABIT HABITATS TABS
+'schedule-tab-schedule': '📅',
+'schedule-tab-events': '📌',
+'schedule-tab-leagues': '🏆',
+'schedule-tab-focusyard': '🎯',
+'schedule-tab-resources': '⭐',
+'schedule-tab-gastrohub': '🍽️',
+'schedule-tab-powerbay': '💪',
+
+   'schedule-tab-bearing': '🧭',
+   'schedule-tab-workloads': '📋',
+
+
+      'schedule-tab-foodcore': '🥗',
+   'schedule-tab-cookbook': '📖',
+   'schedule-tab-mealplan': '🗓️',
+
+   'schedule-tab-exercises': '🏋️',
+   'schedule-tab-workoutplan': '📝',
+
+   'schedule-tab-leaderboard': '🥇',
+
+
   // FLOOR PLAN ACTION ICONS
   'fp-add-room': '🏠',
   'fp-add-story': '➕',

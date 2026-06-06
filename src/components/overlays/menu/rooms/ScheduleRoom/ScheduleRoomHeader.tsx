@@ -1,11 +1,10 @@
 import { IconDisplay } from '../../../../shared/IconDisplay';
 
-type ScheduleTab = 'routines' | 'events' | 'resources' | 'leagues';
+type ScheduleTab = 'schedule' | 'events' | 'leagues';
 
 const SCHEDULE_TABS: Array<{ tab: ScheduleTab; label: string; iconKey: string }> = [
-  { tab: 'routines', label: 'Routines', iconKey: 'schedule-tab-routines' },
+  { tab: 'schedule', label: 'Schedule', iconKey: 'schedule-tab-schedule' },
   { tab: 'events', label: 'Events', iconKey: 'schedule-tab-events' },
-  { tab: 'resources', label: 'Resources', iconKey: 'schedule-tab-resources' },
   { tab: 'leagues', label: 'Leagues', iconKey: 'schedule-tab-leagues' },
 ];
 
@@ -18,7 +17,7 @@ export function ScheduleRoomHeader({ activeTab, onTabChange }: ScheduleRoomHeade
   return (
     <div className="px-4 pt-4 pb-2 border-b border-gray-100 dark:border-gray-700">
       <div className="flex items-center justify-between py-2">
-        <h2 className="flex-1 text-lg font-semibold text-gray-800 dark:text-gray-100">Schedule</h2>
+        <h2 className="text-base font-semibold text-gray-800 dark:text-gray-100">Habit Habitats</h2>
         <div className="flex items-center gap-2">
           {SCHEDULE_TABS.map(({ tab, label, iconKey }) => (
             <button
