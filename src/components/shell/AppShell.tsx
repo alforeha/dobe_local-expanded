@@ -78,6 +78,11 @@ function makeDefaultUser(): User {
           charisma: { statPoints: 0, xpEarned: 0, tier: 0 },
           wisdom:   { statPoints: 0, xpEarned: 0, tier: 0 },
         },
+        energy: {
+          current: 100,
+          cap: 100,
+          baseRegenRate: 5,
+        },
       },
       avatar: {
         equippedGear: {},
@@ -202,6 +207,31 @@ export function AppShell() {
     };
   }, []);
 
+  // ── ENERGY REGEN on returning session ──────────────────────────────────────
+  useEffect(() => {
+    const systemStore = useSystemStore.getState();
+    const userStore = useUserStore.getState();
+    const sessionStart = systemStore.sessionStart;
+    const user = userStore.user;
+    if (sessionStart && user) {
+      const energy = user.progression.stats.energy;
+      if (energy) {
+        const minutesElapsed = (Date.now() - new Date(sessionStart).getTime()) / 60000;
+        const { current, cap, baseRegenRate } = energy;
+        let newCurrent = current;
+        if (current < cap) {
+          newCurrent = Math.min(cap, current + minutesElapsed * baseRegenRate);
+        } else if (current > cap) {
+          newCurrent = Math.max(cap, current - minutesElapsed * baseRegenRate);
+        }
+        if (newCurrent !== current) {
+          userStore.setStats({ ...user.progression.stats, energy: { ...energy, current: newCurrent } });
+        }
+      }
+    }
+    systemStore.setSessionStart(new Date().toISOString());
+  }, []);
+
   // Apply theme on change
   useEffect(() => {
     if (mode === 'dark') {
@@ -291,6 +321,9 @@ export function AppShell() {
 
     // 5. Set onboardingComplete: false (quest sets it true on completion)
     useSystemStore.getState().setOnboardingComplete(false);
+
+    // 6. Stamp session start
+    useSystemStore.getState().setSessionStart(new Date().toISOString());
 
     // 6. Navigate into app — DAY view
     setIsBooted(true);

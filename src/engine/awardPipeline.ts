@@ -463,4 +463,16 @@ export function applyFitnessStatGrant(
       },
     },
   });
+
+  // Deduct energy for fitness work
+  const costMap: Record<number, number> = { 1: 5, 2: 10, 3: 15, 4: 25, 5: 40 };
+  const energyCost = costMap[template.intensityRating ?? 1] ?? 5;
+  const freshUser = userStore.user;
+  if (freshUser) {
+    const energy = freshUser.progression.stats.energy;
+    if (energy) {
+      const newCurrent = Math.max(0, energy.current - energyCost);
+      userStore.setStats({ ...freshUser.progression.stats, energy: { ...energy, current: newCurrent } });
+    }
+  }
 }
