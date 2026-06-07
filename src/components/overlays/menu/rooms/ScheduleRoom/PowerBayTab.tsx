@@ -9,6 +9,7 @@ import type { TaskTemplate, SetsRepsInputFields, DurationInputFields, InputField
 import { itemLibrary } from '../../../../../coach/ItemLibrary';
 import { IconDisplay } from '../../../../shared/IconDisplay';
 import { FitnessTaskPopup } from './FitnessTaskPopup';
+import { WorkoutPlanTab } from './WorkoutPlanTab';
 //import { ref } from 'process';
 
 
@@ -21,7 +22,8 @@ type MuscleGroupFilter =
   | 'shoulders'
   | 'arms'
   | 'core'
-  | 'cardio';
+  | 'cardio'
+  | 'flexibility';
 
 type PowerBayTabValue = 'exercises' | 'workoutplan';
 
@@ -52,7 +54,7 @@ export function PowerBayTab({ activeTab, onExpandedChange }: PowerBayTabProps) {
   }, [expandedId, onExpandedChange]);
 
   if (activeTab === 'workoutplan') {
-    return <div className="px-4 py-4 text-sm text-gray-700 dark:text-gray-200">Workout Plan</div>;
+    return <WorkoutPlanTab onExpandedChange={onExpandedChange} />;
   }
 
   // --- Derived fitness template list ---
@@ -156,6 +158,7 @@ const customFitness: TaskTemplate[] = Object.entries(customTemplates)
               <option value="arms">Arms</option>
               <option value="core">Core</option>
               <option value="cardio">Cardio</option>
+              <option value="flexibility">Flexibility</option>
             </select>
             <button
               className="rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 px-3 py-1.5 text-sm font-bold"

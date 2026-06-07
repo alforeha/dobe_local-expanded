@@ -116,4 +116,7 @@ export interface PlannedEvent {
   /** STUB: APP-STORE — stores reminder scheduling/config once the APP-STORE chapter is enabled. */
   pushReminder: PushReminderStub;
   occurrenceOverrides?: Record<string, OccurrenceOverride>;
+
+  category?: string; // system-defined category label for filtering and visual grouping
+
 }

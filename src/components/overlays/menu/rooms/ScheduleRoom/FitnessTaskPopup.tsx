@@ -28,7 +28,7 @@ const FITNESS_ICON_KEYS = [
   'fitness-walk',
 ];
 
-type MuscleGroup = 'chest' | 'back' | 'legs' | 'shoulders' | 'arms' | 'core' | 'cardio';
+type MuscleGroup = 'chest' | 'back' | 'legs' | 'shoulders' | 'arms' | 'core' | 'cardio' | 'flexibility';
 
 const MUSCLE_GROUPS: MuscleGroup[] = [
   'chest',
@@ -38,6 +38,7 @@ const MUSCLE_GROUPS: MuscleGroup[] = [
   'arms',
   'core',
   'cardio',
+  'flexibility',
 ];
 
 const INTENSITY_LEVELS = [1, 2, 3, 4, 5] as const;
@@ -61,6 +62,7 @@ function deriveXpAward(muscleGroup: MuscleGroup | ''): XpAward {
   };
   if (muscleGroup === 'core') return { ...base, agility: 10 };
   if (muscleGroup === 'cardio') return { ...base, agility: 15 };
+  if (muscleGroup === 'flexibility') return { ...base, charisma: 10 };
   return { ...base, strength: 10 };
 }
 
@@ -71,6 +73,7 @@ function deriveEnergyCost(intensityRating: number | ''): string {
 
 function deriveStatLabel(muscleGroup: MuscleGroup | ''): string {
   if (muscleGroup === 'core' || muscleGroup === 'cardio') return 'Agility';
+  if (muscleGroup === 'flexibility') return 'Charisma';
   return 'Strength';
 }
 

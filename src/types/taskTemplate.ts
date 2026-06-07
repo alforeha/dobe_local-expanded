@@ -427,7 +427,7 @@ export interface TaskTemplate {
   /** Optional category tag for grouping and filtering in TASK room. Enum values BUILD-time. */
   secondaryTag: TaskSecondaryTag | null;
   /** Optional EXERCISE TEMPLATE fields. */
-muscleGroup?: 'chest' | 'back' | 'legs' | 'shoulders' | 'arms' | 'core' | 'cardio';
+muscleGroup?: 'chest' | 'back' | 'legs' | 'shoulders' | 'arms' | 'core' | 'cardio' | 'flexibility';
 intensityRating?: 1 | 2 | 3 | 4 | 5;
   /** Optional RECIPIE TEMPLATE fields. */
 durationEstimate?: number;
