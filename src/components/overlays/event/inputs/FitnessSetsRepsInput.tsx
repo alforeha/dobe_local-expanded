@@ -12,6 +12,7 @@ export interface FitnessSetsRepsInputProps {
   onComplete: (result: Partial<SetsRepsInputFields>) => void;
   onResultChange?: (result: Partial<SetsRepsInputFields>) => void;
   showName?: boolean;
+    disableRest?: boolean;
 }
 
 const RADIUS = 80;
@@ -26,6 +27,7 @@ export function FitnessSetsRepsInput({
   task,
   onComplete,
   showName,
+  disableRest,
 }: FitnessSetsRepsInputProps) {
   const { sets, reps, weight, weightUnit, restAfter } = inputFields;
 
@@ -90,7 +92,7 @@ export function FitnessSetsRepsInput({
     const nextResults = [...setResults, { reps: loggedReps, weight: loggedWeight }];
     setSetResults(nextResults);
     const isLastSet = nextResults.length >= sets;
-    if (restAfter && restAfter > 0) {
+    if (restAfter && restAfter > 0 && !disableRest) {
       setRestSeconds(restAfter);
       setPhase('resting');
     } else if (isLastSet) {

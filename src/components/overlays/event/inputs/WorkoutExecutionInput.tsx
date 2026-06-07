@@ -1,4 +1,4 @@
-import type { SetsRepsInputFields, DurationInputFields, CounterInputFields, LocationTrailInputFields, TaskTemplate } from '../../../../types/taskTemplate';
+import type { SetsRepsInputFields, DurationInputFields, CounterInputFields, LocationTrailInputFields, CircuitInputFields, TaskTemplate } from '../../../../types/taskTemplate';
 import type { Task } from '../../../../types/task';
 import { taskTemplateLibrary } from '../../../../coach';
 import { useScheduleStore } from '../../../../stores/useScheduleStore';
@@ -6,11 +6,12 @@ import { CounterInput } from './CounterInput';
 import { FitnessDurationInput } from './FitnessDurationInput';
 import { FitnessSetsRepsInput } from './FitnessSetsRepsInput';
 import { LocationTrailInput } from './LocationTrailInput';
+import { FitnessCircuitInput } from './FitnessCircuitInput';
 
 interface WorkoutExecutionInputProps {
-  inputFields: SetsRepsInputFields | DurationInputFields | CounterInputFields | LocationTrailInputFields;
+  inputFields: SetsRepsInputFields | DurationInputFields | CounterInputFields | LocationTrailInputFields | CircuitInputFields;
   task: Task;
-  onComplete: (result: Partial<SetsRepsInputFields> | Partial<DurationInputFields> | Partial<CounterInputFields> | Partial<LocationTrailInputFields>) => void;
+  onComplete: (result: Partial<SetsRepsInputFields> | Partial<DurationInputFields> | Partial<CounterInputFields> | Partial<LocationTrailInputFields> | Partial<CircuitInputFields>) => void;
 }
 
 export function WorkoutExecutionInput({ inputFields, task, onComplete }: WorkoutExecutionInputProps) {
@@ -23,6 +24,7 @@ export function WorkoutExecutionInput({ inputFields, task, onComplete }: Workout
   const isDuration = template?.taskType === 'DURATION';
   const isCounter = template?.taskType === 'COUNTER';
   const isLocationTrail = template?.taskType === 'LOCATION_TRAIL';
+  const isCircuit = template?.taskType === 'CIRCUIT';
   const isSetsReps = template?.taskType === 'SETS_REPS';
 
   if (isDuration) {
@@ -51,6 +53,16 @@ export function WorkoutExecutionInput({ inputFields, task, onComplete }: Workout
         inputFields={inputFields as LocationTrailInputFields}
         task={task}
         onComplete={onComplete as (result: Partial<LocationTrailInputFields>) => void}
+      />
+    );
+  }
+
+  if (isCircuit) {
+    return (
+      <FitnessCircuitInput
+        inputFields={inputFields as CircuitInputFields}
+        task={task}
+        onComplete={onComplete as (result: Partial<CircuitInputFields>) => void}
       />
     );
   }

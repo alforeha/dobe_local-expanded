@@ -6,6 +6,7 @@ import type {
 } from '../../../types/taskTemplate';
 import type { Task } from '../../../types/task';
 import { CircuitInput } from './inputs/CircuitInput';
+import { FitnessCircuitInput } from './inputs/FitnessCircuitInput';
 import { TaskTypeInputContent } from './TaskTypeInputContent';
 
 interface TaskTypeInputRendererProps {
@@ -37,6 +38,15 @@ export function TaskTypeInputRenderer({
 
   switch (taskType) {
     case 'CIRCUIT':
+      if (template?.secondaryTag === 'fitness') {
+        return (
+          <FitnessCircuitInput
+            inputFields={template.inputFields as CircuitInputFields}
+            task={task as Task}
+            onComplete={onComplete as (result: Partial<CircuitInputFields>) => void}
+          />
+        );
+      }
       return (
         <CircuitInput
           inputFields={template.inputFields as CircuitInputFields}
