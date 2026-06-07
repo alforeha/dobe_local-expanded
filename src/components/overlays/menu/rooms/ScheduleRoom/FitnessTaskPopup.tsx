@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { PopupShell } from '../../../../shared/popups/PopupShell';
 import { FitnessTaskConfigEditor } from '../../../../shared/FitnessTaskConfigEditor';
+import { IconPicker } from '../../../../shared/IconPicker';
 import { useScheduleStore } from '../../../../../stores/useScheduleStore';
 import { itemLibrary } from '../../../../../coach/ItemLibrary';
 import type { InputFields, TaskTemplate, TaskType, XpAward } from '../../../../../types';
@@ -14,6 +15,17 @@ const FITNESS_TASK_TYPES: TaskType[] = [
   'DURATION',
   'COUNTER',
   'LOCATION_TRAIL',
+];
+
+const FITNESS_ICON_KEYS = [
+  'fitness-dumbbell',
+  'fitness-run',
+  'fitness-cycle',
+  'fitness-swim',
+  'fitness-yoga',
+  'fitness-boxing',
+  'fitness-stretch',
+  'fitness-walk',
 ];
 
 type MuscleGroup = 'chest' | 'back' | 'legs' | 'shoulders' | 'arms' | 'core' | 'cardio';
@@ -104,6 +116,7 @@ export function FitnessTaskPopup({ editKey, editTemplate, onClose }: FitnessTask
   );
   const [selectedItems, setSelectedItems] = useState<string[]>(editTemplate?.items ?? []);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [icon, setIcon] = useState<string>(editTemplate?.icon ?? 'fitness-dumbbell');
 
   const isLocked = isConfigMode;
 
@@ -130,6 +143,7 @@ export function FitnessTaskPopup({ editKey, editTemplate, onClose }: FitnessTask
         ...(editTemplate as TaskTemplate),
         name,
         description,
+        icon,
         taskType: taskType as TaskType,
         inputFields: inputFields as InputFields,
         muscleGroup: muscleGroup || undefined,
@@ -144,7 +158,7 @@ export function FitnessTaskPopup({ editKey, editTemplate, onClose }: FitnessTask
         id: newKey,
         name,
         description,
-        icon: 'exercise-item-dumbbell',
+        icon,
         taskType: taskType as TaskType,
         secondaryTag: 'fitness',
         inputFields: inputFields as InputFields,
@@ -182,17 +196,22 @@ export function FitnessTaskPopup({ editKey, editTemplate, onClose }: FitnessTask
             <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
               Name
             </label>
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              readOnly={isLocked}
-              className={`w-full rounded-lg border border-gray-200 dark:border-gray-600 px-3 py-2 text-sm outline-none ${
-                isLocked
-                  ? 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400'
-                  : 'bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-1 focus:ring-blue-400'
-              }`}
-            />
+            <div className="flex items-center gap-2">
+              <div className={isLocked ? 'pointer-events-none opacity-50' : ''}>
+                <IconPicker value={icon} onChange={setIcon} align="left" allowedKeys={FITNESS_ICON_KEYS} />
+              </div>
+              <input
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                readOnly={isLocked}
+                className={`flex-1 rounded-lg border border-gray-200 dark:border-gray-600 px-3 py-2 text-sm outline-none ${
+                  isLocked
+                    ? 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400'
+                    : 'bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-1 focus:ring-blue-400'
+                }`}
+              />
+            </div>
           </div>
 
           {/* Description */}

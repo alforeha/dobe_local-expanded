@@ -244,6 +244,16 @@ export const ICON_MAP: Record<string, string> = {
 'task-fit-push-ups': '🤸',
 
 
+'fitness-dumbbell': '🏋️',
+'fitness-run': '🏃',
+'fitness-cycle': '🚴',
+'fitness-swim': '🏊',
+'fitness-yoga': '🧘',
+'fitness-boxing': '🥊',
+'fitness-stretch': '🤸',
+'fitness-walk': '🚶',
+
+
 
 
 
