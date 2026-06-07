@@ -302,6 +302,53 @@
      "isSystem": false
    },
 
+{
+  "id": "task-fit-jumping-jacks",
+  "name": "Jumping Jacks",
+  "description": "Full body cardio movement.",
+  "icon": "exercise-item-dumbbell",
+  "taskType": "COUNTER",
+  "inputFields": { "target": 50, "step": 1, "unit": "reps" },
+  "xpAward": { "health": 0, "strength": 0, "agility": 10, "defense": 0, "charisma": 0, "wisdom": 0 },
+  "cooldown": null, "media": null, "items": [],
+  "secondaryTag": "fitness",
+  "muscleGroup": "cardio",
+  "intensityRating": 2,
+  "isCustom": false, "isSystem": false
+},
+
+{
+  "id": "task-fit-wall-sit",
+  "name": "Wall Sit",
+  "description": "Isometric leg hold against a wall.",
+  "icon": "exercise-item-dumbbell",
+  "taskType": "DURATION",
+  "inputFields": { "targetDuration": 60, "unit": "seconds" },
+  "xpAward": { "health": 0, "strength": 10, "agility": 0, "defense": 0, "charisma": 0, "wisdom": 0 },
+  "cooldown": null, "media": null, "items": ["exercise-item-yoga-mat"],
+  "secondaryTag": "fitness",
+  "muscleGroup": "legs",
+  "intensityRating": 2,
+  "isCustom": false, "isSystem": false
+},
+
+{
+  "id": "task-fit-morning-walk",
+  "name": "Morning Walk",
+  "description": "Low intensity outdoor cardio.",
+  "icon": "exercise-item-dumbbell",
+  "taskType": "LOCATION_TRAIL",
+  "inputFields": { "label": "Record walk", "captureInterval": 30 },
+  "xpAward": { "health": 0, "strength": 0, "agility": 10, "defense": 0, "charisma": 0, "wisdom": 0 },
+  "cooldown": null, "media": null, "items": [],
+  "secondaryTag": "fitness",
+  "muscleGroup": "cardio",
+  "intensityRating": 1,
+  "isCustom": false, "isSystem": false
+},
+
+
+
   {
     "id": "task-chr-give-gratitude",
     "isCustom": false,

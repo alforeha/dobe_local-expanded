@@ -66,7 +66,11 @@ function renderNavButton(
   );
 }
 
-export function ScheduleTabContent() {
+interface ScheduleTabContentProps {
+  onExpandedChange?: (isExpanded: boolean) => void;
+}
+
+export function ScheduleTabContent({ onExpandedChange }: ScheduleTabContentProps) {
   const [activeSection, setActiveSection] = useState<ScheduleSection>('focusyard');
   const [focusYardTab, setFocusYardTab] = useState<FocusYardSubTab>('bearing');
   const [gastroHubTab, setGastroHubTab] = useState<GastroHubSubTab>('foodcore');
@@ -105,18 +109,19 @@ export function ScheduleTabContent() {
         onAddRoutine={() => setPopup({ mode: 'add-routine' })}
         onEdit={handleEdit}
         onDelete={handleDelete}
+        onNavExpandedChange={onExpandedChange}
       />
     );
   } else if (activeSection === 'gastrohub') {
     topNav = GASTRO_HUB_TABS.map(({ tab, iconKey, label }) => (
       renderNavButton(tab, iconKey, label, gastroHubTab === tab, () => setGastroHubTab(tab))
     ));
-    content = <GastroHubTab activeTab={gastroHubTab} />;
+    content = <GastroHubTab activeTab={gastroHubTab} onExpandedChange={onExpandedChange} />;
   } else {
     topNav = POWER_BAY_TABS.map(({ tab, iconKey, label }) => (
       renderNavButton(tab, iconKey, label, powerBayTab === tab, () => setPowerBayTab(tab))
     ));
-    content = <PowerBayTab activeTab={powerBayTab} />;
+    content = <PowerBayTab activeTab={powerBayTab} onExpandedChange={onExpandedChange} />;
   }
 
   return (

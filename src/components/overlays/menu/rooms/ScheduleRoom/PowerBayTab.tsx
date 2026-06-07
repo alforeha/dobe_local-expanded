@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { useUserStore } from '../../../../../stores/useUserStore';
 import { useScheduleStore } from '../../../../../stores/useScheduleStore';
@@ -27,9 +27,10 @@ type PowerBayTabValue = 'exercises' | 'workoutplan';
 
 interface PowerBayTabProps {
   activeTab: PowerBayTabValue;
+  onExpandedChange?: (isExpanded: boolean) => void;
 }
 
-export function PowerBayTab({ activeTab }: PowerBayTabProps) {
+export function PowerBayTab({ activeTab, onExpandedChange }: PowerBayTabProps) {
   const user = useUserStore((s) => s.user);
   const customTemplates = useScheduleStore((s) => s.taskTemplates);
   const setTaskTemplate = useScheduleStore((s) => s.setTaskTemplate);
@@ -45,6 +46,10 @@ export function PowerBayTab({ activeTab }: PowerBayTabProps) {
   const [muscleGroupFilter, setMuscleGroupFilter] = useState<MuscleGroupFilter>('all');
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [executingId, setExecutingId] = useState<string | null>(null);
+
+  useEffect(() => {
+    onExpandedChange?.(expandedId !== null);
+  }, [expandedId, onExpandedChange]);
 
   if (activeTab === 'workoutplan') {
     return <div className="px-4 py-4 text-sm text-gray-700 dark:text-gray-200">Workout Plan</div>;
@@ -128,39 +133,44 @@ const customFitness: TaskTemplate[] = Object.entries(customTemplates)
         </div>
       </div>
 
-      {/* --- Search + filter row --- */}
-      <div className="flex gap-2 items-center">
-        <input
-          className="flex-1 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm px-3 py-1.5 text-gray-800 dark:text-gray-100 outline-none focus:ring-1 focus:ring-blue-400"
-          placeholder="Search exercises..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
-        <select
-          className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm px-2 py-1.5 text-gray-800 dark:text-gray-100 outline-none"
-          value={muscleGroupFilter}
-          onChange={(e) => setMuscleGroupFilter(e.target.value as MuscleGroupFilter)}
-        >
-          <option value="all">All</option>
-          <option value="chest">Chest</option>
-          <option value="back">Back</option>
-          <option value="legs">Legs</option>
-          <option value="shoulders">Shoulders</option>
-          <option value="arms">Arms</option>
-          <option value="core">Core</option>
-          <option value="cardio">Cardio</option>
-        </select>
-        <button
-          className="rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 px-3 py-1.5 text-sm font-bold"
-          onClick={() => setFitnessPopup({ mode: 'add' })}
-        >
-          +
-        </button>
-      </div>
+      {!expandedId && (
+        <>
+          {/* --- Search + filter row --- */}
+          <div className="flex gap-2 items-center">
+            <input
+              className="flex-1 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm px-3 py-1.5 text-gray-800 dark:text-gray-100 outline-none focus:ring-1 focus:ring-blue-400"
+              placeholder="Search exercises..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+            <select
+              className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm px-2 py-1.5 text-gray-800 dark:text-gray-100 outline-none"
+              value={muscleGroupFilter}
+              onChange={(e) => setMuscleGroupFilter(e.target.value as MuscleGroupFilter)}
+            >
+              <option value="all">All</option>
+              <option value="chest">Chest</option>
+              <option value="back">Back</option>
+              <option value="legs">Legs</option>
+              <option value="shoulders">Shoulders</option>
+              <option value="arms">Arms</option>
+              <option value="core">Core</option>
+              <option value="cardio">Cardio</option>
+            </select>
+            <button
+              className="rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 px-3 py-1.5 text-sm font-bold"
+              onClick={() => setFitnessPopup({ mode: 'add' })}
+            >
+              +
+            </button>
+          </div>
+        </>
+      )}
 
       {/* --- Template list --- */}
       <div className="flex flex-col gap-1">
         {filtered.map((template) => {
+          if (expandedId !== null && expandedId !== template.id) return null;
           const isExpanded = expandedId === template.id;
           const isExecuting = executingId === template.id;
           const rating = template.intensityRating ?? 0;

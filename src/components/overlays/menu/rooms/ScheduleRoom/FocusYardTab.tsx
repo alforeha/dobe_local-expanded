@@ -11,6 +11,7 @@ interface FocusYardTabProps {
   onEdit: (event: PlannedEvent) => void;
   onDelete: (event: PlannedEvent) => void;
   onExpandedChange?: (id: string | null) => void;
+  onNavExpandedChange?: (isExpanded: boolean) => void;
 }
 
 export function FocusYardTab({
@@ -22,6 +23,7 @@ export function FocusYardTab({
   onEdit,
   onDelete,
   onExpandedChange,
+  onNavExpandedChange,
 }: FocusYardTabProps) {
   if (activeTab === 'bearing') {
     return (
@@ -35,7 +37,10 @@ export function FocusYardTab({
           events={filteredRoutines}
           onEdit={onEdit}
           onDelete={onDelete}
-          onExpandedChange={onExpandedChange}
+          onExpandedChange={(id) => {
+            onExpandedChange?.(id);
+            onNavExpandedChange?.(id !== null);
+          }}
         />
       </div>
     );

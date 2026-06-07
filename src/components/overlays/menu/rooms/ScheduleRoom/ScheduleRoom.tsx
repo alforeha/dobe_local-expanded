@@ -68,7 +68,7 @@ export function ScheduleRoom({ onGoToResource, onExpandedChange }: ScheduleRoomP
   return (
     <div className="flex flex-col h-full">
       <ScheduleRoomHeader activeTab={tab} onTabChange={setTab} />
-      {tab === 'schedule' && <ScheduleTabContent />}
+      {tab === 'schedule' && <ScheduleTabContent onExpandedChange={onExpandedChange} />}
       {tab === 'events' && (
         <EventsTabContent
           filteredOneOffs={filteredOneOffs}

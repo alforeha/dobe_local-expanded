@@ -2,6 +2,7 @@ type GastroHubTabValue = 'foodcore' | 'cookbook' | 'mealplan';
 
 interface GastroHubTabProps {
   activeTab: GastroHubTabValue;
+  onExpandedChange?: (isExpanded: boolean) => void;
 }
 
 export function GastroHubTab({ activeTab }: GastroHubTabProps) {

@@ -26,6 +26,7 @@ import { ChecklistInput } from './inputs/ChecklistInput';
 import { ConsumeInput } from './inputs/ConsumeInput';
 import { CounterInput } from './inputs/CounterInput';
 import { DurationInput } from './inputs/DurationInput';
+import { FitnessDurationInput } from './inputs/FitnessDurationInput';
 import { FormInput } from './inputs/FormInput';
 import { LocationPointInput } from './inputs/LocationPointInput';
 import { LocationTrailInput } from './inputs/LocationTrailInput';
@@ -33,6 +34,7 @@ import { LogInput } from './inputs/LogInput';
 import { RatingInput } from './inputs/RatingInput';
 import { RollInput } from './inputs/RollInput';
 import { ScanInput } from './inputs/ScanInput';
+import { FitnessSetsRepsInput } from './inputs/FitnessSetsRepsInput';
 import { SetsRepsInput } from './inputs/SetsRepsInput';
 import { TextInput } from './inputs/TextInput';
 import { TimerInput } from './inputs/TimerInput';
@@ -144,6 +146,16 @@ export function TaskTypeInputContent({
         />
       );
     case 'SETS_REPS':
+      if (template?.secondaryTag === 'fitness') {
+        return (
+          <FitnessSetsRepsInput
+            inputFields={template.inputFields as SetsRepsInputFields}
+            task={task as Task}
+            onComplete={onComplete as (result: Partial<SetsRepsInputFields>) => void}
+            onResultChange={onResultChange as ((result: Partial<SetsRepsInputFields>) => void) | undefined}
+          />
+        );
+      }
       return (
         <SetsRepsInput
           inputFields={template.inputFields as SetsRepsInputFields}
@@ -152,6 +164,16 @@ export function TaskTypeInputContent({
         />
       );
     case 'DURATION':
+      if (template?.secondaryTag === 'fitness') {
+        return (
+          <FitnessDurationInput
+            inputFields={template.inputFields as DurationInputFields}
+            task={task as Task}
+            onComplete={onComplete as (result: Partial<DurationInputFields>) => void}
+            onResultChange={onResultChange as ((result: Partial<DurationInputFields>) => void) | undefined}
+          />
+        );
+      }
       return (
         <DurationInput
           inputFields={template.inputFields as DurationInputFields}
