@@ -162,6 +162,7 @@ export const ICON_MAP: Record<string, string> = {
   'storm-reflection': '🪞',
   'storm-project': '🏗️',
   'storm-projection': '📈',
+  'storm-work': '🧱',
   'storm-others': '💭',
 
   'storm-state-active': '⚡',
@@ -185,6 +186,15 @@ export const ICON_MAP: Record<string, string> = {
 'idea-others':     '💭',
 
 
+
+'idea-statement':  '📜',
+'idea-principle':  '⚖️',
+'idea-stage':      '🪜',
+'idea-outcome':    '🏁',
+'idea-obstacle':   '🚧',
+'idea-step':       '👣',
+'idea-kpi':        '📈',
+'idea-milestone':  '📍',
 
 'idea-node':        '⚫',
 'idea-spark':       '✨',
@@ -212,6 +222,7 @@ export const ICON_MAP: Record<string, string> = {
 // HABIT HABITATS TABS
 'schedule-tab-schedule': '📅',
 'schedule-tab-events': '📌',
+'schedule-tab-holidays': '🎉',
 'schedule-tab-leagues': '🏆',
 'schedule-tab-focusyard': '🎯',
 'schedule-tab-resources': '⭐',
@@ -220,6 +231,7 @@ export const ICON_MAP: Record<string, string> = {
 
    'schedule-tab-bearing': '🧭',
    'schedule-tab-workloads': '📋',
+   'schedule-tab-circumchance': '🎰',
 
 
       'schedule-tab-foodcore': '🥗',

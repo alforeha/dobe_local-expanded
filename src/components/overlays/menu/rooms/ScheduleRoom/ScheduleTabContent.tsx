@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { autoCompleteSystemTask } from '../../../../../engine/resourceEngine';
 import { useScheduleStore } from '../../../../../stores/useScheduleStore';
 import type { PlannedEvent } from '../../../../../types';
 import { isOneOffEvent } from '../../../../../utils/isOneOffEvent';
@@ -9,7 +10,7 @@ import { PowerBayTab } from './PowerBayTab';
 import { RoutinePopup } from './RoutinePopup';
 
 type ScheduleSection = 'focusyard' | 'gastrohub' | 'powerbay';
-type FocusYardSubTab = 'bearing' | 'workloads';
+export type FocusYardSubTab = 'bearing' | 'workloads' | 'circumchance';
 type GastroHubSubTab = 'foodcore' | 'cookbook' | 'mealplan';
 type PowerBaySubTab = 'exercises' | 'workoutplan';
 type PopupState =
@@ -26,6 +27,7 @@ const SCHEDULE_SECTIONS: Array<{ tab: ScheduleSection; iconKey: string; label: s
 const FOCUS_YARD_TABS: Array<{ tab: FocusYardSubTab; iconKey: string; label: string }> = [
   { tab: 'bearing', iconKey: 'schedule-tab-bearing', label: 'Bearing Adjustments' },
   { tab: 'workloads', iconKey: 'schedule-tab-workloads', label: 'Work Loads' },
+  { tab: 'circumchance', iconKey: 'schedule-tab-circumchance', label: 'Circumchance' },
 ];
 
 const GASTRO_HUB_TABS: Array<{ tab: GastroHubSubTab; iconKey: string; label: string }> = [
@@ -57,7 +59,7 @@ function renderNavButton(
       title={label}
       className={`${TAB_BUTTON_CLASS} ${
         isActive
-          ? 'bg-blue-500 text-white'
+          ? 'bg-accent text-white'
           : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700'
       }`}
     >
@@ -79,6 +81,13 @@ export function ScheduleTabContent({ onExpandedChange }: ScheduleTabContentProps
   const [popup, setPopup] = useState<PopupState>(null);
   const plannedEvents = useScheduleStore((s) => s.plannedEvents);
   const removePlannedEvent = useScheduleStore((s) => s.removePlannedEvent);
+
+  useEffect(() => {
+    // Rehomed from the retired Task Room: its catalog/favorites/custom-creation
+    // intent now lives in the Schedule habitats, so opening them completes the
+    // old onboarding system task (keeps in-flight saves unstuck).
+    autoCompleteSystemTask('task-sys-explore-task-room');
+  }, []);
 
   const allRoutines = Object.values(plannedEvents).filter((event) => !isOneOffEvent(event));
   const filteredRoutines = routineFilter

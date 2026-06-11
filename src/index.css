@@ -3,6 +3,14 @@
 /* Enable class-based dark mode for Tailwind v4 dark: utilities */
 @variant dark (&:where(.dark, .dark *));
 
+/* Map accent tokens into Tailwind so bg-accent / text-accent / border-accent
+   resolve to the CSS vars (swap automatically with .dark / per-hub themes) */
+@theme inline {
+  --color-accent: var(--accent);
+  --color-accent-bg: var(--accent-bg);
+  --color-accent-border: var(--accent-border);
+}
+
 /* Restore pointer cursor on buttons — stripped by Tailwind preflight */
 button {
   cursor: pointer;

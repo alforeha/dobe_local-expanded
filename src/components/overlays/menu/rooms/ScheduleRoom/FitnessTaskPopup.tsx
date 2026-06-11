@@ -5,7 +5,8 @@ import { FitnessTaskConfigEditor } from '../../../../shared/FitnessTaskConfigEdi
 import { IconPicker } from '../../../../shared/IconPicker';
 import { useScheduleStore } from '../../../../../stores/useScheduleStore';
 import { itemLibrary } from '../../../../../coach/ItemLibrary';
-import type { InputFields, TaskTemplate, TaskType, XpAward } from '../../../../../types';
+import { MUSCLE_GROUPS, normalizeTemplateMuscleGroups } from '../../../../../types';
+import type { InputFields, MuscleGroup, TaskTemplate, TaskType, XpAward } from '../../../../../types';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -28,19 +29,6 @@ const FITNESS_ICON_KEYS = [
   'fitness-walk',
 ];
 
-type MuscleGroup = 'chest' | 'back' | 'legs' | 'shoulders' | 'arms' | 'core' | 'cardio' | 'flexibility';
-
-const MUSCLE_GROUPS: MuscleGroup[] = [
-  'chest',
-  'back',
-  'legs',
-  'shoulders',
-  'arms',
-  'core',
-  'cardio',
-  'flexibility',
-];
-
 const INTENSITY_LEVELS = [1, 2, 3, 4, 5] as const;
 
 const ENERGY_COST_MAP: Record<number, number> = {
@@ -51,7 +39,7 @@ const ENERGY_COST_MAP: Record<number, number> = {
   5: 40,
 };
 
-function deriveXpAward(muscleGroup: MuscleGroup | ''): XpAward {
+function deriveXpAward(muscleGroups: MuscleGroup[]): XpAward {
   const base: XpAward = {
     health: 0,
     strength: 0,
@@ -60,9 +48,11 @@ function deriveXpAward(muscleGroup: MuscleGroup | ''): XpAward {
     charisma: 0,
     wisdom: 0,
   };
-  if (muscleGroup === 'core') return { ...base, agility: 10 };
-  if (muscleGroup === 'cardio') return { ...base, agility: 15 };
-  if (muscleGroup === 'flexibility') return { ...base, charisma: 10 };
+  // Primary (first selected) group drives the stat routing.
+  const primary = muscleGroups[0];
+  if (primary === 'core') return { ...base, agility: 10 };
+  if (primary === 'cardio') return { ...base, agility: 15 };
+  if (primary === 'flexibility') return { ...base, charisma: 10 };
   return { ...base, strength: 10 };
 }
 
@@ -71,9 +61,10 @@ function deriveEnergyCost(intensityRating: number | ''): string {
   return String(ENERGY_COST_MAP[intensityRating] ?? '--');
 }
 
-function deriveStatLabel(muscleGroup: MuscleGroup | ''): string {
-  if (muscleGroup === 'core' || muscleGroup === 'cardio') return 'Agility';
-  if (muscleGroup === 'flexibility') return 'Charisma';
+function deriveStatLabel(muscleGroups: MuscleGroup[]): string {
+  const primary = muscleGroups[0];
+  if (primary === 'core' || primary === 'cardio') return 'Agility';
+  if (primary === 'flexibility') return 'Charisma';
   return 'Strength';
 }
 
@@ -103,8 +94,8 @@ export function FitnessTaskPopup({ editKey, editTemplate, onClose }: FitnessTask
   // Field state
   const [name, setName] = useState(editTemplate?.name ?? '');
   const [description, setDescription] = useState(editTemplate?.description ?? '');
-  const [muscleGroup, setMuscleGroup] = useState<MuscleGroup | ''>(
-    (editTemplate as (TaskTemplate & { muscleGroup?: MuscleGroup }) | null)?.muscleGroup ?? ''
+  const [muscleGroups, setMuscleGroups] = useState<MuscleGroup[]>(
+    normalizeTemplateMuscleGroups(editTemplate),
   );
   const [intensityRating, setIntensityRating] = useState<1 | 2 | 3 | 4 | 5 | ''>(
     (editTemplate as (TaskTemplate & { intensityRating?: 1 | 2 | 3 | 4 | 5 }) | null)?.intensityRating ?? ''
@@ -135,6 +126,12 @@ export function FitnessTaskPopup({ editKey, editTemplate, onClose }: FitnessTask
     );
   }
 
+  function toggleMuscleGroup(group: MuscleGroup) {
+    setMuscleGroups((prev) =>
+      prev.includes(group) ? prev.filter((g) => g !== group) : [...prev, group]
+    );
+  }
+
   function handleSave() {
     if (isConfigMode && editKey) {
       setTaskTemplate(editKey, {
@@ -149,10 +146,12 @@ export function FitnessTaskPopup({ editKey, editTemplate, onClose }: FitnessTask
         icon,
         taskType: taskType as TaskType,
         inputFields: inputFields as InputFields,
-        muscleGroup: muscleGroup || undefined,
+        muscleGroups: muscleGroups.length > 0 ? muscleGroups : undefined,
+        // Legacy single-value mirror — kept for older readers (read-shim resolves both).
+        muscleGroup: muscleGroups[0],
         intensityRating: intensityRating || undefined,
         items: selectedItems,
-        xpAward: deriveXpAward(muscleGroup),
+        xpAward: deriveXpAward(muscleGroups),
       } as TaskTemplate);
     } else {
       // Create mode
@@ -165,12 +164,14 @@ export function FitnessTaskPopup({ editKey, editTemplate, onClose }: FitnessTask
         taskType: taskType as TaskType,
         secondaryTag: 'fitness',
         inputFields: inputFields as InputFields,
-        xpAward: deriveXpAward(muscleGroup),
+        xpAward: deriveXpAward(muscleGroups),
         cooldown: null,
         media: null,
         items: selectedItems,
         isCustom: true,
-        muscleGroup: muscleGroup || undefined,
+        muscleGroups: muscleGroups.length > 0 ? muscleGroups : undefined,
+        // Legacy single-value mirror — kept for older readers (read-shim resolves both).
+        muscleGroup: muscleGroups[0],
         intensityRating: intensityRating || undefined,
       } as TaskTemplate);
     }
@@ -211,7 +212,7 @@ export function FitnessTaskPopup({ editKey, editTemplate, onClose }: FitnessTask
                 className={`flex-1 rounded-lg border border-gray-200 dark:border-gray-600 px-3 py-2 text-sm outline-none ${
                   isLocked
                     ? 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400'
-                    : 'bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-1 focus:ring-blue-400'
+                    : 'bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-1 focus:ring-accent'
                 }`}
               />
             </div>
@@ -230,7 +231,7 @@ export function FitnessTaskPopup({ editKey, editTemplate, onClose }: FitnessTask
               className={`w-full rounded-lg border border-gray-200 dark:border-gray-600 px-3 py-2 text-sm outline-none resize-none ${
                 isLocked
                   ? 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400'
-                  : 'bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-1 focus:ring-blue-400'
+                  : 'bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-1 focus:ring-accent'
               }`}
             />
           </div>
@@ -262,29 +263,32 @@ export function FitnessTaskPopup({ editKey, editTemplate, onClose }: FitnessTask
 
           {taskType !== 'CIRCUIT' && (
             <>
-          {/* Muscle Group + Intensity row */}
+          {/* Muscle Groups + Intensity row */}
           <div className="flex gap-3">
             <div className="flex-1">
               <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-                Muscle Group
+                Muscle Groups
               </label>
-              <select
-                value={muscleGroup}
-                onChange={(e) => setMuscleGroup(e.target.value as MuscleGroup | '')}
-                disabled={isLocked}
-                className={`w-full rounded-lg border border-gray-200 dark:border-gray-600 px-3 py-2 text-sm outline-none ${
-                  isLocked
-                    ? 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400'
-                    : 'bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100'
-                }`}
-              >
-                <option value="">-- Select --</option>
-                {MUSCLE_GROUPS.map((mg) => (
-                  <option key={mg} value={mg}>
-                    {mg.charAt(0).toUpperCase() + mg.slice(1)}
-                  </option>
-                ))}
-              </select>
+              <div className="flex flex-wrap gap-1.5">
+                {MUSCLE_GROUPS.map((mg) => {
+                  const active = muscleGroups.includes(mg);
+                  return (
+                    <button
+                      key={mg}
+                      type="button"
+                      disabled={isLocked}
+                      onClick={() => toggleMuscleGroup(mg)}
+                      className={`rounded-full border px-2.5 py-1 text-xs capitalize transition-colors ${
+                        active
+                          ? 'border-accent-border bg-accent-bg text-accent'
+                          : 'border-gray-200 bg-white text-gray-600 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300'
+                      } ${isLocked ? 'opacity-60' : ''}`}
+                    >
+                      {mg}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
             <div className="flex-1">
               <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
@@ -314,7 +318,7 @@ export function FitnessTaskPopup({ editKey, editTemplate, onClose }: FitnessTask
 
           {/* Derived info row — display only */}
           <div className="flex gap-4 text-sm text-gray-500 dark:text-gray-400">
-            <span>Stat: {deriveStatLabel(muscleGroup)}</span>
+            <span>Stat: {deriveStatLabel(muscleGroups)}</span>
             <span>Energy Cost: {deriveEnergyCost(intensityRating)}</span>
           </div>
 
@@ -335,7 +339,7 @@ export function FitnessTaskPopup({ editKey, editTemplate, onClose }: FitnessTask
                       onClick={() => !isLocked && toggleItem(item.id)}
                       className={`rounded-full px-2 py-1 text-xs transition-colors ${
                         active
-                          ? 'bg-blue-500 text-white'
+                          ? 'bg-accent text-white'
                           : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
                       } ${isLocked ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}`}
                     >
@@ -390,7 +394,7 @@ export function FitnessTaskPopup({ editKey, editTemplate, onClose }: FitnessTask
             <button
               type="button"
               onClick={handleSave}
-              className="bg-blue-500 text-white rounded-lg px-3 py-2 text-sm text-white"
+              className="bg-accent text-white rounded-lg px-3 py-2 text-sm"
             >
               Save
             </button>

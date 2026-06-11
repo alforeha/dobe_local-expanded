@@ -15,7 +15,7 @@
 
 import type { GearDefinition } from '../types/coach';
 import type { StatGroupKey, User } from '../types/user';
-import type { TaskTemplate } from '../types/taskTemplate';
+import { normalizeTemplateMuscleGroups, type TaskTemplate } from '../types/taskTemplate';
 import { useUserStore } from '../stores/useUserStore';
 
 import { checkAchievements } from '../coach/checkAchievements';
@@ -433,34 +433,34 @@ export function awardStat(
 
 /**
  * Writes muscleGroupVolume and muscleGroupLastTouched into User.progression.stats.physicalStats
- * when a fitness-tagged template with a muscleGroup is completed.
- * No-ops if secondaryTag !== 'fitness' or muscleGroup is absent.
+ * when a fitness-tagged template with muscle groups is completed.
+ * Multi-discipline templates (muscleGroups[]) credit every listed group.
+ * No-ops if secondaryTag !== 'fitness' or no muscle group resolves.
  */
 export function applyFitnessStatGrant(
   template: TaskTemplate,
 ): void {
   if (template.secondaryTag !== 'fitness') return;
-  if (!template.muscleGroup) return;
+  const muscleGroups = normalizeTemplateMuscleGroups(template);
+  if (muscleGroups.length === 0) return;
   const intensityMap: Record<number, number> = { 1: 2, 2: 4, 3: 6, 4: 10, 5: 16 };
   const volume = intensityMap[template.intensityRating ?? 1] ?? 2;
-  const muscleGroup = template.muscleGroup;
   const nowISO = new Date().toISOString();
   const userStore = useUserStore.getState();
   const user = userStore.user;
   if (!user) return;
-  const existing = user.progression.stats.physicalStats?.muscleGroupVolume ?? {};
+  const nextVolume = { ...(user.progression.stats.physicalStats?.muscleGroupVolume ?? {}) };
+  const nextTouched = { ...(user.progression.stats.physicalStats?.muscleGroupLastTouched ?? {}) };
+  for (const muscleGroup of muscleGroups) {
+    nextVolume[muscleGroup] = (nextVolume[muscleGroup] ?? 0) + volume;
+    nextTouched[muscleGroup] = nowISO;
+  }
   userStore.setStats({
     ...user.progression.stats,
     physicalStats: {
       ...user.progression.stats.physicalStats,
-      muscleGroupVolume: {
-        ...existing,
-        [muscleGroup]: (existing[muscleGroup] ?? 0) + volume,
-      },
-      muscleGroupLastTouched: {
-        ...user.progression.stats.physicalStats?.muscleGroupLastTouched,
-        [muscleGroup]: nowISO,
-      },
+      muscleGroupVolume: nextVolume,
+      muscleGroupLastTouched: nextTouched,
     },
   });
 

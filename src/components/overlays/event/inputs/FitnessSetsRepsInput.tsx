@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { SetsRepsInputFields, TaskTemplate } from '../../../../types/taskTemplate';
+import { normalizeTemplateMuscleGroups, type SetsRepsInputFields, type TaskTemplate } from '../../../../types/taskTemplate';
 import type { Task } from '../../../../types/task';
 import { taskTemplateLibrary } from '../../../../coach';
 import { itemLibrary } from '../../../../coach/ItemLibrary';
@@ -38,7 +38,7 @@ export function FitnessSetsRepsInput({
     : undefined;
 
   const exerciseName = template?.name ?? task.title ?? 'Exercise';
-  const muscleGroup = template?.muscleGroup ?? null;
+  const muscleGroups = normalizeTemplateMuscleGroups(template);
   const intensityRating = template?.intensityRating ?? null;
   const itemRefs: string[] = template?.items ?? [];
   const resolvedItems = itemRefs
@@ -107,18 +107,18 @@ export function FitnessSetsRepsInput({
   return (
     <div className="flex flex-col h-full min-h-0">
       {/* Context header */}
-      {(showName || muscleGroup || intensityRating || resolvedItems.length > 0) && (
+      {(showName || muscleGroups.length > 0 || intensityRating || resolvedItems.length > 0) && (
         <div className="flex w-full items-center justify-center gap-2 flex-wrap pt-3 px-3">
           {showName && exerciseName && (
             <span className="text-sm font-bold text-gray-900 dark:text-gray-100">
               {exerciseName}
             </span>
           )}
-          {muscleGroup && (
-            <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-semibold uppercase tracking-wider text-blue-700 dark:bg-blue-900 dark:text-blue-200">
+          {muscleGroups.map((muscleGroup) => (
+            <span key={muscleGroup} className="rounded-full bg-accent-bg px-2 py-0.5 text-xs font-semibold uppercase tracking-wider text-accent">
               {capitalize(muscleGroup)}
             </span>
-          )}
+          ))}
           {intensityRating && (
             <span className="text-xs font-mono text-gray-500 dark:text-gray-400">
               {Array.from({ length: 5 }, (_, i) => i < intensityRating ? '*' : 'o').join('')}
@@ -231,7 +231,7 @@ export function FitnessSetsRepsInput({
             <button
               type="button"
               onClick={handleCompleteSet}
-              className="w-full bg-blue-500 text-white font-bold text-lg rounded-xl py-3 hover:bg-blue-600 active:bg-blue-700 transition-colors"
+              className="w-full bg-accent text-white font-bold text-lg rounded-xl py-3 hover:bg-accent/90 active:bg-accent/80 transition-colors"
             >
               Complete Set
             </button>
@@ -267,7 +267,7 @@ export function FitnessSetsRepsInput({
       <div className="px-4 pb-4 pt-2">
         <div className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
           <div
-            className="h-full bg-blue-500 rounded-full transition-all duration-300"
+            className="h-full bg-accent rounded-full transition-all duration-300"
             style={{ width: `${progressPct}%` }}
           />
         </div>

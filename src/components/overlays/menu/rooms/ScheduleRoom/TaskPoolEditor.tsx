@@ -133,7 +133,7 @@ export function TaskPoolEditor({ pools, activeCursor, onChange, readOnly = false
                   <button
                     type="button"
                     onClick={() => setIsAddPanelOpen(true)}
-                    className="rounded-lg bg-purple-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-purple-500"
+                    className="rounded-lg bg-accent px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-accent/90"
                   >
                     Add Task
                   </button>
@@ -154,7 +154,7 @@ export function TaskPoolEditor({ pools, activeCursor, onChange, readOnly = false
                     setConfirmSetActive(false);
                     setConfirmDeletePool(false);
                   }}
-                  className="rounded-lg bg-purple-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-purple-500"
+                  className="rounded-lg bg-accent px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-accent/90"
                 >
                   Done
                 </button>

@@ -88,6 +88,7 @@ export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
     deleteEntry,
     renameStorm,
     setStormType,
+    setStormIcon,
     setStormState,
     setStormCategory,
     updateMainIdea,
@@ -979,12 +980,17 @@ export function GoalRoom({ onNavHiddenChange }: GoalRoomProps) {
         onSelectStorm={(id) => {
           setSelectedStorm(id);
         }}
-        onAddStorm={(name, type, state, category?: StormCategory) => {
-          addStorm(name, type, state, category);
+        onAddStorm={(name, type, state, category?: StormCategory, icon?: string) => {
+          addStorm(name, type, state, category, icon);
         }}
         onSetStormType={(type) => {
           if (selectedStormId) {
             setStormType(selectedStormId, type);
+          }
+        }}
+        onSetStormIcon={(icon) => {
+          if (selectedStormId) {
+            setStormIcon(selectedStormId, icon);
           }
         }}
         onSetStormState={(state) => {

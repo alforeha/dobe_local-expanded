@@ -10,12 +10,14 @@ import type {
   EntryType,
   IdeaState,
   IdeaType,
+  IdeaTypeData,
   MainIdea,
   Storm,
   StormCategory,
   StormState,
   StormType,
 } from '../types/brainstorm';
+import { normalizeIdeaTypeData } from '../types/brainstorm';
 
 type BrainstormEntryDraft = Omit<BrainstormEntry, 'id' | 'entries' | 'type'> & {
   id?: string;
@@ -29,6 +31,8 @@ type BrainstormIdeaUpdates = {
   state?: IdeaState;
   type?: IdeaType;
   customProperties?: Record<string, string>;
+  /** Typed payload (Track B §2) — validated against the idea's type on write; mismatches are dropped. */
+  typeData?: IdeaTypeData;
 };
 
 type BrainstormEntryUpdates = {
@@ -39,13 +43,14 @@ type BrainstormEntryUpdates = {
 };
 
 interface BrainstormActions {
-  addStorm: (name: string, type: StormType, state?: StormState, category?: StormCategory) => string;
+  addStorm: (name: string, type: StormType, state?: StormState, category?: StormCategory, icon?: string) => string;
   addMainIdea: (
     stormId: string,
     title: string,
     state?: IdeaState,
     type?: IdeaType,
     customProperties?: Record<string, string>,
+    typeData?: IdeaTypeData,
   ) => void;
   addIdea: (
     stormId: string,
@@ -54,6 +59,7 @@ interface BrainstormActions {
     state?: IdeaState,
     type?: IdeaType,
     customProperties?: Record<string, string>,
+    typeData?: IdeaTypeData,
   ) => void;
   addChildIdea: (
     stormId: string,
@@ -62,6 +68,7 @@ interface BrainstormActions {
     state?: IdeaState,
     type?: IdeaType,
     customProperties?: Record<string, string>,
+    typeData?: IdeaTypeData,
   ) => void;
   addEntry: (
     stormId: string,
@@ -85,6 +92,12 @@ interface BrainstormActions {
   deleteEntry: (stormId: string, entryId: string) => void;
   renameStorm: (stormId: string, name: string) => void;
   setStormType: (stormId: string, type: StormType) => void;
+  setStormIcon: (stormId: string, icon: string) => void;
+  /**
+   * Engine-written audit entry (Track C §5.2 — 'kpi-result' write-backs).
+   * Unlike addEntry, spends no brain width and awards no XP.
+   */
+  appendSystemEntry: (stormId: string, ideaId: string, entry: BrainstormEntryDraft) => void;
   setStormCategory: (stormId: string, category: StormCategory) => void;
   setStormState: (stormId: string, state: StormState) => void;
   updateMainIdea: (stormId: string, mainIdeaId: string, updates: BrainstormIdeaUpdates) => void;
@@ -284,13 +297,14 @@ export const useBrainstormStore = create<BrainstormState & BrainstormActions>()(
     (set, get) => ({
       ...initialState,
 
-      addStorm: (name, type, stormState, category) => {
+      addStorm: (name, type, stormState, category, icon) => {
         const id = crypto.randomUUID();
         const storm: Storm = {
           id,
           name,
           state: stormState ?? 'active',
           type,
+          ...(icon ? { icon } : {}),
           category: category ?? { name: 'Thought Train', color: '#7c3aed' },
           brainWidthPoints: 1000,
           brainWidthCap: 1000,
@@ -310,14 +324,17 @@ export const useBrainstormStore = create<BrainstormState & BrainstormActions>()(
         return id;
       },
 
-      addMainIdea: (stormId, title, ideaState, ideaType, customProperties) => {
+      addMainIdea: (stormId, title, ideaState, ideaType, customProperties, typeData) => {
         const id = crypto.randomUUID();
+        const resolvedType = ideaType ?? 'insight';
+        const normalizedTypeData = normalizeIdeaTypeData(resolvedType, typeData);
         const mainIdea: MainIdea = {
           id,
           title,
           state: ideaState ?? 'open',
-          type: ideaType ?? 'insight',
+          type: resolvedType,
           customProperties: customProperties ?? {},
+          ...(normalizedTypeData ? { typeData: normalizedTypeData } : {}),
           entries: [],
           ideas: [],
         };
@@ -345,14 +362,17 @@ export const useBrainstormStore = create<BrainstormState & BrainstormActions>()(
         awardBrainstormWisdomXP();
       },
 
-      addIdea: (stormId, mainIdeaId, title, ideaState, ideaType, customProperties) => {
+      addIdea: (stormId, mainIdeaId, title, ideaState, ideaType, customProperties, typeData) => {
         const id = crypto.randomUUID();
+        const resolvedType = ideaType ?? 'insight';
+        const normalizedTypeData = normalizeIdeaTypeData(resolvedType, typeData);
         const idea: BrainstormIdea = {
           id,
           title,
           state: ideaState ?? 'open',
-          type: ideaType ?? 'insight',
+          type: resolvedType,
           customProperties: customProperties ?? {},
+          ...(normalizedTypeData ? { typeData: normalizedTypeData } : {}),
           entries: [],
           ideas: [],
           pointsTo: [],
@@ -391,19 +411,22 @@ export const useBrainstormStore = create<BrainstormState & BrainstormActions>()(
         awardBrainstormWisdomXP();
       },
 
-      addChildIdea: (stormId, parentIdeaId, title, ideaState, ideaType, customProperties) => {
+      addChildIdea: (stormId, parentIdeaId, title, ideaState, ideaType, customProperties, typeData) => {
         set((state) => {
           const storm = state.storms[stormId];
           const parentIdea = storm?.ideas[parentIdeaId];
           if (!storm || !parentIdea) return state;
 
           const id = crypto.randomUUID();
+          const resolvedType = ideaType ?? 'insight';
+          const normalizedTypeData = normalizeIdeaTypeData(resolvedType, typeData);
           const idea: BrainstormIdea = {
             id,
             title,
             state: ideaState ?? 'open',
-            type: ideaType ?? 'insight',
+            type: resolvedType,
             customProperties: customProperties ?? {},
+            ...(normalizedTypeData ? { typeData: normalizedTypeData } : {}),
             entries: [],
             ideas: [],
             pointsTo: [],
@@ -749,6 +772,72 @@ export const useBrainstormStore = create<BrainstormState & BrainstormActions>()(
         });
       },
 
+      setStormIcon: (stormId, icon) => {
+        set((state) => {
+          const storm = state.storms[stormId];
+          if (!storm) return state;
+
+          return {
+            storms: {
+              ...state.storms,
+              [stormId]: {
+                ...storm,
+                icon,
+              },
+            },
+          };
+        });
+      },
+
+      appendSystemEntry: (stormId, ideaId, entry) => {
+        const nextEntry = buildEntry(entry);
+
+        set((state) => {
+          const storm = state.storms[stormId];
+          if (!storm) return state;
+
+          const idea = storm.ideas[ideaId];
+          if (idea) {
+            return {
+              storms: {
+                ...state.storms,
+                [stormId]: {
+                  ...storm,
+                  ideas: {
+                    ...storm.ideas,
+                    [ideaId]: {
+                      ...idea,
+                      entries: [...idea.entries, nextEntry],
+                    },
+                  },
+                },
+              },
+            };
+          }
+
+          const mainIdea = storm.mainIdeas[ideaId];
+          if (mainIdea) {
+            return {
+              storms: {
+                ...state.storms,
+                [stormId]: {
+                  ...storm,
+                  mainIdeas: {
+                    ...storm.mainIdeas,
+                    [ideaId]: {
+                      ...mainIdea,
+                      entries: [...mainIdea.entries, nextEntry],
+                    },
+                  },
+                },
+              },
+            };
+          }
+
+          return state;
+        });
+      },
+
       setStormCategory: (stormId, category) => {
         set((state) => {
           const storm = state.storms[stormId];
@@ -789,6 +878,11 @@ export const useBrainstormStore = create<BrainstormState & BrainstormActions>()(
           const mainIdea = storm?.mainIdeas[mainIdeaId];
           if (!storm || !mainIdea) return state;
 
+          const nextType = updates.type ?? mainIdea.type;
+          const normalizedTypeData = updates.typeData !== undefined
+            ? normalizeIdeaTypeData(nextType, updates.typeData)
+            : undefined;
+
           return {
             storms: {
               ...state.storms,
@@ -802,6 +896,7 @@ export const useBrainstormStore = create<BrainstormState & BrainstormActions>()(
                     ...(updates.state !== undefined ? { state: updates.state } : {}),
                     ...(updates.type !== undefined ? { type: updates.type } : {}),
                     ...(updates.customProperties !== undefined ? { customProperties: updates.customProperties } : {}),
+                    ...(normalizedTypeData ? { typeData: normalizedTypeData } : {}),
                   },
                 },
               },
@@ -816,6 +911,11 @@ export const useBrainstormStore = create<BrainstormState & BrainstormActions>()(
           const idea = storm?.ideas[ideaId];
           if (!storm || !idea || !stormContainsIdea(storm, ideaId)) return state;
 
+          const nextType = updates.type ?? idea.type;
+          const normalizedTypeData = updates.typeData !== undefined
+            ? normalizeIdeaTypeData(nextType, updates.typeData)
+            : undefined;
+
           return {
             storms: {
               ...state.storms,
@@ -829,6 +929,7 @@ export const useBrainstormStore = create<BrainstormState & BrainstormActions>()(
                     ...(updates.state !== undefined ? { state: updates.state } : {}),
                     ...(updates.type !== undefined ? { type: updates.type } : {}),
                     ...(updates.customProperties !== undefined ? { customProperties: updates.customProperties } : {}),
+                    ...(normalizedTypeData ? { typeData: normalizedTypeData } : {}),
                   },
                 },
               },

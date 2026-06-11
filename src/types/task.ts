@@ -70,6 +70,12 @@ export interface Task {
   /** Structured goal linkage field. Separate from questRef. */
   goalRef?: string | null;
   /**
+   * Set on tasks generated from a KPI idea (Track C §5.1). Links completion
+   * results back to the storm via brainstormTaskEngine.applyKpiResult().
+   * Additive, optional — null/absent for all other tasks.
+   */
+  brainstormRef?: { stormId: string; ideaId: string } | null;
+  /**
    * Act uuid — mirrors the actId encoded in questRef for explicit cross-reference.
    * null for regular schedule tasks.
    */

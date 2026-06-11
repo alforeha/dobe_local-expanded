@@ -1,0 +1,256 @@
+{
+    "schema_metadata": {
+        "purpose": "App Unified Radar Chart and Meal Analytics Data Architecture",
+        "version": "1.0.0",
+        "dimensions": {
+            "radar_1_nutrients": "Essential Daily Values (Target vs. Upper Limit)",
+            "radar_2_food_groups": "Dietary Servings / Group Portions Mapping"
+        }
+    },
+    "radar_chart_dimensions": {
+        "nutrient_targets": [
+            {
+                "id": "NUT_MAC_FAT",
+                "display_name": "Total Fat",
+                "axis_group": "Macronutrients",
+                "default_target": 78.0,
+                "unit": "g",
+                "metric_type": "upper_limit"
+            },
+            {
+                "id": "NUT_MAC_SATFAT",
+                "display_name": "Saturated Fat",
+                "axis_group": "Macronutrients",
+                "default_target": 20.0,
+                "unit": "g",
+                "metric_type": "upper_limit"
+            },
+            {
+                "id": "NUT_MAC_CARB",
+                "display_name": "Total Carbohydrates",
+                "axis_group": "Macronutrients",
+                "default_target": 275.0,
+                "unit": "g",
+                "metric_type": "target"
+            },
+            {
+                "id": "NUT_MAC_FIBER",
+                "display_name": "Dietary Fiber",
+                "axis_group": "Macronutrients",
+                "default_target": 28.0,
+                "unit": "g",
+                "metric_type": "target"
+            },
+            {
+                "id": "NUT_MAC_SUGAR",
+                "display_name": "Added Sugars",
+                "axis_group": "Macronutrients",
+                "default_target": 50.0,
+                "unit": "g",
+                "metric_type": "upper_limit"
+            },
+            {
+                "id": "NUT_MAC_PROT",
+                "display_name": "Protein",
+                "axis_group": "Macronutrients",
+                "default_target": 50.0,
+                "unit": "g",
+                "metric_type": "target"
+            },
+            {
+                "id": "NUT_MIN_SOD",
+                "display_name": "Sodium",
+                "axis_group": "Minerals",
+                "default_target": 2300.0,
+                "unit": "mg",
+                "metric_type": "upper_limit"
+            },
+            {
+                "id": "NUT_MIN_POT",
+                "display_name": "Potassium",
+                "axis_group": "Minerals",
+                "default_target": 4700.0,
+                "unit": "mg",
+                "metric_type": "target"
+            },
+            {
+                "id": "NUT_MIN_CAL",
+                "display_name": "Calcium",
+                "axis_group": "Minerals",
+                "default_target": 1300.0,
+                "unit": "mg",
+                "metric_type": "target"
+            },
+            {
+                "id": "NUT_MIN_IRON",
+                "display_name": "Iron",
+                "axis_group": "Minerals",
+                "default_target": 18.0,
+                "unit": "mg",
+                "metric_type": "target"
+            },
+            {
+                "id": "NUT_VIT_A",
+                "display_name": "Vitamin A",
+                "axis_group": "Vitamins",
+                "default_target": 900.0,
+                "unit": "mcg RAE",
+                "metric_type": "target"
+            },
+            {
+                "id": "NUT_VIT_C",
+                "display_name": "Vitamin C",
+                "axis_group": "Vitamins",
+                "default_target": 90.0,
+                "unit": "mg",
+                "metric_type": "target"
+            },
+            {
+                "id": "NUT_VIT_D",
+                "display_name": "Vitamin D",
+                "axis_group": "Vitamins",
+                "default_target": 20.0,
+                "unit": "mcg",
+                "metric_type": "target"
+            }
+        ],
+        "food_groups": [
+            {
+                "id": "FG_VEG_DARK_GREEN",
+                "display_name": "Dark-Green Vegetables",
+                "parent_group": "Vegetables",
+                "metric_tracked": "servings_or_cups",
+                "radar_axis_index": 0,
+                "example_ingredients": ["spinach", "kale", "broccoli", "romaine"]
+            },
+            {
+                "id": "FG_VEG_RED_ORANGE",
+                "display_name": "Red & Orange Vegetables",
+                "parent_group": "Vegetables",
+                "metric_tracked": "servings_or_cups",
+                "radar_axis_index": 1,
+                "example_ingredients": ["carrots", "sweet potatoes", "tomatoes", "bell peppers"]
+            },
+            {
+                "id": "FG_VEG_STARCHY",
+                "display_name": "Starchy Vegetables",
+                "parent_group": "Vegetables",
+                "metric_tracked": "servings_or_cups",
+                "radar_axis_index": 2,
+                "example_ingredients": ["potatoes", "corn", "green peas"]
+            },
+            {
+                "id": "FG_VEG_LEGUMES",
+                "display_name": "Beans, Peas, & Lentils",
+                "parent_group": "Vegetables & Proteins",
+                "metric_tracked": "servings_or_cups",
+                "radar_axis_index": 3,
+                "example_ingredients": ["black beans", "chickpeas", "lentils"]
+            },
+            {
+                "id": "FG_VEG_OTHER",
+                "display_name": "Other Vegetables",
+                "parent_group": "Vegetables",
+                "metric_tracked": "servings_or_cups",
+                "radar_axis_index": 4,
+                "example_ingredients": ["onions", "mushrooms", "zucchini", "cucumber"]
+            },
+            {
+                "id": "FG_FRUIT_WHOLE",
+                "display_name": "Whole Fruits",
+                "parent_group": "Fruits",
+                "metric_tracked": "servings_or_cups",
+                "radar_axis_index": 5,
+                "example_ingredients": ["apples", "berries", "bananas", "oranges"]
+            },
+            {
+                "id": "FG_FRUIT_JUICE",
+                "display_name": "100% Fruit Juice",
+                "parent_group": "Fruits",
+                "metric_tracked": "servings_or_fl_oz",
+                "radar_axis_index": 6,
+                "example_ingredients": ["orange juice", "apple juice"]
+            },
+            {
+                "id": "FG_GRAIN_WHOLE",
+                "display_name": "Whole Grains",
+                "parent_group": "Grains",
+                "metric_tracked": "servings_or_ounces",
+                "radar_axis_index": 7,
+                "example_ingredients": ["oats", "brown rice", "quinoa", "whole wheat bread"]
+            },
+            {
+                "id": "FG_GRAIN_REFINED",
+                "display_name": "Refined Grains",
+                "parent_group": "Grains",
+                "metric_tracked": "servings_or_ounces",
+                "radar_axis_index": 8,
+                "example_ingredients": ["white rice", "white bread", "regular pasta"]
+            },
+            {
+                "id": "FG_PROT_MEAT_POULTRY_EGG",
+                "display_name": "Meat, Poultry, & Eggs",
+                "parent_group": "Protein Foods",
+                "metric_tracked": "ounces_equivalent",
+                "radar_axis_index": 9,
+                "example_ingredients": ["chicken breast", "lean beef", "eggs", "turkey"]
+            },
+            {
+                "id": "FG_PROT_SEAFOOD",
+                "display_name": "Seafood",
+                "parent_group": "Protein Foods",
+                "metric_tracked": "ounces_equivalent",
+                "radar_axis_index": 10,
+                "example_ingredients": ["salmon", "tuna", "shrimp"]
+            },
+            {
+                "id": "FG_PROT_NUTS_SEEDS",
+                "display_name": "Nuts, Seeds, & Soy",
+                "parent_group": "Protein Foods",
+                "metric_tracked": "ounces_equivalent",
+                "radar_axis_index": 11,
+                "example_ingredients": ["almonds", "chia seeds", "tofu", "peanut butter"]
+            },
+            {
+                "id": "FG_DAIRY_LIQUID_YOGURT",
+                "display_name": "Milk & Yogurt",
+                "parent_group": "Dairy",
+                "metric_tracked": "servings_or_cups",
+                "radar_axis_index": 12,
+                "example_ingredients": ["low-fat milk", "greek yogurt", "kefir"]
+            },
+            {
+                "id": "FG_DAIRY_CHEESE",
+                "display_name": "Cheese",
+                "parent_group": "Dairy",
+                "metric_tracked": "ounces",
+                "radar_axis_index": 13,
+                "example_ingredients": ["cheddar", "mozzarella", "cottage cheese"]
+            },
+            {
+                "id": "FG_DAIRY_SOY_FORTIFIED",
+                "display_name": "Fortified Soy Milk",
+                "parent_group": "Dairy Alternatives",
+                "metric_tracked": "servings_or_cups",
+                "radar_axis_index": 14,
+                "example_ingredients": ["fortified soy milk", "soy yogurt"]
+            },
+            {
+                "id": "FATS_PLANT_OILS",
+                "display_name": "Plant Oils",
+                "parent_group": "Oils & Fats",
+                "metric_tracked": "grams_or_teaspoons",
+                "radar_axis_index": 15,
+                "example_ingredients": ["olive oil", "avocado oil"]
+            },
+            {
+                "id": "FATS_SOLID_ANIMAL",
+                "display_name": "Solid & Animal Fats",
+                "parent_group": "Oils & Fats",
+                "metric_tracked": "grams_or_teaspoons",
+                "radar_axis_index": 16,
+                "example_ingredients": ["butter", "lard", "coconut oil"]
+            }
+        ]
+    }
+}

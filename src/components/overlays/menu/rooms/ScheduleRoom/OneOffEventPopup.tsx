@@ -165,7 +165,7 @@ function ParticipantsEditor({ coAttendees, setCoAttendees }: ParticipantsEditorP
             value={searchQuery}
             onChange={(event) => setSearchQuery(event.target.value)}
             placeholder="Search contacts"
-            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-800 focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200"
+            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-800 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200"
           />
 
           {filteredContacts.length === 0 ? (
@@ -385,7 +385,7 @@ export function OneOffEventPopup({ editEvent, onClose }: OneOffEventPopupProps) 
   const [activeTab, setActiveTab] = useState<'details' | 'tasks' | 'additional'>('details');
 
   const inputCls =
-    'w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-800 focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200';
+    'w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-800 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200';
   const startsAt = `${startDate}T${startTime}:00`;
   const endsAt = `${endDate}T${endTime}:00`;
   const endsAfterStart = new Date(endsAt).getTime() > new Date(startsAt).getTime();
@@ -722,7 +722,7 @@ export function OneOffEventPopup({ editEvent, onClose }: OneOffEventPopupProps) 
             <button
               type="button"
               onClick={handleSave}
-              className="rounded-lg bg-purple-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-purple-700"
+              className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent/90"
             >
               Save
             </button>

@@ -16,12 +16,12 @@ export function ScheduleRoomSubHeader({
         value={filterValue}
         onChange={(e) => onFilterChange(e.target.value)}
         placeholder="Filter..."
-        className="flex-1 text-sm border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 rounded-lg px-2 py-1 outline-none focus:border-indigo-300"
+        className="flex-1 text-sm border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 rounded-lg px-2 py-1 outline-none focus:border-accent-border"
       />
       <button
         type="button"
         onClick={onAddRoutine}
-        className="text-xs text-indigo-500 hover:text-indigo-700 font-medium shrink-0 whitespace-nowrap"
+        className="text-xs text-accent hover:text-accent/80 font-medium shrink-0 whitespace-nowrap"
       >
         + Routine
       </button>

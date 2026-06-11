@@ -1,0 +1,257 @@
+{
+    "metadata": {
+        "source": "U.S. Food and Drug Administration (FDA)",
+        "reference_diet_calories": 2000,
+        "regulation_status": "Updated Post-2016 Labeling Rule"
+    },
+    "nutrients": {
+        "macronutrients_and_dietary_components": [
+            {
+                "name": "Total Fat",
+                "daily_value": 78.0,
+                "unit": "g",
+                "type": "macronutrient",
+                "guideline_type": "target",
+                "notes": "Based on 35% of total energy intake."
+            },
+            {
+                "name": "Saturated Fat",
+                "daily_value": 20.0,
+                "unit": "g",
+                "type": "macronutrient",
+                "guideline_type": "upper_limit",
+                "notes": "Limit to less than 10% of total daily calories."
+            },
+            {
+                "name": "Cholesterol",
+                "daily_value": 300.0,
+                "unit": "mg",
+                "type": "dietary_component",
+                "guideline_type": "upper_limit",
+                "notes": "Keep consumption as low as possible."
+            },
+            {
+                "name": "Sodium",
+                "daily_value": 2300.0,
+                "unit": "mg",
+                "type": "mineral",
+                "guideline_type": "upper_limit",
+                "notes": "Recommended upper daily limit ceiling."
+            },
+            {
+                "name": "Total Carbohydrates",
+                "daily_value": 275.0,
+                "unit": "g",
+                "type": "macronutrient",
+                "guideline_type": "target",
+                "notes": "Based on 55% of total energy intake."
+            },
+            {
+                "name": "Dietary Fiber",
+                "daily_value": 28.0,
+                "unit": "g",
+                "type": "dietary_component",
+                "guideline_type": "target",
+                "notes": "Crucial for digestive health and glycemic control."
+            },
+            {
+                "name": "Added Sugars",
+                "daily_value": 50.0,
+                "unit": "g",
+                "type": "dietary_component",
+                "guideline_type": "upper_limit",
+                "notes": "Limit to less than 10% of total daily calories."
+            },
+            {
+                "name": "Protein",
+                "daily_value": 50.0,
+                "unit": "g",
+                "type": "macronutrient",
+                "guideline_type": "target",
+                "notes": "Based on 10% of total energy intake. Quality may vary source to source."
+            }
+        ],
+        "vitamins": [
+            {
+                "name": "Vitamin A",
+                "daily_value": 900.0,
+                "unit": "mcg RAE",
+                "type": "fat_soluble",
+                "notes": "Retinol Activity Equivalents."
+            },
+            {
+                "name": "Vitamin C",
+                "daily_value": 90.0,
+                "unit": "mg",
+                "type": "water_soluble",
+                "notes": "Ascorbic Acid."
+            },
+            {
+                "name": "Vitamin D",
+                "daily_value": 20.0,
+                "unit": "mcg",
+                "type": "fat_soluble",
+                "notes": "Equivalent to 800 International Units (IU)."
+            },
+            {
+                "name": "Vitamin E",
+                "daily_value": 15.0,
+                "unit": "mg",
+                "type": "fat_soluble",
+                "notes": "Alpha-tocopherol equivalents."
+            },
+            {
+                "name": "Vitamin K",
+                "daily_value": 120.0,
+                "unit": "mcg",
+                "type": "fat_soluble",
+                "notes": "Essential cofactor for blood clotting cascades."
+            },
+            {
+                "name": "Thiamin",
+                "daily_value": 1.2,
+                "unit": "mg",
+                "type": "water_soluble",
+                "alt_name": "Vitamin B1"
+            },
+            {
+                "name": "Riboflavin",
+                "daily_value": 1.3,
+                "unit": "mg",
+                "type": "water_soluble",
+                "alt_name": "Vitamin B2"
+            },
+            {
+                "name": "Niacin",
+                "daily_value": 16.0,
+                "unit": "mg NE",
+                "type": "water_soluble",
+                "alt_name": "Vitamin B3",
+                "notes": "Niacin Equivalents."
+            },
+            {
+                "name": "Vitamin B6",
+                "daily_value": 1.7,
+                "unit": "mg",
+                "type": "water_soluble",
+                "alt_name": "Pyridoxine"
+            },
+            {
+                "name": "Folate",
+                "daily_value": 400.0,
+                "unit": "mcg DFE",
+                "type": "water_soluble",
+                "alt_name": "Vitamin B9",
+                "notes": "Dietary Folate Equivalents."
+            },
+            {
+                "name": "Vitamin B12",
+                "daily_value": 2.4,
+                "unit": "mcg",
+                "type": "water_soluble",
+                "alt_name": "Cobalamin"
+            },
+            {
+                "name": "Biotin",
+                "daily_value": 30.0,
+                "unit": "mcg",
+                "type": "water_soluble",
+                "alt_name": "Vitamin B7"
+            },
+            {
+                "name": "Pantothenic Acid",
+                "daily_value": 5.0,
+                "unit": "mg",
+                "type": "water_soluble",
+                "alt_name": "Vitamin B5"
+            }
+        ],
+        "minerals_and_essential_nutrients": [
+            {
+                "name": "Calcium",
+                "daily_value": 1300.0,
+                "unit": "mg",
+                "type": "macromineral"
+            },
+            {
+                "name": "Iron",
+                "daily_value": 18.0,
+                "unit": "mg",
+                "type": "trace_mineral"
+            },
+            {
+                "name": "Potassium",
+                "daily_value": 4700.0,
+                "unit": "mg",
+                "type": "macromineral"
+            },
+            {
+                "name": "Phosphorus",
+                "daily_value": 1250.0,
+                "unit": "mg",
+                "type": "macromineral"
+            },
+            {
+                "name": "Iodine",
+                "daily_value": 150.0,
+                "unit": "mcg",
+                "type": "trace_mineral"
+            },
+            {
+                "name": "Magnesium",
+                "daily_value": 420.0,
+                "unit": "mg",
+                "type": "macromineral"
+            },
+            {
+                "name": "Zinc",
+                "daily_value": 11.0,
+                "unit": "mg",
+                "type": "trace_mineral"
+            },
+            {
+                "name": "Selenium",
+                "daily_value": 55.0,
+                "unit": "mcg",
+                "type": "trace_mineral"
+            },
+            {
+                "name": "Copper",
+                "daily_value": 0.9,
+                "unit": "mg",
+                "type": "trace_mineral"
+            },
+            {
+                "name": "Manganese",
+                "daily_value": 2.3,
+                "unit": "mg",
+                "type": "trace_mineral"
+            },
+            {
+                "name": "Chromium",
+                "daily_value": 35.0,
+                "unit": "mcg",
+                "type": "trace_mineral"
+            },
+            {
+                "name": "Molybdenum",
+                "daily_value": 45.0,
+                "unit": "mcg",
+                "type": "trace_mineral"
+            },
+            {
+                "name": "Chloride",
+                "daily_value": 2300.0,
+                "unit": "mg",
+                "type": "macromineral"
+            },
+            {
+                "name": "Choline",
+                "daily_value": 550.0,
+                "unit": "mg",
+                "type": "essential_nutrient",
+                "notes": "Vitamin-like compound critical for cell membrane integrity."
+            }
+        ]
+    }
+}

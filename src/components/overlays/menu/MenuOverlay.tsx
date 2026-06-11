@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { MenuOverlayNav } from './MenuOverlayNav';
 import { MenuOverlayContent } from './MenuOverlayContent';
 
-type MenuRoom = 'world' | 'goal' | 'task' | 'schedule' | 'resource' | 'quickaction';
+type MenuRoom = 'world' | 'goal' | 'schedule' | 'resource' | 'quickaction';
 
 interface MenuOverlayProps {
   onClose: () => void;
@@ -13,7 +13,6 @@ interface MenuOverlayProps {
 export function MenuOverlay({ onClose, onGoToDay, initialRoom = 'quickaction' }: MenuOverlayProps) {
   const [activeRoom, setActiveRoom] = useState<MenuRoom>(initialRoom);
   const [navCollapsed, setNavCollapsed] = useState(false);
-  const [taskExpanded, setTaskExpanded] = useState(false);
   const [scheduleExpanded, setScheduleExpanded] = useState(false);
   const [resourceOverlayActive, setResourceOverlayActive] = useState(false);
   const [worldNavHidden, setWorldNavHidden] = useState(false);
@@ -24,15 +23,12 @@ export function MenuOverlay({ onClose, onGoToDay, initialRoom = 'quickaction' }:
     if (room !== 'schedule') {
       setScheduleExpanded(false);
     }
-    if (room !== 'task') {
-      setTaskExpanded(false);
-    }
     if (room !== 'resource') {
       setResourceOverlayActive(false);
     }
   };
 
-  const showNav = !scheduleExpanded && !taskExpanded && !(activeRoom === 'resource' && resourceOverlayActive) && !worldNavHidden && !goalNavHidden;
+  const showNav = !scheduleExpanded && !(activeRoom === 'resource' && resourceOverlayActive) && !worldNavHidden && !goalNavHidden;
 
   return (
     <div className="flex h-full">
@@ -40,7 +36,6 @@ export function MenuOverlay({ onClose, onGoToDay, initialRoom = 'quickaction' }:
         activeRoom={activeRoom}
         onNavigate={handleNavigate}
         onGoToDay={onGoToDay}
-        onTaskExpandedChange={setTaskExpanded}
         onScheduleExpandedChange={setScheduleExpanded}
         onResourceOverlayActiveChange={setResourceOverlayActive}
         onWorldNavHiddenChange={setWorldNavHidden}

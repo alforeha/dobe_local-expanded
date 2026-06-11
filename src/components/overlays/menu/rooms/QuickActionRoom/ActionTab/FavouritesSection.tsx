@@ -1,9 +1,17 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
+import { useResourceStore } from '../../../../../../stores/useResourceStore';
 import { useScheduleStore } from '../../../../../../stores/useScheduleStore';
 import { useUserStore } from '../../../../../../stores/useUserStore';
 import { FavouriteTaskBlock } from './FavouriteTaskBlock';
+import type { InventoryResource } from '../../../../../../types/resource';
 import type { TaskTemplate, XpAward } from '../../../../../../types/taskTemplate';
 import type { StatGroupKey } from '../../../../../../types/user';
+import {
+  getUserInventoryItemTemplates,
+  mergeInventoryItemTemplates,
+} from '../../../../../../utils/inventoryItems';
+import { resolveResourceTaskTemplate } from '../../../../../../utils/resourceTaskTemplates';
+import { resolveBrainstormKpiTemplate } from '../../../../../../engine/brainstormTaskEngine';
 import { IconDisplay } from '../../../../../shared/IconDisplay';
 
 const STAT_KEYS: StatGroupKey[] = [
@@ -36,11 +44,29 @@ const FAVOURITE_FILTERS: Array<{ key: 'all' | StatGroupKey; label: string; iconK
 export function FavouritesSection() {
   const user = useUserStore((s) => s.user);
   const taskTemplates = useScheduleStore((s) => s.taskTemplates);
+  const resources = useResourceStore((s) => s.resources);
   const [filter, setFilter] = useState<'all' | StatGroupKey>('all');
 
+  const itemTemplates = useMemo(() => {
+    const resourceTemplates = Object.values(resources)
+      .filter((resource): resource is InventoryResource => resource.type === 'inventory')
+      .map((resource) => resource.itemTemplates);
+
+    return mergeInventoryItemTemplates(getUserInventoryItemTemplates(user), ...resourceTemplates);
+  }, [resources, user]);
+
   const favouritesList = user?.lists.favouritesList ?? [];
+  // Resource tasks (`resource-task:` refs, Sprint 4) and brainstorm KPI tasks
+  // (`brainstorm-kpi:` refs, Sprint 5) live in favouritesList alongside regular
+  // template refs — no separate buckets; their templates resolve virtually.
   const entries = favouritesList
-    .map((key) => ({ key, template: taskTemplates[key] as TaskTemplate | undefined }))
+    .map((key) => ({
+      key,
+      template:
+        (taskTemplates[key] as TaskTemplate | undefined)
+        ?? resolveResourceTaskTemplate(key, resources, itemTemplates)
+        ?? resolveBrainstormKpiTemplate(key),
+    }))
     .filter((entry): entry is { key: string; template: TaskTemplate } => Boolean(entry.template));
   const filteredEntries = entries.filter(({ template }) => {
     if (filter === 'all') return true;

@@ -86,7 +86,7 @@ export interface SetsRepsInputFields {
   dropSetValues?: { reps: number; weight: number | null }[];
 }
 
-export type CircuitStepType = 'CHECK' | 'CHOICE' | 'COUNTER' | 'SETS_REPS' | 'DURATION' | 'TIMER' | 'RATING' | 'TEXT' | 'SCAN' | 'LOCATION_TRAIL';
+export type CircuitStepType = 'CHECK' | 'CHOICE' | 'COUNTER' | 'SETS_REPS' | 'DURATION' | 'TIMER' | 'RATING' | 'TEXT' | 'SCAN' | 'LOCATION_TRAIL' | 'CONSUME';
 
 export interface CircuitStep {
   id: string;
@@ -204,6 +204,53 @@ export function normalizeCircuitInputFields(inputFields: LegacyCircuitInputField
     rounds,
     restBetweenRounds,
   };
+}
+
+// ── MUSCLE GROUPS (A5) ────────────────────────────────────────────────────────
+// Exercise templates carry one or more muscle groups. `muscleGroups[]` is the
+// canonical field; the legacy single-valued `muscleGroup` is still accepted on
+// read and normalized via normalizeTemplateMuscleGroups (additive, no migration
+// — same precedent as normalizeCircuitInputFields).
+
+export type MuscleGroup =
+  | 'chest'
+  | 'back'
+  | 'legs'
+  | 'shoulders'
+  | 'arms'
+  | 'core'
+  | 'cardio'
+  | 'flexibility';
+
+export const MUSCLE_GROUPS: readonly MuscleGroup[] = [
+  'chest',
+  'back',
+  'legs',
+  'shoulders',
+  'arms',
+  'core',
+  'cardio',
+  'flexibility',
+] as const;
+
+function isMuscleGroup(value: unknown): value is MuscleGroup {
+  return typeof value === 'string' && (MUSCLE_GROUPS as readonly string[]).includes(value);
+}
+
+/**
+ * Read-shim — resolves a template's muscle groups from either the canonical
+ * `muscleGroups[]` or the legacy single-valued `muscleGroup`. Never mutates;
+ * call at read sites (normalize-on-read, per normalizeCircuitInputFields).
+ */
+export function normalizeTemplateMuscleGroups(
+  template: Pick<TaskTemplate, 'muscleGroup' | 'muscleGroups'> | null | undefined,
+): MuscleGroup[] {
+  if (!template) return [];
+  if (Array.isArray(template.muscleGroups)) {
+    const groups = template.muscleGroups.filter(isMuscleGroup);
+    if (groups.length > 0) return groups;
+  }
+  return isMuscleGroup(template.muscleGroup) ? [template.muscleGroup] : [];
 }
 
 export interface DurationInputFields {
@@ -397,8 +444,8 @@ export interface TaskTemplate {
   id?: string;
   category?: TaskCategory;
   /**
-   * true  = user-created via TaskTemplatePopup (editable in Task Room).
-   * false / undefined = seeded prebuilt template (read-only in Task Room).
+   * true  = user-created via TaskTemplatePopup (editable by the user).
+   * false / undefined = seeded prebuilt template (read-only).
    */
   isCustom?: boolean;
   /**
@@ -427,7 +474,13 @@ export interface TaskTemplate {
   /** Optional category tag for grouping and filtering in TASK room. Enum values BUILD-time. */
   secondaryTag: TaskSecondaryTag | null;
   /** Optional EXERCISE TEMPLATE fields. */
-muscleGroup?: 'chest' | 'back' | 'legs' | 'shoulders' | 'arms' | 'core' | 'cardio' | 'flexibility';
+  /**
+   * Legacy single muscle group — still accepted on read.
+   * @deprecated Use muscleGroups[]; resolve via normalizeTemplateMuscleGroups().
+   */
+muscleGroup?: MuscleGroup;
+  /** Canonical multi-discipline muscle groups (A5). Resolve via normalizeTemplateMuscleGroups(). */
+muscleGroups?: MuscleGroup[];
 intensityRating?: 1 | 2 | 3 | 4 | 5;
   /** Optional RECIPIE TEMPLATE fields. */
 durationEstimate?: number;

@@ -3,18 +3,16 @@ import { ONBOARDING_GLOW } from '../../../constants/onboardingKeys';
 import { useGlows } from '../../../hooks/useOnboardingGlow';
 import menuWorldViewSrc from '../../../assets/icons/menu-worldView.svg';
 import menuGoalsSrc from '../../../assets/icons/menu-goals.svg';
-import menuTasksSrc from '../../../assets/icons/menu-tasks.svg';
 import menuScheduleSrc from '../../../assets/icons/menu-schedule.svg';
 import menuResourcesSrc from '../../../assets/icons/menu-resources.svg';
 import menuQuickActionSrc from '../../../assets/icons/menu-quickAction.svg';
 import menuButtonSrc from '../../../assets/icons/menu-button.svg';
 
-type MenuRoom = 'world' | 'goal' | 'task' | 'schedule' | 'resource' | 'quickaction';
+type MenuRoom = 'world' | 'goal' | 'schedule' | 'resource' | 'quickaction';
 
 const NAV_ITEMS: { room: MenuRoom; label: string; iconSrc: string }[] = [
   { room: 'world', label: 'World', iconSrc: menuWorldViewSrc },
   { room: 'goal', label: 'Goals', iconSrc: menuGoalsSrc },
-  { room: 'task', label: 'Tasks', iconSrc: menuTasksSrc },
   { room: 'schedule', label: 'Schedule', iconSrc: menuScheduleSrc },
   { room: 'resource', label: 'Resource', iconSrc: menuResourcesSrc },
   { room: 'quickaction', label: 'Quick Action', iconSrc: menuQuickActionSrc },
@@ -36,7 +34,6 @@ export function MenuOverlayNav({
   onToggleCollapse,
 }: MenuOverlayNavProps) {
   const goalRoomGlows = useGlows(ONBOARDING_GLOW.ADVENTURES_TAB);
-  const taskRoomGlows = useGlows(ONBOARDING_GLOW.TASK_ROOM_NAV);
   const scheduleRoomGlows = useGlows(ONBOARDING_GLOW.SCHEDULE_ROOM_NAV);
   const resourceRoomGlows = useGlows(ONBOARDING_GLOW.RESOURCES_ROOM_NAV);
 
@@ -61,7 +58,6 @@ export function MenuOverlayNav({
             key={room}
             active={
               (room === 'goal' && goalRoomGlows) ||
-              (room === 'task' && taskRoomGlows) ||
               (room === 'schedule' && scheduleRoomGlows) ||
               (room === 'resource' && resourceRoomGlows)
             }

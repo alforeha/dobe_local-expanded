@@ -20,7 +20,7 @@ const DOW_LABELS: { key: RecurrenceDayOfWeek; label: string }[] = [
   { key: 'sat', label: 'Sa' },
 ];
 
-const INPUT_CLS = 'rounded border border-gray-300 dark:border-gray-600 px-2 py-1 text-xs text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-800 focus:border-purple-500 focus:outline-none';
+const INPUT_CLS = 'rounded border border-gray-300 dark:border-gray-600 px-2 py-1 text-xs text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-800 focus:border-accent focus:outline-none';
 const SELECT_CLS = INPUT_CLS + ' w-full';
 
 export function RecurrenceRuleEditor({ value, onChange }: RecurrenceRuleEditorProps) {
@@ -77,7 +77,7 @@ export function RecurrenceRuleEditor({ value, onChange }: RecurrenceRuleEditorPr
               onClick={() => toggleDay(key)}
               className={`w-7 h-7 text-xs rounded font-medium transition-colors ${
                 value.days.includes(key)
-                  ? 'bg-blue-500 text-white'
+                  ? 'bg-accent text-white'
                   : 'bg-gray-100 dark:bg-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-500'
               }`}
             >

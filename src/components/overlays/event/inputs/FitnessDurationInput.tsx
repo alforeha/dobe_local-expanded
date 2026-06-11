@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { DurationInputFields, TaskTemplate } from '../../../../types/taskTemplate';
+import { normalizeTemplateMuscleGroups, type DurationInputFields, type TaskTemplate } from '../../../../types/taskTemplate';
 import type { Task } from '../../../../types/task';
 import { taskTemplateLibrary } from '../../../../coach';
 import { itemLibrary } from '../../../../coach/ItemLibrary';
@@ -45,7 +45,7 @@ export function FitnessDurationInput({
     : undefined;
 
   const exerciseName = template?.name ?? task.title ?? 'Exercise';
-  const muscleGroup = template?.muscleGroup ?? null;
+  const muscleGroups = normalizeTemplateMuscleGroups(template);
   const intensityRating = template?.intensityRating ?? null;
   const itemRefs: string[] = template?.items ?? [];
   const resolvedItems = itemRefs
@@ -107,18 +107,18 @@ export function FitnessDurationInput({
   return (
     <div className="flex flex-col items-center justify-center gap-4 py-4">
       {/* Context header */}
-      {(showName || muscleGroup || intensityRating || resolvedItems.length > 0) && (
+      {(showName || muscleGroups.length > 0 || intensityRating || resolvedItems.length > 0) && (
 <div className="flex w-full items-center justify-center gap-2 flex-wrap">
   {showName && exerciseName && (
     <span className="text-sm font-bold text-gray-900 dark:text-gray-100">
       {exerciseName}
     </span>
   )}
-  {muscleGroup && (
-    <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-semibold uppercase tracking-wider text-blue-700 dark:bg-blue-900 dark:text-blue-200">
+  {muscleGroups.map((muscleGroup) => (
+    <span key={muscleGroup} className="rounded-full bg-accent-bg px-2 py-0.5 text-xs font-semibold uppercase tracking-wider text-accent">
       {capitalize(muscleGroup)}
     </span>
-  )}
+  ))}
   {intensityRating && (
     <span className="text-xs font-mono text-gray-500 dark:text-gray-400">
       {Array.from({ length: 5 }, (_, i) => i < intensityRating ? '*' : 'o').join('')}
@@ -151,7 +151,7 @@ export function FitnessDurationInput({
             r={RADIUS}
             fill="none"
             strokeWidth={12}
-            className="stroke-blue-500 transition-all duration-1000"
+            className="stroke-accent transition-all duration-1000"
             strokeDasharray={CIRCUMFERENCE}
             strokeDashoffset={strokeDashoffset}
             strokeLinecap="round"
@@ -175,7 +175,7 @@ export function FitnessDurationInput({
         <button
           type="button"
           onClick={handleBegin}
-          className="w-full rounded-xl bg-blue-500 py-3 text-sm font-bold text-white hover:bg-blue-600 active:bg-blue-700 transition-colors"
+          className="w-full rounded-xl bg-accent py-3 text-sm font-bold text-white hover:bg-accent/90 active:bg-accent/80 transition-colors"
         >
           BEGIN
         </button>

@@ -216,7 +216,7 @@ function inputClassName(disabled: boolean) {
   return `w-full rounded-xl border px-3 py-2 text-sm focus:outline-none ${
     disabled
       ? 'cursor-not-allowed border-gray-200 bg-gray-100 text-gray-400 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-500'
-      : 'border-gray-300 bg-white text-gray-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100'
+      : 'border-gray-300 bg-white text-gray-800 focus:border-accent focus:ring-1 focus:ring-accent dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100'
   }`;
 }
 
@@ -340,7 +340,7 @@ export function TaskTypeConfigEditor({
           <button
             type="button"
             onClick={() => patch({ [fieldKey]: [...items, ''] } as Partial<InputFields>)}
-            className="text-xs font-medium text-blue-500 hover:text-blue-600"
+            className="text-xs font-medium text-accent hover:text-accent/80"
           >
             + Add
           </button>
@@ -482,7 +482,7 @@ export function TaskTypeConfigEditor({
           <button
             type="button"
             onClick={() => patch({ fields: [...formFields, { key: uuidv4(), label: '', fieldType: 'text' as const }] } as Partial<InputFields>)}
-            className="text-xs font-medium text-blue-500 hover:text-blue-600"
+            className="text-xs font-medium text-accent hover:text-accent/80"
           >
             + Add field
           </button>
@@ -536,7 +536,7 @@ export function TaskTypeConfigEditor({
               <button
                 type="button"
                 onClick={() => patch({ items: [...clItems, { key: uuidv4(), label: '' }] } as Partial<InputFields>)}
-                className="text-xs font-medium text-blue-500 hover:text-blue-600"
+                className="text-xs font-medium text-accent hover:text-accent/80"
               >
                 + Add item
               </button>
@@ -651,7 +651,7 @@ export function TaskTypeConfigEditor({
               <button
                 type="button"
                 onClick={addConsumeEntry}
-                className="text-xs font-medium text-blue-500 hover:text-blue-600"
+                className="text-xs font-medium text-accent hover:text-accent/80"
               >
                 + Add entry
               </button>
@@ -871,7 +871,7 @@ export function TaskTypeConfigEditor({
                 <button
                   type="button"
                   onClick={addStep}
-                  className="text-xs font-medium text-blue-500 hover:text-blue-600"
+                  className="text-xs font-medium text-accent hover:text-accent/80"
                 >
                   + Add step
                 </button>
@@ -915,7 +915,7 @@ export function TaskTypeConfigEditor({
                         <p className="truncate text-sm font-medium text-gray-800 dark:text-gray-100">{step.label.trim() || 'Untitled step'}</p>
                         <p className="text-xs text-gray-500 dark:text-gray-400">{step.stepType}</p>
                       </div>
-                      <span className="text-xs font-medium text-blue-500">{isExpanded ? 'Close' : 'Edit'}</span>
+                      <span className="text-xs font-medium text-accent">{isExpanded ? 'Close' : 'Edit'}</span>
                     </button>
                     {!readOnly && (
                       <button

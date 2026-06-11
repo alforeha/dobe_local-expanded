@@ -1,8 +1,9 @@
 // ─────────────────────────────────────────
 // LISTS ENGINE — FavouritesList + ShoppingLists + Manual GTD
 //
-// FavouritesList — TaskTemplate refs. completeFavourite() fires a one-shot Task
-//   completion into today's QuickActionsEvent (per D10) and triggers coach.
+// FavouritesList — TaskTemplate refs (incl. virtual `resource-task:` refs since
+//   Sprint 4 A3). completeFavourite() fires a one-shot Task completion into
+//   today's QuickActionsEvent (per D10) and triggers coach.
 //
 // ShoppingLists — CRUD for named lists + structured items.
 //   completeShoppingItem() → if item.accountRef is set, writes a PendingTransaction
@@ -32,6 +33,13 @@ import { autoCompleteSystemTask } from './resourceEngine';
 import { isWisdomTemplate } from './xpBoosts';
 import { syncDailyQuestProgressForTask } from './markerEngine';
 import { getCurrentAppNowMs, getTaskCooldownState } from '../utils/taskCooldown';
+import { isResourceTaskRef, resolveResourceTaskTemplate } from '../utils/resourceTaskTemplates';
+import {
+  applyKpiResult,
+  isBrainstormKpiRef,
+  parseBrainstormKpiRef,
+  resolveBrainstormKpiTemplate,
+} from './brainstormTaskEngine';
 import { createQuickActionsEvent } from '../utils/qaUtils';
 
 const STAT_GROUP_KEYS: StatGroupKey[] = ['health', 'strength', 'agility', 'defense', 'charisma', 'wisdom'];
@@ -112,7 +120,13 @@ export function completeFavourite(
   const now = getAppNowISO();
   const today = todayISO();
 
-  const template = scheduleStore.taskTemplates[taskTemplateRef];
+  // Virtual-ref favourites (uniform favoriting, no separate buckets):
+  // `resource-task:` refs resolve from resource data (Sprint 4 A3) and
+  // `brainstorm-kpi:` refs resolve from KPI idea typeData (Sprint 5 Track C).
+  const template =
+    scheduleStore.taskTemplates[taskTemplateRef]
+    ?? resolveResourceTaskTemplate(taskTemplateRef, useResourceStore.getState().resources)
+    ?? resolveBrainstormKpiTemplate(taskTemplateRef);
   if (template) {
     const cooldown = getTaskCooldownState(template, taskTemplateRef, scheduleStore.tasks, getCurrentAppNowMs());
     if (cooldown.isCoolingDown) {
@@ -120,7 +134,9 @@ export function completeFavourite(
     }
   }
 
-  // Create a completed Task instance
+  // Create a completed Task instance. Resource-task favourites carry their
+  // owning resource ref so last-completed lookups line up with GTD tasks;
+  // KPI favourites carry brainstormRef so results write back to the storm.
   const task: Task = {
     id: uuidv4(),
     templateRef: taskTemplateRef,
@@ -128,15 +144,23 @@ export function completeFavourite(
     completedAt: now,
     resultFields,
     attachmentRef: null,
-    resourceRef: null,
+    resourceRef: isResourceTaskRef(taskTemplateRef)
+      ? taskTemplateRef.split(':')[1] ?? null
+      : null,
     location: null,
     sharedWith: null,
     questRef: null,
     actRef: null,
     secondaryTag: null,
+    brainstormRef: isBrainstormKpiRef(taskTemplateRef)
+      ? parseBrainstormKpiRef(taskTemplateRef)
+      : null,
   };
 
   scheduleStore.setTask(task);
+  if (task.brainstormRef) {
+    applyKpiResult(task);
+  }
   syncDailyQuestProgressForTask(task);
 
   // Write completion to today's QuickActionsEvent (D10)

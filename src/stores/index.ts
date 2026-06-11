@@ -8,3 +8,4 @@ export { useUserStore } from './useUserStore';
 export { useProgressionStore } from './useProgressionStore';
 export { useScheduleStore } from './useScheduleStore';
 export { useResourceStore } from './useResourceStore';
+export { useMealLogStore } from './useMealLogStore';

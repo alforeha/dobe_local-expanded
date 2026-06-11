@@ -23,6 +23,7 @@ import { EVENT_MAX_ATTACHMENTS } from '../storage/storageBudget';
 
 import { awardXP, awardStat, awardGold, applyFitnessStatGrant } from './awardPipeline';
 import { completeMilestone, decodeQuestRef, syncDailyQuestProgressForTask } from './markerEngine';
+import { applyKpiResult } from './brainstormTaskEngine';
 import { starterTaskTemplates, STARTER_TEMPLATE_IDS } from '../coach/StarterQuestLibrary';
 import { checkAchievements } from '../coach/checkAchievements';
 import { awardBadge } from '../coach/rewardPipeline';
@@ -408,6 +409,12 @@ export function completeTask(
   }
   if (updatedTask.templateRef === STARTER_TEMPLATE_IDS.openWelcomeEvent) {
     autoCompleteSystemTask(STARTER_TEMPLATE_IDS.openWelcomeEvent);
+  }
+
+  // KPI sync hook (Track C §5.2): if this task was generated from a KPI idea,
+  // write the result back to the idea's typeData. Fail-open — never blocks completion.
+  if (updatedTask.brainstormRef) {
+    applyKpiResult(updatedTask);
   }
 
   // Smarter check-in hook: if this task was fired by a Marker, record the Milestone

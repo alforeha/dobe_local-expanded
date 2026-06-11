@@ -2,14 +2,16 @@ import { useState } from 'react';
 import type { PlannedEvent } from '../../../../../types';
 import type { ResourceType } from '../../../../../types/resource';
 import { IconDisplay } from '../../../../shared/IconDisplay';
-import { ResourceEventsTab } from './ResourceEventsTab';
+import { HolidaysTab } from './HolidaysTab';
+import { ResourceHabitatTab } from './ResourceHabitatTab';
 import { ScheduleRoomBody } from './ScheduleRoomBody';
 
-type EventsView = 'oneoffs' | 'recurrence';
+type EventsView = 'oneoffs' | 'resources' | 'holidays';
 
 const EVENTS_VIEWS: Array<{ view: EventsView; iconKey: string; label: string }> = [
   { view: 'oneoffs', iconKey: 'schedule-tab-events', label: 'One-Offs' },
-  { view: 'recurrence', iconKey: 'schedule-tab-resources', label: 'Resource Recurrence' },
+  { view: 'resources', iconKey: 'schedule-tab-resources', label: 'Resources' },
+  { view: 'holidays', iconKey: 'schedule-tab-holidays', label: 'Holidays' },
 ];
 
 interface EventsTabContentProps {
@@ -50,7 +52,7 @@ export function EventsTabContent({
               title={label}
               className={`flex h-7 w-8 items-center justify-center rounded-full transition-colors ${
                 activeView === view
-                  ? 'bg-blue-500 text-white'
+                  ? 'bg-accent text-white'
                   : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700'
               }`}
             >
@@ -69,12 +71,12 @@ export function EventsTabContent({
                 value={eventFilter}
                 onChange={(e) => onEventFilterChange(e.target.value)}
                 placeholder="Filter..."
-                className="flex-1 text-sm border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 rounded-lg px-2 py-1 outline-none focus:border-indigo-300"
+                className="flex-1 text-sm border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 rounded-lg px-2 py-1 outline-none focus:border-accent-border"
               />
               <button
                 type="button"
                 onClick={onAddEvent}
-                className="text-xs text-blue-500 hover:text-blue-700 font-medium shrink-0 whitespace-nowrap"
+                className="text-xs text-accent hover:text-accent/80 font-medium shrink-0 whitespace-nowrap"
               >
                 + Event
               </button>
@@ -89,7 +91,11 @@ export function EventsTabContent({
         </>
       )}
 
-      {activeView === 'recurrence' && <ResourceEventsTab onGoToResource={onGoToResource} />}
+      {activeView === 'resources' && (
+        <ResourceHabitatTab onGoToResource={onGoToResource} onExpandedChange={onExpandedChange} />
+      )}
+
+      {activeView === 'holidays' && <HolidaysTab />}
     </div>
   );
 }

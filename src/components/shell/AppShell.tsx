@@ -152,7 +152,7 @@ export function AppShell() {
 
   const [activeView, setActiveView] = useState<TimeView>('day');
   const [overlay, setOverlay] = useState<ActiveOverlay>(null);
-  const [menuInitialRoom, setMenuInitialRoom] = useState<'world' | 'goal' | 'task' | 'schedule' | 'resource' | 'quickaction'>('quickaction');
+  const [menuInitialRoom, setMenuInitialRoom] = useState<'world' | 'goal' | 'schedule' | 'resource' | 'quickaction'>('quickaction');
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   const [editPlannedId, setEditPlannedId] = useState<string | null>(null);
   const [weekViewSeed, setWeekViewSeed] = useState<Date | null>(null);

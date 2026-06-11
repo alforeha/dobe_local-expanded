@@ -1,29 +1,44 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
+import type { ReactNode } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { useUserStore } from '../../../../../stores/useUserStore';
 import { useScheduleStore } from '../../../../../stores/useScheduleStore';
 import { taskTemplateLibrary } from '../../../../../coach';
 import { WorkoutExecutionInput } from '../../../event/inputs/WorkoutExecutionInput';
 import { completeFavourite } from '../../../../../engine/listsEngine';
-import type { TaskTemplate, SetsRepsInputFields, DurationInputFields, InputFields  } from '../../../../../types/taskTemplate';
+import { MUSCLE_GROUPS, normalizeTemplateMuscleGroups } from '../../../../../types';
+import type {
+  DurationInputFields,
+  InputFields,
+  MuscleGroup,
+  SetsRepsInputFields,
+  TaskTemplate,
+  Weekday,
+} from '../../../../../types';
+import type { PlannedEvent } from '../../../../../types/plannedEvent';
 import { itemLibrary } from '../../../../../coach/ItemLibrary';
 import { IconDisplay } from '../../../../shared/IconDisplay';
+import { HabitatShell } from '../../../../shared/habitat/HabitatShell';
+import { HabitatSidePanel, type HabitatSidePanelSection } from '../../../../shared/habitat/HabitatSidePanel';
+import { HabitatTopBar } from '../../../../shared/habitat/HabitatTopBar';
+import { WeeklyPlanView } from '../../../../shared/habitat/WeeklyPlanView';
+import { WEEK_DAYS } from '../../../../shared/habitat/weeklyPlanDays';
 import { FitnessTaskPopup } from './FitnessTaskPopup';
-import { WorkoutPlanTab } from './WorkoutPlanTab';
-//import { ref } from 'process';
+import { WARMUP_CATEGORY, WorkoutPlanPopup } from './WorkoutPlanPopup';
+import { RoutinePopup } from './RoutinePopup';
 
+const MUSCLE_LABELS: Record<MuscleGroup, string> = {
+  chest: 'CHT',
+  back: 'BCK',
+  legs: 'LEG',
+  shoulders: 'SHL',
+  arms: 'ARM',
+  core: 'COR',
+  cardio: 'CRD',
+  flexibility: 'FLX',
+};
 
-
-type MuscleGroupFilter =
-  | 'all'
-  | 'chest'
-  | 'back'
-  | 'legs'
-  | 'shoulders'
-  | 'arms'
-  | 'core'
-  | 'cardio'
-  | 'flexibility';
+type MuscleGroupFilter = 'all' | MuscleGroup;
 
 type PowerBayTabValue = 'exercises' | 'workoutplan';
 
@@ -32,18 +47,40 @@ interface PowerBayTabProps {
   onExpandedChange?: (isExpanded: boolean) => void;
 }
 
+type FitnessPopupState =
+  | { mode: 'add' }
+  | { mode: 'config'; key: string; template: TaskTemplate }
+  | null;
+
+type PlanPopupState =
+  | { group?: MuscleGroup; day?: Weekday; warmup?: boolean }
+  | null;
+
+function capitalize(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+/** True when the routine shows on the given weekday in the weekly grid. */
+function occursOnDay(routine: PlannedEvent, day: Weekday): boolean {
+  const rule = routine.recurrenceInterval;
+  if (rule.frequency === 'daily') return true;
+  if (rule.frequency === 'weekly') return rule.days.length === 0 || rule.days.includes(day);
+  return false;
+}
+
 export function PowerBayTab({ activeTab, onExpandedChange }: PowerBayTabProps) {
   const user = useUserStore((s) => s.user);
   const customTemplates = useScheduleStore((s) => s.taskTemplates);
   const setTaskTemplate = useScheduleStore((s) => s.setTaskTemplate);
+  const plannedEvents = useScheduleStore((s) => s.plannedEvents);
   const energy = user?.progression.stats.energy;
-
-  type FitnessPopupState =
-    | { mode: 'add' }
-    | { mode: 'config'; key: string; template: TaskTemplate }
-    | null;
+  const muscleGroupVolume: Record<string, number> =
+    user?.progression.stats.physicalStats?.muscleGroupVolume ?? {};
 
   const [fitnessPopup, setFitnessPopup] = useState<FitnessPopupState>(null);
+  const [planPopup, setPlanPopup] = useState<PlanPopupState>(null);
+  const [editRoutine, setEditRoutine] = useState<PlannedEvent | null>(null);
+  const [panelOpen, setPanelOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [muscleGroupFilter, setMuscleGroupFilter] = useState<MuscleGroupFilter>('all');
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -53,9 +90,13 @@ export function PowerBayTab({ activeTab, onExpandedChange }: PowerBayTabProps) {
     onExpandedChange?.(expandedId !== null);
   }, [expandedId, onExpandedChange]);
 
-  if (activeTab === 'workoutplan') {
-    return <WorkoutPlanTab onExpandedChange={onExpandedChange} />;
-  }
+  // --- Workout routines (weekly plan + side panel summary) ---
+  const workoutRoutines = Object.values(plannedEvents).filter((e) =>
+    e.category?.startsWith('workout-'),
+  );
+  const warmupRoutines = workoutRoutines.filter((e) => e.category === WARMUP_CATEGORY);
+  const routinesForGroup = (group: MuscleGroup) =>
+    workoutRoutines.filter((e) => e.category === `workout-${group}`);
 
   // --- Derived fitness template list ---
   // Build a set of library template IDs that already have a user copy.
@@ -71,10 +112,9 @@ export function PowerBayTab({ activeTab, onExpandedChange }: PowerBayTabProps) {
   );
 
   // User custom fitness templates (includes copies of library templates).
-const customFitness: TaskTemplate[] = Object.entries(customTemplates)
-  .filter(([, t]) => t.secondaryTag === 'fitness')
-  .map(([key, t]) => ({ ...t, id: t.id ?? key })
-);
+  const customFitness: TaskTemplate[] = Object.entries(customTemplates)
+    .filter(([, t]) => t.secondaryTag === 'fitness')
+    .map(([key, t]) => ({ ...t, id: t.id ?? key }));
 
   const allFitness: TaskTemplate[] = [...libraryFitness, ...customFitness];
 
@@ -85,7 +125,7 @@ const customFitness: TaskTemplate[] = Object.entries(customTemplates)
     })
     .filter((t) => {
       if (muscleGroupFilter === 'all') return true;
-      return t.muscleGroup === muscleGroupFilter;
+      return normalizeTemplateMuscleGroups(t).includes(muscleGroupFilter);
     });
 
   // --- Energy bar values ---
@@ -118,58 +158,89 @@ const customFitness: TaskTemplate[] = Object.entries(customTemplates)
     }
   };
 
-  return (
-    <div className="flex flex-col gap-3 px-4 py-4">
+  // --- Side panel: energy + workout stats + plan summary ---
+  const sidePanelSections: HabitatSidePanelSection[] = [
+    {
+      key: 'energy',
+      label: 'Energy',
+      shortLabel: 'NRG',
+      value: `${energyCurrent}/${energyCap}`,
+    },
+    ...MUSCLE_GROUPS.map((group): HabitatSidePanelSection => ({
+      key: group,
+      label: group,
+      shortLabel: MUSCLE_LABELS[group],
+      value: muscleGroupVolume[group] ?? 0,
+      rows: routinesForGroup(group).map((routine) => (
+        <button
+          key={routine.id}
+          type="button"
+          className="truncate text-left text-xs text-gray-600 hover:text-accent dark:text-gray-300"
+          onClick={() => setEditRoutine(routine)}
+        >
+          {routine.name}
+        </button>
+      )),
+      onAdd: () => setPlanPopup({ group }),
+    })),
+  ];
 
-      {/* --- Energy bar --- */}
-      <div className="flex flex-col gap-1">
-        <div className="flex justify-between text-xs font-semibold text-gray-600 dark:text-gray-300">
-          <span>Energy</span>
-          <span>{energyCurrent} / {energyCap}</span>
-        </div>
-        <div className="w-full h-3 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
-          <div
-            className="h-full bg-green-400 rounded-full transition-all duration-300"
-            style={{ width: `${energyPct}%` }}
-          />
-        </div>
-      </div>
-
-      {!expandedId && (
-        <>
-          {/* --- Search + filter row --- */}
-          <div className="flex gap-2 items-center">
-            <input
-              className="flex-1 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm px-3 py-1.5 text-gray-800 dark:text-gray-100 outline-none focus:ring-1 focus:ring-blue-400"
-              placeholder="Search exercises..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-            <select
-              className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm px-2 py-1.5 text-gray-800 dark:text-gray-100 outline-none"
-              value={muscleGroupFilter}
-              onChange={(e) => setMuscleGroupFilter(e.target.value as MuscleGroupFilter)}
-            >
-              <option value="all">All</option>
-              <option value="chest">Chest</option>
-              <option value="back">Back</option>
-              <option value="legs">Legs</option>
-              <option value="shoulders">Shoulders</option>
-              <option value="arms">Arms</option>
-              <option value="core">Core</option>
-              <option value="cardio">Cardio</option>
-              <option value="flexibility">Flexibility</option>
-            </select>
-            <button
-              className="rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 px-3 py-1.5 text-sm font-bold"
-              onClick={() => setFitnessPopup({ mode: 'add' })}
-            >
-              +
-            </button>
+  const sidePanel = (
+    <HabitatSidePanel
+      sections={sidePanelSections}
+      open={panelOpen}
+      onOpenChange={setPanelOpen}
+      emptyRowsLabel="None yet"
+      topContent={
+        <div className="flex flex-col gap-1 px-2 pb-2">
+          <div className="flex justify-between text-xs font-semibold text-gray-600 dark:text-gray-300">
+            <span>Energy</span>
+            <span>
+              {energyCurrent} / {energyCap}
+            </span>
           </div>
-        </>
-      )}
+          <div className="h-2 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
+            <div
+              className="h-full rounded-full bg-accent transition-all duration-300"
+              style={{ width: `${energyPct}%` }}
+            />
+          </div>
+        </div>
+      }
+    />
+  );
 
+  // --- Weekly plan content ---
+  const routineChip = (routine: PlannedEvent) => {
+    const group = routine.category?.replace('workout-', '') ?? '';
+    return (
+      <button
+        key={routine.id}
+        type="button"
+        className="flex items-center gap-1 rounded-full border border-accent-border bg-accent-bg px-2 py-0.5 text-xs text-accent"
+        onClick={() => setEditRoutine(routine)}
+      >
+        <span className="truncate">{routine.name}</span>
+        {group && group !== 'warmup' && (
+          <span className="uppercase tracking-wider opacity-70">{group.slice(0, 3)}</span>
+        )}
+      </button>
+    );
+  };
+
+  const planContentByDay: Partial<Record<Weekday, ReactNode>> = {};
+  for (const { key } of WEEK_DAYS) {
+    const dayRoutines = workoutRoutines.filter(
+      (r) => r.category !== WARMUP_CATEGORY && occursOnDay(r, key),
+    );
+    if (dayRoutines.length > 0) {
+      planContentByDay[key] = dayRoutines.map((r) => routineChip(r));
+    }
+  }
+
+  // --- Body content per sub-tab ---
+  const exercisesBody = (
+    <div className="flex flex-col gap-3 overflow-y-auto px-4 py-3">
       {/* --- Template list --- */}
       <div className="flex flex-col gap-1">
         {filtered.map((template) => {
@@ -178,52 +249,56 @@ const customFitness: TaskTemplate[] = Object.entries(customTemplates)
           const isExecuting = executingId === template.id;
           const rating = template.intensityRating ?? 0;
 
-          const dots = Array.from({ length: 5 }, (_, i) =>
-            i < rating ? '*' : 'o',
-          ).join(' ');
+          const dots = Array.from({ length: 5 }, (_, i) => (i < rating ? '*' : 'o')).join(' ');
 
-          const muscleLabel = template.muscleGroup
-            ? template.muscleGroup.charAt(0).toUpperCase() + template.muscleGroup.slice(1)
-            : null;
+          const muscleGroups = normalizeTemplateMuscleGroups(template);
+          const muscleLabel =
+            muscleGroups.length > 0 ? muscleGroups.map(capitalize).join(' · ') : null;
 
           return (
             <div
-key={template.id ?? template.name}
-              className="rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden"
+              key={template.id ?? template.name}
+              className="overflow-hidden rounded-xl border border-gray-200 dark:border-gray-700"
             >
               {/* Row */}
               <button
-                className="w-full flex items-center gap-2 px-3 py-2 bg-white dark:bg-gray-800 text-left"
+                className="flex w-full items-center gap-2 bg-white px-3 py-2 text-left dark:bg-gray-800"
                 onClick={() => handleRowPress(template.id ?? '')}
               >
-                <span className="flex-1 text-sm font-medium text-gray-800 dark:text-gray-100 truncate">
+                <span className="flex-1 truncate text-sm font-medium text-gray-800 dark:text-gray-100">
                   {template.name}
                 </span>
                 {template.items && template.items.length > 0 && (
-                  <span className="flex items-center gap-0.5 shrink-0">
+                  <span className="flex shrink-0 items-center gap-0.5">
                     {template.items.map((ref) => {
                       const item = itemLibrary.find((i) => i.id === ref);
                       if (!item) return null;
-                      return <IconDisplay key={`template-${template.id}-item-${ref}`} iconKey={item.icon} size={14} />;
+                      return (
+                        <IconDisplay
+                          key={`template-${template.id}-item-${ref}`}
+                          iconKey={item.icon}
+                          size={14}
+                        />
+                      );
                     })}
                   </span>
                 )}
                 {muscleLabel && (
-                  <span className="shrink-0 text-xs px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300">
+                  <span className="shrink-0 rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600 dark:bg-gray-700 dark:text-gray-300">
                     {muscleLabel}
                   </span>
                 )}
-                <span className="shrink-0 text-xs font-mono text-gray-400 dark:text-gray-500 tracking-widest">
+                <span className="shrink-0 font-mono text-xs tracking-widest text-gray-400 dark:text-gray-500">
                   {dots}
                 </span>
               </button>
 
               {/* Expanded */}
               {isExpanded && (
-                <div className="px-3 pb-3 pt-1 bg-white dark:bg-gray-800 border-t border-gray-100 dark:border-gray-700 flex flex-col gap-2">
+                <div className="flex flex-col gap-2 border-t border-gray-100 bg-white px-3 pb-3 pt-1 dark:border-gray-700 dark:bg-gray-800">
                   {isExecuting ? (
                     <WorkoutExecutionInput
-inputFields={template.inputFields as SetsRepsInputFields | DurationInputFields}
+                      inputFields={template.inputFields as SetsRepsInputFields | DurationInputFields}
                       task={{
                         id: `exec-${template.id}`,
                         templateRef: template.id ?? null,
@@ -235,15 +310,15 @@ inputFields={template.inputFields as SetsRepsInputFields | DurationInputFields}
                         sharedWith: null,
                         completedAt: null,
                         questRef: null,
-actRef: null,
-secondaryTag: null,
+                        actRef: null,
+                        secondaryTag: null,
                       }}
                       onComplete={(result) => {
                         if (user) {
                           completeFavourite(
                             template.id ?? '',
                             user,
-result as Partial<InputFields>,
+                            result as Partial<InputFields>,
                           );
                         }
                         setExecutingId(null);
@@ -265,25 +340,32 @@ result as Partial<InputFields>,
                       </p>
                       {template.items && template.items.length > 0 && (
                         <div className="flex flex-col gap-1">
-                          <span className="text-xs text-gray-400 dark:text-gray-500">Equipment</span>
+                          <span className="text-xs text-gray-400 dark:text-gray-500">
+                            Equipment
+                          </span>
                           <div className="flex flex-wrap gap-2">
                             {template.items.map((ref) => {
                               const item = itemLibrary.find((i) => i.id === ref);
                               if (!item) return null;
                               return (
-                                <div key={`${template.id ?? template.name}-eq-${ref}`} className="flex items-center gap-1">
+                                <div
+                                  key={`${template.id ?? template.name}-eq-${ref}`}
+                                  className="flex items-center gap-1"
+                                >
                                   <IconDisplay iconKey={item.icon} size={16} />
-                                  <span className="text-xs text-gray-600 dark:text-gray-300">{item.name}</span>
+                                  <span className="text-xs text-gray-600 dark:text-gray-300">
+                                    {item.name}
+                                  </span>
                                 </div>
                               );
                             })}
                           </div>
                         </div>
                       )}
-                      <div className="flex gap-2 mt-1">
+                      <div className="mt-1 flex gap-2">
                         {!template.isCustom ? (
                           <button
-                            className="bg-blue-500 text-white rounded-lg px-3 py-1 text-sm"
+                            className="rounded-lg bg-accent px-3 py-1 text-sm text-white"
                             onClick={() => handleAddToMyList(template)}
                           >
                             Add to My List
@@ -291,14 +373,16 @@ result as Partial<InputFields>,
                         ) : (
                           <>
                             <button
-                              className="bg-green-500 text-white rounded-lg px-3 py-1 text-sm"
+                              className="rounded-lg bg-accent px-3 py-1 text-sm text-white"
                               onClick={() => setExecutingId(template.id ?? null)}
                             >
                               Execute
                             </button>
                             <button
-                              className="bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg px-3 py-1 text-sm"
-                              onClick={() => setFitnessPopup({ mode: 'config', key: template.id ?? '', template })}
+                              className="rounded-lg bg-gray-100 px-3 py-1 text-sm text-gray-700 dark:bg-gray-700 dark:text-gray-300"
+                              onClick={() =>
+                                setFitnessPopup({ mode: 'config', key: template.id ?? '', template })
+                              }
                             >
                               Configure
                             </button>
@@ -314,11 +398,60 @@ result as Partial<InputFields>,
         })}
 
         {filtered.length === 0 && (
-          <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-6">
+          <p className="py-6 text-center text-sm text-gray-400 dark:text-gray-500">
             No exercises found.
           </p>
         )}
       </div>
+    </div>
+  );
+
+  const workoutPlanBody = (
+    <WeeklyPlanView
+      contentByDay={planContentByDay}
+      emptyDayLabel="Rest day"
+      onAddToDay={(day) => setPlanPopup({ day })}
+      addActionLabel="Assign workout"
+      leadingSlots={[
+        {
+          key: 'warmup',
+          label: 'Warmup',
+          content: warmupRoutines.length > 0 ? warmupRoutines.map((r) => routineChip(r)) : undefined,
+          emptyLabel: 'No warmup',
+          onAdd: () => setPlanPopup({ warmup: true }),
+        },
+      ]}
+    />
+  );
+
+  const topBar =
+    activeTab === 'exercises' && !expandedId ? (
+      <HabitatTopBar
+        search={search}
+        onSearchChange={setSearch}
+        searchPlaceholder="Search exercises..."
+        onCreateCustom={() => setFitnessPopup({ mode: 'add' })}
+      >
+        <div className="flex justify-end pt-2">
+          <select
+            className="rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-800 outline-none focus:border-accent focus:ring-1 focus:ring-accent dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+            value={muscleGroupFilter}
+            onChange={(e) => setMuscleGroupFilter(e.target.value as MuscleGroupFilter)}
+          >
+            <option value="all">All</option>
+            {MUSCLE_GROUPS.map((group) => (
+              <option key={group} value={group}>
+                {capitalize(group)}
+              </option>
+            ))}
+          </select>
+        </div>
+      </HabitatTopBar>
+    ) : undefined;
+
+  return (
+    <HabitatShell sidePanel={sidePanel} topBar={topBar}>
+      {activeTab === 'exercises' ? exercisesBody : workoutPlanBody}
 
       {fitnessPopup !== null && (
         <FitnessTaskPopup
@@ -327,6 +460,19 @@ result as Partial<InputFields>,
           onClose={() => setFitnessPopup(null)}
         />
       )}
-    </div>
+
+      {planPopup !== null && (
+        <WorkoutPlanPopup
+          initialGroup={planPopup.group}
+          initialDay={planPopup.day}
+          warmup={planPopup.warmup}
+          onClose={() => setPlanPopup(null)}
+        />
+      )}
+
+      {editRoutine !== null && (
+        <RoutinePopup editRoutine={editRoutine} onClose={() => setEditRoutine(null)} />
+      )}
+    </HabitatShell>
   );
 }

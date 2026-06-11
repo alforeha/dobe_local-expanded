@@ -167,7 +167,7 @@ export function PlannedEventBlock({ event, onEdit, onDelete, expandedId, setExpa
     <div className={`flex flex-row items-stretch overflow-hidden rounded-xl border border-gray-100 bg-white dark:border-gray-700 dark:bg-gray-800 ${event.activeState === 'sleep' ? 'opacity-50 ' : ''}${expanded && soloExpanded ? 'h-full' : ''}`}>
       <div
         className="w-1 shrink-0 self-stretch"
-        style={{ backgroundColor: event.color || '#6366f1' }}
+        style={{ backgroundColor: event.color || 'var(--accent)' }}
       />
 
       <div className={`min-w-0 flex-1 ${expanded && soloExpanded ? 'flex min-h-0 flex-col' : 'flex flex-col'}`}>
@@ -248,7 +248,7 @@ export function PlannedEventBlock({ event, onEdit, onDelete, expandedId, setExpa
                       type="button"
                       onClick={() => setPushToOneOffOpen(true)}
                       aria-pressed={pushToOneOffOpen}
-                      className="self-start text-xs font-medium text-blue-500 transition-colors hover:text-blue-600"
+                      className="self-start text-xs font-medium text-accent transition-colors hover:text-accent/80"
                     >
                       Push to One-Off Event
                     </button>
@@ -365,7 +365,7 @@ export function PlannedEventBlock({ event, onEdit, onDelete, expandedId, setExpa
               <button
                 type="button"
                 onClick={() => onEdit(event)}
-                className="text-xs font-medium text-blue-500 transition-colors hover:text-blue-600"
+                className="text-xs font-medium text-accent transition-colors hover:text-accent/80"
               >
                 Edit
               </button>

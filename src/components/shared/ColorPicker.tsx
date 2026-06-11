@@ -79,7 +79,7 @@ export function ColorPicker({ value, onChange, align = 'center' }: ColorPickerPr
                   setShowCustom(false);
                 }}
                 className={`h-8 w-8 rounded-lg border-2 transition-transform hover:scale-105 ${
-                  value.toLowerCase() === hex.toLowerCase() ? 'border-purple-500' : 'border-transparent'
+                  value.toLowerCase() === hex.toLowerCase() ? 'border-accent' : 'border-transparent'
                 }`}
                 style={{ backgroundColor: hex }}
               />
@@ -89,7 +89,7 @@ export function ColorPicker({ value, onChange, align = 'center' }: ColorPickerPr
           <button
             type="button"
             onClick={() => setShowCustom((current) => !current)}
-            className="mt-3 flex w-full items-center justify-between gap-3 rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-600 transition-colors hover:border-purple-400 hover:text-purple-600 dark:border-gray-600 dark:text-gray-300"
+            className="mt-3 flex w-full items-center justify-between gap-3 rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-600 transition-colors hover:border-accent-border hover:text-accent dark:border-gray-600 dark:text-gray-300"
           >
             <span>Pick color</span>
             <span
@@ -144,7 +144,7 @@ function CustomColorEditor({ value, onChange }: CustomColorEditorProps) {
               }
             }
           }}
-          className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-800 focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200"
+          className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-800 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200"
         />
       </div>
 

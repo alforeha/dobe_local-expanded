@@ -470,7 +470,7 @@ export function TaskPoolAddPanel({ onAdd, onClose, embedded = false, hideTabs, i
           <div className="truncate text-sm font-medium text-gray-800 dark:text-gray-100">{item.name}</div>
           {secondaryText ? <div className="mt-1 truncate text-xs text-gray-500 dark:text-gray-400">{secondaryText}</div> : null}
         </div>
-        <span className="shrink-0 rounded-full bg-purple-100 px-2 py-1 text-xs font-medium text-purple-700 dark:bg-purple-900/30 dark:text-purple-300">
+        <span className="shrink-0 rounded-full bg-accent-bg px-2 py-1 text-xs font-medium text-accent">
           {item.taskType}
         </span>
       </button>
@@ -488,7 +488,7 @@ export function TaskPoolAddPanel({ onAdd, onClose, embedded = false, hideTabs, i
                 onClick={() => setActiveTab(tab.id)}
                 className={`rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${
                   activeTab === tab.id
-                    ? 'bg-purple-600 text-white'
+                    ? 'bg-accent text-white'
                     : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600'
                 }`}
               >
@@ -504,7 +504,7 @@ export function TaskPoolAddPanel({ onAdd, onClose, embedded = false, hideTabs, i
             value={searchQuery}
             onChange={(event) => setSearchQuery(event.target.value)}
             placeholder={activeTab === 'resource' ? 'Search resource tasks' : 'Search tasks'}
-            className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-purple-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
+            className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-accent dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
           />
         )}
 
@@ -531,7 +531,7 @@ export function TaskPoolAddPanel({ onAdd, onClose, embedded = false, hideTabs, i
                   setTitle(event.target.value);
                   setError('');
                 }}
-                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-purple-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
+                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-accent dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
               />
             </div>
 
@@ -546,7 +546,7 @@ export function TaskPoolAddPanel({ onAdd, onClose, embedded = false, hideTabs, i
                 onChange={(event) => setDescription(event.target.value)}
                 placeholder="Optional description"
                 rows={2}
-                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-purple-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
+                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-accent dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
               />
             </div>
 
@@ -555,7 +555,7 @@ export function TaskPoolAddPanel({ onAdd, onClose, embedded = false, hideTabs, i
               <select
                 value={statGroup}
                 onChange={(event) => setStatGroup(event.target.value as StatGroupKey)}
-                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-purple-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
+                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-accent dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
               >
                 {STAT_GROUP_OPTIONS.map((option) => (
                   <option key={option.value} value={option.value}>{option.label}</option>
@@ -571,7 +571,7 @@ export function TaskPoolAddPanel({ onAdd, onClose, embedded = false, hideTabs, i
                   setTaskType(event.target.value as DraftTaskType);
                   setDraftInputFields(defaultInputFields(event.target.value as DraftTaskType));
                 }}
-                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-purple-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
+                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-accent dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
               >
                 {DRAFT_TASK_TYPES.map((option) => (
                   <option key={option.value} value={option.value}>{option.label}</option>
@@ -588,7 +588,7 @@ export function TaskPoolAddPanel({ onAdd, onClose, embedded = false, hideTabs, i
             {error ? <p className="text-sm text-red-500">{error}</p> : null}
 
             <div className="flex justify-end">
-              <button type="button" onClick={handleCreateTask} className="rounded-lg bg-purple-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-purple-500">
+              <button type="button" onClick={handleCreateTask} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent/90">
                 Create and Add
               </button>
             </div>

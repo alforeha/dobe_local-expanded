@@ -1,4 +1,4 @@
-import type { BrainstormIdea, MainIdea } from '../../../../../types/brainstorm';
+import type { BrainstormIdea, MainIdea, PointerType } from '../../../../../types/brainstorm';
 
 // PM: adjust this value to tune brainstorm overview zoom level
 export const BRAINSTORM_FIT_PADDING = 0.55;
@@ -29,7 +29,7 @@ export interface PointerLine {
   fromY: number;
   toX: number;
   toY: number;
-  pointerType: 'solution' | 'choice' | 'others';
+  pointerType: PointerType;
 }
 
 export function getMainIdeaLayouts(

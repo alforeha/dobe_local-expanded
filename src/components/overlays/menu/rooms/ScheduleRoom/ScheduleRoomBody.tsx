@@ -18,9 +18,10 @@ export function ScheduleRoomBody({ events, onEdit, onDelete, onExpandedChange }:
 
   useEffect(() => {
     if (expandedId && !events.some((event) => event.id === expandedId)) {
-      setTimeout(() => {
+      const timer = setTimeout(() => {
         setExpandedId(null);
       }, 0);
+      return () => clearTimeout(timer);
     }
   }, [events, expandedId]);
 

@@ -13,10 +13,17 @@ import type {
   StormType,
 } from '../../../../../types/brainstorm';
 import { useBrainstormStore } from '../../../../../stores/useBrainstormStore';
-import { ENTRY_TYPE_META, STORM_STATE_META, STORM_TYPE_META } from '../../../../../types/brainstorm';
+import {
+  ENTRY_TYPE_META,
+  STORM_STATE_META,
+  STORM_TYPE_META,
+  getUnlockedIdeaTypes,
+  makeDefaultIdeaTypeData,
+} from '../../../../../types/brainstorm';
 import { resolveIcon } from '../../../../../constants/iconMap';
 import { ColorPicker } from '../../../../shared/ColorPicker';
 import { IconDisplay } from '../../../../shared/IconDisplay';
+import { IconPicker } from '../../../../shared/IconPicker';
 import { PopupShell } from '../../../../shared/popups/PopupShell';
 import { brainstormDraftRef } from './brainstormDraftRef';
 
@@ -40,7 +47,6 @@ const IDEA_TYPES: IdeaType[] = [
   'prop',
   'others',
 ];
-const STORM_TYPES: StormType[] = ['general', 'exploration', 'problem', 'planning', 'reflection', 'project', 'projection', 'others'];
 const MAIN_IDEA_SECTION_TITLE: Record<StormType, string> = {
   general: 'General Ideas',
   exploration: 'Exploration Ideas',
@@ -49,6 +55,7 @@ const MAIN_IDEA_SECTION_TITLE: Record<StormType, string> = {
   reflection: 'Reflection Ideas',
   project: 'Project Ideas',
   projection: 'Projection Ideas',
+  work: 'Loads',
   others: 'Ideas',
 };
 const STORM_STATES: StormState[] = ['active', 'incubating', 'archived', 'resolved', 'folding'];
@@ -110,26 +117,23 @@ function BrainstormNameModal({
   title,
   placeholder,
   defaultValue,
-  defaultType,
-  includeTypeSelector,
   onConfirm,
   onClose,
 }: {
   title: string;
   placeholder: string;
   defaultValue?: string;
-  defaultType?: StormType;
-  includeTypeSelector?: boolean;
   onConfirm: (name: string, type?: StormType) => void;
   onClose: () => void;
 }) {
   const [name, setName] = useState(defaultValue ?? '');
-  const [stormType, setStormType] = useState<StormType>(defaultType ?? 'exploration');
 
   function handleConfirm() {
     const trimmed = name.trim();
     if (!trimmed) return;
-    onConfirm(trimmed, includeTypeSelector ? stormType : undefined);
+    // Storm type is no longer user-selected here — new storms are always
+    // General Void (Sprint 5); Project/Work storms surface via Work Loads.
+    onConfirm(trimmed);
   }
 
   return (
@@ -153,19 +157,6 @@ function BrainstormNameModal({
           autoFocus
           className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
         />
-        {includeTypeSelector ? (
-          <select
-            value={stormType}
-            onChange={(event) => setStormType(event.target.value as StormType)}
-            className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
-          >
-            {STORM_TYPES.map((type) => (
-              <option key={type} value={type}>
-                {type}
-              </option>
-            ))}
-          </select>
-        ) : null}
         <div className="flex gap-2 pt-1">
           <button
             type="button"
@@ -206,6 +197,8 @@ export interface BrainstormDrawerProps {
   newStormType: StormType;
   newStormState: StormState;
   newStormCategory: StormCategory;
+  /** Storm display icon draft — replaces the retired type dropdown (Sprint 5). */
+  newStormIcon: string;
   categoryInput: string;
   categoryPickerOpen: boolean;
   typePickerOpen: boolean;
@@ -285,9 +278,9 @@ export interface BrainstormDrawerProps {
   setAddingStorm: (adding: boolean) => void;
   setEditingStorm: Dispatch<SetStateAction<boolean>>;
   setNewStormName: Dispatch<SetStateAction<string>>;
-  setNewStormType: Dispatch<SetStateAction<StormType>>;
   setNewStormState: Dispatch<SetStateAction<StormState>>;
   setNewStormCategory: Dispatch<SetStateAction<StormCategory>>;
+  setNewStormIcon: Dispatch<SetStateAction<string>>;
   setCategoryInput: Dispatch<SetStateAction<string>>;
   setCategoryPickerOpen: Dispatch<SetStateAction<boolean>>;
   setTypePickerOpen: Dispatch<SetStateAction<boolean>>;
@@ -317,6 +310,7 @@ export function BrainstormDrawer({
   newStormType,
   newStormState,
   newStormCategory,
+  newStormIcon,
   categoryInput,
   categoryPickerOpen,
   typePickerOpen,
@@ -371,9 +365,9 @@ export function BrainstormDrawer({
   setAddingStorm,
   setEditingStorm,
   setNewStormName,
-  setNewStormType,
   setNewStormState,
   setNewStormCategory,
+  setNewStormIcon,
   setCategoryInput,
   setCategoryPickerOpen,
   setTypePickerOpen,
@@ -424,6 +418,23 @@ export function BrainstormDrawer({
   const [entryTypePickerOpen, setEntryTypePickerOpen] = useState(false);
   const [entryStatePickerOpen, setEntryStatePickerOpen] = useState(false);
 
+  // ── Type-gated creation (Track C, Sprint 5) ─────────────────────────────────
+  // Gating is config-driven: STORM_TYPE_META.allowedIdeaTypes / .gating decide
+  // which idea types are creatable. Unconfigured storm types (general, etc.)
+  // return null and keep the legacy full type list — existing behavior untouched.
+  const unlockedIdeaTypes = selectedStorm ? getUnlockedIdeaTypes(selectedStorm) : null;
+  const creatableIdeaTypes: IdeaType[] = unlockedIdeaTypes ?? IDEA_TYPES;
+  const effectiveMainIdeaType: IdeaType = creatableIdeaTypes.includes(newMainIdeaType)
+    ? newMainIdeaType
+    : creatableIdeaTypes[0] ?? newMainIdeaType;
+  const effectiveChildIdeaType: IdeaType = editingChildIdea || creatableIdeaTypes.includes(newChildIdeaType)
+    ? newChildIdeaType
+    : creatableIdeaTypes[0] ?? newChildIdeaType;
+  const stageCount = selectedStorm
+    ? Object.values(selectedStorm.ideas).filter((idea) => idea.type === 'stage').length
+      + Object.values(selectedStorm.mainIdeas).filter((mainIdea) => mainIdea.type === 'stage').length
+    : 0;
+
   function resetMainIdeaForm() {
     setAddingMainIdea(false);
     setNewMainIdeaTitle('');
@@ -440,19 +451,21 @@ export function BrainstormDrawer({
   function handleSaveMainIdea() {
     const trimmedTitle = newMainIdeaTitle.trim();
     if (!selectedStormId || !trimmedTitle) return;
+    if (creatableIdeaTypes.length === 0) return;
     const customProps: Record<string, string> = {};
     if (newMainIdeaState === 'others') {
       customProps.stateColor = draftCustomStateColor;
     }
-    if (newMainIdeaType === 'others') {
+    if (effectiveMainIdeaType === 'others') {
       customProps.typeColor = draftCustomColor;
     }
     addMainIdea(
       selectedStormId,
       trimmedTitle,
       newMainIdeaState,
-      newMainIdeaType,
+      effectiveMainIdeaType,
       Object.keys(customProps).length > 0 ? customProps : undefined,
+      makeDefaultIdeaTypeData(effectiveMainIdeaType, { stageOrder: stageCount + 1 }),
     );
     resetMainIdeaForm();
   }
@@ -598,7 +611,7 @@ export function BrainstormDrawer({
     if (newChildIdeaState === 'others') {
       customProps.stateColor = newChildIdeaCustomStateColor;
     }
-    if (newChildIdeaType === 'others') {
+    if (effectiveChildIdeaType === 'others') {
       customProps.typeColor = newChildIdeaCustomColor;
     }
 
@@ -625,6 +638,9 @@ export function BrainstormDrawer({
     }
 
     if (!selectedMainIdeaId) return;
+    if (creatableIdeaTypes.length === 0) return;
+
+    const seedTypeData = makeDefaultIdeaTypeData(effectiveChildIdeaType, { stageOrder: stageCount + 1 });
 
     if (selectedIdeaId) {
       addChildIdea(
@@ -632,8 +648,9 @@ export function BrainstormDrawer({
         selectedIdeaId,
         trimmedTitle,
         newChildIdeaState,
-        newChildIdeaType,
+        effectiveChildIdeaType,
         nextCustomProps,
+        seedTypeData,
       );
     } else {
       addIdea(
@@ -641,8 +658,9 @@ export function BrainstormDrawer({
         selectedMainIdeaId,
         trimmedTitle,
         newChildIdeaState,
-        newChildIdeaType,
+        effectiveChildIdeaType,
         nextCustomProps,
+        seedTypeData,
       );
     }
 
@@ -983,41 +1001,20 @@ export function BrainstormDrawer({
               </div>
             ) : null}
             {!categoryPickerOpen && !statePickerOpen ? (
-              <div className="relative">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setTypePickerOpen((open) => !open);
-                    setStatePickerOpen(false);
-                    setCategoryPickerOpen(false);
-                  }}
-                  className="flex w-full items-center justify-between gap-3 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-left text-sm text-white hover:bg-white/[0.05]"
-                >
-                  <span className="flex items-center gap-3">
-                    <IconDisplay iconKey={`storm-${newStormType}`} size={18} className="shrink-0 opacity-90" />
-                    <span>{STORM_TYPE_META[newStormType].displayName}</span>
-                  </span>
-                  <span className="text-white/40 text-xs">Type</span>
-                </button>
-                {typePickerOpen ? (
-                  <div className="absolute left-0 right-0 top-full z-10 mt-2 overflow-hidden rounded-lg border border-white/10 bg-[#161624] shadow-xl">
-                    {STORM_TYPES.map((type) => (
-                      <button
-                        key={type}
-                        type="button"
-                        onClick={() => {
-                          setNewStormType(type);
-                          brainstormDraftRef.current = { type, category: newStormCategory };
-                          setTypePickerOpen(false);
-                        }}
-                        className="flex w-full items-center gap-3 px-3 py-2 text-left text-sm text-white hover:bg-white/[0.05]"
-                      >
-                        <IconDisplay iconKey={`storm-${type}`} size={18} className="shrink-0 opacity-90" />
-                        <span>{STORM_TYPE_META[type].displayName}</span>
-                      </button>
-                    ))}
-                  </div>
-                ) : null}
+              // Sprint 5: the storm type dropdown is retired — the brainstorm
+              // add flow always creates General Void storms. An icon picker
+              // takes its place for storm personalization.
+              <div className="flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2">
+                <span className="flex items-center gap-3 text-sm text-white">
+                  <IconDisplay iconKey={newStormIcon || `storm-${newStormType}`} size={18} className="shrink-0 opacity-90" />
+                  <span>{STORM_TYPE_META[newStormType].displayName}</span>
+                </span>
+                <IconPicker
+                  value={newStormIcon || `storm-${newStormType}`}
+                  onChange={setNewStormIcon}
+                  label="Icon"
+                  align="right"
+                />
               </div>
             ) : null}
             {!categoryPickerOpen && !typePickerOpen ? (
@@ -1094,7 +1091,7 @@ export function BrainstormDrawer({
                     </div>
                     <div className="flex flex-col justify-center flex-1 gap-1 py-2 min-w-0">
                       <div className="flex items-center gap-2">
-                        <IconDisplay iconKey={`storm-${storm.type}`} size={20} className="opacity-80 shrink-0" />
+                        <IconDisplay iconKey={storm.icon ?? `storm-${storm.type}`} size={20} className="opacity-80 shrink-0" />
                         <span className="block text-white/80 text-sm truncate">{storm.name}</span>
                       </div>
                       <div className="flex items-center gap-2">
@@ -1279,14 +1276,14 @@ export function BrainstormDrawer({
                       className="flex w-full items-center justify-between gap-3 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-left text-sm text-white hover:bg-white/[0.05]"
                     >
                       <span className="flex min-w-0 items-center gap-3">
-                        <span className="shrink-0 text-base leading-none">{resolveIcon(`idea-${newMainIdeaType}`)}</span>
-                        <span className="truncate">{formatIdeaTypeLabel(newMainIdeaType)}</span>
+                        <span className="shrink-0 text-base leading-none">{resolveIcon(`idea-${effectiveMainIdeaType}`)}</span>
+                        <span className="truncate">{formatIdeaTypeLabel(effectiveMainIdeaType)}</span>
                       </span>
                       <span className="text-white/40 text-xs">Type</span>
                     </button>
                     {ideaTypePickerOpen ? (
                       <div className="absolute left-0 right-0 top-full z-10 mt-2 overflow-hidden rounded-lg border border-white/10 bg-[#161624] shadow-xl">
-                        {newMainIdeaType === 'others' ? (
+                        {effectiveMainIdeaType === 'others' ? (
                           <div className="border-b border-white/10 p-3">
                             <div className="flex justify-start">
                               <ColorPicker
@@ -1300,7 +1297,7 @@ export function BrainstormDrawer({
                             </div>
                           </div>
                         ) : null}
-                        {IDEA_TYPES.map((type) => (
+                        {creatableIdeaTypes.map((type) => (
                           <button
                             key={type}
                             type="button"
@@ -1785,14 +1782,14 @@ export function BrainstormDrawer({
                     className="flex w-full items-center justify-between gap-3 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-left text-sm text-white hover:bg-white/[0.05]"
                   >
                     <span className="flex min-w-0 items-center gap-3">
-                      <span className="shrink-0 text-base leading-none">{resolveIcon(`idea-${newChildIdeaType}`)}</span>
-                      <span className="truncate">{formatIdeaTypeLabel(newChildIdeaType)}</span>
+                      <span className="shrink-0 text-base leading-none">{resolveIcon(`idea-${effectiveChildIdeaType}`)}</span>
+                      <span className="truncate">{formatIdeaTypeLabel(effectiveChildIdeaType)}</span>
                     </span>
                     <span className="text-xs text-white/40">Type</span>
                   </button>
                   {childIdeaTypePickerOpen ? (
                     <div className="absolute left-0 right-0 top-full z-10 mt-2 overflow-hidden rounded-lg border border-white/10 bg-[#161624] shadow-xl">
-                      {newChildIdeaType === 'others' ? (
+                      {effectiveChildIdeaType === 'others' ? (
                         <div className="border-b border-white/10 p-3">
                           <div className="flex justify-start">
                             <ColorPicker
@@ -1806,7 +1803,7 @@ export function BrainstormDrawer({
                           </div>
                         </div>
                       ) : null}
-                      {IDEA_TYPES.map((type) => (
+                      {creatableIdeaTypes.map((type) => (
                         <button
                           key={type}
                           type="button"
@@ -2260,8 +2257,6 @@ export function BrainstormDrawer({
           title={modalMode === 'storm' ? 'New Storm' : 'New Idea'}
           placeholder={modalMode === 'storm' ? 'Storm name...' : 'Enter a title...'}
           defaultValue=""
-          defaultType="exploration"
-          includeTypeSelector={modalMode === 'storm'}
           onConfirm={onHandleBrainstormModalConfirm}
           onClose={() => setModalMode(null)}
         />

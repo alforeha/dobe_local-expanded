@@ -209,7 +209,7 @@ function ParticipantsEditor({ coAttendees, setCoAttendees }: ParticipantsEditorP
             value={searchQuery}
             onChange={(event) => setSearchQuery(event.target.value)}
             placeholder="Search contacts"
-            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-800 focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200"
+            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-800 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200"
           />
 
           {filteredContacts.length === 0 ? (
@@ -460,7 +460,7 @@ export function RoutinePopup({ editRoutine, prefill, onClose, isPrebuilt = false
 
   const isOvernight = prefill?.isOvernight === true || (startTime !== '' && endTime !== '' && endTime < startTime);
   const inputCls =
-    'w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-800 focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200';
+    'w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-800 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200';
   const inputNoWidthCls = inputCls.replace('w-full ', '');
 
   function toggleDay(day: Weekday) {
@@ -871,8 +871,8 @@ export function RoutinePopup({ editRoutine, prefill, onClose, isPrebuilt = false
                                     onClick={() => toggleDay(key)}
                                     className={`h-9 w-9 rounded-full border text-xs font-semibold transition-colors ${
                                       days.includes(key)
-                                        ? 'border-purple-500 bg-purple-500 text-white'
-                                        : 'border-gray-300 bg-white text-gray-600 hover:border-purple-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300'
+                                        ? 'border-accent bg-accent text-white'
+                                        : 'border-gray-300 bg-white text-gray-600 hover:border-accent-border dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300'
                                     }`}
                                   >
                                     {label}
@@ -985,7 +985,7 @@ export function RoutinePopup({ editRoutine, prefill, onClose, isPrebuilt = false
             <button
               type="button"
               onClick={handleSave}
-              className="rounded-lg bg-purple-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-purple-700"
+              className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent/90"
             >
               Save
             </button>

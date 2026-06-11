@@ -1,9 +1,13 @@
+import { useState } from 'react';
 import type { PlannedEvent } from '../../../../../types';
+import { CircumchanceTab } from './CircumchanceTab';
 import { ScheduleRoomBody } from './ScheduleRoomBody';
 import { ScheduleRoomSubHeader } from './ScheduleRoomSubHeader';
+import type { FocusYardSubTab } from './ScheduleTabContent';
+import { WorkLoadsTab } from './WorkLoadsTab';
 
 interface FocusYardTabProps {
-  activeTab: 'bearing' | 'workloads';
+  activeTab: FocusYardSubTab;
   filteredRoutines: PlannedEvent[];
   routineFilter: string;
   onRoutineFilterChange: (val: string) => void;
@@ -25,19 +29,24 @@ export function FocusYardTab({
   onExpandedChange,
   onNavExpandedChange,
 }: FocusYardTabProps) {
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
   if (activeTab === 'bearing') {
     return (
       <div className="flex h-full min-h-0 flex-col">
-        <ScheduleRoomSubHeader
-          filterValue={routineFilter}
-          onFilterChange={onRoutineFilterChange}
-          onAddRoutine={onAddRoutine}
-        />
+        {!expandedId && (
+          <ScheduleRoomSubHeader
+            filterValue={routineFilter}
+            onFilterChange={onRoutineFilterChange}
+            onAddRoutine={onAddRoutine}
+          />
+        )}
         <ScheduleRoomBody
           events={filteredRoutines}
           onEdit={onEdit}
           onDelete={onDelete}
           onExpandedChange={(id) => {
+            setExpandedId(id);
             onExpandedChange?.(id);
             onNavExpandedChange?.(id !== null);
           }}
@@ -46,5 +55,9 @@ export function FocusYardTab({
     );
   }
 
-  return <div className="px-4 py-4 text-sm text-gray-700 dark:text-gray-200">Work Loads</div>;
+  if (activeTab === 'workloads') {
+    return <WorkLoadsTab onNavExpandedChange={onNavExpandedChange} />;
+  }
+
+  return <CircumchanceTab onNavExpandedChange={onNavExpandedChange} />;
 }

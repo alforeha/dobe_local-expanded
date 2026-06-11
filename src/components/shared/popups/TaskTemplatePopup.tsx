@@ -1,12 +1,12 @@
 import { useState } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import { getTaskTypeIconKey, normalizeTaskTemplateIconKey } from '../../../../../constants/iconMap';
-import { PopupShell } from '../../../../shared/popups/PopupShell';
-import { IconPicker } from '../../../../shared/IconPicker';
-import { TaskTypeConfigEditor } from '../../../../shared/TaskTypeConfigEditor';
-import { useScheduleStore } from '../../../../../stores/useScheduleStore';
-import { normalizeCircuitInputFields, type CircuitInputFields, type ConsumeInputFields, type InputFields, type TaskSecondaryTag, type TaskTemplate, type TaskType } from '../../../../../types';
-import type { StatGroupKey } from '../../../../../types/user';
+import { getTaskTypeIconKey, normalizeTaskTemplateIconKey } from '../../../constants/iconMap';
+import { PopupShell } from './PopupShell';
+import { IconPicker } from '../IconPicker';
+import { TaskTypeConfigEditor } from '../TaskTypeConfigEditor';
+import { useScheduleStore } from '../../../stores/useScheduleStore';
+import { normalizeCircuitInputFields, type CircuitInputFields, type ConsumeInputFields, type InputFields, type TaskSecondaryTag, type TaskTemplate, type TaskType } from '../../../types';
+import type { StatGroupKey } from '../../../types/user';
 
 const TASK_TYPES: TaskType[] = [
   'CHECK',

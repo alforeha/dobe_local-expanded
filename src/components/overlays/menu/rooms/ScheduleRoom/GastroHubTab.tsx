@@ -1,3 +1,12 @@
+// ─────────────────────────────────────────
+// Gastro Hub tab — Food Core · Cook Book · Meal Plan (A4).
+// Each section renders inside the shared Habitat shell.
+// ─────────────────────────────────────────
+
+import { FoodCoreView } from './GastroHub/FoodCoreView';
+import { CookBookView } from './GastroHub/CookBookView';
+import { MealPlanView } from './GastroHub/MealPlanView';
+
 type GastroHubTabValue = 'foodcore' | 'cookbook' | 'mealplan';
 
 interface GastroHubTabProps {
@@ -5,14 +14,14 @@ interface GastroHubTabProps {
   onExpandedChange?: (isExpanded: boolean) => void;
 }
 
-export function GastroHubTab({ activeTab }: GastroHubTabProps) {
+export function GastroHubTab({ activeTab, onExpandedChange }: GastroHubTabProps) {
   if (activeTab === 'foodcore') {
-    return <div className="px-4 py-4 text-sm text-gray-700 dark:text-gray-200">Food Core</div>;
+    return <FoodCoreView onExpandedChange={onExpandedChange} />;
   }
 
   if (activeTab === 'cookbook') {
-    return <div className="px-4 py-4 text-sm text-gray-700 dark:text-gray-200">Cook Book</div>;
+    return <CookBookView onExpandedChange={onExpandedChange} />;
   }
 
-  return <div className="px-4 py-4 text-sm text-gray-700 dark:text-gray-200">Meal Plan</div>;
+  return <MealPlanView />;
 }

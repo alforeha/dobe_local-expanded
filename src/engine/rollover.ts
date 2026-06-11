@@ -24,6 +24,7 @@ import { useProgressionStore } from '../stores/useProgressionStore';
 import { STARTER_ASPIRATION_IDS, STARTER_TEMPLATE_IDS, makeDailyChain } from '../coach/StarterQuestLibrary';
 import { materialisePlannedEvent } from './materialise';
 import { completeMilestone, fireInitialIntervalMarkers, fireMarker } from './markerEngine';
+import { generateKpiCheckIns } from './brainstormTaskEngine';
 import { evaluateMarkerCondition, evaluateTaskCountMarker } from './questEngine';
 import { computeGTDList } from './resourceEngine';
 import { ribbet } from '../coach/ribbet';
@@ -679,6 +680,9 @@ export async function executeRollover(
       dueMarkers = step5_evaluateMarkers(rolloverDate);
     }
     step6_fireMarkers(dueMarkers);
+    // KPI check-ins (Track C §5.2) — generated alongside marker firing.
+    // generateKpiCheckIns is fail-open and idempotent per (ideaId, date).
+    generateKpiCheckIns(rolloverDate);
   }
 
   // Step 7 — archive events

@@ -28,7 +28,7 @@ export function ScheduleRoomHeader({ activeTab, onTabChange }: ScheduleRoomHeade
               title={label}
               className={`flex h-7 w-8 items-center justify-center rounded-full transition-colors ${
                 activeTab === tab
-                  ? 'bg-blue-500 text-white'
+                  ? 'bg-accent text-white'
                   : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700'
               }`}
             >

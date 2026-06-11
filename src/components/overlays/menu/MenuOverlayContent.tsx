@@ -1,18 +1,16 @@
 import { WorldView } from './rooms/WorldView/WorldView';
 import { GoalRoom } from './rooms/GoalRoom/GoalRoom';
-import { TaskRoom } from './rooms/TaskRoom/TaskRoom';
 import { ScheduleRoom } from './rooms/ScheduleRoom/ScheduleRoom';
 import { ResourceRoom } from './rooms/ResourceRoom/ResourceRoom';
 import { QuickActionRoom } from './rooms/QuickActionRoom/QuickActionRoom';
 import type { ResourceType } from '../../../types/resource';
 
-type MenuRoom = 'world' | 'goal' | 'task' | 'schedule' | 'resource' | 'quickaction';
+type MenuRoom = 'world' | 'goal' | 'schedule' | 'resource' | 'quickaction';
 
 interface MenuOverlayContentProps {
   activeRoom: MenuRoom;
   onNavigate: (room: MenuRoom) => void;
   onGoToDay: (dateIso: string) => void;
-  onTaskExpandedChange?: (isExpanded: boolean) => void;
   onScheduleExpandedChange?: (isExpanded: boolean) => void;
   onResourceOverlayActiveChange?: (active: boolean) => void;
   onWorldNavHiddenChange: (hidden: boolean) => void;
@@ -23,7 +21,6 @@ export function MenuOverlayContent({
   activeRoom,
   onNavigate,
   onGoToDay,
-  onTaskExpandedChange,
   onScheduleExpandedChange,
   onResourceOverlayActiveChange,
   onWorldNavHiddenChange,
@@ -42,9 +39,6 @@ export function MenuOverlayContent({
         />
       )}
       {activeRoom === 'goal' && <GoalRoom onNavHiddenChange={onGoalNavHiddenChange} />}
-      {activeRoom === 'task' && (
-        <TaskRoom onGoToResource={handleGoToResource} onExpandedChange={onTaskExpandedChange} />
-      )}
       {activeRoom === 'schedule' && (
         <ScheduleRoom
           onGoToResource={handleGoToResource}

@@ -33,7 +33,7 @@ export function ResourceRoomHeader({ activeType, onTypeChange, onAdd, hideNav = 
           type="button"
           onClick={onAdd}
           aria-label="Add resource"
-          className="text-2xl leading-none text-blue-500 transition-colors hover:text-blue-600"
+          className="text-2xl leading-none text-accent transition-colors hover:text-accent/80"
         >
           +
         </button>
@@ -49,7 +49,7 @@ export function ResourceRoomHeader({ activeType, onTypeChange, onAdd, hideNav = 
               title={type}
               className={`flex h-9 w-10 shrink-0 items-center justify-center rounded-full px-1 transition-colors ${
                 activeType === type
-                  ? 'bg-blue-500 text-white'
+                  ? 'bg-accent text-white'
                   : 'text-gray-500 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700'
               }`}
             >

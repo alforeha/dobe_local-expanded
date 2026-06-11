@@ -7,7 +7,6 @@ export const ONBOARDING_GLOW = {
   WEEK_VIEW_NAV: 'week-view-nav',
   MONTH_VIEW_NAV: 'month-view-nav',
   MENU_BUTTON: 'menu-button',
-  TASK_ROOM_NAV: 'task-room-nav',
   TASK_FAVOURITE_STAR: 'task-favourite-star',
   FAVOURITE_ACTION: 'favourite-action',
   SCHEDULE_ROOM_NAV: 'schedule-room-nav',

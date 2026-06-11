@@ -57,10 +57,11 @@ interface GoalInspectorDrawerProps {
   stormScrollContainerRef?: React.RefObject<HTMLDivElement | null>;
   addingStorm: boolean;
   setAddingStorm: (adding: boolean) => void;
-  onAddStorm: (name: string, type: StormType, state?: StormState, category?: StormCategory) => void;
+  onAddStorm: (name: string, type: StormType, state?: StormState, category?: StormCategory, icon?: string) => void;
   onSetStormType: (type: StormType) => void;
   onSetStormState: (state: StormState) => void;
   onSetStormCategory: (category: StormCategory) => void;
+  onSetStormIcon: (icon: string) => void;
   onSelectMainIdea: (id: string | null) => void;
   onSelectIdea: (id: string | null) => void;
   onAddMainIdea: (title: string) => void;
@@ -465,6 +466,7 @@ export function GoalInspectorDrawer({
   onSetStormType,
   onSetStormState,
   onSetStormCategory,
+  onSetStormIcon,
   onSelectMainIdea,
   onSelectIdea,
   onAddMainIdea,
@@ -540,6 +542,7 @@ export function GoalInspectorDrawer({
   const [newStormType, setNewStormType] = useState<StormType>('general');
   const [newStormState, setNewStormState] = useState<StormState>('active');
   const [newStormCategory, setNewStormCategory] = useState<StormCategory>({ name: 'Thought Train', color: '#7c3aed' });
+  const [newStormIcon, setNewStormIcon] = useState('');
   const [categoryInput, setCategoryInput] = useState('');
   const [categoryPickerOpen, setCategoryPickerOpen] = useState(false);
   const [typePickerOpen, setTypePickerOpen] = useState(false);
@@ -575,6 +578,7 @@ export function GoalInspectorDrawer({
     setNewStormType('general');
     setNewStormState('active');
     setNewStormCategory({ name: 'Thought Train', color: '#7c3aed' });
+    setNewStormIcon('');
     setCategoryInput('');
     setCategoryPickerOpen(false);
     setTypePickerOpen(false);
@@ -618,6 +622,7 @@ export function GoalInspectorDrawer({
     setNewStormType(selectedStorm.type);
     setNewStormState(selectedStorm.state);
     setNewStormCategory(selectedStorm.category);
+    setNewStormIcon(selectedStorm.icon ?? '');
     setCategoryInput(selectedStorm.category.name);
     setCategoryPickerOpen(false);
     setTypePickerOpen(false);
@@ -661,7 +666,8 @@ export function GoalInspectorDrawer({
 
   function handleBrainstormModalConfirm(name: string, type?: StormType) {
     if (modalMode === 'storm') {
-      onAddStorm(name, type ?? 'exploration');
+      // Sprint 5: brainstorm add flow always creates General Void storms.
+      onAddStorm(name, type ?? 'general');
     } else if (modalMode === 'mainIdea') {
       onAddMainIdea(name);
     } else if (modalMode === 'idea' && selectedMainIdea) {
@@ -690,6 +696,7 @@ export function GoalInspectorDrawer({
     setNewStormType(draft.type);
     setNewStormState('active');
     setNewStormCategory(draft.category);
+    setNewStormIcon('');
     setCategoryInput('');
     setCategoryPickerOpen(false);
     setTypePickerOpen(false);
@@ -715,13 +722,16 @@ export function GoalInspectorDrawer({
       ) {
         onSetStormCategory(newStormCategory);
       }
+      if (newStormIcon && newStormIcon !== (selectedStorm.icon ?? '')) {
+        onSetStormIcon(newStormIcon);
+      }
       setEditingStorm(false);
       setAddingStorm(false);
       brainstormDraftRef.current = null;
       return;
     }
 
-    onAddStorm(trimmed, newStormType, newStormState, newStormCategory);
+    onAddStorm(trimmed, newStormType, newStormState, newStormCategory, newStormIcon || undefined);
     resetAddStormState();
   }
 
@@ -790,6 +800,7 @@ export function GoalInspectorDrawer({
           newStormType={newStormType}
           newStormState={newStormState}
           newStormCategory={newStormCategory}
+          newStormIcon={newStormIcon}
           categoryInput={categoryInput}
           categoryPickerOpen={categoryPickerOpen}
           typePickerOpen={typePickerOpen}
@@ -844,7 +855,7 @@ export function GoalInspectorDrawer({
         setAddingStorm={setAddingStorm}
           setEditingStorm={setEditingStorm}
           setNewStormName={setNewStormName}
-          setNewStormType={setNewStormType}
+          setNewStormIcon={setNewStormIcon}
           setNewStormState={setNewStormState}
           setNewStormCategory={setNewStormCategory}
           setCategoryInput={setCategoryInput}
